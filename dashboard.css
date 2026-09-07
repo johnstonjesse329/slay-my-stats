@@ -1,0 +1,1590 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-deep:      #0d0c1a;
+  --bg-mid:       #181530;
+  --bg-warm:      #261c2e;
+  --panel:        #211e36;
+  --panel-2:      #2a2545;
+  --panel-border: #4a3f6e;
+  --hairline:     #3a3460;
+  --gold:         #e0c468;
+  --gold-bright:  #f3d98a;
+  --gold-glow:    rgba(224, 196, 104, 0.35);
+  --teal:         #6fd6c6;
+  --ember:        #d97a3a;
+  --text:         #e6e2f2;
+  --text-dim:     #a8a2c4;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  padding: 2rem;
+  min-height: 100vh;
+  /* Night-sky backdrop evoking the game's map screen: deep blue base with
+     soft blue/violet nebulas and a faint gold ember low on the right, kept
+     dark and low-contrast so the content panels above it stay readable. */
+  background:
+    radial-gradient(1200px 720px at 85% -10%, rgba(118, 132, 200, 0.20), transparent 60%),
+    radial-gradient(900px 620px at 6% -4%, rgba(96, 122, 216, 0.16), transparent 55%),
+    radial-gradient(760px 540px at 48% 120%, rgba(92, 94, 178, 0.18), transparent 60%),
+    radial-gradient(640px 440px at 88% 96%, rgba(224, 196, 104, 0.08), transparent 62%),
+    linear-gradient(160deg, #05060e 0%, #0a1020 42%, #0e1730 74%, #141d3a 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+/* Subtle fixed overlay of map-node dots + extra depth, purely decorative. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 28% 22%, rgba(120, 150, 220, 0.10), transparent 46%),
+    radial-gradient(circle at 74% 30%, rgba(150, 122, 220, 0.10), transparent 50%),
+    radial-gradient(rgba(224, 196, 104, 0.05) 1px, transparent 1.5px),
+    radial-gradient(rgba(160, 180, 230, 0.05) 1px, transparent 1.5px);
+  background-size: auto, auto, 34px 34px, 34px 34px;
+  background-position: 0 0, 0 0, 0 0, 17px 17px;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  margin-bottom: 0.25rem;
+  background: linear-gradient(180deg, var(--gold-bright) 0%, var(--gold) 60%, #c9a04e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 18px var(--gold-glow);
+  display: inline-block;
+}
+.subtitle { color: var(--text-dim); margin-bottom: 2rem; font-size: 0.95rem; }
+
+/* ---- Summary stat cards ---- */
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2.5rem;
+}
+
+/* Personal bests: force 5 equal columns so tiles never leave an orphan. */
+#personal-bests-cards {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+}
+/* Most Picked/Best Win % card & relic rows: same hover-tooltip anchoring as
+   the deck/relic tiles they borrow buildCardTooltip/buildRelicTooltip from
+   (.card-tooltip-wrap / .relic-tooltip-wrap below), just on a row-shaped
+   wrapper instead of a square tile. */
+.fav-item {
+  position: relative;
+  z-index: 1;
+}
+.fav-item:hover {
+  z-index: 100;
+}
+.fav-item:hover .card-tooltip-wrap,
+.fav-item:hover .relic-tooltip-wrap,
+.fav-item:focus-within .card-tooltip-wrap,
+.fav-item:focus-within .relic-tooltip-wrap {
+  visibility: visible;
+}
+.fav-item-face {
+  flex: 0 0 auto;
+}
+.card {
+  flex: 0 0 auto;
+  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel) 100%);
+  border: 1px solid var(--panel-border);
+  border-top-color: var(--gold-glow);
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.card .label { font-size: 0.74rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+.card .value { font-size: 1.6rem; font-weight: 700; color: var(--gold); line-height: 1.2; text-shadow: 0 0 10px var(--gold-glow); }
+.card .sub   { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.1rem; }
+.card .card-scope-tag { font-size: 0.66rem; color: #8a8aa0; font-style: italic; margin-top: 0.15rem; }
+
+/* Personal Bests stat values that link to the run behind them (see
+   statLink() in dashboard.js) — gold on hover, matching every other
+   interactive-text affordance in the app. */
+.pb-stat-link:hover { color: var(--gold) !important; }
+/* ---- Chart layout grids ---- */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+.grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+.grid-1 { margin-bottom: 2rem; }
+
+.chart-box {
+  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel) 100%);
+  border: 1px solid var(--panel-border);
+  border-top-color: var(--gold-glow);
+  border-radius: 10px;
+  padding: 1.25rem;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+  /* Grid items default to min-width:auto and refuse to shrink below their
+     content, which lets a wide pivot table push the whole page wider instead
+     of scrolling inside .pivot-wrap. */
+  min-width: 0;
+}
+.chart-box h2 { font-size: 1rem; color: var(--text); margin-bottom: 1rem; }
+
+.chart-wrap { position: relative; height: 260px; }
+
+/* A default OS/browser scrollbar (thin, gray, sometimes overlay-hidden until
+   hover) gives no visible cue that a pivot table has more columns off to the
+   right (notably the ALL rollup column) — style it to be unmistakably always
+   visible instead. */
+.pivot-wrap {
+  overflow-x: auto;
+  scrollbar-width: auto;
+  scrollbar-color: var(--gold) var(--panel-2);
+}
+.pivot-wrap::-webkit-scrollbar { height: 10px; }
+.pivot-wrap::-webkit-scrollbar-track { background: var(--panel-2); border-radius: 5px; }
+.pivot-wrap::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 5px; }
+.pivot-wrap::-webkit-scrollbar-thumb:hover { background: var(--gold-bright); }
+
+/* ---- Pivot tables ---- */
+.pivot {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 100%;
+}
+.pivot th {
+  padding: 0.5rem 0.9rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  border-bottom: 2px solid var(--hairline);
+  white-space: nowrap;
+  text-align: center;
+}
+.pivot th.char-head { text-align: left; }
+.pivot td.char-name {
+  padding: 0 1rem 0 0.25rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border-right: 1px solid var(--hairline);
+}
+.pivot td.char-name .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.pivot td.cell {
+  text-align: center;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #0a0916;
+  min-width: 72px;
+  vertical-align: middle;
+  transition: filter .1s;
+}
+.pivot td.cell:hover { filter: brightness(1.25); cursor: default; }
+.pivot td.cell .pct  { font-weight: 700; font-size: 0.95rem; line-height: 1.2; }
+.pivot td.cell .meta { font-size: 0.74rem; color: rgba(255,255,255,.72); margin-top: 1px; }
+.pivot td.cell.empty { color: #4a4570; background: var(--panel); }
+.pivot tr.total-row td { border-top: 2px solid var(--hairline); }
+.pivot td.act-header {
+  padding: 0.5rem 0.25rem 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--gold);
+  border-top: 2px solid var(--hairline);
+}
+.pivot tr.total-row td.char-name { color: var(--gold); }
+.pivot td.cell.all-col { border-left: 2px solid var(--hairline); }
+
+/* ---- Filter bar ---- */
+.filter-bar {
+  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel) 100%);
+  border: 1px solid var(--panel-border);
+  border-top-color: var(--gold-glow);
+  border-radius: 10px;
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.filter-bar-2row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+.filter-bar-2row .filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.filter-bar-2row .filter-row + .filter-row {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--hairline);
+}
+.filter-bar .filter-label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  white-space: nowrap;
+  margin-right: 0.25rem;
+}
+.filter-bar label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.25rem 0.6rem;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  transition: background .15s, border-color .15s;
+  user-select: none;
+}
+.filter-bar label:hover { background: rgba(255,255,255,0.05); }
+.filter-bar label.checked { border-color: var(--gold-glow); background: rgba(224,196,104,0.12); color: var(--gold); }
+.filter-bar input[type=checkbox] { accent-color: var(--gold); width: 14px; height: 14px; cursor: pointer; }
+.filter-bar .sep { width: 1px; height: 20px; background: var(--hairline); margin: 0 0.25rem; }
+.filter-bar .filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.18);
+}
+.filter-bar .toggle-btn {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.filter-bar .toggle-btn:hover { color: var(--gold); border-color: var(--gold); }
+
+/* "Save as default" is the one action here worth reaching for, unlike the
+   purely-corrective Reset — give it a permanent gold tint (not just on
+   hover) so it reads as the primary action, plus a quick pop on click for
+   tactile save confirmation beyond the small status text next to it. */
+.filter-bar .toggle-btn-primary {
+  color: var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
+  background: rgba(224,196,104,0.08);
+}
+.filter-bar .toggle-btn-primary:hover {
+  background: rgba(224,196,104,0.16);
+  box-shadow: 0 0 10px var(--gold-glow);
+}
+@keyframes toggle-btn-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.12); box-shadow: 0 0 12px var(--gold-glow); }
+  100% { transform: scale(1); }
+}
+.filter-bar .toggle-btn-primary.pop { animation: toggle-btn-pop 0.32s ease; }
+.filter-bar input[type=date] {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 0.2rem 0.6rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.filter-bar input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.85) sepia(0.4) saturate(2) hue-rotate(10deg); cursor: pointer; }
+
+/* ---- Page tabs ---- */
+.page-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.page-tab {
+  font-size: 0.85rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 0.4rem 1.1rem;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s, box-shadow .15s;
+}
+.page-tab:hover { color: var(--gold); border-color: var(--gold-glow); }
+.page-tab.active {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  background: linear-gradient(165deg, rgba(224,196,104,0.16), rgba(224,196,104,0.04));
+  box-shadow: 0 0 14px var(--gold-glow);
+}
+
+/* ---- Character selector buttons ---- */
+.char-btn {
+  font-size: 0.82rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s, box-shadow .15s;
+}
+.char-btn:hover { color: var(--char-color, var(--gold)); border-color: var(--char-color, var(--gold)); }
+.char-btn.active {
+  color: var(--char-color, var(--gold));
+  border-color: var(--char-color, var(--gold));
+  background: rgba(255,255,255,0.06);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--char-color, var(--gold)) 45%, transparent);
+}
+.char-btn:disabled { color: #4a4570; border-color: var(--hairline); cursor: not-allowed; }
+
+/* ---- Inline helper note (Character Detail char fallback) ---- */
+.char-fallback-note { color: var(--text-dim); font-size: 0.82rem; }
+
+@media (max-width: 700px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* ---- Seeds page ---- */
+.seed-show-more {
+  font-size: 0.8rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  padding: 0.3rem 0.9rem;
+  margin: 0 0.3rem;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.seed-show-more:hover { color: var(--gold); border-color: var(--gold); }
+
+.seeds-search-area {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin-top: 0.75rem;
+}
+
+.seeds-search-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 220px;
+}
+
+.seeds-search-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.seeds-typeahead-wrap {
+  position: relative;
+}
+
+.seeds-input {
+  width: 100%;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s;
+}
+.seeds-input:focus { border-color: var(--gold); }
+
+.seeds-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  z-index: 50;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.seeds-dropdown-item {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.83rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: background .1s;
+}
+.seeds-dropdown-item:hover { background: rgba(255,255,255,0.06); color: var(--gold); }
+
+.filter-dropdown-wrap { position: relative; }
+.filter-dropdown-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  z-index: 50;
+  min-width: 160px;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  padding: 0.4rem;
+}
+.filter-dropdown-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+}
+.filter-dropdown-actions .toggle-btn { flex: 1 1 0; margin: 0; }
+.filter-dropdown-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+.filter-dropdown-panel label {
+  display: flex;
+  width: 100%;
+  margin: 0;
+}
+.filter-dropdown-panel .sep {
+  width: auto;
+  height: 1px;
+  margin: 0.3rem 0;
+  flex: 0 0 auto;
+}
+
+.seeds-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 1.8rem;
+}
+
+.seeds-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(224,196,104,0.1);
+  border: 1px solid var(--gold-glow);
+  border-radius: 5px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.seeds-chip-label { color: var(--text); }
+
+.seeds-chip-qty {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.seeds-chip-min {
+  font-size: 0.75rem;
+  color: var(--gold);
+  min-width: 1.8rem;
+  text-align: center;
+}
+
+.seeds-chip-adj {
+  background: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0 0.3rem;
+  transition: color .1s, border-color .1s;
+}
+.seeds-chip-adj:hover { color: var(--gold); border-color: var(--gold); }
+.seeds-chip-adj:disabled { color: #4a4570; border-color: var(--hairline); cursor: default; }
+.seeds-chip-qty-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+
+.seeds-chip-remove {
+  background: none;
+  border: none;
+  color: #7a7398;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+  transition: color .1s;
+}
+.seeds-chip-remove:hover { color: #e05c5c; }
+
+.seed-row:hover { background: rgba(255,255,255,0.04); }
+
+.seed-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.seed-detail-section {
+  width: 100%;
+}
+
+.seed-detail-label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 0.5rem;
+}
+
+.seed-detail-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.seed-match-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+
+.seed-loc-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.seed-loc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: default;
+  white-space: nowrap;
+}
+
+/* =========================================================================
+   Run Detail page
+   ========================================================================= */
+
+#detail-layout {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* ---- Run list (left column) ---- */
+
+#detail-run-list {
+  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel) 100%);
+  border: 1px solid var(--panel-border);
+  border-top-color: var(--gold-glow);
+  border-radius: 8px;
+  max-height: 70vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.detail-run-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background 0.1s;
+}
+.detail-run-item:last-child { border-bottom: none; }
+.detail-run-item:hover { background: rgba(255,255,255,0.05); }
+.detail-run-item.active { background: rgba(224,196,104,0.1); border-left: 3px solid var(--gold); padding-left: calc(0.75rem - 3px); }
+
+.detail-run-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--hairline);
+  position: sticky;
+  top: 0;
+  background: var(--panel-2);
+}
+.detail-run-char { font-weight: 600; }
+.detail-run-asc  { font-size: 0.78rem; }
+.detail-run-won  { font-weight: 700; font-size: 0.8rem; }
+.detail-run-floor { font-size: 0.78rem; }
+.detail-run-date  { font-size: 0.74rem; margin-left: auto; }
+
+/* ---- Run header ---- */
+
+.detail-run-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 0 0.5rem;
+  font-size: 0.92rem;
+}
+
+.detail-run-headline-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding-bottom: 0.6rem;
+}
+
+.run-headline-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+}
+
+.run-headline-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+
+.run-headline-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-run-header-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.82rem;
+}
+
+.run-header-stat-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--hairline);
+  flex-shrink: 0;
+}
+
+/* The secondary stat tail (fight/event counts, buys, damage/heal totals)
+   collapses into a disclosure under the headline stats; when open the body
+   restores the same wrapped chip layout it had as a flat row. */
+.run-detail-stats { flex-basis: 100%; }
+.run-detail-stats > summary {
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.run-detail-stats > summary:hover { color: var(--text); }
+.run-detail-stats > summary:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.run-detail-stats-body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  padding-top: 0.55rem;
+}
+.run-detail-stats[open] > summary { margin-bottom: 0.1rem; }
+
+/* ---- Placeholder ---- */
+
+.detail-placeholder {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+/* ---- Timeline acts ---- */
+
+.timeline-legend {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-bottom: 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  align-items: center;
+}
+
+.timeline-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.timeline-act {
+  margin-bottom: 1rem;
+}
+
+.timeline-act-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+
+.timeline-act-label {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+.timeline-act-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.act-count-pill {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0.05rem 0.35rem;
+  white-space: nowrap;
+}
+
+.timeline-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* ---- Node cards ---- */
+
+/* Sized to match the relic/card tiles above (88px / 96px) so the floor
+   timeline reads as the same visual scale as the Final Deck section. */
+.node-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 88px;
+  padding: 0.45rem 0.3rem 0.4rem;
+  background: linear-gradient(165deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  cursor: default;
+  font-size: 0.76rem;
+  user-select: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+.node-card:hover { border-color: var(--gold); box-shadow: 0 0 10px var(--gold-glow); z-index: 10; }
+
+.node-card.node-type-elite  { border-color: #6a3a1e; }
+.node-card.node-type-boss   { border-color: #6a1e3a; }
+.node-card.node-type-rest_site { border-color: #1e3a6a; }
+
+.chart-vline-legend {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  padding: 0 0.25rem 0.4rem;
+}
+
+.vline-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.vline-legend-line {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 1px dashed #ffffff44;
+  flex-shrink: 0;
+}
+
+.node-floor {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.node-icon {
+  font-size: 1.6rem;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.node-icon-img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.node-hp {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  text-align: center;
+  white-space: nowrap;
+}
+.node-hp.damaged { color: #e05c5c; }
+
+.node-indicators {
+  display: flex;
+  gap: 3px;
+  margin-top: 3px;
+  min-height: 17px;
+}
+
+.node-ind {
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: default;
+  line-height: 1;
+}
+.card-ind  { color: #9ecfff; }
+.relic-ind { color: #c49fe8; }
+
+/* ---- Node tooltip ---- */
+
+.node-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: var(--panel-2);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  min-width: 160px;
+  max-width: 220px;
+  max-height: 88vh;
+  overflow-y: auto;
+  pointer-events: none;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.6), 0 0 0 1px rgba(224,196,104,0.08);
+  white-space: nowrap;
+}
+.node-card:hover .node-tooltip,
+.node-card:focus .node-tooltip { display: block; }
+
+.nt-floor  { font-weight: 700; color: var(--gold); font-size: 0.8rem; margin-bottom: 2px; }
+.nt-hp-gold { color: var(--text); font-size: 0.78rem; margin-bottom: 4px; }
+.nt-enc    { color: var(--text); font-size: 0.8rem; font-weight: 600; margin-bottom: 2px; }
+.nt-dmg     { color: #e05c5c; font-size: 0.78rem; }
+.nt-avg-dmg { color: #e05c5c88; font-size: 0.75rem; }
+.nt-heal   { color: #5cba7d; font-size: 0.78rem; }
+.nt-turns       { color: var(--text-dim); font-size: 0.75rem; }
+.nt-rest        { color: #5b9bd5; font-size: 0.78rem; }
+.nt-section { color: var(--text-dim); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 5px; margin-bottom: 1px; }
+.nt-reward-card  { color: #9ecfff; font-size: 0.78rem; }
+.nt-reward-relic { color: #c49fe8; font-size: 0.78rem; }
+.nt-skipped  { color: var(--text-dim); font-size: 0.75rem; }
+.nt-removed  { color: #e05c5c; font-size: 0.78rem; }
+.nt-bought-tag { color: #5cba7d; font-size: 0.72rem; font-style: italic; }
+
+/* ---- Shared floating tooltip (charts + table cells) ---- */
+/* Rendered as a real DOM element, positioned in chartTooltipHandler() /
+   showTableTooltip() and clamped to the viewport there — see dashboard.js.
+   Chart.js's own canvas-drawn tooltip only avoids overflowing the chart's
+   plot area, not the browser window, and native `title` attributes render
+   unstyled and slow — this replaces both with one consistent, instant,
+   always-on-screen tooltip. max-width + wrapping (rather than nowrap) is
+   needed for the occasional long single-line table tip that would
+   otherwise force the box wider than the viewport itself, which the
+   position clamp alone can't fix. */
+
+.chart-tooltip {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  background: var(--panel-2);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.6), 0 0 0 1px rgba(224,196,104,0.08);
+  font-size: 0.78rem;
+  color: var(--text);
+  max-width: 320px;
+  opacity: 0;
+}
+.chart-tooltip-title { font-weight: 700; color: var(--gold); margin-bottom: 4px; }
+.chart-tooltip-row { display: flex; align-items: flex-start; gap: 6px; }
+.chart-tooltip-row + .chart-tooltip-row { margin-top: 3px; }
+.chart-tooltip-swatch {
+  width: 10px;
+  height: 10px;
+  margin-top: 3px;
+  border-radius: 2px;
+  border: 1px solid rgba(255,255,255,0.3);
+  flex-shrink: 0;
+}
+.chart-tooltip-lines { line-height: 1.4; min-width: 0; }
+
+/* Rich-content variant (card/relic tooltip markup instead of plain text
+   lines) -- the inner .card-tooltip/.relic-tooltip box already brings its
+   own background/border/padding, so strip this element's chrome to avoid
+   a double frame around it. */
+.chart-tooltip.chart-tooltip-rich {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  max-width: none;
+}
+
+/* ---- Run header stat chips ---- */
+
+.run-summary-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.run-summary-label { color: var(--text-dim); }
+.run-summary-value { color: var(--text); font-weight: 600; }
+
+.run-boon-icon {
+  /* Sized against this row's own 14px divider height, not the 22px used for
+     relic icons elsewhere -- at 22px these overpowered the header's compact
+     text stats next to them. */
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  vertical-align: middle;
+  border-radius: 3px;
+}
+.run-boon-wrap {
+  position: relative;
+  display: inline-block;
+}
+.run-boon-wrap .relic-tooltip-wrap {
+  /* Anchored to the right edge instead of .relic-tile's centered popup --
+     these icons sit at the header's right edge, where a centered 180px
+     tooltip would run off the viewport. */
+  visibility: hidden;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: auto;
+  right: 0;
+  transform: none;
+  z-index: 200;
+}
+.run-boon-wrap:hover .relic-tooltip-wrap {
+  visibility: visible;
+}
+
+/* ---- Floor breakdown summary table ---- */
+
+.detail-section-heading {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.5rem;
+}
+
+/* ---- Card art thumbnails (tooltip) ---- */
+
+.nt-card-thumb {
+  width: 100%;
+  max-width: 140px;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+  margin-top: 3px;
+  border: 1px solid var(--hairline);
+}
+
+/* ---- Card tiles (final deck) ---- */
+
+.deck-group {
+  margin-bottom: 12px;
+}
+.deck-group-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.deck-group-count {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.deck-tile-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.card-tile {
+  position: relative;
+  width: 96px;
+  cursor: default;
+  z-index: 1;
+}
+.card-tile:hover {
+  z-index: 100;
+}
+.tile-art {
+  width: 96px;
+  height: 73px;
+  object-fit: cover;
+  object-position: center 20%;
+  display: block;
+  border-radius: 4px 4px 0 0;
+  border: 2px solid var(--tile-color, #444);
+  border-bottom: none;
+  transform: translateZ(0);
+  image-rendering: auto;
+}
+.tile-art-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-deep);
+  color: #6a6390;
+  font-size: 1.4rem;
+}
+/* Column layout, not row: the name and its upgrade/count badges must not
+   share one flex row, or the badges steal width from the name and force
+   mid-word breaks even on short names (e.g. "Rupture" + "+1" + "x2") once
+   the row gets tight. Each gets its own line instead. */
+.tile-name {
+  background: #1a1520;
+  border-radius: 0 0 4px 4px;
+  border-top: 2px solid var(--tile-color, #444);
+  padding: 2px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+/* 96px tile width (minus padding) comfortably fits "Metamorphosis" (81.6px
+   at this font, the longest single word across card_data.json, measured via
+   Playwright) with a margin — mirrors the relic-tile sizing rationale below. */
+.tile-name-text {
+  font-size: 0.74rem;
+  color: #e8e0cc;
+  text-align: center;
+  line-height: 1.3;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  min-height: 2.6em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tile-badges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.tile-count {
+  font-size: 0.74rem;
+  color: #fffa;
+}
+
+/* ---- Rich card tooltip ---- */
+
+.card-tooltip-wrap {
+  visibility: hidden;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  pointer-events: none;
+}
+.card-tile:hover .card-tooltip-wrap {
+  visibility: visible;
+}
+
+.card-tooltip {
+  width: 160px;
+  max-width: min(92vw, 420px);
+  max-height: 88vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #3d3020;
+  border: 2px solid #c8882a;
+  border-radius: 8px;
+  outline: 3px solid #161616;
+  box-shadow: 0 6px 24px #000e;
+  font-size: 0.75rem;
+  color: #fff;
+}
+.ct-art-wrap {
+  position: relative;
+}
+.ct-art {
+  width: 100%;
+  display: block;
+}
+.ct-art-missing {
+  height: 110px;
+  background: var(--panel);
+}
+.ct-costs {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  z-index: 2;
+}
+.ct-cost-energy {
+  background: #c85a1a;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 900;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff8;
+  box-shadow: 0 1px 4px #0008;
+}
+.ct-cost-stars {
+  background: #2060c0;
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid #fff6;
+  box-shadow: 0 1px 4px #0008;
+  letter-spacing: 1px;
+}
+.ct-banner {
+  padding: 3px 8px 4px;
+  background: linear-gradient(180deg, #b8b8b8 0%, #787878 50%, #a0a0a0 100%);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.ct-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  text-shadow: 0 1px 0 #fff5;
+  white-space: nowrap;
+}
+.ct-upgrade {
+  color: #b06000;
+  font-size: 0.72rem;
+}
+.ct-type-pill {
+  background: #a0a0b8;
+  border: 1px solid #bcbcd0;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  white-space: nowrap;
+}
+.ct-desc {
+  padding: 6px 10px 10px;
+  font-size: 0.72rem;
+  color: #e8e0cc;
+  line-height: 1.5;
+  text-align: center;
+  background: #3d3020;
+}
+.ct-desc b {
+  color: #f0b030;
+  font-weight: 700;
+}
+
+/* ---- Final deck + relics ---- */
+
+.deck-relic-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Relic image tiles in the final deck. Width stays 88px (not 52px) so every
+   relic name in the game fits its longest single word on one line with no
+   mid-word break — "Tri-Boomerang" is the actual worst case in
+   relic_data.json at 78px wide in this font, so 88px covers it with a small
+   margin. Widening further than the 64px compromise costs real density in
+   the relic grid, but this is an explicit "always fit the biggest word"
+   choice, not an accident. The art height (below), unlike the width, isn't
+   pinned by text — it's cut to 68px (~77% of the old 88px square) since the
+   square icon padded inside a full 88px box was the actual source of the
+   tiles reading as oversized next to the card tiles. */
+.relic-tile {
+  position: relative;
+  width: 88px;
+  z-index: 1;
+  flex-shrink: 0;
+}
+.relic-tile:hover {
+  z-index: 100;
+}
+.relic-tile-art {
+  width: 88px;
+  height: 68px;
+  object-fit: contain;
+  background: #1e1630;
+  border: 1px solid #3a2a4a;
+  border-radius: 6px 6px 0 0;
+  padding: 2px;
+  display: block;
+}
+.relic-tile-name {
+  background: #1a1520;
+  border: 1px solid #3a2a4a;
+  border-top: 2px solid #6a4a9a;
+  border-radius: 0 0 4px 4px;
+  padding: 2px 3px;
+  font-size: 0.74rem;
+  color: #e8e0cc;
+  text-align: center;
+  line-height: 1.3;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.relic-tile-no-img {
+  width: 88px;
+}
+.relic-tooltip-wrap {
+  visibility: hidden;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+}
+.relic-tile:hover .relic-tooltip-wrap {
+  visibility: visible;
+}
+
+/* While scrolling, :hover can point at a stale element (Chrome doesn't
+   re-evaluate hover until the mouse moves) — hide tooltips until then */
+body.suppress-hover-tooltips .relic-tooltip-wrap,
+body.suppress-hover-tooltips .card-tooltip-wrap,
+body.suppress-hover-tooltips .node-tooltip {
+  visibility: hidden !important;
+  display: none !important;
+}
+.relic-tooltip {
+  width: 180px;
+  background: var(--bg-deep);
+  border: 2px solid #4a3a6a;
+  border-radius: 8px;
+  outline: 3px solid #161616;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  pointer-events: none;
+}
+.rt-art {
+  width: 100%;
+  height: 72px;
+  object-fit: contain;
+  background: #120e20;
+  padding: 6px;
+}
+.rt-header {
+  padding: 4px 8px 2px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #e0d0f8;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+.rt-rarity {
+  font-size: 0.72rem;
+  font-weight: normal;
+}
+.rt-desc {
+  padding: 4px 8px 8px;
+  font-size: 0.7rem;
+  color: #bbb;
+  line-height: 1.4;
+}
+
+/* ---- Card face: a real card composited from the baked game chrome ---- */
+/* Layers are absolutely positioned from card_chrome/layout.json (the game's
+   own card.tscn rects), so nothing here hardcodes a position — only look.
+   Text uses Kreon, the game's card font, inlined by run.py (OFL). */
+
+.cardface {
+  position: relative;
+  font-family: 'Kreon', Georgia, serif;
+  user-select: none;
+  container-type: inline-size;
+}
+.cf-layer {
+  position: absolute;
+  display: block;
+  image-rendering: auto;
+}
+/* The frame's opaque border overlaps the art, so the portrait can sit square
+   underneath without needing a mask of its own. */
+.cf-portrait { object-fit: cover; }
+
+.cf-text {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.12;
+  pointer-events: none;
+}
+/* Content lives in one inline child: a flex container discards whitespace-only
+   text nodes between its items, which would eat the spaces around every
+   <b>-wrapped value and render "Deal6damage." */
+.cf-text > span { display: block; width: 100%; }
+.cf-title {
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 0 3px #000, 0 1px 2px #000;
+  white-space: nowrap;
+}
+/* The game colours an upgraded card's entire title green, rather than
+   appending a green "+" to a white name. */
+.cf-title.cf-upgraded { color: #79e07a; }
+/* Dark text on the light plaque — matches the game (75% black). */
+.cf-type   { color: rgba(0,0,0,0.75); font-weight: 700; }
+.cf-cost   { color: #fff; font-weight: 700; text-shadow: 0 0 3px #000, 0 1px 2px #000; }
+.cf-desc   { color: #fff; text-shadow: 0 1px 2px #000; padding: 0 2%; }
+.cf-desc b { color: #ffd666; font-weight: 700; }
+/* Below this width the description renders as unreadable specks — the font is
+   scaled from the game's 21pt against a 300px-wide card, so a 104px tile puts
+   it at ~7px. Title, cost and type still read fine, and hovering gives the
+   full card. */
+@container (max-width: 124px) { .cf-desc { display: none; } }
+/* Icon-scale faces (Personal Bests favorite rows, ~34px) are too small for
+   even the title/cost/type to read -- show just the frame/portrait/banner
+   shape so it still reads as "a card", and leave the readable name/cost/
+   description to the hover tooltip. */
+@container (max-width: 60px) { .cf-title, .cf-type, .cf-cost { display: none; } }
+
+/* When the tooltip carries a real card face it needs no chrome of its own. */
+.card-tooltip-face {
+  width: auto;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 0;
+  box-shadow: none;
+  filter: drop-shadow(0 6px 16px rgba(0,0,0,0.75));
+}
+
+/* Deck tiles that render a real card face need none of the portrait-tile
+   chrome — the card supplies its own border, name and cost. */
+.card-tile-face {
+  width: auto;
+  background: none;
+  border: none;
+}
+.card-tile-face .tile-badges {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 8;
+}
+.card-tile-face .tile-count {
+  background: rgba(0,0,0,0.78);
+  border: 1px solid #6a6a80;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.72rem;
+  color: #fff;
+}
+
+/* ---- Node tooltip: real art beside each reward ---- */
+.nt-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.nt-item-icon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+/* Reward cards render a small card face. Skipped/removed/for-sale ones are
+   dimmed so a floor's actual gains stay the thing you read first. */
+/* A node tooltip sets white-space: nowrap for its own text lines, which a card
+   face inside one would otherwise inherit and render its description as a
+   single overflowing line. */
+.cf-desc { white-space: normal; }
+
+/* Cards lay out side by side and wrap onto further rows. A tooltip carrying a
+   row needs room for more than one card; plain-text ones stay narrow, so the
+   widening is scoped to tooltips that actually contain cards. */
+.nt-cardrow { display: flex; flex-wrap: wrap; gap: 4px; }
+.node-tooltip:has(.nt-cardrow) {
+  /* An explicit width, not just a cap: the tooltip is shrink-to-fit under an
+     88px node, so a max-width alone leaves it at its 160px min-width and the
+     flex row still wraps after every single card. */
+  /* A panel this size cannot be both anchored to an 88px node and on screen:
+     centred on the viewport it always fits, at any zoom or window size. Plain
+     text tooltips keep their anchored position -- only card-bearing ones,
+     which are the tall ones, move. */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(92vw, 420px);
+  max-width: min(92vw, 420px);
+  max-height: 88vh;
+  white-space: normal;
+}
+.nt-cardface { margin: 0; }
+.nt-cardface-dim { opacity: 0.55; }
+
+/* Visually hidden: screen-reader-only text that takes no layout space. Used to
+   label the win/loss sides of colored value pairs so the meaning isn't
+   conveyed by green-vs-red color alone. */
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Accessibility ---- */
+
+/* Visible focus for keyboard users. The browser-default focus ring measured as
+   effectively invisible (rgb(16,16,16)) on this dark theme, and .seeds-input
+   strips its outline entirely, so give keyboard focus a clear gold ring.
+   :focus-visible keeps it from appearing for plain mouse clicks. */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.seeds-input:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 0;
+}
+
+/* Skip link: off-screen until keyboard focus lands on it, then pinned top-left
+   so the first Tab reaches "Skip to content" before the page tabs/filters. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 1000;
+}
+.skip-link:focus-visible {
+  left: 0.5rem;
+  top: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--gold);
+  color: #13132a;
+  font-weight: 700;
+  border-radius: 6px;
+}
+
+/* Honour reduced-motion: collapse transient transitions/animations (filter
+   hover shifts, the Save-button pop) for users who request it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,13 @@
+# Python deps for the game-data refresh pipeline (tools/*).
+#
+# Install once into a project venv:
+#   python -m venv .venv
+#   .venv\Scripts\activate        (Windows)
+#   source .venv/bin/activate     (Mac / Linux)
+#   pip install -r tools/requirements.txt
+#
+# GDRE Tools is an external binary (not pip-installable) needed only for the
+# .pck recovery step -- see README "Refreshing game data".
+Pillow
+numpy
+pythonnet

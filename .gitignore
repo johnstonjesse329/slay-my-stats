@@ -1,0 +1,23 @@
+__pycache__/
+.venv/
+.claude/settings.local.json
+.claude/settings.json
+.claude/review-runs/
+
+# Full-resolution game asset extractions — too large for git
+# Run the GDRE extraction + python downscale_portraits.py to regenerate locally
+pck_recover/
+pck_recover_full/
+pck_recover_new/
+pck_recover_old/
+pck_data/
+
+# Abandoned asset pipeline scripts and their outputs
+card_renders/
+card_ui/
+card_types.json
+render_cards.py
+extract_card_ui.py
+calibrate_capture.py
+capture_cards.py
+download_card_images.py

@@ -1,0 +1,131 @@
+// -------------------------------------------------------------------------
+// Main update function — called whenever a filter changes
+// -------------------------------------------------------------------------
+
+function updateAll() {
+  const filteredRuns = filterRuns();
+
+  const { pivot, grand, charStats } = aggregateRuns(filteredRuns);
+
+  winChart.data.datasets[0].data       = charStats.map(s => s.win_pct    ?? 0);
+  floorChart.data.datasets[0].data     = charStats.map(s => s.median_floor ?? 0);
+  timeChart.data.datasets[0].data      = charStats.map(s => s.median_min   ?? 0);
+  totalTimeChart.data.datasets[0].data = charStats.map(s => s.total_hrs  ?? 0);
+  [winChart, floorChart, timeChart, totalTimeChart].forEach(chart => chart.data.datasets[0].meta = charStats);
+  const totalHrs = charStats.reduce((sum, s) => sum + (s.total_hrs ?? 0), 0);
+  timeShareChart.data.datasets[0].data = charStats.map(s => totalHrs > 0 ? +((s.total_hrs ?? 0) / totalHrs * 100).toFixed(1) : 0);
+  timeShareChart.data.datasets[0].meta  = charStats;
+  [winChart, floorChart, timeChart, totalTimeChart, timeShareChart].forEach(chart => chart.update());
+
+  renderCards(grand, charStats, avgRestOnWins(filteredRuns));
+  renderWinPivot(pivot);
+  renderDeckPivot("cards-table",  pivot, "median_win_cards",  "median_win_cards",  "median_loss_cards",  "min_win_cards",  "max_win_cards",  "#9ecfff");
+  renderDeckPivot("relics-table", pivot, "median_win_relics", "median_win_relics", "median_loss_relics", "min_win_relics", "max_win_relics", "#c49fe8");
+  renderDeckPivot("elites-table", pivot, "median_win_elites", "median_win_elites", "median_loss_elites", "min_win_elites", "max_win_elites", "#e0c468");
+  renderStarterCardsTable(aggregateStarterCards(filteredRuns));
+  renderFinalBossWinPivot(filteredRuns);
+  renderRestChoicesTable(aggregateRestChoices(filteredRuns), filteredRuns);
+  updateRestWinCharts(filteredRuns);
+  updateEliteActCharts(filteredRuns);
+  updateMonthlyWinChart(filteredRuns);
+  updateAscWinChart(filteredRuns);
+  renderPersonalBests();
+}
+
+
+// -------------------------------------------------------------------------
+// Shared filter state — used identically by all 5 pages.
+// See "Filter architecture" in CLAUDE.md for the full design.
+// -------------------------------------------------------------------------
+
+const allTimestamps = DATA.runsData.map(run => run.ts);
+const minTs = allTimestamps.length ? Math.min(...allTimestamps) : 0;
+const maxTs = allTimestamps.length ? Math.max(...allTimestamps) : 0;
+
+function tsToDateStr(ts) {
+  const d = new Date(ts * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+// Parses a "YYYY-MM-DD" date input value as local midnight, returning unix seconds.
+function dateStrToLocalTs(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).getTime() / 1000;
+}
+
+let sharedActiveChar   = "ALL";
+// The character preference that applies to the three pages that don't
+// constrain it (Card Stats, Run Detail, Seed Data) — see charIsLocked()
+// below. sharedActiveChar itself gets temporarily forced away from this
+// while Overview or Character Detail is active (each computes its own
+// required value independently); lastUnlockedChar is what showPage()
+// restores sharedActiveChar to the moment you land back on an unlocked
+// page, so a real character selection survives cycling through any
+// number of locked pages in between instead of getting silently replaced
+// by whatever the last-visited locked page happened to force it to.
+let lastUnlockedChar   = "ALL";
+let sharedActiveAscs   = new Set(DATA.ascensions);
+let sharedActiveBuilds = new Set(DATA.builds);
+let sharedActiveMode   = "solo";
+// 0 / TS_NO_UPPER_BOUND mean "no bound" rather than a snapshot of the
+// current file's actual min/max run timestamp — this matters because a
+// saved preference (see Save/Reset below) has to survive future
+// regenerations that add runs past whatever the newest run happened to be
+// on save day. Storing a concrete timestamp for "all time" would silently
+// exclude every run added after that save, which is exactly the bug this
+// sentinel avoids. A large finite number, not Infinity: Infinity doesn't
+// survive JSON.stringify (it serializes to null), which would silently
+// turn "no upper bound" into "exclude every run" the moment this value is
+// saved to and reloaded from localStorage.
+const TS_NO_UPPER_BOUND = Number.MAX_SAFE_INTEGER;
+let sharedTsFrom       = 0;
+let sharedTsTo         = TS_NO_UPPER_BOUND;
+
+// Declared here (not near the Save/Reset buttons that use them) because
+// setSharedMode("solo") below runs during the filter bar's own initial
+// setup and triggers rerenderCurrentPage() -> updateUnsavedIndicator(),
+// which reads both of these — they must exist before any control's
+// default wiring can possibly call that chain, not just before the
+// buttons that visibly use them render.
+const SHARED_FILTER_STORAGE_KEY = "sts2_filter_prefs";
+const SHARED_FILTER_HARDCODED_DEFAULTS = {
+  char: "ALL", ascs: [...DATA.ascensions], builds: [...DATA.builds],
+  mode: "solo", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
+};
+
+function filterRuns() {
+  return DATA.runsData.filter(run => {
+    if (sharedActiveChar !== "ALL" && run.char !== sharedActiveChar) return false;
+    if (!sharedActiveAscs.has(run.asc))     return false;
+    if (!sharedActiveBuilds.has(run.build)) return false;
+    if (run.ts < sharedTsFrom || run.ts > sharedTsTo) return false;
+    if (sharedActiveMode === "solo"  && (run.mp || run.mode === "daily")) return false;
+    if (sharedActiveMode === "multi" && !run.mp)                          return false;
+    if (sharedActiveMode === "daily" && run.mode !== "daily")             return false;
+    return true;
+  });
+}
+
+function filteredRunTsSet() {
+  return new Set(filterRuns().map(r => r.ts));
+}
+
+// Character Detail is inherently single-character (its tables only make
+// sense for one character's kit at a time) and can't render for "All
+// Characters" — it falls back to the most-played character in the
+// current filtered view, so the default drill-down opens on dense data
+// rather than a sparsely-played character full of "—" cells. (Card Stats
+// does NOT use this — it genuinely aggregates across every character's
+// card pool when "All" is selected; see Filter architecture in
+// CLAUDE.md.) showPage() also pushes this fallback into the SHARED
+// character filter itself when landing on this tab with "All" active, so
+// the filter bar and the page can never show conflicting state.
+function singleCharFallback() {
+  if (sharedActiveChar !== "ALL") return sharedActiveChar;
+  const counts = {};
+  filterRuns().forEach(r => { counts[r.char] = (counts[r.char] || 0) + 1; });
+  let best = "", bestN = 0;
+  Object.entries(counts).forEach(([char, n]) => { if (n > bestN) { best = char; bestN = n; } });
+  return best || DATA.characters[0] || "";
+}
+
