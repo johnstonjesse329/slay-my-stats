@@ -1,5 +1,6 @@
 __pycache__/
 .venv/
+cdk.out/
 .claude/settings.local.json
 .claude/settings.json
 .claude/review-runs/
