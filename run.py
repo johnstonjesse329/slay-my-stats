@@ -689,22 +689,18 @@ _NODE_ICON_FILES = {
     "event":     "event.png",
 }
 
-_CHROME_DIR = _HERE / "card_chrome"
+_CARD_FINAL_DIR = _HERE / "card_final"
 
 
-def build_card_chrome() -> tuple[dict[str, str], dict]:
-    """Baked card frames/borders/banners/plaques/orbs, plus their layout.
+def build_card_final_images() -> dict[str, str]:
+    """Fully baked card faces (art + text), keyed by CARD.ID / CARD.ID_UP.
 
-    Produced by tools/bake_card_chrome.py. Returns ({name -> file:// URI},
-    layout dict) so the dashboard can composite a real card face instead of
-    approximating one in CSS. Empty if the bake hasn't been run.
+    Produced by tools/bake_finished_cards.py. Empty if the bake hasn't been
+    run — card-face.js falls back to the older hand-built CSS tooltip.
     """
-    if not _CHROME_DIR.exists():
-        return {}, {}
-    images = {p.stem: p.as_uri() for p in sorted(_CHROME_DIR.glob("*.png"))}
-    layout_file = _CHROME_DIR / "layout.json"
-    layout = json.loads(layout_file.read_text(encoding="utf-8")) if layout_file.exists() else {}
-    return images, layout
+    if not _CARD_FINAL_DIR.exists():
+        return {}
+    return {p.stem: p.as_uri() for p in sorted(_CARD_FINAL_DIR.glob("*.webp"))}
 
 
 # Kreon is the game's own card font and is SIL Open Font Licensed, so unlike the
@@ -829,7 +825,7 @@ def build_html(runs: list[dict]) -> str:
 
     card_images = build_card_images()
     node_icons  = build_node_icons()
-    card_chrome, chrome_layout = build_card_chrome()
+    card_final  = build_card_final_images()
     card_data   = json.loads(_CARD_DATA_FILE.read_text(encoding="utf-8"))  if _CARD_DATA_FILE.exists()  else {}
     relic_data  = json.loads(_RELIC_DATA_FILE.read_text(encoding="utf-8")) if _RELIC_DATA_FILE.exists() else {}
     relic_data  = resolve_image_paths(relic_data)
@@ -893,8 +889,7 @@ def build_html(runs: list[dict]) -> str:
         "relicData":          relic_data,
         "potionData":         potion_data,
         "nodeIcons":          node_icons,
-        "cardChrome":         card_chrome,
-        "chromeLayout":       chrome_layout,
+        "cardFinal":          card_final,
         "runsData":           runs,
     })
 

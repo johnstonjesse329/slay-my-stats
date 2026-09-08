@@ -54,6 +54,7 @@ RELIC_IMG_DIR = ROOT / "relic_images"
 POTION_DATA   = ROOT / "potion_data.json"
 POTION_IMG_DIR = ROOT / "potion_images"
 CHROME_DIR    = ROOT / "card_chrome"
+CARD_FINAL_DIR = ROOT / "card_final"
 
 # Cards with no single static description: their text is a nested conditional
 # over runtime state, so there is nothing to extract. Mad Science is generated
@@ -295,6 +296,12 @@ def completeness_report():
     stats["relic_images"] = len(list(RELIC_IMG_DIR.rglob("*.png"))) if RELIC_IMG_DIR.exists() else 0
     stats["potion_images"] = len(list(POTION_IMG_DIR.glob("*.png"))) if POTION_IMG_DIR.exists() else 0
     stats["chrome"] = len(list(CHROME_DIR.glob("*.png"))) if CHROME_DIR.exists() else 0
+
+    final_files = {p.stem for p in CARD_FINAL_DIR.glob("*.webp")} if CARD_FINAL_DIR.exists() else set()
+    stats["card_final"] = len(final_files)
+    add("card(s) with no finished bake",
+        [k for k in cards if "DEPRECATED" not in k
+         and not ({k, f"{k}_UP"} <= final_files)])
     return problems, stats
 
 
@@ -376,6 +383,7 @@ def main():
     run_step("relic/potion art + node icons", ["tools/downscale_art.py"])
     extract_out = run_step("card/relic data", ["tools/extract_card_data.py", str(dll)])
     run_step("card chrome", ["tools/bake_card_chrome.py"])
+    run_step("finished cards", ["tools/bake_finished_cards.py"])
 
     problems, stats = completeness_report()
     # extract_card_data.py drops entries the localization doesn't know about

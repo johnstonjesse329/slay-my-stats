@@ -1397,62 +1397,12 @@ body.suppress-hover-tooltips .node-tooltip {
 }
 
 /* ---- Card face: a real card composited from the baked game chrome ---- */
-/* Layers are absolutely positioned from card_chrome/layout.json (the game's
-   own card.tscn rects), so nothing here hardcodes a position — only look.
-   Text uses Kreon, the game's card font, inlined by run.py (OFL). */
-
+/* A card face is one baked <img> (tools/bake_finished_cards.py) — art and
+   text both already flattened in, so there is no internal layout here. */
 .cardface {
-  position: relative;
-  font-family: 'Kreon', Georgia, serif;
-  user-select: none;
-  container-type: inline-size;
-}
-.cf-layer {
-  position: absolute;
   display: block;
-  image-rendering: auto;
+  user-select: none;
 }
-/* The frame's opaque border overlaps the art, so the portrait can sit square
-   underneath without needing a mask of its own. */
-.cf-portrait { object-fit: cover; }
-
-.cf-text {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  line-height: 1.12;
-  pointer-events: none;
-}
-/* Content lives in one inline child: a flex container discards whitespace-only
-   text nodes between its items, which would eat the spaces around every
-   <b>-wrapped value and render "Deal6damage." */
-.cf-text > span { display: block; width: 100%; }
-.cf-title {
-  color: #fff;
-  font-weight: 700;
-  text-shadow: 0 0 3px #000, 0 1px 2px #000;
-  white-space: nowrap;
-}
-/* The game colours an upgraded card's entire title green, rather than
-   appending a green "+" to a white name. */
-.cf-title.cf-upgraded { color: #79e07a; }
-/* Dark text on the light plaque — matches the game (75% black). */
-.cf-type   { color: rgba(0,0,0,0.75); font-weight: 700; }
-.cf-cost   { color: #fff; font-weight: 700; text-shadow: 0 0 3px #000, 0 1px 2px #000; }
-.cf-desc   { color: #fff; text-shadow: 0 1px 2px #000; padding: 0 2%; }
-.cf-desc b { color: #ffd666; font-weight: 700; }
-/* Below this width the description renders as unreadable specks — the font is
-   scaled from the game's 21pt against a 300px-wide card, so a 104px tile puts
-   it at ~7px. Title, cost and type still read fine, and hovering gives the
-   full card. */
-@container (max-width: 124px) { .cf-desc { display: none; } }
-/* Icon-scale faces (Personal Bests favorite rows, ~34px) are too small for
-   even the title/cost/type to read -- show just the frame/portrait/banner
-   shape so it still reads as "a card", and leave the readable name/cost/
-   description to the hover tooltip. */
-@container (max-width: 60px) { .cf-title, .cf-type, .cf-cost { display: none; } }
 
 /* When the tooltip carries a real card face it needs no chrome of its own. */
 .card-tooltip-face {
@@ -1501,10 +1451,6 @@ body.suppress-hover-tooltips .node-tooltip {
 }
 /* Reward cards render a small card face. Skipped/removed/for-sale ones are
    dimmed so a floor's actual gains stay the thing you read first. */
-/* A node tooltip sets white-space: nowrap for its own text lines, which a card
-   face inside one would otherwise inherit and render its description as a
-   single overflowing line. */
-.cf-desc { white-space: normal; }
 
 /* Cards lay out side by side and wrap onto further rows. A tooltip carrying a
    row needs room for more than one card; plain-text ones stay narrow, so the
