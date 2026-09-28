@@ -32,6 +32,7 @@ Requires: pip install Pillow
 """
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 
@@ -40,11 +41,34 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = Path(__file__).parent
 ROOT = HERE.parent
 
+
+def _default_pck_root():
+    """This repo doesn't carry the full PCK extraction (it's huge and lives in
+    the sibling sts2-history-dashboard repo instead, which this repo's tools
+    were split off from). Look for a `sts2-history-dashboard/pck_recover_full`
+    next to ROOT or one of its ancestors, so this works whether the two repos
+    are checked out as true siblings or a couple of directories apart (e.g.
+    inside a worktree under one of them). STS2_PCK_ROOT overrides outright.
+    """
+    env = os.environ.get("STS2_PCK_ROOT")
+    if env:
+        return Path(env)
+    for ancestor in (ROOT, *ROOT.parents):
+        candidate = ancestor.parent / "sts2-history-dashboard" / "pck_recover_full"
+        if candidate.exists():
+            return candidate
+    # Fall back to the sibling-of-ROOT guess even if it doesn't exist yet, so
+    # the startup check below can print a path instead of nothing.
+    return ROOT.parent / "sts2-history-dashboard" / "pck_recover_full"
+
+
+PCK_ROOT     = _default_pck_root()
 CHROME_DIR   = ROOT / "card_chrome"
 CARD_DATA    = ROOT / "card_data.json"
-PORTRAIT_SRC = ROOT / "pck_recover_full" / "images" / "packed" / "card_portraits"
-FONT_BOLD    = ROOT / "pck_recover_full" / "fonts" / "kreon_bold.ttf"
-FONT_REGULAR = ROOT / "pck_recover_full" / "fonts" / "kreon_regular.ttf"
+PORTRAIT_SRC = PCK_ROOT / "images" / "packed" / "card_portraits"
+FONT_BOLD    = PCK_ROOT / "fonts" / "kreon_bold.ttf"
+FONT_REGULAR = PCK_ROOT / "fonts" / "kreon_regular.ttf"
+LOC_CARDS    = PCK_ROOT / "localization" / "eng" / "cards.json"
 OUT          = ROOT / "card_final"
 
 # Kreon has no glyphs for the ⚡/✦ tokens the game's own description text uses
@@ -62,53 +86,264 @@ PORTRAIT_OVERRIDES = {
     "mad_science": "mad_science_attack",
 }
 
-TITLE_COLOR = (255, 255, 255, 255)
+# card.tscn TitleLabel: font_color Color(1,0.964706,0.886275,1)
+TITLE_COLOR = (255, 246, 226, 255)
 TITLE_UPGRADED_COLOR = (121, 224, 122, 255)
-TYPE_COLOR = (0, 0, 0, 191)  # rgba(0,0,0,0.75)
+TYPE_COLOR = (0, 0, 0, 191)  # card.tscn TypeLabel: font_color Color(0,0,0,0.752941)
 DESC_COLOR = (255, 255, 255, 255)
-DESC_BOLD_COLOR = (255, 214, 102, 255)  # #ffd666
 STARS_BOLD_COLOR = (91, 155, 213, 255)  # #5b9bd5, used only for the :stars token
 SHADOW_COLOR = (0, 0, 0, 200)
+
+# StsColors.cs — the fixed colors the game's [gold]/[blue]/[purple] BBCode tags
+# (RichTextGold/Blue/Purple.cs) apply to keyword spans in card descriptions.
+GOLD_COLOR   = (239, 200, 81, 255)   # StsColors.gold   Color("EFC851")
+BLUE_COLOR   = (135, 206, 235, 255)  # StsColors.blue   Color("87CEEB")
+PURPLE_COLOR = (238, 130, 238, 255)  # StsColors.purple Color("EE82EE")
+
+# card.tscn TitleLabel: no bold_font override (base_font is kreon_regular_shared),
+# font_outline_color Color(0.301961,0.294118,0.25098,1), outline_size 12,
+# font_shadow_color Color(0,0,0,0.188235), shadow_offset_x/y 2. These are all in
+# the same logical (300-wide-frame) units as everything in layout.json, so they
+# get scaled by the same `scale` factor as the rest of the render.
+TITLE_OUTLINE_COLOR = (77, 75, 64, 255)
+TITLE_OUTLINE_SIZE = 12
+TITLE_SHADOW_COLOR = (0, 0, 0, 48)
+TITLE_SHADOW_OFFSET = 2
+TITLE_GLYPH_SPACING = 1  # FontVariation_2eadq: spacing_glyph = 1
+
+# card.tscn EnergyLabel: kreon_bold_shared at font_size 32, outline_size 16,
+# in a 46x56 box offset (-23,-26)..(23,30) from the EnergyIcon's center. NCard.cs
+# colors it at runtime: StsColors.cream fill, outline = the card pool's
+# EnergyOutlineColor (CardPools/*.cs; CardPoolModel's default for the rest).
+COST_FONT_SIZE = 32
+COST_OUTLINE_SIZE = 16
+COST_BOX = (-23, -26, 23, 30)
+COST_OUTLINE_DEFAULT = (0x5C, 0x54, 0x40, 255)
+COST_OUTLINE_BY_POOL = {
+    "ironclad":    (0x80, 0x20, 0x20, 255),
+    "silent":      (0x1A, 0x66, 0x25, 255),
+    "defect":      (0x1D, 0x56, 0x73, 255),
+    "necrobinder": (0x80, 0x33, 0x67, 255),
+    "regent":      (0x80, 0x3D, 0x0E, 255),
+    "quest":       (0x43, 0x1E, 0x14, 255),
+}
+
+# Sentinel control characters standing in for [gold]/[blue]/[purple] BBCode
+# while the desc string passes through the brace-substitution pipeline below
+# (see clean_desc_with_color) — chosen from the C0 control range, which never
+# appears in real card text, so they survive unharmed through str operations
+# that would otherwise treat "[gold]"/"[/gold]" as ordinary stray brackets.
+_COLOR_OPEN = {"\x01": GOLD_COLOR, "\x02": BLUE_COLOR, "\x03": PURPLE_COLOR}
+_COLOR_CLOSE = "\x04"
+_COLOR_TAG_TO_SENTINEL = {"gold": "\x01", "blue": "\x02", "purple": "\x03"}
 
 
 # ---------------------------------------------------------------------------
 # substituteDescVars() port (js/run-detail.js:764-807)
 # ---------------------------------------------------------------------------
+def _split_by_color(desc):
+    """Splits a desc string containing the sentinel chars _COLOR_OPEN/_COLOR_CLOSE
+    (injected by clean_desc_with_color, standing in for the game's [gold]/[blue]/
+    [purple] BBCode) into (segment, color) pairs, color=None outside any tag.
+    Tags don't nest in the source data, so this doesn't need to either.
+    """
+    out = []
+    color = None
+    buf = []
+
+    def flush():
+        if buf:
+            out.append(("".join(buf), color))
+            buf.clear()
+
+    for ch in desc:
+        if ch in _COLOR_OPEN:
+            flush()
+            color = _COLOR_OPEN[ch]
+        elif ch == _COLOR_CLOSE:
+            flush()
+            color = None
+        else:
+            buf.append(ch)
+    flush()
+    return out
+
+
 def substitute_desc_vars_runs(desc, variables):
     """Port of substituteDescVars(desc, vars, {html:true}) that returns a list
-    of (text, bold, color, symbol) runs instead of an HTML string, so the
-    baker can draw mixed-style text without a browser.
+    of (text, color, symbol) runs instead of an HTML string, so the baker can
+    draw mixed-style text without a browser. `desc` may contain the color
+    sentinel chars from clean_desc_with_color; segments inside a [gold]/[blue]/
+    [purple] span get that color unless a run sets its own (only the :stars
+    token does, and the game never wraps a :stars token in a color tag).
     """
     runs = []
-
-    def emit(text, bold=False, color=None, symbol=False):
-        if text:
-            runs.append((text, bold, color, symbol))
-
-    pos = 0
     pattern = re.compile(r"\{\{(\w+)(?::(\w+)(?::([^}]*))?)?\}\}")
-    for m in pattern.finditer(desc):
-        emit(desc[pos:m.start()])
-        pos = m.end()
-        name, kind, arg = m.group(1), m.group(2), m.group(3)
-        value = variables.get(name)
-        # Matches JS's `v[name] ?? 1`: repeat count defaults to 1 when the var
-        # is absent (relic placeholders lean on this), but an explicit 0 means 0.
-        count = 1 if value is None else int(value)
-        if kind == "energy":
-            emit("⚡" * count, symbol=True)
-        elif kind == "stars":
-            emit("✦" * count, color=STARS_BOLD_COLOR, symbol=True)
-        elif kind == "plural":
-            one, many = (arg.split("|", 1) + [""])[:2]
-            emit(one if value == 1 else many)
-        elif kind == "show":
-            yes, no = (arg.split("|", 1) + [""])[:2]
-            emit(yes if value else no)
-        else:
-            emit(str(value if value is not None else ""), bold=True)
-    emit(desc[pos:])
+
+    for segment, seg_color in _split_by_color(desc):
+        def emit(text, color=None, symbol=False, _seg_color=seg_color):
+            if text:
+                runs.append((text, color if color is not None else _seg_color, symbol))
+
+        pos = 0
+        for m in pattern.finditer(segment):
+            emit(segment[pos:m.start()])
+            pos = m.end()
+            name, kind, arg = m.group(1), m.group(2), m.group(3)
+            value = variables.get(name)
+            # Matches JS's `v[name] ?? 1`: repeat count defaults to 1 when the
+            # var is absent (relic placeholders lean on this), an explicit 0
+            # means 0.
+            count = 1 if value is None else int(value)
+            if kind == "energy":
+                emit("⚡" * count, symbol=True)
+            elif kind == "stars":
+                emit("✦" * count, color=STARS_BOLD_COLOR, symbol=True)
+            elif kind == "plural":
+                one, many = (arg.split("|", 1) + [""])[:2]
+                emit(one if value == 1 else many)
+            elif kind == "show":
+                yes, no = (arg.split("|", 1) + [""])[:2]
+                emit(yes if value else no)
+            else:
+                # HighlightDifferencesFormatter (Var:diff()) only wraps this in
+                # [green]/[red] BBCode when it differs from a combat baseline;
+                # in the static base/upgraded views baseComparison is always 0,
+                # so the game renders these numbers in the plain description
+                # color, never bold/gold — confirmed via StsTextUtilities.
+                # HighlightChangeText in the decompiled source, not guessed.
+                emit(str(value if value is not None else ""))
+        emit(segment[pos:])
     return runs
+
+
+# ---------------------------------------------------------------------------
+# Keyword color — the raw localization strings in cards.json wrap keywords
+# like [gold]Vulnerable[/gold] in BBCode that tools/extract_card_data.py's
+# clean_desc() strips out entirely (card_data.json's desc field has no color
+# info left). Re-derive color-aware desc text straight from the same raw
+# cards.json this repo's card_data.json was originally extracted from, using
+# a color-preserving variant of clean_desc()'s brace-substitution pipeline
+# (ported here rather than imported: extract_card_data.py needs pythonnet/a
+# game DLL for its other responsibilities, which are out of scope and not
+# installable in this environment).
+# ---------------------------------------------------------------------------
+_PH = "\x00"
+
+
+def _strip_braces(text):
+    """Exact port of extract_card_data.py's _strip_braces: removes every
+    {...} template block wholesale, including its contents, handling
+    nesting via depth-counting. Anything still meant to survive (the value
+    tokens the baker needs) must already have been pulled out into a
+    _PH...payload..._PH run *before* this runs, same ordering as clean_desc().
+    """
+    result = []
+    depth = 0
+    for ch in text:
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        elif depth == 0:
+            result.append(ch)
+    return "".join(result)
+
+
+def _extract_incombat(text):
+    """Exact port of extract_card_data.py's _extract_incombat: replaces
+    {InCombat:\\n(content)|} with just `content` (the static/library view
+    always shows the in-combat variant, same as the live site).
+    """
+    out = []
+    i = 0
+    while i < len(text):
+        if text[i:].startswith("{InCombat:"):
+            depth = 0
+            j = i
+            while j < len(text):
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            block = text[i + 1:j]
+            inner = block[len("InCombat:"):]
+            if inner.endswith("|"):
+                inner = inner[:-1]
+            inner = inner.strip()
+            if inner.startswith("(") and inner.endswith(")"):
+                inner = inner[1:-1]
+            inner = re.sub(r"\{[A-Za-z_]+:plural:([^|{]+)\|[^}]+\}", r"\1", inner)
+            out.append("\n(" + inner + ")")
+            i = j + 1
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def clean_desc_with_color(text):
+    """Color-preserving sibling of extract_card_data.py's clean_desc() — same
+    brace-substitution pipeline in the same order (protect the template
+    tokens the baker still needs -> strip_braces -> restore as {{token}}),
+    but instead of discarding [gold]/[blue]/[purple] BBCode it swaps each
+    open/close tag for one of the sentinel control chars in _COLOR_OPEN/
+    _COLOR_CLOSE *before* anything else runs, so they ride through untouched
+    (every later pass here only ever looks at '{'/'}'/'['/']') and
+    _split_by_color can recover them afterward. Any other (non-color) [tag]
+    is stripped, matching clean_desc().
+    """
+    if not text:
+        return ""
+    for name, sentinel in _COLOR_TAG_TO_SENTINEL.items():
+        text = text.replace(f"[{name}]", sentinel).replace(f"[/{name}]", _COLOR_CLOSE)
+
+    text = _extract_incombat(text)
+    # {VarName:diff()} / {VarName:inverseDiff()} -> {{VarName}}. The ":diff"/
+    # ":inverseDiff" distinction carries no info the baker needs: a diff and
+    # a plain value render identically in the static base/upgraded view
+    # (see substitute_desc_vars_runs), so both collapse to a bare {{VarName}}.
+    text = re.sub(r"\{([A-Za-z_]+):diff\(\)\}", lambda m: f"{_PH}{m.group(1)}{_PH}", text)
+    text = re.sub(r"\{([A-Za-z_]+):inverseDiff\(\)\}", lambda m: f"{_PH}{m.group(1)}{_PH}", text)
+    text = re.sub(r"\{([A-Za-z_]+):energyIcons\(\d*\)\}", lambda m: f"{_PH}{m.group(1)}:energy{_PH}", text)
+    text = re.sub(r"\{([A-Za-z_]+):starIcons\(\)\}", lambda m: f"{_PH}{m.group(1)}:stars{_PH}", text)
+    text = re.sub(r"\{([A-Za-z_]+):plural:([^{}|]*)\|([^{}]*)\}",
+                  lambda m: f"{_PH}{m.group(1)}:plural:{m.group(2)}|{m.group(3)}{_PH}", text)
+    text = re.sub(r"\{([A-Za-z_]+):show:([^{}|]*)(?:\|([^{}]*))?\}",
+                  lambda m: f"{_PH}{m.group(1)}:show:{m.group(2)}|{m.group(3) or ''}{_PH}", text)
+    text = re.sub(r"\{singleStarIcon\}", f"{_PH}singleStarIcon:stars{_PH}", text)
+    text = re.sub(r"\{([A-Za-z_]+)\}", lambda m: f"{_PH}{m.group(1)}{_PH}", text)
+    text = _strip_braces(text)
+    text = re.sub(re.escape(_PH) + r"([^" + re.escape(_PH) + r"]+)" + re.escape(_PH), r"{{\1}}", text)
+
+    # Strip any remaining (non-color) BBCode tag — the color ones are now
+    # sentinel chars, not "[gold]"-shaped text, so this regex can't touch them.
+    text = re.sub(r"\[/?[a-zA-Z_]+\]", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
+
+
+def load_raw_card_descriptions():
+    """{stem: raw description string} for every CARD.<stem> in cards.json's
+    localization, keyed the same way card_data.json's "CARD.<stem>" ids split
+    (card_id.split(".", 1)[1]) so bake_one can look one up per card_id.
+    """
+    if not LOC_CARDS.exists():
+        print(f"WARNING: {LOC_CARDS} not found — keyword colors and the exact "
+              f"in-combat description variant won't be available; falling back "
+              f"to card_data.json's already-cleaned (uncolored) desc for every card.")
+        return {}
+    raw = json.loads(LOC_CARDS.read_text(encoding="utf-8"))
+    out = {}
+    for key, value in raw.items():
+        stem, sep, field = key.partition(".")
+        if sep and field == "description" and isinstance(value, str):
+            out[stem] = value
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +394,26 @@ def rect_px(rect, bounds, scale):
             round((r - x0) * scale), round((b - y0) * scale))
 
 
+# card_banner.tres is an AtlasTexture with region 653x145 and margin
+# Rect2(1, 23, 2, 25): the texture Godot sizes is 655x170, with the ribbon
+# drawn 23px down from its top. card_chrome/banner_*.png is just the ribbon
+# (margins dropped), so stretching it over the whole TitleBanner rect draws
+# it ~14% too tall and ~10 logical px too high.
+BANNER_FULL = (655, 170)
+BANNER_REGION = (1, 23, 653, 145)  # x, y, w, h within BANNER_FULL
+
+
+def banner_ribbon_rect(rect):
+    """Where the ribbon itself lands inside the TitleBanner rect, per
+    card.tscn's stretch_mode=6 (keep aspect, cover, centered)."""
+    l, t, r, b = rect
+    s = max((r - l) / BANNER_FULL[0], (b - t) / BANNER_FULL[1])
+    ox = l + ((r - l) - BANNER_FULL[0] * s) / 2
+    oy = t + ((b - t) - BANNER_FULL[1] * s) / 2
+    rx, ry, rw, rh = BANNER_REGION
+    return (ox + rx * s, oy + ry * s, ox + (rx + rw) * s, oy + (ry + rh) * s)
+
+
 def paste_layer(canvas, img, box):
     if img is None:
         return
@@ -171,9 +426,12 @@ def paste_layer(canvas, img, box):
 
 
 # ---------------------------------------------------------------------------
-# Text drawing — center-aligned, word-wrapped, mixed regular/bold runs, with a
-# small dark halo standing in for the live CSS's text-shadow (exact blur isn't
-# load-bearing here; the live version isn't pixel-audited either).
+# Text drawing — center-aligned, word-wrapped, mixed regular/symbol runs, with
+# a small dark halo standing in for the live CSS's text-shadow on the
+# description/cost labels (exact blur isn't load-bearing there; the live
+# version isn't pixel-audited either). The TitleLabel and TypeLabel each copy
+# their own card.tscn shadow/outline properties exactly instead, since those
+# were the ones a screenshot comparison flagged as visibly off.
 # ---------------------------------------------------------------------------
 def draw_shadowed(draw, xy, text, font, fill):
     x, y = xy
@@ -182,27 +440,70 @@ def draw_shadowed(draw, xy, text, font, fill):
     draw.text((x, y), text, font=font, fill=fill)
 
 
-def draw_centered_line(draw, text, box, font, fill):
+def draw_plain_centered_line(draw, text, box, font, fill):
+    """card.tscn's TypeLabel has no outline_size/shadow_color at all — just a
+    flat font_color — unlike every other label on the card, so no halo.
+    """
     x0, y0, x1, y1 = box
-    w = draw.textlength(text, font=font)
+    l, t, r, b = draw.textbbox((0, 0), text, font=font)
+    w, h = r - l, b - t
+    x = x0 + (x1 - x0 - w) / 2 - l
+    y = y0 + (y1 - y0 - h) / 2 - t
+    draw.text((x, y), text, font=font, fill=fill)
+
+
+def draw_title_line(draw, text, box, font, fill, scale):
+    draw_outlined_line(draw, text, box, font, fill, TITLE_OUTLINE_COLOR,
+                       TITLE_OUTLINE_SIZE, TITLE_GLYPH_SPACING, scale)
+
+
+def draw_outlined_line(draw, text, box, font, fill, outline_color, outline_size,
+                       glyph_spacing, scale):
+    """A card.tscn Label with an outline + the 19% 2px drop shadow every
+    outlined card label shares (TitleLabel, EnergyLabel), laid out the way
+    Godot's Label does it:
+      - vertical_alignment=1 centers the font's line box (ascent+descent),
+        not the glyphs' ink, so capitals sit a little above box-center.
+      - glyph_spacing is added after every glyph (TitleLabel's
+        FontVariation_2eadq has spacing_glyph=1).
+      - outline_size is a stroke *radius* of outline_size/4, measured off an
+        in-game capture (~3 logical px), not outline_size/2.
+    Glyphs are placed one at a time for the spacing (advancing by the
+    kerned prefix length, so kerning survives), and every glyph's stroke is
+    drawn before any fill so one letter's outline never covers the next.
+    """
+    x0, y0, x1, y1 = box
+    stroke_w = max(1, round(outline_size * scale / 4))
+    spacing = glyph_spacing * scale
+    xs = [font.getlength(text[:i]) + i * spacing for i in range(len(text))]
+    w = font.getlength(text) + len(text) * spacing
     asc, desc = font.getmetrics()
     x = x0 + (x1 - x0 - w) / 2
-    y = y0 + (y1 - y0 - (asc + desc)) / 2
-    draw_shadowed(draw, (x, y), text, font, fill)
+    baseline = y0 + (y1 - y0 - (asc + desc)) / 2 + asc
+    shadow_off = round(TITLE_SHADOW_OFFSET * scale)
+    passes = (
+        (shadow_off, TITLE_SHADOW_COLOR, stroke_w, TITLE_SHADOW_COLOR),
+        (0, outline_color, stroke_w, outline_color),
+        (0, fill, 0, None),
+    )
+    for off, color, sw, sf in passes:
+        for ch, cx in zip(text, xs):
+            draw.text((x + cx + off, baseline + off), ch, font=font, fill=color,
+                      anchor="ls", stroke_width=sw, stroke_fill=sf)
 
 
-def wrap_runs(draw, runs, font_regular, font_bold, font_symbol, max_width):
-    """Greedy word-wrap a list of (text, bold, color, symbol) runs into lines.
+def wrap_runs(draw, runs, font_regular, font_symbol, max_width):
+    """Greedy word-wrap a list of (text, color, symbol) runs into lines.
 
-    A "word" here is a list of (fragment, bold, color, symbol) pieces, not
+    A "word" here is a list of (fragment, color, symbol) pieces, not
     necessarily from a single run: a value substitution glues directly onto
     following punctuation with no space in the source text (e.g. the literal
     template is "{{Energy:energy}}." with no space before the period), so a
     run boundary must NOT always become a word boundary — only an actual " "
     or "\n" in the underlying text does.
     """
-    def font_for(bold, symbol):
-        return font_symbol if symbol else (font_bold if bold else font_regular)
+    def font_for(symbol):
+        return font_symbol if symbol else font_regular
 
     words, cur_word = [], []
 
@@ -212,7 +513,7 @@ def wrap_runs(draw, runs, font_regular, font_bold, font_symbol, max_width):
             words.append(cur_word)
             cur_word = []
 
-    for text, bold, color, symbol in runs:
+    for text, color, symbol in runs:
         for para_i, para in enumerate(text.split("\n")):
             if para_i > 0:
                 flush_word()
@@ -221,11 +522,11 @@ def wrap_runs(draw, runs, font_regular, font_bold, font_symbol, max_width):
                 if si > 0:
                     flush_word()
                 if sw:
-                    cur_word.append((sw, bold, color, symbol))
+                    cur_word.append((sw, color, symbol))
     flush_word()
 
     def word_width(word):
-        return sum(draw.textlength(t, font=font_for(b, s)) for t, b, _, s in word)
+        return sum(draw.textlength(t, font=font_for(s)) for t, _, s in word)
 
     space_w = draw.textlength(" ", font=font_regular)
     lines, cur, cur_w = [], [], 0.0
@@ -246,12 +547,14 @@ def wrap_runs(draw, runs, font_regular, font_bold, font_symbol, max_width):
     return lines
 
 
-def draw_wrapped_desc(draw, runs, box, font_regular, font_bold, font_symbol, line_height=1.12):
+def draw_wrapped_desc(draw, runs, box, font_regular, font_symbol, line_pitch, single_line_height):
+    """line_pitch is the y-distance from one line's top to the next one's
+    (see main()). single_line_height sizes the block's first line for
+    vertical centering only, never as a between-lines increment.
+    """
     x0, y0, x1, y1 = box
-    lines = wrap_runs(draw, runs, font_regular, font_bold, font_symbol, x1 - x0)
-    asc, desc_m = font_regular.getmetrics()
-    line_h = (asc + desc_m) * line_height
-    total_h = line_h * len(lines)
+    lines = wrap_runs(draw, runs, font_regular, font_symbol, x1 - x0)
+    total_h = single_line_height + line_pitch * max(0, len(lines) - 1)
     y = y0 + (y1 - y0 - total_h) / 2
     space_w = draw.textlength(" ", font=font_regular)
 
@@ -259,14 +562,14 @@ def draw_wrapped_desc(draw, runs, box, font_regular, font_bold, font_symbol, lin
         line_w = sum(ww for _, ww in line) + space_w * max(0, len(line) - 1)
         x = x0 + (x1 - x0 - line_w) / 2
         for word, _ in line:
-            for frag, bold, color, symbol in word:
-                font = font_symbol if symbol else (font_bold if bold else font_regular)
-                fill = color or (DESC_BOLD_COLOR if bold else DESC_COLOR)
+            for frag, color, symbol in word:
+                font = font_symbol if symbol else font_regular
+                fill = color or DESC_COLOR
                 fw = draw.textlength(frag, font=font)
                 draw_shadowed(draw, (x, y), frag, font, fill)
                 x += fw
             x += space_w
-        y += line_h
+        y += line_pitch
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +592,7 @@ def crop_portrait_to_box(portrait_path, box):
 
 
 def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
-             fonts, canvas_size):
+             fonts, canvas_size, raw_descs, line_pitch, single_line_height):
     pool = str(info.get("pool", "colorless")).lower()
     ctype = str(info.get("type", "")).lower()
     rarity = str(info.get("rarity", "")).lower()
@@ -306,7 +609,7 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
 
     paste_layer(canvas, chrome(f"frame_{sprite}_{color}"), rect_px(rects["Frame"], bounds, scale))
     paste_layer(canvas, chrome(f"portrait_border_{sprite}_{mat}"), rect_px(rects["PortraitBorder"], bounds, scale))
-    paste_layer(canvas, chrome(f"banner_{mat}"), rect_px(rects["TitleBanner"], bounds, scale))
+    paste_layer(canvas, chrome(f"banner_{mat}"), rect_px(banner_ribbon_rect(rects["TitleBanner"]), bounds, scale))
     paste_layer(canvas, chrome(f"plaque_{mat}"), rect_px(rects["TypePlaque"], bounds, scale))
 
     energy = info.get("energyUpgraded") if (upgraded and info.get("energyUpgraded") is not None) else info.get("energy", -1)
@@ -315,31 +618,49 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
         orb_name = f"energy_{pool}" if chrome(f"energy_{pool}") is not None else "energy_colorless"
         paste_layer(canvas, chrome(orb_name), rect_px(rects["EnergyIcon"], bounds, scale))
 
-    draw = ImageDraw.Draw(canvas)
-    title_font, type_font, cost_font, desc_font, desc_bold_font, desc_symbol_font = fonts
+    # Text goes on its own layer, composited at the end: ImageDraw writes
+    # RGBA values straight into the image rather than blending, so drawing a
+    # translucent color (the title's 19% shadow, TypeLabel's 75% black) on
+    # the canvas itself punches see-through holes in the chrome under it.
+    text_layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(text_layer)
+    title_font, type_font, cost_font, desc_font, desc_symbol_font = fonts
 
     name = info.get("title") or card_id
     if upgraded:
         name += "+"
-    draw_centered_line(draw, name, rect_px(rects["TitleLabel"], bounds, scale),
-                        title_font, TITLE_UPGRADED_COLOR if upgraded else TITLE_COLOR)
+    draw_title_line(draw, name, rect_px(rects["TitleLabel"], bounds, scale),
+                     title_font, TITLE_UPGRADED_COLOR if upgraded else TITLE_COLOR, scale)
 
     if info.get("type"):
-        draw_centered_line(draw, info["type"], rect_px(rects["TypePlaque"], bounds, scale),
-                            type_font, TYPE_COLOR)
+        draw_plain_centered_line(draw, info["type"], rect_px(rects["TypePlaque"], bounds, scale),
+                                  type_font, TYPE_COLOR)
 
     if has_cost:
         cost_text = "X" if info.get("costsX") else str(energy)
-        draw_centered_line(draw, cost_text, rect_px(rects["EnergyIcon"], bounds, scale),
-                            cost_font, TITLE_COLOR)
+        l, t, r, b = rects["EnergyIcon"]
+        cx, cy = (l + r) / 2, (t + b) / 2
+        cost_box = (cx + COST_BOX[0], cy + COST_BOX[1], cx + COST_BOX[2], cy + COST_BOX[3])
+        draw_outlined_line(draw, cost_text, rect_px(cost_box, bounds, scale), cost_font,
+                           TITLE_COLOR, COST_OUTLINE_BY_POOL.get(pool, COST_OUTLINE_DEFAULT),
+                           COST_OUTLINE_SIZE, 0, scale)
 
     base_vars = info.get("varsUpgraded") if (upgraded and info.get("varsUpgraded")) else info.get("vars")
     variables = {**(base_vars or {}), "IfUpgraded": 1 if upgraded else 0}
-    if info.get("desc"):
-        runs = substitute_desc_vars_runs(info["desc"], variables)
+    # Prefer a freshly-recolored desc straight from the raw locale (keeps
+    # [gold]/[blue]/[purple] keyword spans, which card_data.json's own desc
+    # field has stripped) — fall back to that already-cleaned, colorless desc
+    # for any card_id with no raw-locale match (e.g. a data quirk), so nothing
+    # silently loses its description text.
+    stem = card_id.split(".", 1)[1]
+    raw_desc = raw_descs.get(stem)
+    desc = clean_desc_with_color(raw_desc) if raw_desc else info.get("desc")
+    if desc:
+        runs = substitute_desc_vars_runs(desc, variables)
         draw_wrapped_desc(draw, runs, rect_px(rects["DescriptionLabel"], bounds, scale),
-                           desc_font, desc_bold_font, desc_symbol_font)
+                           desc_font, desc_symbol_font, line_pitch, single_line_height)
 
+    canvas.alpha_composite(text_layer)
     return canvas
 
 
@@ -348,11 +669,15 @@ def main():
     ap.add_argument("--width", type=int, default=400,
                     help="frame width in px, same convention as bake_card_chrome.py "
                          "(default 400 -> ~440x533 canvas including chrome overhang)")
+    ap.add_argument("--only", nargs="+", metavar="CARD_ID",
+                    help="re-bake just these cards (e.g. CARD.HEADBUTT), leaving the rest of "
+                         "card_final/ untouched — for quick layout iteration")
     args = ap.parse_args()
 
     for path, what in ((CHROME_DIR, "card_chrome/ (run tools/bake_card_chrome.py first)"),
                        (CARD_DATA, "card_data.json (run tools/extract_card_data.py first)"),
-                       (PORTRAIT_SRC, "the full PCK extraction (see CLAUDE.md)")):
+                       (PORTRAIT_SRC, f"the full PCK extraction — set STS2_PCK_ROOT or check out "
+                                      f"sts2-history-dashboard next to this repo (see CLAUDE.md)")):
         if not path.exists():
             raise SystemExit(f"Source not found: {path}\nNeed: {what}")
 
@@ -375,23 +700,39 @@ def main():
     else:
         print(f"WARNING: {SYMBOL_FONT} not found — ⚡/✦ tokens will render as tofu boxes")
         symbol_font = ImageFont.truetype(str(FONT_BOLD), desc_size)
+    desc_font = ImageFont.truetype(str(FONT_REGULAR), desc_size)
     fonts = (
-        ImageFont.truetype(str(FONT_BOLD), round(layout["fontSizes"]["title"] * font_scale)),
+        # card.tscn's TitleLabel base_font is kreon_regular_shared, not bold —
+        # its outline (drawn by draw_title_line) is what gives the title its
+        # visual weight in-game, not a bold glyph.
+        ImageFont.truetype(str(FONT_REGULAR), round(layout["fontSizes"]["title"] * font_scale)),
         ImageFont.truetype(str(FONT_BOLD), round(layout["fontSizes"]["type"] * font_scale)),
-        ImageFont.truetype(str(FONT_BOLD), round(layout["fontSizes"]["cost"] * font_scale)),
-        ImageFont.truetype(str(FONT_REGULAR), desc_size),
-        ImageFont.truetype(str(FONT_BOLD), desc_size),
+        ImageFont.truetype(str(FONT_BOLD), round(COST_FONT_SIZE * font_scale)),
+        desc_font,
         symbol_font,
     )
 
+    # card.tscn's DescriptionLabel: line_separation = -3 (a gap between
+    # lines, in logical units) on top of the font's ascent+descent.
+    # single_line_height sizes a lone line for centering; it matches in-game
+    # one-line cards like Strike to ~1px.
+    asc, desc_m = desc_font.getmetrics()
+    line_separation = -3 * font_scale
+    line_pitch = (asc + desc_m) + line_separation
+    single_line_height = (asc + desc_m) * 1.12
+
     cards = json.loads(CARD_DATA.read_text(encoding="utf-8"))
+    raw_descs = load_raw_card_descriptions()
     portrait_index = index_portraits()
     chrome = load_chrome()
     portrait_box = rect_px(layout["rects"]["Portrait"], bounds, scale)
 
     OUT.mkdir(exist_ok=True)
-    for old in OUT.glob("*.webp"):
-        old.unlink()
+    if args.only:
+        cards = {cid: cards[cid] for cid in args.only}
+    else:
+        for old in OUT.glob("*.webp"):
+            old.unlink()
 
     manifest = []
     for card_id, info in sorted(cards.items()):
@@ -400,7 +741,8 @@ def main():
         portrait = crop_portrait_to_box(portrait_path, portrait_box) if portrait_path else None
         for upgraded, suffix in ((False, ""), (True, "_UP")):
             img = bake_one(card_id, upgraded, info, chrome, portrait, layout,
-                           bounds, scale, fonts, canvas_size)
+                           bounds, scale, fonts, canvas_size,
+                           raw_descs, line_pitch, single_line_height)
             path = OUT / f"{card_id}{suffix}.webp"
             # method=6 (max compression effort) measured ~50x slower than
             # method=4 for only ~5% smaller files here — a few cents/month of

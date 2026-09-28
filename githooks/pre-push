@@ -1,0 +1,10 @@
+#!/bin/sh
+# Deploys infra + site to AWS when main is pushed (see tools/deploy.py).
+# Enable once per clone:  git config core.hooksPath githooks
+# Skip for one push:      SKIP_DEPLOY=1 git push   (or git push --no-verify)
+[ -n "$SKIP_DEPLOY" ] && exit 0
+
+root=$(git rev-parse --show-toplevel)
+py="$root/infra/.venv/Scripts/python.exe"
+[ -x "$py" ] || py="$root/infra/.venv/bin/python"
+exec "$py" "$root/tools/deploy.py" --pre-push "$@"

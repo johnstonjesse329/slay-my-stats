@@ -36,7 +36,7 @@ function renderCardFace(id, upgrade = 0, width = 200) {
   if (!src) return "";
   const w = typeof width === "number" ? `${width}px` : width;
   const name = (cardInfo(id) || {}).title || fmtCardLabel(id);
-  return `<img class="cardface" style="width:${w}" src="${src}" alt="${name}">`;
+  return `<img loading="lazy" class="cardface" style="width:${w}" src="${src}" alt="${name}">`;
 }
 
 function buildCardTooltip(id, upgrade) {
@@ -60,7 +60,7 @@ function buildCardTooltip(id, upgrade) {
   const costsHtml = costBadges ? `<div class="ct-costs">${costBadges}</div>` : "";
 
   const artHtml = src
-    ? `<div class="ct-art-wrap">${costsHtml}<img class="ct-art" src="${src}" alt="${name}"></div>`
+    ? `<div class="ct-art-wrap">${costsHtml}<img loading="lazy" class="ct-art" src="${src}" alt="${name}"></div>`
     : `<div class="ct-art-wrap">${costsHtml}<div class="ct-art ct-art-missing"></div></div>`;
 
   const type = info?.type || null;
@@ -96,7 +96,9 @@ function renderCardTile(c) {
   const countLabel = c.count > 1 ? `<span class="tile-count">×${c.count}</span>` : "";
 
   if (cardFaceAvailable()) {
-    return `<div class="card-tile card-tile-face">
+    // tabindex: the tooltip below is a :hover/:focus-within reveal, which a
+    // touch tap can't trigger on a plain, non-focusable div.
+    return `<div class="card-tile card-tile-face" tabindex="0">
       ${renderCardFace(c.id, c.upgrade, TILE_FACE_W)}
       ${countLabel ? `<div class="tile-badges">${countLabel}</div>` : ""}
       <div class="card-tooltip-wrap">${buildCardTooltip(c.id, c.upgrade)}</div>
@@ -108,13 +110,13 @@ function renderCardTile(c) {
   const typeColor = cardTypeColor(c.id);
   const upgradeLabel = c.upgrade > 0 ? `<span class="ct-upgrade">+${c.upgrade}</span>` : "";
   const artHtml = src
-    ? `<img class="tile-art" src="${src}" alt="${name}">`
+    ? `<img loading="lazy" class="tile-art" src="${src}" alt="${name}">`
     : `<div class="tile-art tile-art-missing">${name.charAt(0)}</div>`;
   const badgesHtml = (upgradeLabel || countLabel)
     ? `<div class="tile-badges">${upgradeLabel}${countLabel}</div>`
     : "";
 
-  return `<div class="card-tile" style="--tile-color:${typeColor}">
+  return `<div class="card-tile" style="--tile-color:${typeColor}" tabindex="0">
     ${artHtml}
     <div class="tile-name">
       <div class="tile-name-text">${name}</div>
@@ -167,14 +169,15 @@ function renderRelicTiles(relics) {
     const src   = relicImgSrc(r.id);
     const label = fmtRelicLabel(r.id);
     const tip   = buildRelicTooltip(r.id);
+    // tabindex: same touch/keyboard tooltip-reveal parity as .card-tile.
     if (src) {
-      return `<div class="relic-tile">
-        <img class="relic-tile-art" src="${src}" alt="${label}">
+      return `<div class="relic-tile" tabindex="0">
+        <img loading="lazy" class="relic-tile-art" src="${src}" alt="${label}">
         <div class="relic-tile-name">${label}</div>
         ${tip ? `<div class="relic-tooltip-wrap">${tip}</div>` : ""}
       </div>`;
     }
-    return `<div class="relic-tile relic-tile-no-img">
+    return `<div class="relic-tile relic-tile-no-img" tabindex="0">
       <div class="relic-tile-name">${label}</div>
       ${tip ? `<div class="relic-tooltip-wrap">${tip}</div>` : ""}
     </div>`;

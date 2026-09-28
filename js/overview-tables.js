@@ -132,9 +132,9 @@ const REST_CHOICES = ["HEAL", "SMITH"];
 const REST_CHOICE_LABELS = { HEAL: "Heal", SMITH: "Smith" };
 
 // Returns { char: { asc: { act: { choice: { avgWin, avgLoss, wins, losses } } } } }
-function aggregateRestChoices(filteredRuns) {
+function aggregateRestChoices(filteredRuns, allAscRuns) {
   const chars = DATA.characters;
-  const ascs  = DATA.ascensions;
+  const ascs  = ascColumns().map(col => col.key);
 
   // bucket[char][asc][act][choice] — act is 1/2/3 or "FULL" (reached Act 3, all acts summed)
   // winFreq/lossFreq are arrays where index = count, value = number of runs with that count
@@ -153,9 +153,11 @@ function aggregateRestChoices(filteredRuns) {
     });
   });
 
-  filteredRuns.forEach(run => {
+  // ascKeys picks which asc column(s) this run feeds -- the run's own
+  // column when accumulating the filtered set, or just "ALL" when
+  // accumulating the ascension-unfiltered set for the ALL column.
+  function accumulate(run, ascKeys) {
     const char = run.char;
-    const asc  = run.asc;
     const rc   = run.restChoices || {};  // { "1": {HEAL:2,...}, "2": {...}, ... }
     const reachedAct3 = rc["3"] !== undefined;
 
@@ -166,7 +168,7 @@ function aggregateRestChoices(filteredRuns) {
       REST_CHOICES.forEach(choice => {
         const count = actChoices[choice] || 0;
         for (const c of [char, "ALL"]) {
-          for (const a of [asc, "ALL"]) {
+          for (const a of ascKeys) {
             const b = bucket[c]?.[a]?.[act]?.[choice];
             if (!b) continue;
             if (run.won) { addFreq(b.winFreq,  count); b.wins  += 1; }
@@ -181,7 +183,7 @@ function aggregateRestChoices(filteredRuns) {
       REST_CHOICES.forEach(choice => {
         const totalCount = REST_ACTS.reduce((sum, act) => sum + ((rc[String(act)] || {})[choice] || 0), 0);
         for (const c of [char, "ALL"]) {
-          for (const a of [asc, "ALL"]) {
+          for (const a of ascKeys) {
             const bf = bucket[c]?.[a]?.["FULL"]?.[choice];
             if (!bf) continue;
             if (run.won) { addFreq(bf.winFreq,  totalCount); bf.wins  += 1; }
@@ -190,7 +192,10 @@ function aggregateRestChoices(filteredRuns) {
         }
       });
     }
-  });
+  }
+
+  filteredRuns.forEach(run => accumulate(run, [ascColumnKey(run.asc)]));
+  allAscRuns.forEach(run => accumulate(run, ["ALL"]));
 
   const freqMean = (freq, n) => {
     if (!n) return null;
@@ -224,7 +229,7 @@ function aggregateRestChoices(filteredRuns) {
 
 function renderRestChoicesTable(data, filteredRuns) {
   const chars = DATA.characters;
-  const ascs  = DATA.ascensions;
+  const ascs  = ascColumns();
 
   const hasData = filteredRuns.some(r => {
     const rc = r.restChoices || {};
@@ -244,7 +249,7 @@ function renderRestChoicesTable(data, filteredRuns) {
     <th class="char-head">Character</th>
     <th style="color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;padding:0.5rem 0.9rem">Act</th>
     <th style="border-right:2px solid #3f4147;color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;padding:0.5rem 0.9rem">Choice</th>
-    ${ascs.map(a => `<th>A${a}</th>`).join("")}
+    ${ascs.map(col => `<th>${col.label}</th>`).join("")}
     <th style="border-left:2px solid #3f4147;text-align:center;padding:0.5rem 0.9rem;color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em">
       ALL<br><span style="${subStyle}">Win avg / Loss avg</span></th>
   </tr></thead><tbody>`;
@@ -301,7 +306,7 @@ function renderRestChoicesTable(data, filteredRuns) {
       }
       html += `<td class="cell" style="${fullSep}text-align:center;color:#bcbcd0;font-size:0.78rem;padding:0.35rem 0.5rem">${isFirst ? `<span style="color:#bcbcd0">All Acts</span><br><span style="font-size:0.72rem;color:#8a8aa0">Reached Act 3</span>` : ""}</td>`;
       html += `<td class="cell" style="${fullSep}text-align:left;border-right:2px solid #3f4147;color:#ccc;font-size:0.8rem;padding:0.35rem 0.7rem">${REST_CHOICE_LABELS[choice]}</td>`;
-      ascs.forEach(asc => { html += dataCell(data[charKey]?.[asc]?.["FULL"]?.[choice], fullSep); });
+      ascs.forEach(col => { html += dataCell(data[charKey]?.[col.key]?.["FULL"]?.[choice], fullSep); });
       html += allCell(data[charKey]?.["ALL"]?.["FULL"]?.[choice], fullSep);
       html += `</tr>`;
     });
@@ -316,7 +321,7 @@ function renderRestChoicesTable(data, filteredRuns) {
         html += `<tr>`;
         if (isFirstChoice) html += `<td class="cell" rowspan="${REST_CHOICES.length}" style="${sep}text-align:center;color:#a0a0b8;font-size:0.78rem;padding:0.35rem 0.5rem">Act ${act}</td>`;
         html += `<td class="cell" style="${sep}text-align:left;border-right:2px solid #3f4147;color:#ccc;font-size:0.8rem;padding:0.35rem 0.7rem">${REST_CHOICE_LABELS[choice]}</td>`;
-        ascs.forEach(asc => { html += dataCell(data[charKey]?.[asc]?.[act]?.[choice], sep); });
+        ascs.forEach(col => { html += dataCell(data[charKey]?.[col.key]?.[act]?.[choice], sep); });
         html += allCell(data[charKey]?.["ALL"]?.[act]?.[choice], sep);
         html += `</tr>`;
       });

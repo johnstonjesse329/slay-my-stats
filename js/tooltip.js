@@ -180,6 +180,22 @@ function hideFloatingHtmlTooltip() {
   floatingTooltipEl.classList.remove("chart-tooltip-rich");
 }
 
+// Card/relic/node tooltips (card-face.js, run-detail.js, render-helpers.js)
+// open via :focus-within on a tabindex="0" trigger, so a touch tap can
+// reveal them the same way a mouse hover does. But a tap only ever *moves*
+// focus on iOS/Android when it lands on something itself focusable --
+// tapping the tooltip's own static text, or blank space elsewhere on the
+// page, doesn't blur the trigger, so the tooltip lingers open forever.
+// Blur it on the next tap no matter where that tap lands; if the tap hit a
+// different focusable trigger, the browser's own focus-follows-tap then
+// opens that one right after.
+document.addEventListener("touchstart", () => {
+  const active = document.activeElement;
+  if (active && active.matches(".card-tile, .relic-tile, .fav-item, .run-boon-wrap, .node-card")) {
+    active.blur();
+  }
+}, { passive: true });
+
 // "IRONCLAD" -> "Ironclad", for legends, labels, and tooltips
 function fmtCharName(char) {
   return char.charAt(0) + char.slice(1).toLowerCase();

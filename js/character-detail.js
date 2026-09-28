@@ -15,8 +15,8 @@ const ELITE_IDS = [...new Set(ALL_FIGHTS.filter(f => f.type === "elite").map(f =
 
 // ---- Fight filtering ----
 
-function filterFights() {
-  const okTs = filteredRunTsSet();
+function filterFights(opts = {}) {
+  const okTs = filteredRunTsSet(opts);
   const char = singleCharFallback();
   return ALL_FIGHTS.filter(f => f.char === char && okTs.has(f.ts));
 }
@@ -152,25 +152,32 @@ function summarizeFights(bucket) {
   };
 }
 
-function aggregateFights(fights) {
+// allAscFights drives the "ALL" bucket (every ascension this player has
+// fought this encounter at), independent of the ascension filter; fights
+// drives the per-column buckets as before.
+function aggregateFights(fights, allAscFights) {
   const allEncs   = [...BOSS_IDS, ...ELITE_IDS];
   const byEncAsc  = {};
   allEncs.forEach(enc => {
     byEncAsc[enc] = {};
-    DATA.ascensions.forEach(a => { byEncAsc[enc][a] = fightBucket(); });
+    ascColumns().forEach(col => { byEncAsc[enc][col.key] = fightBucket(); });
     byEncAsc[enc]["ALL"] = fightBucket();
   });
 
   fights.forEach(f => {
     if (!byEncAsc[f.enc]) return;
-    addFight(byEncAsc[f.enc][f.asc],  f);
-    addFight(byEncAsc[f.enc]["ALL"],   f);
+    const b = byEncAsc[f.enc][ascColumnKey(f.asc)];
+    if (b) addFight(b, f);
+  });
+  allAscFights.forEach(f => {
+    if (!byEncAsc[f.enc]) return;
+    addFight(byEncAsc[f.enc]["ALL"], f);
   });
 
   const result = {};
   allEncs.forEach(enc => {
     result[enc] = {};
-    DATA.ascensions.forEach(a => { result[enc][a]   = summarizeFights(byEncAsc[enc][a]);  });
+    ascColumns().forEach(col => { result[enc][col.key] = summarizeFights(byEncAsc[enc][col.key]); });
     result[enc]["ALL"] = summarizeFights(byEncAsc[enc]["ALL"]);
   });
   return result;
@@ -203,12 +210,13 @@ function summarizeDeckAct(bucket) {
 }
 
 // Returns { act: { asc: summarizeDeckAct, ALL: summarizeDeckAct } }
-function aggregateDeckByAct(fights) {
+// allAscFights drives the "ALL" bucket, same reasoning as aggregateFights.
+function aggregateDeckByAct(fights, allAscFights) {
   const acts = [1, 2, 3];
   const byActAsc = {};
   acts.forEach(act => {
     byActAsc[act] = {};
-    DATA.ascensions.forEach(a => { byActAsc[act][a] = deckActBucket(); });
+    ascColumns().forEach(col => { byActAsc[act][col.key] = deckActBucket(); });
     byActAsc[act]["ALL"] = deckActBucket();
   });
 
@@ -216,14 +224,20 @@ function aggregateDeckByAct(fights) {
     if (f.type !== "boss") return;
     const act = bossAct(f.enc);
     if (!act) return;
-    addDeckAct(byActAsc[act][f.asc],  f);
-    addDeckAct(byActAsc[act]["ALL"],   f);
+    const b = byActAsc[act][ascColumnKey(f.asc)];
+    if (b) addDeckAct(b, f);
+  });
+  allAscFights.forEach(f => {
+    if (f.type !== "boss") return;
+    const act = bossAct(f.enc);
+    if (!act) return;
+    addDeckAct(byActAsc[act]["ALL"], f);
   });
 
   const result = {};
   acts.forEach(act => {
     result[act] = {};
-    DATA.ascensions.forEach(a => { result[act][a]   = summarizeDeckAct(byActAsc[act][a]);  });
+    ascColumns().forEach(col => { result[act][col.key] = summarizeDeckAct(byActAsc[act][col.key]); });
     result[act]["ALL"] = summarizeDeckAct(byActAsc[act]["ALL"]);
   });
   return result;
@@ -239,18 +253,18 @@ function deckActCell(s, isAll) {
 }
 
 function renderDeckActTable(tableId, deckData) {
-  const visAscs = [...sharedActiveAscs].sort((a, b) => a - b);
+  const visAscs = ascColumns();
   const subStyle = `font-size:0.72rem;color:#8a8aa0;letter-spacing:0;text-transform:none;font-weight:400`;
   let html = `<thead><tr>
     <th class="char-head">Act</th>
-    ${visAscs.map(a => `<th>A${a}</th>`).join("")}
+    ${visAscs.map(col => `<th>${col.label}</th>`).join("")}
     <th class="all-col" style="border-left:2px solid #3f4147">ALL<br><span style="${subStyle}">W / L median</span></th>
   </tr></thead><tbody>`;
   [1, 2, 3].forEach(act => {
     const s = deckData[act];
     if (!s?.["ALL"]) return;
     html += `<tr><td class="char-name">Act ${act}</td>`;
-    visAscs.forEach(a => { html += deckActCell(s[a], false); });
+    visAscs.forEach(col => { html += deckActCell(s[col.key], false); });
     html += deckActCell(s["ALL"], true);
     html += `</tr>`;
   });
@@ -341,7 +355,7 @@ function loadoutRangeCell(s) {
 
 // encGroups: array of {label, ids} for section headers, or a flat array of IDs.
 function renderFightTable(tableId, encGroups, fightData, cellFn, rangeFn) {
-  const visAscs = [...sharedActiveAscs].sort((a, b) => a - b);
+  const visAscs = ascColumns();
   const colSpan = visAscs.length + 1 + (rangeFn ? 1 : 0) + 1; // ascs + ALL + range + name
   const rangeHeader = rangeFn
     ? `<th style="border-left:2px solid #3f4147;text-align:center;padding:0.5rem 0.9rem;
@@ -350,7 +364,7 @@ function renderFightTable(tableId, encGroups, fightData, cellFn, rangeFn) {
 
   let html = `<thead><tr>
     <th class="char-head">Encounter</th>
-    ${visAscs.map(a => `<th>A${a}</th>`).join("")}
+    ${visAscs.map(col => `<th>${col.label}</th>`).join("")}
     <th class="all-col" style="border-left:2px solid #3f4147">ALL</th>
     ${rangeHeader}
   </tr></thead><tbody>`;
@@ -370,7 +384,7 @@ function renderFightTable(tableId, encGroups, fightData, cellFn, rangeFn) {
 
     rows.forEach(enc => {
       html += `<tr>${encNameCell(enc)}`;
-      visAscs.forEach(a => { html += cellFn(fightData[enc][a], false); });
+      visAscs.forEach(col => { html += cellFn(fightData[enc][col.key], false); });
       html += cellFn(fightData[enc]["ALL"], true);
       if (rangeFn) html += rangeFn(fightData[enc]["ALL"]);
       html += `</tr>`;
@@ -391,10 +405,11 @@ function updateDetail() {
     note.style.display = "none";
   }
 
-  const fights    = filterFights();
-  const fightData = aggregateFights(fights);
-  const deckData  = aggregateDeckByAct(fights);
-  const groups    = DATA.encGroups;
+  const fights       = filterFights();
+  const allAscFights = filterFights({ ignoreAsc: true });
+  const fightData    = aggregateFights(fights, allAscFights);
+  const deckData     = aggregateDeckByAct(fights, allAscFights);
+  const groups       = DATA.encGroups;
 
   const bossGroups  = groups.filter(g => g.label.includes("Boss"));
   const eliteGroups = groups.filter(g => g.label.includes("Elite"));

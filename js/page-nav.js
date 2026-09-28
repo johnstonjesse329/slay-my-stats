@@ -32,7 +32,35 @@ function rerenderCurrentPage() {
   // filter control can actually trigger a rerender, the whole script has
   // already finished its initial top-to-bottom run, so this is safe.
   if (typeof updateUnsavedIndicator === "function") updateUnsavedIndicator();
+  updateFilterSummary();
 }
+
+// The one-line summary the filter rows collapse behind at phone width
+// (.filter-summary in dashboard.css; hidden on desktop). Looks its elements
+// up on each call because the filter bar's own setup rerenders before the
+// rest of this file has run.
+function updateFilterSummary() {
+  const modeLabels = { all: "All modes", solo: "Solo", multi: "Multi", daily: "Daily" };
+  const nAscs = sharedActiveAscs.size;
+  const asc = nAscs === DATA.ascensions.length ? "All ascensions"
+            : nAscs === 0 ? "No ascensions"
+            : [...sharedActiveAscs].sort((a, b) => a - b).map(a => `A${a}`).join(", ");
+  const date = sharedTsFrom === 0 && sharedTsTo === TS_NO_UPPER_BOUND ? "All time"
+             : `${sharedTsFrom > 0 ? tsToDateStr(sharedTsFrom) : "…"} → ${sharedTsTo !== TS_NO_UPPER_BOUND ? tsToDateStr(sharedTsTo - 86400) : "…"}`;
+  const parts = [
+    sharedActiveChar === "ALL" ? "All characters" : fmtCharName(sharedActiveChar),
+    modeLabels[sharedActiveMode],
+    asc,
+    sharedBuildSummary(),
+    date,
+  ];
+  document.querySelector("#shared-filter-summary .filter-summary-text").textContent = parts.join(" · ");
+}
+
+document.getElementById("shared-filter-summary").addEventListener("click", e => {
+  const open = document.getElementById("shared-filter-bar").classList.toggle("expanded");
+  e.currentTarget.setAttribute("aria-expanded", String(open));
+});
 
 function showPage(page) {
   if (!PAGES.includes(page)) page = "overview";
@@ -171,65 +199,76 @@ function updateSharedCharBtns() {
   });
 }
 
-// ---- Shared ascension checkboxes ----
-const sharedAscBox = document.getElementById("shared-asc-checkboxes");
+// ---- Shared ascension filter ----
+// Off by default: every level is included and the tables group columns by
+// ASC_BUCKETS. "Show granular" reveals the per-level checkboxes.
+const sharedAscBox     = document.getElementById("shared-asc-checkboxes");
+const sharedAscGranularBtn = document.getElementById("shared-asc-granular");
+const sharedAscAll     = document.getElementById("shared-asc-all");
+const sharedAscNone    = document.getElementById("shared-asc-none");
+
+function setGold(btn, on) {
+  btn.style.color       = on ? "#e0c468" : "";
+  btn.style.borderColor = on ? "#e0c468" : "";
+}
+
+function syncAscControls() {
+  sharedAscBox.querySelectorAll("input").forEach(cb => {
+    cb.checked = sharedActiveAscs.has(+cb.value);
+    cb.closest("label").classList.toggle("checked", cb.checked);
+  });
+  setGold(sharedAscAll,  sharedActiveAscs.size === DATA.ascensions.length);
+  setGold(sharedAscNone, sharedActiveAscs.size === 0);
+  setGold(sharedAscGranularBtn, sharedAscGranular);
+  sharedAscGranularBtn.setAttribute("aria-pressed", String(sharedAscGranular));
+  sharedAscBox.style.display = sharedAscGranular ? "flex" : "none";
+  sharedAscAll.style.display = sharedAscNone.style.display = sharedAscGranular ? "" : "none";
+}
+
+function setSharedAscs(ascs) {
+  sharedActiveAscs = new Set(ascs);
+  syncAscControls();
+  rerenderCurrentPage();
+}
 
 DATA.ascensions.forEach(asc => {
   const label = document.createElement("label");
-  label.className = "checked";
-  label.innerHTML = `<input type="checkbox" value="${asc}" checked> A${asc}`;
+  label.innerHTML = `<input type="checkbox" value="${asc}"> A${asc}`;
   label.querySelector("input").addEventListener("change", e => {
-    if (e.target.checked) sharedActiveAscs.add(asc); else sharedActiveAscs.delete(asc);
-    label.classList.toggle("checked", e.target.checked);
-    syncAscAllNoneHighlight();
-    rerenderCurrentPage();
+    const next = new Set(sharedActiveAscs);
+    if (e.target.checked) next.add(asc); else next.delete(asc);
+    setSharedAscs(next);
   });
   sharedAscBox.appendChild(label);
 });
 
-const sharedAscAll  = document.getElementById("shared-asc-all");
-const sharedAscNone = document.getElementById("shared-asc-none");
+sharedAscAll.addEventListener("click",  () => setSharedAscs(DATA.ascensions));
+sharedAscNone.addEventListener("click", () => setSharedAscs([]));
 
-// The Ascension group has no single "active value" the way Mode/Character/
-// Date do, so its All/None toggles never got the gold active treatment — but
-// when every ascension is checked, "All" IS the active state and should read
-// as such (same for "None" when nothing is checked), matching how the other
-// groups highlight their current selection.
-function syncAscAllNoneHighlight() {
-  const all  = sharedActiveAscs.size === DATA.ascensions.length;
-  const none = sharedActiveAscs.size === 0;
-  [[sharedAscAll, all], [sharedAscNone, none]].forEach(([btn, on]) => {
-    btn.style.color       = on ? "#e0c468" : "";
-    btn.style.borderColor = on ? "#e0c468" : "";
-  });
-}
-
-document.getElementById("shared-asc-all").addEventListener("click", () => {
-  sharedActiveAscs = new Set(DATA.ascensions);
-  sharedAscBox.querySelectorAll("input").forEach(cb => { cb.checked = true; cb.closest("label").classList.add("checked"); });
-  syncAscAllNoneHighlight();
-  rerenderCurrentPage();
-});
-document.getElementById("shared-asc-none").addEventListener("click", () => {
-  sharedActiveAscs = new Set();
-  sharedAscBox.querySelectorAll("input").forEach(cb => { cb.checked = false; cb.closest("label").classList.remove("checked"); });
-  syncAscAllNoneHighlight();
+sharedAscGranularBtn.addEventListener("click", () => {
+  sharedAscGranular = !sharedAscGranular;
+  // Outside granular view every level is included; the picks don't carry over.
+  if (!sharedAscGranular) sharedActiveAscs = new Set(DATA.ascensions);
+  syncAscControls();
   rerenderCurrentPage();
 });
 
-syncAscAllNoneHighlight();
+syncAscControls();
 
 // ---- Shared build dropdown ----
 const sharedBuildBox   = document.getElementById("shared-build-checkboxes");
 const sharedBuildToggle = document.getElementById("shared-build-toggle");
 const sharedBuildPanel  = document.getElementById("shared-build-panel");
 
-function updateSharedBuildLabel() {
+function sharedBuildSummary() {
   const n = sharedActiveBuilds.size;
-  const label = n === 0 ? "No builds"
-              : n === DATA.builds.length ? "All builds"
-              : `${n} build${n !== 1 ? "s" : ""}`;
-  sharedBuildToggle.textContent = `${label} ▾`;
+  return n === 0 ? "No builds"
+       : n === DATA.builds.length ? "All builds"
+       : `${n} build${n !== 1 ? "s" : ""}`;
+}
+
+function updateSharedBuildLabel() {
+  sharedBuildToggle.textContent = `${sharedBuildSummary()} ▾`;
 }
 
 sharedBuildToggle.addEventListener("click", e => {
@@ -371,9 +410,9 @@ document.getElementById("shared-date-alltime").addEventListener("click", () => {
 // per-user backend), so the browser's localStorage is the only thing
 // that can survive a reload/regeneration — keyed to the browser, not the
 // file content. "Save as default" snapshots the 5 shared filter values;
-// "Reset filters" clears that snapshot and reverts to the hardcoded
-// defaults, never to "whatever was last saved" (a true blank slate is
-// kept distinct from the user's saved preference).
+// "Reset filters" reverts the live filters to the hardcoded defaults,
+// never to "whatever was last saved", but leaves the snapshot alone until
+// the user saves over it.
 
 function currentSharedFilterState() {
   return {
@@ -381,7 +420,9 @@ function currentSharedFilterState() {
     // a page-forced value (see charIsLocked()) that doesn't reflect what
     // the user actually chose.
     char:   lastUnlockedChar,
-    ascs:   [...sharedActiveAscs],
+    // Ascension picks only exist in granular view (see savedAscState()).
+    ascGranular: sharedAscGranular,
+    ...(sharedAscGranular && { ascs: [...sharedActiveAscs] }),
     builds: [...sharedActiveBuilds],
     mode:   sharedActiveMode,
     tsFrom: sharedTsFrom,
@@ -436,15 +477,11 @@ function applySharedFilterState(state, targetPage = currentPage) {
   // references an older export's build strings doesn't silently leave
   // every run excluded if this dashboard was regenerated against a
   // different set of builds since the preference was saved.
-  const validAscs   = state.ascs.filter(a => DATA.ascensions.includes(a));
   const validBuilds = state.builds.filter(b => DATA.builds.includes(b));
-  sharedActiveAscs = new Set(validAscs);
-  sharedAscBox.querySelectorAll("input").forEach(cb => {
-    const on = sharedActiveAscs.has(+cb.value);
-    cb.checked = on;
-    cb.closest("label").classList.toggle("checked", on);
-  });
-  syncAscAllNoneHighlight();
+  const asc = savedAscState(state);
+  sharedAscGranular = asc.granular;
+  sharedActiveAscs  = new Set(asc.ascs);
+  syncAscControls();
 
   sharedActiveBuilds = new Set(validBuilds);
   sharedBuildBox.querySelectorAll("input").forEach(cb => {
@@ -478,15 +515,28 @@ document.getElementById("shared-filters-save").addEventListener("click", e => {
 });
 
 document.getElementById("shared-filters-reset").addEventListener("click", () => {
-  // Wipes a saved preference in one shot with no undo — block on an
-  // explicit confirmation rather than letting a single stray click fire it.
-  if (!confirm("Reset all filters to their defaults? This clears your saved preference.")) return;
-  localStorage.removeItem(SHARED_FILTER_STORAGE_KEY);
+  // Only the live filters reset; the saved default stays until Save is
+  // clicked, so a misclick is undone by reloading.
   applySharedFilterState(SHARED_FILTER_HARDCODED_DEFAULTS);
   rerenderCurrentPage();
-  showFilterStatus("Reset to defaults");
+  showFilterStatus("Reset — Save as default to keep it");
   updateUnsavedIndicator();
 });
+
+// A save only carries ascension picks when granular view was on; otherwise every
+// level is included. Saves from before granular view existed have no ascGranular and
+// always carry ascs: they open in granular view if they left any level unchecked,
+// so the checkboxes showing that selection aren't hidden.
+function savedAscState(state) {
+  const all  = [...DATA.ascensions];
+  const ascs = Array.isArray(state.ascs) ? state.ascs.filter(a => DATA.ascensions.includes(a)) : all;
+  const granular = state.ascGranular ?? ascs.length !== all.length;
+  return { granular, ascs: granular ? ascs : all };
+}
+
+function sameAscState(a, b) {
+  return a.granular === b.granular && a.ascs.length === b.ascs.length && a.ascs.every(x => b.ascs.includes(x));
+}
 
 // Advisory badge next to Save/Reset, shown whenever the live filter state
 // has drifted from whatever baseline the session actually started from —
@@ -499,9 +549,9 @@ document.getElementById("shared-filters-reset").addEventListener("click", () => 
 function sharedFilterStateEquals(a, b) {
   return a.char === b.char
     && a.mode === b.mode
+    && sameAscState(savedAscState(a), savedAscState(b))
     && a.tsFrom === b.tsFrom
     && a.tsTo === b.tsTo
-    && a.ascs.length === b.ascs.length && [...a.ascs].sort().join(",") === [...b.ascs].sort().join(",")
     && a.builds.length === b.builds.length && [...a.builds].sort().join(",") === [...b.builds].sort().join(",");
 }
 

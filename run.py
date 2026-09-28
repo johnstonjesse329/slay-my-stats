@@ -678,56 +678,62 @@ _NODE_ICON_DIR      = _HERE / "node_icons"
 _NODE_ICON_DIR_FULL = _HERE / "pck_recover_full" / "images" / "ui" / "run_history"
 
 _NODE_ICON_FILES = {
-    "monster":   "monster.png",
-    "elite":     "elite.png",
-    "boss":      "boss.png",
-    "rest_site": "rest_site.png",
-    "shop":      "shop.png",
-    "treasure":  "treasure.png",
-    "unknown":   "unknown_monster.png",
-    "ancient":   "ancient.png",
-    "event":     "event.png",
+    "monster":       "monster.png",
+    "elite":         "elite.png",
+    "rest_site":     "rest_site.png",
+    "shop":          "shop.png",
+    "treasure":      "treasure.png",
+    "unknown":       "unknown_monster.png",
+    "unknown_elite": "unknown_elite.png",
+    "unknown_shop":  "unknown_shop.png",
+    "unknown_treasure": "unknown_treasure.png",
+    "ancient":      "ancient.png",
+    "event":         "event.png",
+    # Per-Ancient portraits, keyed the same way boss encounters are (the
+    # node's own "enc" field, e.g. "EVENT.NEOW"). Unlike bosses these source
+    # files don't share a distinguishing suffix to glob on, so they're listed
+    # explicitly here rather than derived from a directory scan.
+    "EVENT.DARV":       "darv.png",
+    "EVENT.NEOW":       "neow.png",
+    "EVENT.NONUPEIPE":  "nonupeipe.png",
+    "EVENT.OROBAS":     "orobas.png",
+    "EVENT.PAEL":       "pael.png",
+    "EVENT.TANX":       "tanx.png",
+    "EVENT.TEZCATARA":  "tezcatara.png",
+    "EVENT.VAKUU":      "vakuu.png",
 }
 
 _CARD_FINAL_DIR = _HERE / "card_final"
 
 
-def build_card_final_images() -> dict[str, str]:
+def build_card_final_images(url_for=Path.as_uri) -> dict[str, str]:
     """Fully baked card faces (art + text), keyed by CARD.ID / CARD.ID_UP.
 
     Produced by tools/bake_finished_cards.py. Empty if the bake hasn't been
     run — card-face.js falls back to the older hand-built CSS tooltip.
+
+    url_for turns a resolved Path into the string embedded in the output;
+    it defaults to Path.as_uri (file:// URIs for the local HTML generator)
+    but build_site.py passes a root-absolute-URL maker instead.
     """
     if not _CARD_FINAL_DIR.exists():
         return {}
-    return {p.stem: p.as_uri() for p in sorted(_CARD_FINAL_DIR.glob("*.webp"))}
+    return {p.stem: url_for(p) for p in sorted(_CARD_FINAL_DIR.glob("*.webp"))}
 
 
-# Kreon is the game's own card font and is SIL Open Font Licensed, so unlike the
-# art it can simply be embedded. Inlined as base64 rather than referenced by
-# path, since the generated HTML is meant to work when moved elsewhere.
-_FONT_FILES = {
-    "kreon-bold":    _HERE / "pck_recover_full" / "fonts" / "kreon_bold.ttf",
-    "kreon-regular": _HERE / "pck_recover_full" / "fonts" / "kreon_regular.ttf",
-}
-
-
-def build_font_css() -> str:
-    import base64
-    faces = []
-    for name, path in _FONT_FILES.items():
-        if not path.exists():
-            continue
-        b64 = base64.b64encode(path.read_bytes()).decode("ascii")
-        weight = "700" if "bold" in name else "400"
-        faces.append(
-            f"@font-face{{font-family:'Kreon';font-weight:{weight};font-style:normal;"
-            f"font-display:swap;src:url(data:font/ttf;base64,{b64}) format('truetype');}}"
-        )
-    return "\n".join(faces)
-
-
-def build_node_icons() -> dict[str, str]:
+def build_node_icons(url_for=Path.as_uri) -> dict[str, str]:
+    """
+    type -> icon URL for each generic node type, plus one entry per boss
+    encounter id (e.g. "ENCOUNTER.QUEEN_BOSS" -> queen_boss.png's URL) and one
+    per Ancient event id (e.g. "EVENT.NEOW" -> neow.png's URL) so the Run
+    Detail timeline can show the specific boss/Ancient instead of a generic
+    node icon. Boss entries are derived from the <name>_boss.png files
+    themselves rather than hardcoded, so they stay in sync with whatever's in
+    node_icons/; Ancients are listed explicitly in _NODE_ICON_FILES since
+    their source files don't share a boss-style suffix to glob on. All three
+    (generic types, bosses, Ancients) live in the same flat dict — the keys
+    look nothing alike, so there's no collision risk.
+    """
     root = _NODE_ICON_DIR if _NODE_ICON_DIR.exists() else _NODE_ICON_DIR_FULL
     if not root.exists():
         return {}
@@ -735,24 +741,37 @@ def build_node_icons() -> dict[str, str]:
     for key, fname in _NODE_ICON_FILES.items():
         p = root / fname
         if p.exists():
-            result[key] = p.as_uri()
+            result[key] = url_for(p)
+    for p in sorted(root.glob("*_boss.png")):
+        result["ENCOUNTER." + p.stem.upper()] = url_for(p)
     return result
 _CARD_DATA_FILE   = _HERE / "card_data.json"
 _RELIC_DATA_FILE  = _HERE / "relic_data.json"
 _POTION_DATA_FILE = _HERE / "potion_data.json"
 
-def resolve_image_paths(data: dict) -> dict:
+
+def build_card_char(card_data: dict) -> dict[str, str]:
+    """
+    cid -> owning character pool ("IRONCLAD", "SILENT", ...), derived from
+    card_data["pool"] (set by extract_card_data.py, which reads portrait
+    directory structure — authoritative game data). Shared by build_html()
+    and build_site.py so the derivation lives in exactly one place.
+    """
+    return {cid: meta["pool"] for cid, meta in card_data.items() if "pool" in meta}
+
+def resolve_image_paths(data: dict, url_for=Path.as_uri) -> dict:
     """
     relic_data.json and potion_data.json store imagePath as a path relative to
     this script (e.g. "relic_images/akabeko.png") so the repo isn't tied to one
-    machine's absolute layout. Resolve to a file:// URI here, same as
-    build_card_images()/build_node_icons().
+    machine's absolute layout. Resolve to a URL here, same as
+    build_card_images()/build_node_icons() — file:// URIs by default, or
+    root-absolute site paths when build_site.py passes its own url_for.
     """
     for meta in data.values():
         rel = meta.get("imagePath")
         if rel:
             p = _HERE / rel
-            meta["imagePath"] = p.as_uri() if p.exists() else ""
+            meta["imagePath"] = url_for(p) if p.exists() else ""
     return data
 
 # Special-case overrides: card ID stem → portrait filename stem (without .png)
@@ -761,9 +780,9 @@ _PORTRAIT_OVERRIDES: dict[str, str] = {
     "mad_science": "mad_science_attack",
 }
 
-def build_card_images() -> dict[str, str]:
+def build_card_images(url_for=Path.as_uri) -> dict[str, str]:
     """
-    Scan the extracted portrait folder and return a dict mapping CARD.ID → file:// URL.
+    Scan the extracted portrait folder and return a dict mapping CARD.ID → URL.
     Prefers non-beta portraits; falls back to beta subfolder if that's all there is.
     Returns an empty dict if the portrait folder doesn't exist.
     """
@@ -784,7 +803,7 @@ def build_card_images() -> dict[str, str]:
         # Prefer non-beta path
         non_beta = [c for c in candidates if "beta" not in c.parts]
         chosen = non_beta[0] if non_beta else candidates[0]
-        return chosen.as_uri()
+        return url_for(chosen)
 
     result: dict[str, str] = {}
 
@@ -802,129 +821,19 @@ def build_card_images() -> dict[str, str]:
     return result
 
 
-def build_html(runs: list[dict]) -> str:
+def dashboard_body_html(subtitle: str) -> str:
     """
-    Build and return the full HTML dashboard as a string.
-
-    CSS and JS are read from dashboard.css / dashboard.js (sibling files),
-    then inlined into the output so it remains self-contained.
-    The JS template contains a {chart_data} placeholder that Python replaces
-    with the actual JSON before embedding.
+    The markup between <body> and the <script> tag: skip link, header, the
+    shared filter bar, and all five pages (Overview / Character Detail / Run
+    Detail / Card Stats / Seed Data). Shared by build_html() (the local HTML
+    generator) and build_site.py (the static site, whose subtitle differs
+    since there's no "local save data" on the live site).
     """
-    characters  = sorted({run["char"] for run in runs})
-    ascensions  = sorted({run["asc"]  for run in runs})
-    # Sort builds newest-first by numeric version parts (e.g. "v0.107.1" > "v0.99.1"),
-    # not lexicographically — a plain string sort puts "v0.99.1" after "v0.107.1".
-    # Non-numeric builds (e.g. "UNKNOWN") always sort last, oldest-to-newest order.
-    def build_sort_key(build: str) -> tuple:
-        parts = build.lstrip("v").split(".")
-        nums = [int(p) for p in parts if p.isdigit()]
-        return (1, nums) if nums else (0,)
-    builds = sorted({run["build"] for run in runs}, key=build_sort_key, reverse=True)
-    char_colors = [CHAR_COLORS.get(c, "#888") for c in characters]
-
-    card_images = build_card_images()
-    node_icons  = build_node_icons()
-    card_final  = build_card_final_images()
-    card_data   = json.loads(_CARD_DATA_FILE.read_text(encoding="utf-8"))  if _CARD_DATA_FILE.exists()  else {}
-    relic_data  = json.loads(_RELIC_DATA_FILE.read_text(encoding="utf-8")) if _RELIC_DATA_FILE.exists() else {}
-    relic_data  = resolve_image_paths(relic_data)
-    potion_data = json.loads(_POTION_DATA_FILE.read_text(encoding="utf-8")) if _POTION_DATA_FILE.exists() else {}
-    potion_data = resolve_image_paths(potion_data)
-
-    # Build a map of encounter ID → human-readable label for use in the UI.
-    #
-    # Cards and relics prefer the game's own localized title and fall back to
-    # prettifying the id. The fallback alone is wrong for 64 cards and 53
-    # relics, because an id has already lost the real name's punctuation and
-    # casing: ASCENDERS_BANE -> "Ascenders Bane" (Ascender's Bane), BEGONE ->
-    # "Begone" (BEGONE!), BLOOD_SOAKED_ROSE -> "Blood Soaked Rose"
-    # (Blood-Soaked Rose), ART_OF_WAR -> "Art Of War" (Art of War).
-    enc_labels: dict[str, str] = {}
-    card_labels: dict[str, str] = {}
-    relic_labels: dict[str, str] = {}
-    for run in runs:
-        for fight in run.get("fights", []):
-            enc = fight["enc"]
-            if enc and enc not in enc_labels:
-                enc_labels[enc] = fmt_encounter(enc)
-        for cid in run.get("cardsOffered", {}):
-            if cid and cid not in card_labels:
-                card_labels[cid] = card_data.get(cid, {}).get("title") or fmt_card(cid)
-        for rid in run.get("relicsOffered", {}):
-            if rid and rid not in relic_labels:
-                relic_labels[rid] = relic_data.get(rid, {}).get("title") or fmt_relic(rid)
-
-    # Every card/relic the game knows about, not just the ones this player has
-    # been offered — node tooltips name cards that were skipped or removed, and
-    # those never appear in cardsOffered.
-    for cid, meta in card_data.items():
-        if meta.get("title"):
-            card_labels.setdefault(cid, meta["title"])
-    for rid, meta in relic_data.items():
-        if meta.get("title"):
-            relic_labels.setdefault(rid, meta["title"])
-
-    # card_char is derived from card_data["pool"] set by extract_card_data.py,
-    # which reads portrait directory structure — authoritative game data.
-    card_char: dict[str, str] = {
-        cid: meta["pool"]
-        for cid, meta in card_data.items()
-        if "pool" in meta
-    }
-
-    chart_data = json.dumps({
-        "characters":      characters,
-        "charColors":      char_colors,
-        "ascensions":      ascensions,
-        "builds":          builds,
-        "encLabels":       enc_labels,
-        "encGroups":       ENCOUNTER_GROUPS,
-        "cardLabels":      card_labels,
-        "relicLabels":     relic_labels,
-        "cardImages":         card_images,
-        "cardImageOverrides": _PORTRAIT_OVERRIDES,
-        "cardData":           card_data,
-        "cardChar":           card_char,
-        "relicData":          relic_data,
-        "potionData":         potion_data,
-        "nodeIcons":          node_icons,
-        "cardFinal":          card_final,
-        "runsData":           runs,
-    })
-
-    css = build_font_css() + "\n" + (_HERE / "dashboard.css").read_text(encoding="utf-8")
-    # Substitute the whole DATA declaration rather than the bare
-    # "{chart_data}" token. The token used to appear in dashboard.js's header
-    # comment too, and str.replace() rewrites every occurrence -- so the entire
-    # JSON was injected a second time inside a comment, doubling the size of
-    # the output file. The count check keeps that from silently coming back.
-    decl = "const DATA = {chart_data};"
-    js_src = read_dashboard_js()
-    if js_src.count(decl) != 1:
-        raise SystemExit(
-            f"js/data.js must contain exactly one {decl!r} line, "
-            f"found {js_src.count(decl)}"
-        )
-    js = js_src.replace(decl, f"const DATA = {chart_data};")
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Slay the Spire 2 — Run History</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
-  <style>
-{css}
-  </style>
-</head>
-<body>
-<a class="skip-link" href="#main-content">Skip to content</a>
+    return f"""<a class="skip-link" href="#main-content">Skip to content</a>
 
 <header>
 <h1>Slay the Spire 2</h1>
-<p class="subtitle">Run history dashboard. Generated from local save data.</p>
+<p class="subtitle">{subtitle}</p>
 </header>
 
 <nav class="page-tabs" aria-label="Pages">
@@ -936,6 +845,11 @@ def build_html(runs: list[dict]) -> str:
 </nav>
 
 <nav class="filter-bar filter-bar-2row" id="shared-filter-bar" aria-label="Filters">
+  <button type="button" class="filter-summary" id="shared-filter-summary" aria-expanded="false">
+    <span class="filter-label">Filters</span>
+    <span class="filter-summary-text"></span>
+    <span class="filter-summary-caret" aria-hidden="true">▾</span>
+  </button>
   <div class="filter-row">
     <div class="filter-group">
       <span class="filter-label">Character</span>
@@ -952,9 +866,10 @@ def build_html(runs: list[dict]) -> str:
   <div class="filter-row">
     <div class="filter-group">
       <span class="filter-label">Ascension</span>
-      <div id="shared-asc-checkboxes" style="display:flex;gap:0.4rem;flex-wrap:wrap"></div>
-      <button class="toggle-btn" id="shared-asc-all">All</button>
-      <button class="toggle-btn" id="shared-asc-none">None</button>
+      <button class="toggle-btn" id="shared-asc-granular" aria-pressed="false" title="Pick individual ascension levels, and split the tables into one column per level instead of A0–9 / A10 / All">Show granular</button>
+      <div id="shared-asc-checkboxes" style="display:none;gap:0.4rem;flex-wrap:wrap"></div>
+      <button class="toggle-btn" id="shared-asc-all" style="display:none">All</button>
+      <button class="toggle-btn" id="shared-asc-none" style="display:none">None</button>
     </div>
     <div class="filter-group filter-dropdown-wrap">
       <span class="filter-label">Build</span>
@@ -984,7 +899,7 @@ def build_html(runs: list[dict]) -> str:
     </div>
     <div class="filter-group">
       <button class="toggle-btn" id="shared-filters-save" title="Remember the current filters and use them as the default next time you open this dashboard">Save as default</button>
-      <button class="toggle-btn" id="shared-filters-reset" title="Clear any saved filter default and revert to the built-in defaults">Reset filters</button>
+      <button class="toggle-btn" id="shared-filters-reset" title="Revert to the built-in filters. Your saved default is kept unless you click Save as default">Reset filters</button>
       <span id="shared-filters-unsaved" title="You've changed filters since your last save — click Save as default to keep them" style="display:none;align-items:center;justify-content:center;width:1.15rem;height:1.15rem;margin-left:0.4rem;border-radius:50%;background:#e0c468;color:#13132a;font-size:0.75rem;font-weight:700;cursor:default;user-select:none">!</span>
       <span id="shared-filters-status" style="color:#8a8aa0;font-size:0.8rem;margin-left:0.4rem"></span>
     </div>
@@ -1101,11 +1016,11 @@ def build_html(runs: list[dict]) -> str:
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2>Boss Win Rate</h2>
+    <h2 data-tip="Win % of that individual fight, by ascension. Hover a cell for details">Boss Win Rate</h2>
     <div class="pivot-wrap"><table class="pivot" id="boss-win-table"></table></div>
   </div>
   <div class="chart-box">
-    <h2>Elite Win Rate</h2>
+    <h2 data-tip="Win % of that individual fight, by ascension. Hover a cell for details">Elite Win Rate</h2>
     <div class="pivot-wrap"><table class="pivot" id="elite-win-table"></table></div>
   </div>
 </div>
@@ -1219,7 +1134,7 @@ def build_html(runs: list[dict]) -> str:
 
 <div class="chart-box">
   <h2 id="seeds-title" data-tip="Seeds whose run offered every searched card or relic">Matching Seeds</h2>
-  <div>
+  <div class="pivot-wrap">
     <table class="pivot" id="seeds-table">
       <thead><tr id="seeds-thead-row">
         <th style="text-align:left">Seed</th>
@@ -1266,7 +1181,113 @@ def build_html(runs: list[dict]) -> str:
 
 </div><!-- end #page-detail -->
 
-</main>
+</main>"""
+
+
+def build_html(runs: list[dict]) -> str:
+    """
+    Build and return the full HTML dashboard as a string.
+
+    CSS and JS are read from dashboard.css / dashboard.js (sibling files),
+    then inlined into the output so it remains self-contained.
+    The JS template contains a {chart_data} placeholder that Python replaces
+    with the actual JSON before embedding.
+    """
+    characters  = sorted({run["char"] for run in runs})
+    ascensions  = sorted({run["asc"]  for run in runs})
+    # Sort builds newest-first by numeric version parts (e.g. "v0.107.1" > "v0.99.1"),
+    # not lexicographically — a plain string sort puts "v0.99.1" after "v0.107.1".
+    # Non-numeric builds (e.g. "UNKNOWN") always sort last, oldest-to-newest order.
+    def build_sort_key(build: str) -> tuple:
+        parts = build.lstrip("v").split(".")
+        nums = [int(p) for p in parts if p.isdigit()]
+        return (1, nums) if nums else (0,)
+    builds = sorted({run["build"] for run in runs}, key=build_sort_key, reverse=True)
+    char_colors = [CHAR_COLORS.get(c, "#888") for c in characters]
+
+    card_images = build_card_images()
+    node_icons  = build_node_icons()
+    card_final  = build_card_final_images()
+    card_data   = json.loads(_CARD_DATA_FILE.read_text(encoding="utf-8"))  if _CARD_DATA_FILE.exists()  else {}
+    relic_data  = json.loads(_RELIC_DATA_FILE.read_text(encoding="utf-8")) if _RELIC_DATA_FILE.exists() else {}
+    relic_data  = resolve_image_paths(relic_data)
+    potion_data = json.loads(_POTION_DATA_FILE.read_text(encoding="utf-8")) if _POTION_DATA_FILE.exists() else {}
+    potion_data = resolve_image_paths(potion_data)
+
+    # Build a map of encounter ID → human-readable label for use in the UI.
+    #
+    # Cards and relics prefer the game's own localized title and fall back to
+    # prettifying the id. The fallback alone is wrong for 64 cards and 53
+    # relics, because an id has already lost the real name's punctuation and
+    # casing: ASCENDERS_BANE -> "Ascenders Bane" (Ascender's Bane), BEGONE ->
+    # "Begone" (BEGONE!), BLOOD_SOAKED_ROSE -> "Blood Soaked Rose"
+    # (Blood-Soaked Rose), ART_OF_WAR -> "Art Of War" (Art of War).
+    enc_labels: dict[str, str] = {}
+    card_labels: dict[str, str] = {}
+    relic_labels: dict[str, str] = {}
+    for run in runs:
+        for fight in run.get("fights", []):
+            enc = fight["enc"]
+            if enc and enc not in enc_labels:
+                enc_labels[enc] = fmt_encounter(enc)
+        for cid in run.get("cardsOffered", {}):
+            if cid and cid not in card_labels:
+                card_labels[cid] = card_data.get(cid, {}).get("title") or fmt_card(cid)
+        for rid in run.get("relicsOffered", {}):
+            if rid and rid not in relic_labels:
+                relic_labels[rid] = relic_data.get(rid, {}).get("title") or fmt_relic(rid)
+
+    # Every card/relic the game knows about, not just the ones this player has
+    # been offered — node tooltips name cards that were skipped or removed, and
+    # those never appear in cardsOffered.
+    for cid, meta in card_data.items():
+        if meta.get("title"):
+            card_labels.setdefault(cid, meta["title"])
+    for rid, meta in relic_data.items():
+        if meta.get("title"):
+            relic_labels.setdefault(rid, meta["title"])
+
+    card_char = build_card_char(card_data)
+
+    chart_data = json.dumps({
+        "characters":      characters,
+        "charColors":      char_colors,
+        "ascensions":      ascensions,
+        "builds":          builds,
+        "encLabels":       enc_labels,
+        "encGroups":       ENCOUNTER_GROUPS,
+        "cardLabels":      card_labels,
+        "relicLabels":     relic_labels,
+        "cardImages":         card_images,
+        "cardImageOverrides": _PORTRAIT_OVERRIDES,
+        "cardData":           card_data,
+        "cardChar":           card_char,
+        "relicData":          relic_data,
+        "potionData":         potion_data,
+        "nodeIcons":          node_icons,
+        "cardFinal":          card_final,
+        "runsData":           runs,
+    })
+
+    css = (_HERE / "dashboard.css").read_text(encoding="utf-8")
+    # data.js no longer declares DATA itself (it's a global provided before the
+    # bundle runs — see js/data.js's header comment), so emit the declaration
+    # here, ahead of the concatenated js/*.js.
+    js = f"const DATA = {chart_data};\n" + read_dashboard_js()
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Slay the Spire 2 — Run History</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+  <style>
+{css}
+  </style>
+</head>
+<body>
+{dashboard_body_html("Run history dashboard. Generated from local save data.")}
 
 <script>
 {js}

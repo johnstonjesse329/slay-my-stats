@@ -1,0 +1,2 @@
+# Git hooks run under sh, which chokes on CRLF; keep them LF even with core.autocrlf=true.
+githooks/* text eol=lf

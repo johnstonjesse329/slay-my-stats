@@ -5,6 +5,10 @@ cdk.out/
 .claude/settings.json
 .claude/review-runs/
 
+# build_site.py output and per-user data blobs — generated locally, never committed
+dist/
+local_data/
+
 # Full-resolution game asset extractions — too large for git
 # Run the GDRE extraction + python downscale_portraits.py to regenerate locally
 pck_recover/
@@ -22,3 +26,4 @@ extract_card_ui.py
 calibrate_capture.py
 capture_cards.py
 download_card_images.py
+.playwright-mcp/

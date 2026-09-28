@@ -48,12 +48,25 @@ RELIC_W = 176
 # reasoning as relics.
 POTION_W = 176
 
-# run.py only maps these node types, so copying all 128 files in run_history/
-# (per-boss variants, outlines) would be waste. Kept at source resolution:
-# they're 128x128 and the nine of them total ~83 KB.
+# run.py only maps these node types, plus the thirteen per-boss portraits
+# (<name>_boss.png) it uses for boss timeline nodes, the eight per-Ancient
+# portraits (darv/neow/nonupeipe/orobas/pael/tanx/tezcatara/vakuu.png) it
+# uses for Ancient timeline nodes, and the unknown_elite/shop/treasure.png
+# variants for a "?" room by what it turned out to be — the outline variants
+# aren't used anywhere and are skipped. Kept at source resolution: they're
+# 128x128 and the whole set totals well under 200 KB.
 NODE_ICON_FILES = [
     "monster.png", "elite.png", "rest_site.png", "shop.png",
-    "treasure.png", "unknown_monster.png", "ancient.png", "event.png",
+    "treasure.png", "unknown_monster.png", "unknown_elite.png",
+    "unknown_shop.png", "unknown_treasure.png",
+    "ancient.png", "event.png",
+    "aeonglass_boss.png", "ceremonial_beast_boss.png", "doormaker_boss.png",
+    "kaiser_crab_boss.png", "knowledge_demon_boss.png",
+    "lagavulin_matriarch_boss.png", "queen_boss.png", "soul_fysh_boss.png",
+    "test_subject_boss.png", "the_insatiable_boss.png", "the_kin_boss.png",
+    "vantom_boss.png", "waterfall_giant_boss.png",
+    "darv.png", "neow.png", "nonupeipe.png", "orobas.png", "pael.png",
+    "tanx.png", "tezcatara.png", "vakuu.png",
 ]
 
 
@@ -118,10 +131,9 @@ def main():
     copied, missing, isize = copy_node_icons()
     print(f"Icons  : {copied} icons -> {ICON_DST}  ({isize/1024:.0f} KB)")
     if missing:
-        # There is no generic boss.png — boss icons are per-encounter
-        # (vantom_boss.png, the_kin_boss.png, ...), so run.py falls back to an
-        # emoji for boss nodes. Anything else missing means the extraction is
-        # stale or the game renamed an asset.
+        # A missing file means the extraction is stale or the game renamed
+        # an asset; run.py falls back to an emoji for any node type (or
+        # boss encounter) whose icon didn't make it into node_icons/.
         print(f"  ! missing: {', '.join(missing)}")
 
 

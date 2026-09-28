@@ -185,16 +185,17 @@ function renderPersonalBests() {
     </div>`;
   };
 
+  // Stacked, not side-by-side: splitting the card's already-narrow width
+  // (a 5-column grid) into two more columns left ~65px of text per item,
+  // so almost every card/relic name and its pick count truncated to an
+  // illegible "Bloodle… / 279 pick…". One item per full-width row gives
+  // each name/stat line roughly triple that.
   const favRow = (labelL, labelR, htmlL, htmlR) =>
-    `<div style="border-top:1px solid #3f4147;padding-top:0.4rem;margin-bottom:0.4rem">
-      <div style="display:flex;gap:0.75rem;margin-bottom:0.25rem">
-        <div style="flex:1;font-size:0.68rem;color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em">${labelL}</div>
-        <div style="flex:1;font-size:0.68rem;color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em">${labelR}</div>
-      </div>
-      <div style="display:flex;gap:0.75rem">
-        <div style="flex:1;min-width:0">${htmlL}</div>
-        <div style="flex:1;min-width:0">${htmlR}</div>
-      </div>
+    `<div style="border-top:1px solid #3f4147;padding-top:0.3rem;margin-bottom:0.3rem">
+      <div style="font-size:0.68rem;color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-bottom:0.15rem">${labelL}</div>
+      <div style="margin-bottom:0.3rem">${htmlL}</div>
+      <div style="font-size:0.68rem;color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-bottom:0.15rem">${labelR}</div>
+      <div>${htmlR}</div>
     </div>`;
 
   const favorites = aggregateCharFavorites();
@@ -216,28 +217,18 @@ function renderPersonalBests() {
       </div>
       ${noRuns
         ? `<div style="color:#8a8aa0;font-size:0.8rem;padding:0.25rem 0">No wins yet</div>`
-        : `<div style="border-top:1px solid #3f4147;padding-top:0.4rem;display:flex;gap:0.75rem;margin-bottom:0.5rem">
+        : `<div style="border-top:1px solid #3f4147;padding-top:0.4rem;margin-bottom:0.5rem;display:grid;grid-template-columns:repeat(2, 1fr);gap:0.5rem 0.75rem">
             ${stat("Win Streak", b.currentStreak > 0 ? b.currentStreak : "—")}
             ${stat("Best Streak", b.longestStreak || "—")}
             ${statLink("Fastest Win", b.fastestWin, fmtHrsMinSec)}
-          </div>
-          <div style="border-top:1px solid #3f4147;padding-top:0.4rem;display:flex;gap:0.75rem;margin-bottom:0.5rem">
             ${statLink("Most Elites", b.mostElites)}
             ${statLink("Fewest Elites (W)", b.fewestElites)}
-          </div>
-          <div style="border-top:1px solid #3f4147;padding-top:0.4rem;display:flex;gap:0.75rem;margin-bottom:0.5rem">
             ${statLink("Max Cards (W)", b.mostCards)}
             ${statLink("Min Cards (W)", b.fewestCards)}
-          </div>
-          <div style="border-top:1px solid #3f4147;padding-top:0.4rem;display:flex;gap:0.75rem;margin-bottom:0.5rem">
             ${statLink("Max Relics (W)", b.mostRelics)}
             ${statLink("Min Relics (W)", b.fewestRelics)}
-          </div>
-          <div style="border-top:1px solid #3f4147;padding-top:0.4rem;display:flex;gap:0.75rem;margin-bottom:0.5rem">
             ${statLink("Max HP (W)", b.mostMaxHp)}
             ${statLink("Min HP (W)", b.fewestMaxHp)}
-          </div>
-          <div style="border-top:1px solid #3f4147;padding-top:0.4rem;display:flex;gap:0.75rem;margin-bottom:0.5rem">
             ${statLink("Most Boss Turns (W)", b.mostFinalBossTurns)}
             ${statLink("Fewest Boss Turns (W)", b.fewestFinalBossTurns)}
           </div>
@@ -376,17 +367,17 @@ function favoriteItemHtml(kind, item, countLabel = "picks") {
   let thumbHtml, tooltipHtml, tooltipClass;
   if (kind === "card") {
     thumbHtml = cardFaceAvailable()
-      ? `<div class="fav-item-face">${renderCardFace(item.id, 0, 34)}</div>`
+      ? `<div class="fav-item-face">${renderCardFace(item.id, 0, 26)}</div>`
       : (() => {
           const src = cardImgSrc(item.id);
-          return src ? `<img src="${src}" alt="${label}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;flex:0 0 auto">` : "";
+          return src ? `<img loading="lazy" src="${src}" alt="${label}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;flex:0 0 auto">` : "";
         })();
     tooltipHtml = buildCardTooltip(item.id, 0);
     tooltipClass = "card-tooltip-wrap";
   } else {
     const src = relicImgSrc(item.id);
     thumbHtml = src
-      ? `<img src="${src}" alt="${label}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;flex:0 0 auto">`
+      ? `<img loading="lazy" src="${src}" alt="${label}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;flex:0 0 auto">`
       : "";
     tooltipHtml = buildRelicTooltip(item.id);
     tooltipClass = "relic-tooltip-wrap";
@@ -450,24 +441,24 @@ function winCell(bucket, isAll) {
 
 function renderWinPivot(pivotData) {
   const chars = DATA.characters;
-  const ascs  = DATA.ascensions;
+  const ascs  = ascColumns();
 
   let html = `<thead><tr>
     <th class="char-head">Character</th>
-    ${ascs.map(a => `<th>A${a}</th>`).join("")}
+    ${ascs.map(col => `<th>${col.label}</th>`).join("")}
     <th class="all-col" style="border-left:2px solid #3f4147">ALL</th>
   </tr></thead><tbody>`;
 
   chars.forEach(char => {
     html += `<tr>${charNameCell(char)}`;
-    ascs.forEach(asc => { html += winCell(pivotData[char]?.[asc], false); });
+    ascs.forEach(col => { html += winCell(pivotData[char]?.[col.key], false); });
     html += winCell(pivotData[char]?.["ALL"], true);
     html += `</tr>`;
   });
 
   html += `<tr class="total-row">
     <td class="char-name" style="color:#e0c468">All Characters</td>`;
-  ascs.forEach(asc => { html += winCell(pivotData["ALL"]?.[asc], false); });
+  ascs.forEach(col => { html += winCell(pivotData["ALL"]?.[col.key], false); });
   html += winCell(pivotData["ALL"]?.["ALL"], true);
   html += `</tr></tbody>`;
 
@@ -506,30 +497,30 @@ const ACT3_BOSS_IDS = new Set(
     .flatMap(g => g.ids)
 );
 
-function aggregateFinalBossWins(filteredRuns) {
-  const chars = DATA.characters;
-  const ascs  = DATA.ascensions;
-
-  const makeBucket = () => ({ reached: 0, won: 0 });
-  const byCA = {};
-  [...chars, "ALL"].forEach(char => {
-    byCA[char] = {};
-    [...ascs, ...A10_STAGE_KEYS, "ALL"].forEach(asc => { byCA[char][asc] = makeBucket(); });
-  });
-
-  filteredRuns.forEach(run => {
+// A run's final-boss win/loss is marked into byCA -- either the per-column
+// buckets (asc column + A10 stage columns) or, when onlyAll is set, just the
+// "ALL" bucket. Two passes over two different run sets (see
+// aggregateFinalBossWins) share this so the "ALL" column can mean "every
+// ascension" while the per-column buckets keep respecting the filter.
+function markFinalBossWins(byCA, runs, onlyAll) {
+  runs.forEach(run => {
     const fights = run.fights || [];
     const bossFights = fights.filter(f => f.type === "boss");
     if (!bossFights.length) return;  // never reached a boss node
 
     const finalBoss = bossFights[bossFights.length - 1];
     const won = finalBoss.won;
-
     const mark = (bucket) => { bucket.reached += 1; if (won) bucket.won += 1; };
-    if (byCA[run.char]?.[run.asc]) mark(byCA[run.char][run.asc]);
-    if (byCA[run.char]?.["ALL"])   mark(byCA[run.char]["ALL"]);
-    if (byCA["ALL"]?.[run.asc])    mark(byCA["ALL"][run.asc]);
-    mark(byCA["ALL"]["ALL"]);
+
+    if (onlyAll) {
+      if (byCA[run.char]?.["ALL"]) mark(byCA[run.char]["ALL"]);
+      mark(byCA["ALL"]["ALL"]);
+      return;
+    }
+
+    const asc = ascColumnKey(run.asc);
+    if (byCA[run.char]?.[asc]) mark(byCA[run.char][asc]);
+    if (byCA["ALL"]?.[asc])    mark(byCA["ALL"][asc]);
 
     if (run.asc === 10) {
       const act3Bosses = bossFights.filter(f => ACT3_BOSS_IDS.has(f.enc));
@@ -547,23 +538,38 @@ function aggregateFinalBossWins(filteredRuns) {
       }
     }
   });
+}
+
+function aggregateFinalBossWins(filteredRuns, allAscRuns) {
+  const chars = DATA.characters;
+  const ascs  = ascColumns().map(col => col.key);
+
+  const makeBucket = () => ({ reached: 0, won: 0 });
+  const byCA = {};
+  [...chars, "ALL"].forEach(char => {
+    byCA[char] = {};
+    [...ascs, ...A10_STAGE_KEYS, "ALL"].forEach(asc => { byCA[char][asc] = makeBucket(); });
+  });
+
+  markFinalBossWins(byCA, filteredRuns, false);
+  markFinalBossWins(byCA, allAscRuns, true);
 
   return byCA;
 }
 
-function renderFinalBossWinPivot(filteredRuns) {
+function renderFinalBossWinPivot(filteredRuns, allAscRuns) {
   const chars = DATA.characters;
-  const ascs  = DATA.ascensions;
-  const pivotData = aggregateFinalBossWins(filteredRuns);
+  const pivotData = aggregateFinalBossWins(filteredRuns, allAscRuns);
 
-  // Ascension 10 has two Act 3 bosses — split its single column into two
-  // ("1st Boss" / "2nd Boss") so the double-boss stage is visible on its own.
+  // Ascension 10 has two Act 3 bosses — split its column (A10 on its own,
+  // granular or bucketed) into "1st Boss" / "2nd Boss" so the double-boss
+  // stage is visible on its own.
   const cols = [];
-  ascs.forEach(a => {
-    if (a === 10 && ascs.includes(10)) {
+  ascColumns().forEach(col => {
+    if (col.ascs.length === 1 && col.ascs[0] === 10) {
       cols.push({ key: "10-1", label: "A10<br>1st Boss" }, { key: "10-2", label: "A10<br>2nd Boss" });
     } else {
-      cols.push({ key: a, label: `A${a}` });
+      cols.push(col);
     }
   });
 
@@ -624,7 +630,7 @@ function winLossAvgCell(bucket, winKey, lossKey, color, isAll = false, minKey = 
 
 function renderDeckPivot(tableId, pivotData, valueKey, winKey, lossKey, minKey, maxKey, color, showRange = true) {
   const chars = DATA.characters;
-  const ascs  = DATA.ascensions;
+  const ascs  = ascColumns();
 
   const subStyle = `font-size:0.72rem;color:#8a8aa0;letter-spacing:0;text-transform:none;font-weight:400`;
   const allHeader = `<th style="border-left:2px solid #3f4147;text-align:center;padding:0.5rem 0.9rem;color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em">
@@ -632,7 +638,7 @@ function renderDeckPivot(tableId, pivotData, valueKey, winKey, lossKey, minKey, 
 
   let html = `<thead><tr>
     <th class="char-head">Character</th>
-    ${ascs.map(a => `<th>A${a}</th>`).join("")}
+    ${ascs.map(col => `<th>${col.label}</th>`).join("")}
     ${allHeader}
   </tr></thead><tbody>`;
 
@@ -641,13 +647,13 @@ function renderDeckPivot(tableId, pivotData, valueKey, winKey, lossKey, minKey, 
 
   chars.forEach(char => {
     html += `<tr>${charNameCell(char)}`;
-    ascs.forEach(asc => { html += winLossAvgCell(pivotData[char]?.[asc], winKey, lossKey, color, false, minKey, maxKey); });
+    ascs.forEach(col => { html += winLossAvgCell(pivotData[char]?.[col.key], winKey, lossKey, color, false, minKey, maxKey); });
     html += allAvgCell(pivotData[char]?.["ALL"]);
     html += `</tr>`;
   });
 
   html += `<tr class="total-row"><td class="char-name" style="color:#e0c468">All Characters</td>`;
-  ascs.forEach(asc => { html += winLossAvgCell(pivotData["ALL"]?.[asc], winKey, lossKey, color, false, minKey, maxKey); });
+  ascs.forEach(col => { html += winLossAvgCell(pivotData["ALL"]?.[col.key], winKey, lossKey, color, false, minKey, maxKey); });
   html += allAvgCell(pivotData["ALL"]?.["ALL"]);
   html += `</tr></tbody>`;
 

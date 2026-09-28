@@ -14,10 +14,37 @@ const NODE_ICONS = {
   event:     "❕",
 };
 
-function nodeIconHtml(type, size = 18) {
-  const src = DATA.nodeIcons && DATA.nodeIcons[type];
-  if (src) return `<img class="node-icon-img" src="${src}" width="${size}" height="${size}" alt="${type}">`;
-  return `<span class="node-icon-emoji">${NODE_ICONS[type] || "❓"}</span>`;
+// key is what's looked up in DATA.nodeIcons (a node type, or for bosses an
+// encounter id like "ENCOUNTER.QUEEN_BOSS"); fallbackType is the plain node
+// type used for the emoji/alt-text fallback when no icon URL is found.
+function nodeIconHtml(key, size = 18, fallbackType = key) {
+  const src = DATA.nodeIcons && DATA.nodeIcons[key];
+  if (src) return `<img loading="lazy" class="node-icon-img" src="${src}" width="${size}" height="${size}" alt="${fallbackType}">`;
+  return `<span class="node-icon-emoji">${NODE_ICONS[fallbackType] || "❓"}</span>`;
+}
+
+// A resolved "?" room's `enc` field says what it turned out to be, except
+// when it was a shop or treasure — both leave enc empty, so infer from the
+// node's own fields instead. Returns a key into DATA.nodeIcons.
+function unknownNodeIconKey(node) {
+  const enc = node.enc || "";
+  if (enc.startsWith("EVENT.")) return "event";           // a "?" event
+  if (/_ELITE$/.test(enc)) return "unknown_elite";         // a "?" elite fight
+  if (enc) return "unknown";                               // a "?" normal/weak fight
+  // Empty enc: shop or treasure, undistinguished in the save. A shop's own
+  // fields (for-sale lists, purchases) win even when relicsRewarded is also
+  // set — in the test data, all 27 nodes with both were a shop's for-sale
+  // list alongside a bonus relic reward, not a treasure room, so shop wins.
+  const isShop = (node.cardsBought && node.cardsBought.length) ||
+                 (node.relicsBought && node.relicsBought.length) ||
+                 (node.potionsBought && node.potionsBought.length) ||
+                 (node.relicsForSale && node.relicsForSale.length) ||
+                 (node.potionsForSale && node.potionsForSale.length);
+  // The game's "?" variants, not the plain shop/treasure icons, so the
+  // timeline still shows it was a "?" room.
+  if (isShop) return "unknown_shop";
+  if (node.relicsRewarded && node.relicsRewarded.length) return "unknown_treasure";
+  return "unknown"; // no signal either way — keep the generic "?" icon
 }
 
 const ACT_LABELS = { 1: "Act 1", 2: "Act 2", 3: "Act 3" };
@@ -193,9 +220,10 @@ function renderDetailRun(run) {
         const src = relicImgSrc(id);
         const tip = buildRelicTooltip(id);
         const iconHtml = src
-          ? `<img class="run-boon-icon" src="${src}" alt="${fmtRelicLabel(id)}">`
+          ? `<img loading="lazy" class="run-boon-icon" src="${src}" alt="${fmtRelicLabel(id)}">`
           : `<span class="run-summary-value">${fmtRelicLabel(id)}</span>`;
-        return `<span class="run-boon-wrap">${iconHtml}${tip ? `<span class="relic-tooltip-wrap">${tip}</span>` : ""}</span>`;
+        // tabindex: same touch/keyboard tooltip-reveal parity as .relic-tile.
+        return `<span class="run-boon-wrap" tabindex="0">${iconHtml}${tip ? `<span class="relic-tooltip-wrap">${tip}</span>` : ""}</span>`;
       }).join("")}</span>`
     : "";
 
@@ -303,7 +331,7 @@ function buildNodeTooltip(node) {
   // potions get their own icons.
   const fmtPotion = fmtPotionLabel;
   const iconRow = (cls, src, label, extra = "") =>
-    `<div class="${cls} nt-item">${src ? `<img class="nt-item-icon" src="${src}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
+    `<div class="${cls} nt-item">${src ? `<img loading="lazy" class="nt-item-icon" src="${src}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
   const nodeCardHtml = (id, dim = false) => cardFaceAvailable()
     ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}">${renderCardFace(id, 0, cardFaceWidth(84, 128))}</div>`
     : `<div class="${dim ? "nt-skipped" : "nt-reward-card"}">${fmtCardLabel(id)}</div>`;
@@ -438,7 +466,17 @@ function renderDetailTimeline(run) {
   const html = legend + actNums.map(actNum => {
     const actNodes = acts[actNum];
     const nodeCards = actNodes.map(node => {
-      const icon    = nodeIconHtml(node.type, 30);
+      // Boss nodes show the specific boss's portrait (keyed by encounter id)
+      // when one exists, falling back to the generic crown emoji otherwise.
+      // Ancient nodes work the same way but fall back to the generic Ancient
+      // icon (not emoji) when a specific portrait isn't found. "?" rooms pick
+      // their icon from how they resolved (see unknownNodeIconKey).
+      const iconKey =
+        node.type === "boss" && node.enc ? node.enc :
+        node.type === "ancient" ? (node.enc && DATA.nodeIcons && DATA.nodeIcons[node.enc] ? node.enc : "ancient") :
+        node.type === "unknown" ? unknownNodeIconKey(node) :
+        node.type;
+      const icon    = nodeIconHtml(iconKey, 30, node.type);
       const hasDmg  = node.dmg > 0;
       const hpClass = hasDmg ? "node-hp damaged" : "node-hp";
       const hpText  = `${node.hpAfter} HP`;
@@ -694,9 +732,17 @@ function relicInfo(id) {
   return (DATA.relicData && DATA.relicData[id]) || null;
 }
 
+// A known item with no art (DEPRECATED_RELIC, DEPRECATED_POTION, MOCK_*
+// test potions — the game ships none for them) gets the "?" event icon, so
+// it still renders as an icon with its tooltip instead of a bare text label.
+// Unknown ids stay null: with no tooltip to name them, the text label is better.
+function artOrPlaceholder(info) {
+  if (!info) return null;
+  return info.imagePath || (DATA.nodeIcons && DATA.nodeIcons.event) || null;
+}
+
 function relicImgSrc(id) {
-  const info = relicInfo(id);
-  return (info && info.imagePath) || null;
+  return artOrPlaceholder(relicInfo(id));
 }
 
 function potionInfo(id) {
@@ -704,8 +750,7 @@ function potionInfo(id) {
 }
 
 function potionImgSrc(id) {
-  const info = potionInfo(id);
-  return (info && info.imagePath) || null;
+  return artOrPlaceholder(potionInfo(id));
 }
 
 // Prefer the game's own localized name. The id-prettifying fallback gets the
@@ -726,7 +771,7 @@ function buildPotionTooltip(id) {
   const rarColor = { Common: "#ccc", Uncommon: "#aad4ff", Rare: "#ffd700", Event: "#c49fe8" }[info.rarity] || "#bcbcd0";
   const desc = substituteDescVars(info.desc || "", info.vars);
   return `<div class="relic-tooltip">
-    ${src ? `<img class="rt-art" src="${src}" alt="${name}">` : ""}
+    ${src ? `<img loading="lazy" class="rt-art" src="${src}" alt="${name}">` : ""}
     <div class="rt-header">${name}${info.rarity ? `<div class="rt-rarity" style="color:${rarColor}">${info.rarity}</div>` : ""}</div>
     ${desc ? `<div class="rt-desc">${desc.replace(/\n/g, "<br>")}</div>` : ""}
   </div>`;
@@ -740,7 +785,7 @@ function buildRelicTooltip(id) {
   const rarColor = { Common: "#ccc", Uncommon: "#aad4ff", Rare: "#ffd700", Boss: "#e88", Starter: "#bcbcd0" }[info.rarity] || "#bcbcd0";
   const rawDesc = info.desc || "";
   const desc = substituteDescVars(rawDesc, info.vars);
-  const artHtml = src ? `<img class="rt-art" src="${src}" alt="${name}">` : "";
+  const artHtml = src ? `<img loading="lazy" class="rt-art" src="${src}" alt="${name}">` : "";
   const rarHtml = info.rarity ? `<div class="rt-rarity" style="color:${rarColor}">${info.rarity}</div>` : "";
   const descHtml = desc ? `<div class="rt-desc">${desc.replace(/\n/g, "<br>")}</div>` : "";
   return `<div class="relic-tooltip">
@@ -752,12 +797,9 @@ function buildRelicTooltip(id) {
 
 // Resolves {{Placeholder}} tokens in a card or relic description.
 //
-// Shared by both because the token grammar is identical, but the data
-// behind it isn't: card_data.json ships a `vars` map per card, while
-// relic_data.json ships none at all. That's fine — 35 of the 36 relic
-// placeholders are `:energy`/`:stars` glyph tokens, whose repeat count
-// defaults to 1 and needs no data. So `vars` is optional here; only bare
-// numeric tokens genuinely require it, and those still fall back to "?".
+// Shared by cards, relics and potions: each ships a `vars` map read from the
+// game's DynamicVars. `vars` is still optional here — glyph tokens default to
+// one glyph, and a bare token with no value falls back to "?".
 //
 // `html: false` emits bare glyphs with no markup, for callers embedding
 // the result in an attribute (e.g. data-tip) rather than element content.

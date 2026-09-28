@@ -1,4 +1,21 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html {
+  /* Hover/tap tooltips (.card-tooltip-wrap etc) are visibility:hidden when
+     closed, but a hidden element still keeps its layout box, and that box
+     is positioned via `left:50%` BEFORE the centering `transform:
+     translateX(-50%)` is applied -- transforms don't count toward
+     scrollable overflow, so a tooltip anchored near a viewport edge keeps
+     quietly widening the page even while invisible. overflow-x:hidden
+     doesn't affect any visible in-flow content, only clips this kind of
+     off-screen invisible box. */
+  overflow-x: hidden;
+  /* body's own background only ever covers body's box. When the viewport is
+     briefly taller than that (address-bar collapse, phone rotation) html's
+     background shows through at the edges -- give it the same near-black as
+     the darkest stop of body's gradient so that gap reads as background,
+     not a white bar. */
+  background: #05060e;
+}
 
 :root {
   --bg-deep:      #0d0c1a;
@@ -22,6 +39,10 @@ body {
   color: var(--text);
   padding: 2rem;
   min-height: 100vh;
+  /* Own stacking context so body::before's z-index:-1 (below) stacks under
+     body's content but above html's background, not under html's too. */
+  position: relative;
+  z-index: 0;
   /* Night-sky backdrop evoking the game's map screen: deep blue base with
      soft blue/violet nebulas and a faint gold ember low on the right, kept
      dark and low-contrast so the content panels above it stay readable. */
@@ -65,17 +86,30 @@ h1 {
 .subtitle { color: var(--text-dim); margin-bottom: 2rem; font-size: 0.95rem; }
 
 /* ---- Summary stat cards ---- */
+/* Was flex-wrap with flex:0 0 auto cards, so each card sized to its own
+   label/value/sub content -- rows never lined up column-to-column, and a
+   card with a longer sub (Total Time Played, Best Win Rate) ballooned wider
+   than its neighbors for no reason. A grid of equal-width tracks fixes both:
+   every card is the same width, and one wrapping to a second row still lines
+   up under the column above it. minmax(220px, 1fr): wide enough that none of
+   the nine cards' content wraps awkwardly, narrow enough to fit 4-5 per row
+   on a laptop-width screen. */
 .cards {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
   margin-bottom: 2.5rem;
 }
 
-/* Personal bests: force 5 equal columns so tiles never leave an orphan. */
+/* Personal bests: force 5 equal columns so tiles never leave an orphan.
+   minmax(0, 1fr), not bare 1fr -- bare 1fr is minmax(auto, 1fr), so a
+   column holding a wide character panel refuses to shrink below that
+   content's width and blows the grid out past the viewport instead of
+   letting the panel's own content wrap (see the mobile override below,
+   and .grid-2/.grid-4 further down, for the same fix). */
 #personal-bests-cards {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 /* Most Picked/Best Win % card & relic rows: same hover-tooltip anchoring as
    the deck/relic tiles they borrow buildCardTooltip/buildRelicTooltip from
@@ -150,8 +184,19 @@ h1 {
    hover) gives no visible cue that a pivot table has more columns off to the
    right (notably the ALL rollup column) — style it to be unmistakably always
    visible instead. */
+/* overflow-x:auto below already clips the wide pivot table visually at any
+   viewport width -- no horizontal page scrollbar appears and .pivot-wrap's
+   own rect fits the viewport -- but document.documentElement.scrollWidth
+   still grows to the UNCLIPPED table width anyway (a Chromium quirk: a
+   descendant scroll container's full content size leaks into the page's
+   reported scrollWidth even though it's genuinely clipped on screen).
+   contain:paint makes that containment authoritative instead of just
+   visual, which is the only thing that actually brings scrollWidth back
+   down. Safe here since overflow-x:auto already stops anything from
+   visibly escaping this box in either axis. */
 .pivot-wrap {
   overflow-x: auto;
+  contain: paint;
   scrollbar-width: auto;
   scrollbar-color: var(--gold) var(--panel-2);
 }
@@ -241,6 +286,8 @@ h1 {
   gap: 0.75rem;
   flex-wrap: wrap;
 }
+/* Phone-width only: the one-line summary the filter rows collapse behind. */
+.filter-summary { display: none; }
 .filter-bar-2row .filter-row + .filter-row {
   padding-top: 0.5rem;
   border-top: 1px solid var(--hairline);
@@ -372,10 +419,6 @@ h1 {
 
 /* ---- Inline helper note (Character Detail char fallback) ---- */
 .char-fallback-note { color: var(--text-dim); font-size: 0.82rem; }
-
-@media (max-width: 700px) {
-  .grid-2 { grid-template-columns: 1fr; }
-}
 
 /* ---- Seeds page ---- */
 .seed-show-more {
@@ -1045,7 +1088,8 @@ h1 {
   transform: none;
   z-index: 200;
 }
-.run-boon-wrap:hover .relic-tooltip-wrap {
+.run-boon-wrap:hover .relic-tooltip-wrap,
+.run-boon-wrap:focus-within .relic-tooltip-wrap {
   visibility: visible;
 }
 
@@ -1100,7 +1144,8 @@ h1 {
   cursor: default;
   z-index: 1;
 }
-.card-tile:hover {
+.card-tile:hover,
+.card-tile:focus-within {
   z-index: 100;
 }
 .tile-art {
@@ -1175,7 +1220,11 @@ h1 {
   z-index: 200;
   pointer-events: none;
 }
-.card-tile:hover .card-tooltip-wrap {
+/* :focus-within (not just :hover) so a keyboard-focused or tapped tile
+   (tabindex added in card-face.js) shows its tooltip too -- plain :hover
+   never fires on a touch tap. */
+.card-tile:hover .card-tooltip-wrap,
+.card-tile:focus-within .card-tooltip-wrap {
   visibility: visible;
 }
 
@@ -1308,7 +1357,8 @@ h1 {
   z-index: 1;
   flex-shrink: 0;
 }
-.relic-tile:hover {
+.relic-tile:hover,
+.relic-tile:focus-within {
   z-index: 100;
 }
 .relic-tile-art {
@@ -1345,7 +1395,9 @@ h1 {
   transform: translateX(-50%);
   z-index: 200;
 }
-.relic-tile:hover .relic-tooltip-wrap {
+/* Same touch/keyboard parity as .card-tile above. */
+.relic-tile:hover .relic-tooltip-wrap,
+.relic-tile:focus-within .relic-tooltip-wrap {
   visibility: visible;
 }
 
@@ -1533,4 +1585,106 @@ body.suppress-hover-tooltips .node-tooltip {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* =========================================================================
+   Mobile layout (phones, ~360-430px wide, or rotated to landscape).
+   Desktop (>700px wide and >500px tall) is untouched.
+   Kept at the END of the file, not next to the rules it overrides: several
+   of its selectors (#detail-layout, .pivot-wrap, ...) are plain IDs/classes
+   that tie in specificity with an unconditional desktop rule of the same
+   selector declared later in this file, and a tied selector is resolved by
+   source order, not which @media block "feels" more specific -- so a mobile
+   override placed earlier in the file can silently lose to a desktop rule
+   below it even while its own max-width condition is satisfied. Being last
+   in the file guarantees it wins every such tie.
+   The second condition catches phones turned sideways: they're ~850px wide
+   (past the width cutoff) but only ~400px tall, and without it the desktop
+   side-by-side grids come back the moment the phone is rotated.
+   ========================================================================= */
+@media (max-width: 700px), (orientation: landscape) and (max-height: 500px) {
+  /* The desktop 2rem body gutter and 1.25rem chart-box padding eat most of
+     a phone screen before any content shows -- trim both (overflow-x:hidden
+     for the tooltip layout-box quirk is already set unconditionally on
+     body, above). */
+  body { padding: 14px; }
+  .chart-box { padding: 0.85rem; }
+  .grid-1, .grid-2, .grid-4 { gap: 0.9rem; margin-bottom: 1.5rem; }
+
+  /* Page tabs: 5 tabs at desktop size overflow the screen ("Card Stats" and
+     "Seed Data" run off the right edge) -- wrap them onto a second row
+     instead, so every tab stays reachable without a sideways swipe. */
+  .page-tabs { flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
+  .page-tab { padding: 0.35rem 0.8rem; font-size: 0.8rem; }
+
+  /* Filter bar: a .filter-group sizes to its widest child (the character
+     selector, the ascension checkboxes are each 400px+) and a non-wrapping
+     flex row won't shrink that below its content, so every group is wider
+     than the screen regardless of how the bar itself wraps. Make each group
+     take the full row and let ITS OWN content wrap, and force the two worst
+     offenders onto their own line so their buttons wrap under the label
+     instead of squeezing onto it. */
+  .filter-bar { padding: 0.6rem 0.75rem; gap: 0.5rem; }
+  .filter-bar .filter-group {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  #shared-char-selector, #shared-asc-checkboxes {
+    flex-basis: 100%;
+  }
+
+  /* Even wrapped, the filter rows fill most of a phone screen, so they
+     collapse behind a tappable one-line summary until expanded. */
+  .filter-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.8rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .filter-summary-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .filter-summary-caret { color: var(--text-dim); transition: transform 0.15s; }
+  .filter-bar:not(.expanded) .filter-row { display: none; }
+  .filter-bar.expanded .filter-summary {
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .filter-bar.expanded .filter-summary-caret { transform: rotate(180deg); }
+
+  /* Grids that stay at desktop column counts squeeze their contents to a
+     sliver (4-up charts at ~60px wide) instead of reflowing. Tracks use
+     minmax(0, 1fr), not bare 1fr -- bare 1fr is minmax(auto, 1fr), so a
+     track holding wide content (a .card's .value/.sub text, a chart canvas)
+     refuses to shrink below that content's width and blows the grid out
+     past the viewport instead of wrapping it. */
+  .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* One column, not two -- each of these cards packs a 3-4-wide row of
+     label/value stat blocks (Best Win / Games Played / Total Wins / Final
+     Boss Deaths) that's already tight at full card width; at half width
+     the row has no room left to shrink into and silently spills past the
+     card's edge instead. flex-wrap is a second safety net for that same
+     row, in case a narrower phone still can't fit all of it. */
+  #personal-bests-cards { grid-template-columns: minmax(0, 1fr); }
+  .card > div { flex-wrap: wrap; }
+
+  /* Run Detail: the 230px run list + timeline side-by-side has no room.
+     Stack them, and cap the run list's height (it's independently
+     scrollable already) so it doesn't push the timeline below the fold. */
+  #detail-layout { grid-template-columns: 1fr; }
+  #detail-run-list { max-height: 240px; }
+
 }

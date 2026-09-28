@@ -332,7 +332,12 @@ function updateMonthlyWinChart(filteredRuns) {
       layout: { padding: { top: 16 + (maxBuildStack - 1) * 13 } },
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: "#ccc", boxWidth: 12 } },
+        // Chart.js's own top-of-canvas legend row sits directly in the space
+        // the build-version labels above draw into -- layout.padding.top
+        // only reserves room above the legend, not between it and
+        // chartArea.top, so the two collide. Bottom, below the x-axis,
+        // doesn't compete with them.
+        legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 12 } },
         tooltip: {
           callbacks: {
             label: ctx => {

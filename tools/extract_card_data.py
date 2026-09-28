@@ -2,7 +2,7 @@
 Extracts card, relic and potion metadata from the STS2 C# assembly and
 localization files. Writes:
   card_data.json   — card type/rarity/energy/vars/varsUpgraded/title/desc
-  relic_data.json  — relic rarity/title/desc/imagePath
+  relic_data.json  — relic rarity/title/desc/vars/imagePath
   potion_data.json — potion rarity/title/desc/vars/imagePath
 
 Run once after a game update to refresh data.
@@ -312,6 +312,21 @@ try:
     relic_model_type  = asm.GetType("MegaCrit.Sts2.Core.Models.RelicModel")
     relic_rarity_prop = relic_model_type.GetProperty("Rarity") if relic_model_type else None
 
+    # A few relics name an enchantment in their description. Their DynamicVars
+    # look the enchantment up in ModelDb, which is empty outside the running
+    # game, so reading them throws; supply the names from localization instead.
+    _RELIC_VAR_FALLBACK = {
+        "RELIC.PAELS_CLAW":   {"EnchantmentName": "Goopy"},
+        "RELIC.PAELS_GROWTH": {"EnchantmentName": "Clone"},
+        "RELIC.ROYAL_STAMP":  {"Enchantment": "Royally Approved"},
+    }
+
+    def relic_vars(inst, relic_id: str) -> dict:
+        try:
+            return read_vars(inst)
+        except Exception:
+            return _RELIC_VAR_FALLBACK.get(relic_id, {})
+
     relic_results: dict = {}
     if relic_model_type:
         for t in asm.GetTypes():
@@ -331,6 +346,9 @@ try:
                         "rarity":    rarity,
                         "title":     loc_relics.get(loc_stem, {}).get("title", ""),
                         "desc":      clean_desc(loc_relics.get(loc_stem, {}).get("description", "")),
+                        # Without these, every numeric token ({Heal}, {Block}, ...)
+                        # renders as "?" — RelicModel exposes DynamicVars like potions.
+                        "vars":      relic_vars(inst, relic_id),
                         "imagePath": relic_img_path(stem),
                     }
                 except Exception:

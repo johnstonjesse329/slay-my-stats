@@ -195,7 +195,7 @@ function renderCardsPage() {
     const src = cardImgSrc(r.id);
     const icon = src
       ? `<span class="fav-item" data-card-id="${r.id}" style="display:inline-block;vertical-align:middle;margin-right:6px;line-height:0">
-          <img src="${src}" alt="${r.title}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;vertical-align:middle">
+          <img loading="lazy" src="${src}" alt="${r.title}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;vertical-align:middle">
         </span>`
       : "";
     return `<tr>

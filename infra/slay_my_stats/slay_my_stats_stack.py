@@ -3,17 +3,61 @@ from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
+    aws_certificatemanager as acm,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_logs as logs,
+    aws_route53 as route53,
+    aws_route53_targets as route53_targets,
+    aws_budgets as budgets,
+    aws_lambda_event_sources as lambda_event_sources,
     aws_s3 as s3,
+    aws_sns as sns,
     aws_ssm as ssm,
 )
 from constructs import Construct
 
 STEAM_API_KEY_PARAM_NAME = "/slay-my-stats/steam-api-key"
+DOMAIN_NAME = "slay-my-stats.com"
+# Must be in us-east-1 -- CloudFront's control plane only looks there for
+# certificates, regardless of what region the rest of this stack deploys to.
+CERTIFICATE_ARN = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+HOSTED_ZONE_ID = "Z0000000000000000000"
+# Everything these services bill is covered by free tier at normal traffic,
+# so any actual spend on them means the ingest path is being abused.
+KILL_SWITCH_BUDGET_USD = 1
+KILL_SWITCH_SERVICES = ["AWS Lambda", "AmazonCloudWatch", "Amazon Simple Storage Service"]
+
+KILL_SWITCH_CODE = """
+import os
+
+import boto3
+
+_lambda = boto3.client("lambda")
+
+
+def lambda_handler(event, context):
+    # Any message on the topic is a budget breach; there is nothing to parse.
+    _lambda.put_function_concurrency(
+        FunctionName=os.environ["TARGET_FUNCTION_NAME"],
+        ReservedConcurrentExecutions=0,
+    )
+    print("Throttled", os.environ["TARGET_FUNCTION_NAME"], "to 0 concurrency")
+"""
+
+# The site bucket only has /index.html at the root -- profile URLs like
+# /u/steam-<id> have no matching object, so CloudFront needs to rewrite the
+# request before it reaches S3. Done at the edge (not with S3 error-document
+# fallback) so the URL in the address bar stays /u/steam-<id> for sharing.
+PROFILE_URL_REWRITE_CODE = """
+function handler(event) {
+    var request = event.request;
+    request.uri = "/index.html";
+    return request;
+}
+"""
 
 
 class SlayMyStatsStack(Stack):
@@ -40,11 +84,32 @@ class SlayMyStatsStack(Stack):
             auto_delete_objects=True,
         )
 
+        certificate = acm.Certificate.from_certificate_arn(
+            self, "SiteCertificate", CERTIFICATE_ARN,
+        )
+
+        # Reused for both the default behavior and "u/*" below (same object,
+        # not two calls) so the distribution binds one S3 origin / one OAC
+        # for the site bucket instead of standing up a duplicate.
+        site_origin = origins.S3BucketOrigin.with_origin_access_control(site_bucket)
+
+        # Rewrites /u/<anything> to /index.html so profile URLs resolve to the
+        # SPA shell, which then renders the profile client-side. Associated
+        # only on the "u/*" behavior below, not the default one, so it never
+        # runs for asset/image requests and doesn't burn function invocations.
+        profile_url_rewrite_fn = cloudfront.Function(
+            self, "ProfileUrlRewriteFunction",
+            runtime=cloudfront.FunctionRuntime.JS_2_0,
+            code=cloudfront.FunctionCode.from_inline(PROFILE_URL_REWRITE_CODE),
+        )
+
         distribution = cloudfront.Distribution(
             self, "Distribution",
+            domain_names=[DOMAIN_NAME],
+            certificate=certificate,
             default_root_object="index.html",
             default_behavior=cloudfront.BehaviorOptions(
-                origin=origins.S3BucketOrigin.with_origin_access_control(site_bucket),
+                origin=site_origin,
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
             ),
@@ -56,7 +121,29 @@ class SlayMyStatsStack(Stack):
                     # after an upload must see that upload, not a cached miss.
                     cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
                 ),
+                "u/*": cloudfront.BehaviorOptions(
+                    origin=site_origin,
+                    viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                    cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
+                    function_associations=[
+                        cloudfront.FunctionAssociation(
+                            function=profile_url_rewrite_fn,
+                            event_type=cloudfront.FunctionEventType.VIEWER_REQUEST,
+                        ),
+                    ],
+                ),
             },
+        )
+
+        hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
+            self, "HostedZone",
+            hosted_zone_id=HOSTED_ZONE_ID,
+            zone_name=DOMAIN_NAME,
+        )
+        route53.ARecord(
+            self, "SiteAliasRecord",
+            zone=hosted_zone,
+            target=route53.RecordTarget.from_alias(route53_targets.CloudFrontTarget(distribution)),
         )
 
         ingest_log_group = logs.LogGroup(
@@ -72,9 +159,6 @@ class SlayMyStatsStack(Stack):
             code=lambda_.Code.from_asset("lambda/ingest"),
             timeout=Duration.seconds(10),
             memory_size=256,
-            # Low ceiling on purpose: an ingest spike should degrade to
-            # throttling, not scale unbounded and drive up cost.
-            reserved_concurrent_executions=5,
             log_group=ingest_log_group,
             environment={
                 "DATA_BUCKET": data_bucket.bucket_name,
@@ -110,6 +194,76 @@ class SlayMyStatsStack(Stack):
                 allowed_origins=["https://slay-my-stats.com"],
                 allowed_methods=[lambda_.HttpMethod.POST],
             ),
+        )
+
+        # Kill switch: budget breach -> SNS -> small Lambda that sets the ingest
+        # function's reserved concurrency to 0, so every further request is
+        # throttled before it runs. Budgets only evaluate a few times a day, so
+        # this bounds a sustained attack rather than stopping it instantly.
+        # Undo manually: aws lambda delete-function-concurrency.
+        kill_switch_topic = sns.Topic(self, "KillSwitchTopic")
+        kill_switch_topic.add_to_resource_policy(
+            iam.PolicyStatement(
+                actions=["sns:Publish"],
+                principals=[iam.ServicePrincipal("budgets.amazonaws.com")],
+                resources=[kill_switch_topic.topic_arn],
+                conditions={"StringEquals": {"aws:SourceAccount": self.account}},
+            )
+        )
+
+        kill_switch_log_group = logs.LogGroup(
+            self, "KillSwitchLogGroup",
+            retention=logs.RetentionDays.ONE_MONTH,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+        kill_switch_fn = lambda_.Function(
+            self, "KillSwitchFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="index.lambda_handler",
+            code=lambda_.Code.from_inline(KILL_SWITCH_CODE),
+            timeout=Duration.seconds(10),
+            memory_size=128,
+            log_group=kill_switch_log_group,
+            environment={"TARGET_FUNCTION_NAME": ingest_fn.function_name},
+        )
+        kill_switch_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["lambda:PutFunctionConcurrency"],
+                resources=[ingest_fn.function_arn],
+            )
+        )
+        kill_switch_fn.add_event_source(lambda_event_sources.SnsEventSource(kill_switch_topic))
+
+        # Separate from the account-wide budget so Route53's fixed zone fees
+        # can't trip it. No budget "actions" are used (just SNS notifications),
+        # so this doesn't count toward the paid action-enabled budget tier.
+        budgets.CfnBudget(
+            self, "KillSwitchBudget",
+            budget=budgets.CfnBudget.BudgetDataProperty(
+                budget_name="slay-my-stats-kill-switch",
+                budget_type="COST",
+                time_unit="MONTHLY",
+                budget_limit=budgets.CfnBudget.SpendProperty(
+                    amount=KILL_SWITCH_BUDGET_USD, unit="USD",
+                ),
+                cost_filters={"Service": KILL_SWITCH_SERVICES},
+            ),
+            notifications_with_subscribers=[
+                budgets.CfnBudget.NotificationWithSubscribersProperty(
+                    notification=budgets.CfnBudget.NotificationProperty(
+                        notification_type="ACTUAL",
+                        comparison_operator="GREATER_THAN",
+                        threshold=100,
+                        threshold_type="PERCENTAGE",
+                    ),
+                    subscribers=[
+                        budgets.CfnBudget.SubscriberProperty(
+                            subscription_type="SNS",
+                            address=kill_switch_topic.topic_arn,
+                        ),
+                    ],
+                ),
+            ],
         )
 
         CfnOutput(self, "SiteBucketName", value=site_bucket.bucket_name)

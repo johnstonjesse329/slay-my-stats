@@ -142,9 +142,9 @@ function summarize(bucket) {
   };
 }
 
-function aggregateRuns(filteredRuns) {
+function aggregateRuns(filteredRuns, allAscRuns) {
   const chars = DATA.characters;
-  const ascs  = DATA.ascensions;
+  const ascs  = ascColumns().map(col => col.key);
 
   const byCA = {};
   [...chars, "ALL"].forEach(char => {
@@ -156,7 +156,7 @@ function aggregateRuns(filteredRuns) {
 
   filteredRuns.forEach(run => {
     const c = run.char;
-    const a = run.asc;
+    const a = ascColumnKey(run.asc);
 
     if (byCA[c]) {
       if (byCA[c][a] !== undefined) addToBucket(byCA[c][a], run);
@@ -167,13 +167,27 @@ function aggregateRuns(filteredRuns) {
     addToBucket(byCA["ALL"]["ALL"], run);
   });
 
+  // The "ALL" column means "every ascension this player has run", regardless
+  // of which ascension levels are checked in the filter bar -- so it's built
+  // from a separate, ascension-unfiltered run set rather than byCA[..]["ALL"]
+  // above (which only ever sums whatever ascension columns are shown).
+  const allAscByChar = {};
+  [...chars, "ALL"].forEach(char => { allAscByChar[char] = emptyBucket(); });
+  allAscRuns.forEach(run => {
+    const c = run.char;
+    if (allAscByChar[c]) addToBucket(allAscByChar[c], run);
+    addToBucket(allAscByChar["ALL"], run);
+  });
+
   const pivot = {};
   [...chars, "ALL"].forEach(char => {
     pivot[char] = {};
-    [...ascs, "ALL"].forEach(asc => {
+    ascs.forEach(asc => {
       const b = byCA[char]?.[asc];
       pivot[char][asc] = (b && b.runs > 0) ? summarize(b) : null;
     });
+    const allB = allAscByChar[char];
+    pivot[char]["ALL"] = (allB && allB.runs > 0) ? summarize(allB) : null;
   });
 
   return {

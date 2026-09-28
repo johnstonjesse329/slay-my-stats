@@ -4,8 +4,11 @@
 
 function updateAll() {
   const filteredRuns = filterRuns();
+  // "ALL" columns mean "every ascension the player has run", not "whichever
+  // ascensions are currently checked" -- see filterRuns()'s ignoreAsc option.
+  const allAscRuns = filterRuns({ ignoreAsc: true });
 
-  const { pivot, grand, charStats } = aggregateRuns(filteredRuns);
+  const { pivot, grand, charStats } = aggregateRuns(filteredRuns, allAscRuns);
 
   winChart.data.datasets[0].data       = charStats.map(s => s.win_pct    ?? 0);
   floorChart.data.datasets[0].data     = charStats.map(s => s.median_floor ?? 0);
@@ -23,8 +26,8 @@ function updateAll() {
   renderDeckPivot("relics-table", pivot, "median_win_relics", "median_win_relics", "median_loss_relics", "min_win_relics", "max_win_relics", "#c49fe8");
   renderDeckPivot("elites-table", pivot, "median_win_elites", "median_win_elites", "median_loss_elites", "min_win_elites", "max_win_elites", "#e0c468");
   renderStarterCardsTable(aggregateStarterCards(filteredRuns));
-  renderFinalBossWinPivot(filteredRuns);
-  renderRestChoicesTable(aggregateRestChoices(filteredRuns), filteredRuns);
+  renderFinalBossWinPivot(filteredRuns, allAscRuns);
+  renderRestChoicesTable(aggregateRestChoices(filteredRuns, allAscRuns), filteredRuns);
   updateRestWinCharts(filteredRuns);
   updateEliteActCharts(filteredRuns);
   updateMonthlyWinChart(filteredRuns);
@@ -64,7 +67,31 @@ let sharedActiveChar   = "ALL";
 // number of locked pages in between instead of getting silently replaced
 // by whatever the last-visited locked page happened to force it to.
 let lastUnlockedChar   = "ALL";
+// The ascension ranges the tables group their columns by (next to an "All"
+// column) unless granular view is on. A bucket the player has no runs in is
+// dropped, since DATA.ascensions only lists levels that appear in runs.
+const ASC_BUCKETS = [
+  { key: "A0-9", label: "A0–9", min: 0,  max: 9 },
+  { key: "A10",  label: "A10",  min: 10, max: 10 },
+].map(b => ({ ...b, ascs: DATA.ascensions.filter(a => a >= b.min && a <= b.max) }))
+ .filter(b => b.ascs.length);
 let sharedActiveAscs   = new Set(DATA.ascensions);
+// "Show granular" reveals the per-level ascension checkboxes and splits the tables
+// into one column per level instead of per ASC_BUCKETS range. With it off,
+// every level is included.
+let sharedAscGranular  = false;
+
+// The ascension columns every per-ascension table renders before its ALL
+// column: the ASC_BUCKETS ranges by default, or each checked level when
+// granular. Tables key their buckets by ascColumnKey(run.asc) to match.
+function ascColumns() {
+  if (!sharedAscGranular) return ASC_BUCKETS;
+  return [...sharedActiveAscs].sort((a, b) => a - b).map(a => ({ key: a, label: `A${a}`, ascs: [a] }));
+}
+
+function ascColumnKey(asc) {
+  return sharedAscGranular ? asc : ASC_BUCKETS.find(b => b.ascs.includes(asc))?.key;
+}
 let sharedActiveBuilds = new Set(DATA.builds);
 let sharedActiveMode   = "solo";
 // 0 / TS_NO_UPPER_BOUND mean "no bound" rather than a snapshot of the
@@ -89,14 +116,18 @@ let sharedTsTo         = TS_NO_UPPER_BOUND;
 // buttons that visibly use them render.
 const SHARED_FILTER_STORAGE_KEY = "sts2_filter_prefs";
 const SHARED_FILTER_HARDCODED_DEFAULTS = {
-  char: "ALL", ascs: [...DATA.ascensions], builds: [...DATA.builds],
+  char: "ALL", ascGranular: false, builds: [...DATA.builds],
   mode: "solo", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
 };
 
-function filterRuns() {
+// opts.ignoreAsc skips the ascension checkbox filter, for building the
+// "ALL" column of per-ascension tables -- it should mean "every ascension
+// this player has run" (subject to every other active filter), not
+// "whichever ascensions happen to be checked right now".
+function filterRuns(opts = {}) {
   return DATA.runsData.filter(run => {
     if (sharedActiveChar !== "ALL" && run.char !== sharedActiveChar) return false;
-    if (!sharedActiveAscs.has(run.asc))     return false;
+    if (!opts.ignoreAsc && !sharedActiveAscs.has(run.asc)) return false;
     if (!sharedActiveBuilds.has(run.build)) return false;
     if (run.ts < sharedTsFrom || run.ts > sharedTsTo) return false;
     if (sharedActiveMode === "solo"  && (run.mp || run.mode === "daily")) return false;
@@ -106,8 +137,8 @@ function filterRuns() {
   });
 }
 
-function filteredRunTsSet() {
-  return new Set(filterRuns().map(r => r.ts));
+function filteredRunTsSet(opts = {}) {
+  return new Set(filterRuns(opts).map(r => r.ts));
 }
 
 // Character Detail is inherently single-character (its tables only make
