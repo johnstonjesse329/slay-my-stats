@@ -347,10 +347,10 @@ function aggregateCharFavorites() {
 
 // emph ("count" | "win") brightens the number the item was chosen for, and
 // leads with it. column: true is the narrow two-column layout in the
-// character panes -- the thumbnail top-aligns with a name that wraps to as
-// many lines as it needs (never truncated -- a clamp silently ate long
-// names like "Wongo Customer Appreciation Badge" mid-word), and the stat
-// pieces wrap when they don't fit.
+// character panes -- the thumbnail top-aligns with a name clamped to two
+// lines with an ellipsis for names that don't fit (the hover/tap tooltip
+// this row already has shows the full name), and the stat pieces wrap when
+// they don't fit.
 function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column = false) {
   // Empty state keeps the same icon + two-line footprint as populated rows
   // so the tile grid's row heights stay aligned across characters
@@ -403,7 +403,7 @@ function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column 
     ${thumbHtml}
     ${column
       ? `<div style="min-width:0">
-      <div style="font-size:0.76rem;color:#ccc;line-height:1.2;hyphens:auto;overflow-wrap:anywhere" lang="en">${label}</div>
+      <div style="font-size:0.76rem;color:#ccc;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere" lang="en">${label}</div>
       <div style="font-size:0.7rem;color:#a0a0b8;display:flex;flex-wrap:wrap;align-items:center;column-gap:0.3rem;line-height:1.35">
         ${pieces.map(p => `<span style="white-space:nowrap">${p}</span>`).join("")}${lowSampleBadge}
       </div>
