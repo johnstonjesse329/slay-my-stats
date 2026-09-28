@@ -224,10 +224,10 @@ function renderSeeds() {
 
   // Live count moves off the heading into its hover tooltip so the h2 reads
   // as a clean noun phrase like every other page heading.
-  const seedsTitle = document.getElementById("seeds-title");
-  if (seedsTitle) {
+  const seedsCaption = document.getElementById("seeds-caption");
+  if (seedsCaption) {
     const n = filtered.length;
-    seedsTitle.dataset.tip = `${n} seed${n === 1 ? "" : "s"} match the current search`;
+    seedsCaption.textContent = `${n} seed${n === 1 ? "" : "s"} whose run offered every card and relic you searched for.`;
   }
 
   const hasFilters = seedCardFilters.length > 0 || seedRelicFilters.length > 0;

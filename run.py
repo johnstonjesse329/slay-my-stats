@@ -924,7 +924,8 @@ def dashboard_body_html(subtitle: str) -> str:
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2 data-tip="Per character, dotted lines mark when a build was first played">Win % by Month</h2>
+    <h2>Win % by Month</h2>
+    <p class="chart-caption">Dotted lines mark when each game build was first played.</p>
     <div class="chart-wrap"><canvas id="monthlyWinChart"></canvas></div>
   </div>
 </div>
@@ -950,51 +951,62 @@ def dashboard_body_html(subtitle: str) -> str:
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2 data-tip="Percentage that died on this elite or the next fight after, by act">Elite Death Rate</h2>
+    <h2>Elite Death Rate</h2>
+    <p class="chart-caption">How often a run died on its 1st, 2nd, 3rd… elite, or in the fight right after, by act.</p>
     <div class="chart-wrap"><canvas id="eliteDeathRateChart"></canvas></div>
   </div>
   <div class="chart-box">
-    <h2 data-tip="Percent of runs that won, by total elites fought across the whole run">Elite Win Rate</h2>
+    <h2>Elite Win Rate</h2>
+    <p class="chart-caption">Share of runs won, by how many elites the run fought in total.</p>
     <div class="chart-wrap"><canvas id="eliteWinRateChart"></canvas></div>
   </div>
 </div>
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2 data-tip="Hover a cell for details">Win %</h2>
+    <h2>Win %</h2>
+    <p class="chart-caption">Share of runs won, by character and ascension.</p>
     <div class="pivot-wrap"><table class="pivot" id="pivot-table"></table></div>
   </div>
   <div class="chart-box">
-    <h2 data-tip="Percent of runs that reached the final boss and won (Ascension 10's two Act 3 bosses shown separately)">Final Boss Win %</h2>
+    <h2>Final Boss Win %</h2>
+    <p class="chart-caption">Of the runs that reached the final boss, the share that beat it. Ascension 10's two Act 3 bosses are shown separately.</p>
     <div class="pivot-wrap"><table class="pivot" id="final-boss-win-table"></table></div>
   </div>
 </div>
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2 data-tip="Median deck size at end of run, W / L">Cards at Run End</h2>
+    <h2>Cards at Run End</h2>
+    <p class="chart-caption">Median deck size when the run ended, in runs you won vs. lost. The small range under Won is the fewest–most in a win.</p>
     <div class="pivot-wrap"><table class="pivot" id="cards-table"></table></div>
   </div>
   <div class="chart-box">
-    <h2 data-tip="Median relic count at end of run, W / L">Relics at Run End</h2>
+    <h2>Relics at Run End</h2>
+    <p class="chart-caption">Median relics held when the run ended, in runs you won vs. lost. The small range under Won is the fewest–most in a win.</p>
     <div class="pivot-wrap"><table class="pivot" id="relics-table"></table></div>
+  </div>
+</div>
+
+<!-- Starter Cards gets a full row: its Won / Lost pairs per act don't fit
+     half the page at 1280px. -->
+<div class="grid-1">
+  <div class="chart-box">
+    <h2>Starter Cards Entering Boss</h2>
+    <p class="chart-caption">Average Strikes and Defends still in your deck when you reached each act's boss, in runs you won vs. lost.</p>
+    <div class="pivot-wrap"><table class="pivot" id="starter-cards-table"></table></div>
   </div>
 </div>
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2 data-tip="Median elite fights won per run, all acts, W / L">Elites Defeated</h2>
+    <h2>Elites Defeated</h2>
+    <p class="chart-caption">Median elite fights won per run (all acts), in runs you won vs. lost. The small range under Won is the fewest–most in a win.</p>
     <div class="pivot-wrap"><table class="pivot" id="elites-table"></table></div>
   </div>
   <div class="chart-box">
-    <h2 data-tip="Avg strikes &amp; defends remaining in deck at boss node, W / L">Starter Cards Entering Boss</h2>
-    <div class="pivot-wrap"><table class="pivot" id="starter-cards-table"></table></div>
-  </div>
-</div>
-
-<div class="grid-1">
-  <div class="chart-box">
-    <h2 data-tip="By times chosen, reached Act 3">Rest Site Win %</h2>
+    <h2>Rest Site Win %</h2>
+    <p class="chart-caption">Win % by how many times you picked each rest site option over a run. Only runs that reached Act 3.</p>
     <div class="chart-wrap"><canvas id="restWinChartAll"></canvas></div>
   </div>
 </div>
@@ -1017,39 +1029,45 @@ def dashboard_body_html(subtitle: str) -> str:
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2 data-tip="Win % of that individual fight, by ascension. Hover a cell for details">Boss Win Rate</h2>
+    <h2>Boss Win Rate</h2>
+    <p class="chart-caption">Share of times you won each boss fight, by ascension.</p>
     <div class="pivot-wrap"><table class="pivot" id="boss-win-table"></table></div>
   </div>
   <div class="chart-box">
-    <h2 data-tip="Win % of that individual fight, by ascension. Hover a cell for details">Elite Win Rate</h2>
+    <h2>Elite Win Rate</h2>
+    <p class="chart-caption">Share of times you won each elite fight, by ascension.</p>
     <div class="pivot-wrap"><table class="pivot" id="elite-win-table"></table></div>
   </div>
 </div>
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2 data-tip="Median HP at fight start (% of max HP at that point), elites &amp; bosses, W / L">HP Entering Fight</h2>
+    <h2>HP Entering Fight</h2>
+    <p class="chart-caption">Median HP at the start of elite and boss fights, as % of max HP at the time; green for runs you won, red for runs you lost.</p>
     <div class="pivot-wrap"><table class="pivot" id="hp-table"></table></div>
   </div>
 </div>
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2 data-tip="Median in deck/inventory at fight start, elites &amp; bosses, W / L">Cards / Relics / Potions Entering Fight</h2>
+    <h2>Cards / Relics / Potions Entering Fight</h2>
+    <p class="chart-caption">Median cards, relics and potions held at the start of elite and boss fights; green for runs you won, red for runs you lost.</p>
     <div class="pivot-wrap"><table class="pivot" id="loadout-table"></table></div>
   </div>
 </div>
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2 data-tip="Median damage taken per fight, elites &amp; bosses, W / L">Damage Taken</h2>
+    <h2>Damage Taken</h2>
+    <p class="chart-caption">Median damage taken per elite and boss fight; green for runs you won, red for runs you lost.</p>
     <div class="pivot-wrap"><table class="pivot" id="dmg-table"></table></div>
   </div>
 </div>
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2 data-tip="Median cards in deck at each act boss, W / L">Deck Size Entering Boss</h2>
+    <h2>Deck Size Entering Boss</h2>
+    <p class="chart-caption">Median cards in your deck at each act's boss; green for runs you won, red for runs you lost.</p>
     <div class="pivot-wrap"><table class="pivot" id="deck-act-table"></table></div>
   </div>
 </div>
@@ -1091,7 +1109,8 @@ def dashboard_body_html(subtitle: str) -> str:
 </div>
 
 <div class="chart-box">
-  <h2 id="cards-title" data-tip="Offered card pool for the current filter">Card Offer &amp; Pick Rates</h2>
+  <h2 id="cards-title">Card Offer &amp; Pick Rates</h2>
+  <p class="chart-caption" id="cards-caption">Every card offered under the current filters.</p>
   <input type="text" class="seeds-input" id="cards-name-filter" placeholder="Filter by card name…" aria-label="Filter cards by name" style="max-width:260px;margin-bottom:0.75rem">
   <div class="pivot-wrap" style="max-height:420px;overflow-y:auto">
     <table class="pivot" id="cards-table-main" style="table-layout:fixed;min-width:0;width:auto">
@@ -1134,7 +1153,8 @@ def dashboard_body_html(subtitle: str) -> str:
 </div>
 
 <div class="chart-box">
-  <h2 id="seeds-title" data-tip="Seeds whose run offered every searched card or relic">Matching Seeds</h2>
+  <h2 id="seeds-title">Matching Seeds</h2>
+  <p class="chart-caption" id="seeds-caption">Seeds whose run offered every card and relic you searched for.</p>
   <div class="pivot-wrap">
     <table class="pivot" id="seeds-table">
       <thead><tr id="seeds-thead-row">

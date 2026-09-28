@@ -615,50 +615,43 @@ function rangeCell(bucket, minKey, maxKey, color) {
   </td>`;
 }
 
-// Shared tooltip body for win/loss median-value pivot cells (Cards/Relics/Elites
-// at Run End). Mirrors the "Label: value" per line pattern used everywhere else.
-// Win/loss median is always redundant here — it's already the w/l value
-// the cell renders below this. Range is the only fact worth surfacing, and
-// a single fact belongs inline rather than behind a hover — same reasoning
-// as Rest Site Choices' inline run count.
-function winLossAvgCell(bucket, winKey, lossKey, color, isAll = false, minKey = null, maxKey = null, extraStyle = "") {
+// One Won / Lost median pair for Cards/Relics/Elites at Run End. The Won
+// cell carries the fewest–most in a win underneath (the ranges only cover
+// wins, so they sit under the column that says so).
+function winLossPairCells(bucket, winKey, lossKey, minKey, maxKey, border, isAll) {
   const cls = "cell" + (isAll ? " all-col" : "");
-  if (!bucket || (bucket[winKey] == null && bucket[lossKey] == null)) return `<td class="${cls} empty"${extraStyle ? ` style="${extraStyle}"` : ""}>—</td>`;
-  const vh = t => `<span class="vh">${t}</span>`;
-  const w = bucket[winKey]  != null ? `<span style="color:#5cba7d;font-weight:600">${vh("W ")}${bucket[winKey]}</span>` : `<span style="color:#8a8aa0">—</span>`;
-  const l = bucket[lossKey] != null ? `<span style="color:#e05c5c">${vh("L ")}${bucket[lossKey]}</span>` : `<span style="color:#8a8aa0">—</span>`;
-  const rangeMeta = (minKey && bucket[minKey] != null) ? `<div class="meta">${bucket[minKey]}–${bucket[maxKey]} range</div>` : "";
-  return `<td class="${cls}" style="${extraStyle}font-size:0.88rem">${w} / ${l}${rangeMeta}</td>`;
+  const first = `border-left:${border} solid #3f4147;`;
+  const cell = (v, isLoss, style, meta = "") => v == null
+    ? `<td class="${cls} empty" style="${style}">—</td>`
+    : `<td class="${cls}" style="${style}font-size:0.88rem;color:${isLoss ? "#e05c5c" : "#5cba7d"};${isLoss ? "" : "font-weight:600"}">${v}${meta}</td>`;
+  const lo = minKey ? bucket?.[minKey] : null, hi = maxKey ? bucket?.[maxKey] : null;
+  const range = lo != null && lo !== hi ? `<div class="meta">${lo}–${hi}</div>` : "";
+  return cell(bucket?.[winKey], false, first, range) + cell(bucket?.[lossKey], true, "");
 }
 
 function renderDeckPivot(tableId, pivotData, valueKey, winKey, lossKey, minKey, maxKey, color, showRange = true) {
   const chars = DATA.characters;
   const ascs  = ascColumns();
 
-  const subStyle = `font-size:0.72rem;color:#8a8aa0;letter-spacing:0;text-transform:none;font-weight:400`;
-  const allHeader = `<th style="border-left:2px solid #3f4147;text-align:center;padding:0.5rem 0.9rem;color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em">
-       ALL<br><span style="${subStyle}">W / L median</span></th>`;
-
+  // Same two-row Won / Lost header as Rest Site Choices, so each cell holds
+  // one number instead of a "W / L" pair the reader has to decode.
+  const thSub  = `font-size:0.72rem;color:#8a8aa0;font-weight:400;text-align:center`;
+  const groups = [...ascs.map(col => ({ key: col.key, label: col.label, border: "1px" })), { key: "ALL", label: "ALL", border: "2px", all: true }];
   let html = `<thead><tr>
-    <th class="char-head">Character</th>
-    ${ascs.map(col => `<th>${col.label}</th>`).join("")}
-    ${allHeader}
+    <th class="char-head" rowspan="2">Character</th>
+    ${groups.map(g => `<th colspan="2" class="${g.all ? "all-col" : ""}" style="border-left:${g.border} solid #3f4147;text-align:center">${g.label}</th>`).join("")}
+  </tr><tr>
+    ${groups.map(g => `<th class="${g.all ? "all-col" : ""}" style="${thSub};border-left:${g.border} solid #3f4147">Won</th><th class="${g.all ? "all-col" : ""}" style="${thSub}">Lost</th>`).join("")}
   </tr></thead><tbody>`;
 
-  const allAvgCell = (bucket) =>
-    winLossAvgCell(bucket, winKey, lossKey, color, true, showRange ? minKey : null, maxKey, "border-left:2px solid #3f4147;");
+  const rowCells = (byCol) => groups.map(g =>
+    winLossPairCells(byCol?.[g.key], winKey, lossKey, showRange ? minKey : null, maxKey, g.border, g.all)).join("");
 
   chars.forEach(char => {
-    html += `<tr>${charNameCell(char)}`;
-    ascs.forEach(col => { html += winLossAvgCell(pivotData[char]?.[col.key], winKey, lossKey, color, false, minKey, maxKey); });
-    html += allAvgCell(pivotData[char]?.["ALL"]);
-    html += `</tr>`;
+    html += `<tr>${charNameCell(char)}${rowCells(pivotData[char])}</tr>`;
   });
 
-  html += `<tr class="total-row"><td class="char-name" style="color:#e0c468">All Characters</td>`;
-  ascs.forEach(col => { html += winLossAvgCell(pivotData["ALL"]?.[col.key], winKey, lossKey, color, false, minKey, maxKey); });
-  html += allAvgCell(pivotData["ALL"]?.["ALL"]);
-  html += `</tr></tbody>`;
+  html += `<tr class="total-row"><td class="char-name" style="color:#e0c468">All Characters</td>${rowCells(pivotData["ALL"])}</tr></tbody>`;
 
   document.getElementById(tableId).innerHTML = html;
 }

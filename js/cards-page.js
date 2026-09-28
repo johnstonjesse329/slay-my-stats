@@ -137,15 +137,13 @@ function renderCardsPage() {
     return cardsSortDir * (cmp || a.title.localeCompare(b.title));
   });
 
-  // Subtitle -> heading tooltip: the scope (all characters / one character) is
-  // already visible in the filter bar and Pool column, so only the running
-  // count is worth surfacing, and only on hover.
+  // Visible caption rather than a heading tooltip, which phones never show.
   const scopeLabel = sharedActiveChar === "ALL"
     ? "all characters"
     : fmtCharName(sharedActiveChar);
-  const cardsTitle = document.getElementById("cards-title");
-  if (cardsTitle) cardsTitle.dataset.tip =
-    `${rows.length} card${rows.length !== 1 ? "s" : ""} offered, ${scopeLabel}`;
+  const cardsCaption = document.getElementById("cards-caption");
+  if (cardsCaption) cardsCaption.textContent =
+    `${rows.length} card${rows.length !== 1 ? "s" : ""} offered under the current filters (${scopeLabel}).`;
 
   // Header
   const cols = [

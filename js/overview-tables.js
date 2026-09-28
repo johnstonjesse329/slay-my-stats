@@ -70,54 +70,47 @@ function renderStarterCardsTable(data) {
   const chars = DATA.characters;
   const acts  = [1, 2, 3];
 
-  const thAct  = `font-size:0.7rem;color:#bcbcd0;text-transform:uppercase;letter-spacing:.05em`;
-  const thSub  = `font-size:0.72rem;color:#8a8aa0;font-weight:400`;
+  // Strikes and Defends are rows, each act a Won / Lost column pair (the
+  // same header as Rest Site Choices), so every cell is one bare number.
+  // Cells used to pack "W / L" for two card types under a three-level header.
+  const thHead = `color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;padding:0.5rem 0.6rem`;
+  const thSub  = `font-size:0.72rem;color:#8a8aa0;font-weight:400;text-align:center`;
+  const groups = [...acts.map(a => ({ key: a, label: `Act ${a}`, border: "1px" })), { key: "ALL", label: "ALL", border: "2px", all: true }];
   let html = `<thead><tr>
-    <th class="char-head">Character</th>
-    ${acts.map(a => `<th colspan="2" style="text-align:center;border-left:1px solid #3f4147;${thAct}">Act ${a} Boss</th>`).join("")}
-    <th colspan="2" class="all-col" style="border-left:2px solid #3f4147;text-align:center;${thAct}">ALL</th>
+    <th class="char-head" rowspan="2">Character</th>
+    <th rowspan="2" style="${thHead}">Card</th>
+    ${groups.map(g => `<th colspan="2" class="${g.all ? "all-col" : ""}" style="border-left:${g.border} solid #3f4147;text-align:center">${g.label}</th>`).join("")}
   </tr><tr>
-    <th></th>
-    ${acts.map(() => `<th style="${thSub};border-left:1px solid #3f4147">Strikes</th><th style="${thSub}">Defends</th>`).join("")}
-    <th class="all-col" style="${thSub};border-left:2px solid #3f4147">Strikes</th>
-    <th class="all-col" style="${thSub}">Defends</th>
-  </tr></thead><tbody>`;
+    ${groups.map(g => `<th class="${g.all ? "all-col" : ""}" style="${thSub};border-left:${g.border} solid #3f4147">Won</th><th class="${g.all ? "all-col" : ""}" style="${thSub}">Lost</th>`).join("")}
+  </tr></thead>`;
 
-  const fmt = (val, isLoss) =>
-    val != null
-      ? `<span style="color:${isLoss ? "#e05c5c" : "#5cba7d"};${isLoss ? "" : "font-weight:600"}"><span class="vh">${isLoss ? "L " : "W "}</span>${val}</span>`
-      : `<span style="color:#8a8aa0">—</span>`;
+  const cell = (v, isLoss, style, cls) => v == null
+    ? `<td class="${cls} empty" style="${style}">—</td>`
+    : `<td class="${cls}" style="${style}font-size:0.88rem;color:${isLoss ? "#e05c5c" : "#5cba7d"};${isLoss ? "" : "font-weight:600"}">${v}</td>`;
 
-  const rowHtml = (rowData, labelCell) => {
-    let r = `<tr>${labelCell}`;
-    acts.forEach((a, i) => {
-      const d = rowData[a];
-      const borderStyle = i === 0 ? "border-left:1px solid #3f4147;" : "border-left:1px solid #3f4147;";
-      if (!d) {
-        r += `<td class="cell empty" style="${borderStyle}">—</td><td class="cell empty">—</td>`;
-      } else {
-        r += `<td class="cell" style="${borderStyle}font-size:0.88rem">${fmt(d.avgWinStrikes, false)} / ${fmt(d.avgLossStrikes, true)}</td>`;
-        r += `<td class="cell" style="font-size:0.88rem">${fmt(d.avgWinDefends, false)} / ${fmt(d.avgLossDefends, true)}</td>`;
-      }
+  const DIVIDER = "border-top:2px solid #3f4147;";
+  const blockHtml = (rowData, nameHtml, nameStyle = "") => {
+    let r = `<tbody>`;
+    [["Strikes", "Strikes"], ["Defends", "Defends"]].forEach(([label, key], i) => {
+      const sep = i === 0 ? DIVIDER : "";
+      r += `<tr>${i === 0 ? `<td class="char-name" rowspan="2" style="vertical-align:middle;${DIVIDER}${nameStyle}">${nameHtml}</td>` : ""}`;
+      r += `<td class="cell" style="${sep}text-align:left;color:#ccc;font-size:0.8rem;padding:0.35rem 0.6rem">${label}</td>`;
+      groups.forEach(g => {
+        const d = rowData?.[g.key];
+        const cls = "cell" + (g.all ? " all-col" : "");
+        r += cell(d?.[`avgWin${key}`], false, `${sep}border-left:${g.border} solid #3f4147;`, cls);
+        r += cell(d?.[`avgLoss${key}`], true, sep, cls);
+      });
+      r += `</tr>`;
     });
-    // ALL column
-    const d = rowData["ALL"];
-    if (!d) {
-      r += `<td class="cell all-col empty" style="border-left:2px solid #3f4147">—</td><td class="cell all-col empty">—</td>`;
-    } else {
-      r += `<td class="cell all-col" style="border-left:2px solid #3f4147;font-size:0.88rem">${fmt(d.avgWinStrikes, false)} / ${fmt(d.avgLossStrikes, true)}</td>`;
-      r += `<td class="cell all-col" style="font-size:0.88rem">${fmt(d.avgWinDefends, false)} / ${fmt(d.avgLossDefends, true)}</td>`;
-    }
-    r += `</tr>`;
-    return r;
+    return r + `</tbody>`;
   };
 
   chars.forEach(char => {
-    html += rowHtml(data[char], charNameCell(char));
+    html += blockHtml(data[char],
+      `<span class="dot" style="background:${CHAR_COLOR_MAP[char] || "#a0a0b8"}"></span>${fmtCharName(char)}`);
   });
-  html += rowHtml(data["ALL"],
-    `<td class="char-name" style="color:#e0c468">All Characters</td>`);
-  html += `</tbody>`;
+  html += blockHtml(data["ALL"], "All Characters", "color:#e0c468");
 
   document.getElementById("starter-cards-table").innerHTML = html;
 }
