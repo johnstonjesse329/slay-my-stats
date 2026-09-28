@@ -241,8 +241,6 @@ function renderRestChoicesTable(data, filteredRuns) {
     return;
   }
 
-  const color = "#7ec8a0";
-  const subStyle = `font-size:0.72rem;color:#8a8aa0;letter-spacing:0;text-transform:none;font-weight:400`;
   const DIVIDER = "border-top:2px solid #3f4147;";
 
   let html = `<thead><tr>
@@ -251,12 +249,18 @@ function renderRestChoicesTable(data, filteredRuns) {
     <th style="border-right:2px solid #3f4147;color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;padding:0.5rem 0.9rem">Choice</th>
     ${ascs.map(col => `<th>${col.label}</th>`).join("")}
     <th style="border-left:2px solid #3f4147;text-align:center;padding:0.5rem 0.9rem;color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em">
-      ALL<br><span style="${subStyle}">Win avg / Loss avg</span></th>
+      ALL</th>
   </tr></thead><tbody>`;
 
-  const fmtVal = (v, col) => v != null
-    ? `<span style="color:${col}">${v}</span>`
-    : `<span style="color:#8a8aa0">—</span>`;
+  // Same win-green / loss-red as Starter Cards Entering Boss, plus a visible
+  // W/L tag: two bare numbers ("2.8 / 4.6") didn't say which was which, and
+  // the old "Win avg / Loss avg" key only sat under the far-right ALL header.
+  const fmtVal = (v, isLoss) => {
+    const tag = `<span style="font-size:0.68rem;color:#8a8aa0;margin-right:2px">${isLoss ? "L" : "W"}</span>`;
+    return v != null
+      ? `${tag}<span style="color:${isLoss ? "#e05c5c" : "#5cba7d"};${isLoss ? "" : "font-weight:600"}">${v}</span>`
+      : `${tag}<span style="color:#8a8aa0">—</span>`;
+  };
 
   // Run count (the only part of the old hover tooltip that wasn't already
   // visible as the win/loss avg above it) is shown directly as a sub-line
@@ -266,18 +270,18 @@ function renderRestChoicesTable(data, filteredRuns) {
   const dataCell = (d, extraStyle = "") => {
     if (!d || (d.avgWin == null && d.avgLoss == null))
       return `<td class="cell empty" style="${extraStyle}">—</td>`;
-    const w = fmtVal(d.avgWin,  color);
-    const l = fmtVal(d.avgLoss, color + "88");
-    return `<td class="cell" style="${extraStyle}font-size:0.82rem">${w} / ${l}${runsMeta(d)}</td>`;
+    const w = fmtVal(d.avgWin,  false);
+    const l = fmtVal(d.avgLoss, true);
+    return `<td class="cell" style="${extraStyle}font-size:0.82rem;white-space:nowrap">${w} / ${l}${runsMeta(d)}</td>`;
   };
 
   const allCell = (d, extraStyle = "") => {
     const border = `border-left:2px solid #3f4147;`;
     if (!d || (d.avgWin == null && d.avgLoss == null))
       return `<td class="cell all-col empty" style="${border}${extraStyle}">—</td>`;
-    const w = fmtVal(d.avgWin,  color);
-    const l = fmtVal(d.avgLoss, color + "88");
-    return `<td class="cell all-col" style="${border}${extraStyle}font-size:0.82rem">${w} / ${l}${runsMeta(d)}</td>`;
+    const w = fmtVal(d.avgWin,  false);
+    const l = fmtVal(d.avgLoss, true);
+    return `<td class="cell all-col" style="${border}${extraStyle}font-size:0.82rem;white-space:nowrap">${w} / ${l}${runsMeta(d)}</td>`;
   };
 
   // Render each character as two <tbody> blocks:
@@ -319,6 +323,10 @@ function renderRestChoicesTable(data, filteredRuns) {
         const isFirstChoice = choiceI === 0;
         const sep = isFirstChoice ? "border-top:1px solid #1a1a3a;" : "";
         html += `<tr>`;
+        // The char-name cell's rowspan can't reach into this separate tbody,
+        // so the Character column needs its own blank cell here or every
+        // act row shifts one column left.
+        if (actI === 0 && isFirstChoice) html += `<td rowspan="${REST_ACTS.length * REST_CHOICES.length}"></td>`;
         if (isFirstChoice) html += `<td class="cell" rowspan="${REST_CHOICES.length}" style="${sep}text-align:center;color:#a0a0b8;font-size:0.78rem;padding:0.35rem 0.5rem">Act ${act}</td>`;
         html += `<td class="cell" style="${sep}text-align:left;border-right:2px solid #3f4147;color:#ccc;font-size:0.8rem;padding:0.35rem 0.7rem">${REST_CHOICE_LABELS[choice]}</td>`;
         ascs.forEach(col => { html += dataCell(data[charKey]?.[col.key]?.[act]?.[choice], sep); });

@@ -177,6 +177,9 @@ h1 {
   min-width: 0;
 }
 .chart-box h2 { font-size: 1rem; color: var(--text); margin-bottom: 1rem; }
+/* One-line "how to read this" under a heading whose cells aren't self-explanatory. */
+.chart-box h2:has(+ .chart-caption) { margin-bottom: 0.25rem; }
+.chart-caption { font-size: 0.8rem; color: var(--text-dim); margin-bottom: 0.9rem; }
 
 .chart-wrap { position: relative; height: 260px; }
 

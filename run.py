@@ -1001,7 +1001,8 @@ def dashboard_body_html(subtitle: str) -> str:
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2 data-tip="Avg times chosen per run, W / L">Rest Site Choices</h2>
+    <h2>Rest Site Choices</h2>
+    <p class="chart-caption">Average times each option was chosen per run: W in runs you won, L in runs you lost. Click a character for the per-act split.</p>
     <div class="pivot-wrap"><table class="pivot" id="rest-choices-table"></table></div>
   </div>
 </div>
