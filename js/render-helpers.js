@@ -219,7 +219,8 @@ function renderPersonalBests() {
       ${row("Final boss deaths", b.finalBossDeaths || "—")}
       ${noRuns
         ? `<div style="color:#8a8aa0;font-size:0.8rem;padding:0.25rem 0">No wins yet</div>`
-        : `${row("Win streak", `${b.currentStreak || 0}<span style="color:#8a8aa0;font-weight:400"> · best </span>${b.longestStreak}`)}
+        : `${row("Current win streak", b.currentStreak || 0)}
+          ${row("Best win streak", b.longestStreak)}
           ${row("Fastest win", link(b.fastestWin, fmtHrsMinSec))}
           ${row("Most elites", link(b.mostElites))}
           ${heading("In wins", "fewest – most")}
