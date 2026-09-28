@@ -347,13 +347,14 @@ function aggregateCharFavorites() {
 
 // emph ("count" | "win") brightens the number the item was chosen for, and
 // leads with it. column: true is the narrow two-column layout in the
-// character panes -- the name wraps to two lines rather than truncating, and
-// the stat pieces wrap onto a second line when they don't fit.
+// character panes -- no thumbnail (too small to help at that size; the
+// hover/tap tooltip shows the real art), the name wraps to two lines rather
+// than truncating, and the stat pieces wrap when they don't fit.
 function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column = false) {
   // Empty state keeps the same icon + two-line footprint as populated rows
   // so the tile grid's row heights stay aligned across characters
-  if (!item) return `<div style="display:flex;align-items:center;gap:0.4rem;min-width:0;opacity:0.45">
-    <span style="width:22px;height:22px;flex:0 0 auto;border:1px dashed #3f4147;border-radius:4px"></span>
+  if (!item) return `<div style="display:flex;align-items:${column ? "flex-start" : "center"};gap:0.4rem;min-width:0;opacity:0.45">
+    ${column ? "" : `<span style="width:22px;height:22px;flex:0 0 auto;border:1px dashed #3f4147;border-radius:4px"></span>`}
     <div style="min-width:0">
       <div style="font-size:0.78rem;color:#8a8aa0">None yet</div>
       <div style="font-size:0.72rem;color:#8a8aa0">no ${countLabel}</div>
@@ -397,8 +398,8 @@ function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column 
     tooltipClass = "relic-tooltip-wrap";
   }
 
-  return `<div class="fav-item" tabindex="0" role="img" aria-label="${label} — ${plainSub}" style="display:flex;align-items:center;gap:0.4rem;min-width:0">
-    ${thumbHtml}
+  return `<div class="fav-item" tabindex="0" role="img" aria-label="${label} — ${plainSub}" style="display:flex;align-items:${column ? "flex-start" : "center"};gap:0.4rem;min-width:0">
+    ${column ? "" : thumbHtml}
     ${column
       ? `<div style="min-width:0">
       <div style="font-size:0.76rem;color:#ccc;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;hyphens:auto;overflow-wrap:anywhere" lang="en">${label}</div>
