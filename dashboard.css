@@ -1684,6 +1684,11 @@ body.suppress-hover-tooltips .node-tooltip {
   #personal-bests-cards { grid-template-columns: minmax(0, 1fr); }
   .card > div { flex-wrap: wrap; }
 
+  /* Summary stat cards (Total Time Played, Runs, etc.): each one is short
+     enough that a single-column stack (from .cards' 220px auto-fit minimum)
+     leaves half the card empty. Two narrower columns use that space instead. */
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
   /* Run Detail: the 230px run list + timeline side-by-side has no room.
      Stack them, and cap the run list's height (it's independently
      scrollable already) so it doesn't push the timeline below the fold. */
