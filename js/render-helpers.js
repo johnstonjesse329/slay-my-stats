@@ -112,7 +112,7 @@ function renderPersonalBests() {
 
   const bests = {};
   chars.forEach(char => {
-    bests[char] = { gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, mostElites: null, fewestElites: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, highestWinAsc: null };
+    bests[char] = { gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, mostElites: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, highestWinAsc: null };
   });
 
   allRuns.forEach(run => {
@@ -156,6 +156,7 @@ function renderPersonalBests() {
     if (b.mostElites === null || elites > b.mostElites.value) b.mostElites = { value: elites, ts: run.ts };
     if (run.won) {
       if (b.fewestElites === null || elites < b.fewestElites.value) b.fewestElites = { value: elites, ts: run.ts };
+      if (b.mostElitesWin === null || elites > b.mostElitesWin.value) b.mostElitesWin = { value: elites, ts: run.ts };
       if (run.cards != null) {
         if (b.mostCards === null || run.cards > b.mostCards.value) b.mostCards = { value: run.cards, ts: run.ts };
         if (b.fewestCards === null || run.cards < b.fewestCards.value) b.fewestCards = { value: run.cards, ts: run.ts };
@@ -169,34 +170,38 @@ function renderPersonalBests() {
   chars.forEach(char => { bests[char].currentStreak = bests[char]._streak; });
 
 
-  const stat = (label, value, color = "#ccc") =>
-    `<div style="flex:1">
-      <div style="font-size:0.72rem;color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">${label}</div>
-      <div style="font-size:0.9rem;font-weight:600;color:${color}">${value}</div>
+  // One line per stat, label left / value right. The panels used to stack an
+  // uppercase label over every value in a two-column grid, and in a 5-wide
+  // grid most labels wrapped to two or three lines, so each panel ran ~970px.
+  const row = (label, valueHtml) =>
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;font-size:0.8rem;line-height:1.55">
+      <span style="color:#8a8aa0">${label}</span>
+      <span style="font-weight:600;color:#ccc;white-space:nowrap">${valueHtml}</span>
     </div>`;
 
-  // Same look as stat(), but the value is a link to the specific run that
-  // produced it (best is { value, ts } or null — see the tracking above).
-  const statLink = (label, best, fmt = v => v) => {
-    if (!best) return stat(label, "—");
-    return `<div style="flex:1">
-      <div style="font-size:0.72rem;color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">${label}</div>
-      <div class="pb-stat-link" data-ts="${best.ts}" data-tip="Jump to this run" style="font-size:0.9rem;font-weight:600;color:#ccc;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-decoration-color:#8a8aa0;text-underline-offset:2px">${fmt(best.value)}</div>
-    </div>`;
-  };
+  // A value that links to the specific run that produced it (best is
+  // { value, ts } or null — see the tracking above).
+  const link = (best, fmt = v => v) => best
+    ? `<span class="pb-stat-link" data-ts="${best.ts}" data-tip="Jump to this run" style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-decoration-color:#8a8aa0;text-underline-offset:2px">${fmt(best.value)}</span>`
+    : "—";
 
-  // Stacked, not side-by-side: splitting the card's already-narrow width
-  // (a 5-column grid) into two more columns left ~65px of text per item,
-  // so almost every card/relic name and its pick count truncated to an
-  // illegible "Bloodle… / 279 pick…". One item per full-width row gives
-  // each name/stat line roughly triple that.
-  const favRow = (labelL, labelR, htmlL, htmlR) =>
-    `<div style="border-top:1px solid #3f4147;padding-top:0.3rem;margin-bottom:0.3rem">
-      <div style="font-size:0.68rem;color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-bottom:0.15rem">${labelL}</div>
-      <div style="margin-bottom:0.3rem">${htmlL}</div>
-      <div style="font-size:0.68rem;color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-bottom:0.15rem">${labelR}</div>
-      <div>${htmlR}</div>
+  // Fewest–most as one row; each end still links to its own run.
+  const range = (lo, hi, fmt) => !lo || !hi ? "—"
+    : lo.value === hi.value ? link(lo, fmt)
+    : `${link(lo, fmt)}<span style="color:#8a8aa0;font-weight:400"> – </span>${link(hi, fmt)}`;
+
+  const heading = (title, note = "") =>
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;border-top:1px solid #3f4147;margin-top:0.4rem;padding-top:0.35rem;margin-bottom:0.15rem">
+      <span style="font-size:0.68rem;color:#a8a2c4;text-transform:uppercase;letter-spacing:.06em;font-weight:600">${title}</span>
+      <span style="font-size:0.68rem;color:#8a8aa0;text-align:right">${note}</span>
     </div>`;
+
+  // Two items per heading, stacked full-width (side-by-side truncated names
+  // to "Bloodle…"). The note names them in order, and each item brightens
+  // the number it was picked for.
+  const favGroup = (title, note, htmlA, htmlB) =>
+    `${heading(title, note)}
+    <div style="display:flex;flex-direction:column;gap:0.25rem">${htmlA}${htmlB}</div>`;
 
   const favorites = aggregateCharFavorites();
 
@@ -208,42 +213,33 @@ function renderPersonalBests() {
     const fav = favorites[char];
 
     return `<div class="card" style="border-color:${color}55;box-sizing:border-box">
-      <div style="font-size:0.75rem;font-weight:700;color:${color};letter-spacing:.04em;margin-bottom:0.5rem">${label.toUpperCase()}</div>
-      <div style="display:flex;gap:0.75rem;margin-bottom:0.5rem">
-        ${statLink("Best Win (Asc)", b.highestWinAsc, v => `A${v}`)}
-        ${stat("Games Played", b.gamesPlayed || "—")}
-        ${stat("Total Wins", b.totalWins || "—")}
-        ${stat("Final Boss Deaths", b.finalBossDeaths || "—")}
-      </div>
+      <div style="font-size:0.75rem;font-weight:700;color:${color};letter-spacing:.04em;margin-bottom:0.35rem">${label.toUpperCase()}</div>
+      ${row("Runs / wins", `${b.gamesPlayed || "—"} / ${b.totalWins || "—"}`)}
+      ${row("Highest Asc", link(b.highestWinAsc, v => `A${v}`))}
+      ${row("Final boss deaths", b.finalBossDeaths || "—")}
       ${noRuns
         ? `<div style="color:#8a8aa0;font-size:0.8rem;padding:0.25rem 0">No wins yet</div>`
-        : `<div style="border-top:1px solid #3f4147;padding-top:0.4rem;margin-bottom:0.5rem;display:grid;grid-template-columns:repeat(2, 1fr);gap:0.5rem 0.75rem">
-            ${stat("Win Streak", b.currentStreak > 0 ? b.currentStreak : "—")}
-            ${stat("Best Streak", b.longestStreak || "—")}
-            ${statLink("Fastest Win", b.fastestWin, fmtHrsMinSec)}
-            ${statLink("Most Elites", b.mostElites)}
-            ${statLink("Fewest Elites (W)", b.fewestElites)}
-            ${statLink("Max Cards (W)", b.mostCards)}
-            ${statLink("Min Cards (W)", b.fewestCards)}
-            ${statLink("Max Relics (W)", b.mostRelics)}
-            ${statLink("Min Relics (W)", b.fewestRelics)}
-            ${statLink("Max HP (W)", b.mostMaxHp)}
-            ${statLink("Min HP (W)", b.fewestMaxHp)}
-            ${statLink("Most Boss Turns (W)", b.mostFinalBossTurns)}
-            ${statLink("Fewest Boss Turns (W)", b.fewestFinalBossTurns)}
-          </div>
-          ${favRow("Most Picked Card", "Best Win % Card",
-              favoriteItemHtml("card", fav.card.mostPicked),
-              favoriteItemHtml("card", fav.card.bestWinRate))}
-          ${favRow("Most Picked Rare", "Best Win % Rare",
-              favoriteItemHtml("card", fav.rareCard.mostPicked),
-              favoriteItemHtml("card", fav.rareCard.bestWinRate))}
-          ${favRow("Most Picked Relic", "Best Win % Relic",
-              favoriteItemHtml("relic", fav.relic.mostPicked),
-              favoriteItemHtml("relic", fav.relic.bestWinRate))}
-          ${favRow("Most Bought Card", "Most Bought Relic",
-              favoriteItemHtml("card", fav.shopCard.mostPicked, "buys"),
-              favoriteItemHtml("relic", fav.shopRelic.mostPicked, "buys"))}`
+        : `${row("Win streak", `${b.currentStreak || 0}<span style="color:#8a8aa0;font-weight:400"> · best </span>${b.longestStreak}`)}
+          ${row("Fastest win", link(b.fastestWin, fmtHrsMinSec))}
+          ${row("Most elites", link(b.mostElites))}
+          ${heading("In wins", "fewest – most")}
+          ${row("Elites", range(b.fewestElites, b.mostElitesWin))}
+          ${row("Cards", range(b.fewestCards, b.mostCards))}
+          ${row("Relics", range(b.fewestRelics, b.mostRelics))}
+          ${row("Max HP", range(b.fewestMaxHp, b.mostMaxHp))}
+          ${row("Final boss turns", range(b.fewestFinalBossTurns, b.mostFinalBossTurns))}
+          ${favGroup("Cards", "most picked · best win %",
+              favoriteItemHtml("card", fav.card.mostPicked, "picks", "count"),
+              favoriteItemHtml("card", fav.card.bestWinRate, "picks", "win"))}
+          ${favGroup("Rares", "most picked · best win %",
+              favoriteItemHtml("card", fav.rareCard.mostPicked, "picks", "count"),
+              favoriteItemHtml("card", fav.rareCard.bestWinRate, "picks", "win"))}
+          ${favGroup("Relics", "most picked · best win %",
+              favoriteItemHtml("relic", fav.relic.mostPicked, "picks", "count"),
+              favoriteItemHtml("relic", fav.relic.bestWinRate, "picks", "win"))}
+          ${favGroup("Shop", "most bought card · relic",
+              favoriteItemHtml("card", fav.shopCard.mostPicked, "buys", "count"),
+              favoriteItemHtml("relic", fav.shopRelic.mostPicked, "buys", "count"))}`
       }
     </div>`;
   }).join("");
@@ -338,7 +334,10 @@ function aggregateCharFavorites() {
   return result;
 }
 
-function favoriteItemHtml(kind, item, countLabel = "picks") {
+// emph ("count" | "win") brightens the number the item was chosen for, so a
+// pair of items under one heading reads as "most picked" vs "best win %"
+// without a label line over each.
+function favoriteItemHtml(kind, item, countLabel = "picks", emph = null) {
   // Empty state keeps the same icon + two-line footprint as populated rows
   // so the tile grid's row heights stay aligned across characters
   if (!item) return `<div style="display:flex;align-items:center;gap:0.4rem;min-width:0;opacity:0.45">
@@ -349,9 +348,12 @@ function favoriteItemHtml(kind, item, countLabel = "picks") {
     </div>
   </div>`;
   const label = kind === "card" ? fmtCardLabel(item.id) : fmtRelicLabel(item.id);
+  const hi = (text, on) => on ? `<b style="color:#e8e6f0;font-weight:700">${text}</b>` : text;
+  const countText = hi(`${item.picked} ${countLabel}`, emph === "count");
   const sub   = item.winPct != null
-    ? `${item.picked} ${countLabel} · ${item.winPct}% win`
-    : `${item.picked} ${countLabel}`;
+    ? `${countText} · ${hi(`${item.winPct}% win`, emph === "win")}`
+    : countText;
+  const plainSub = sub.replace(/<[^>]+>/g, "");
   // A below-threshold (lowSample) pick used to fade the whole row to 55%
   // opacity, which read as disabled/broken next to fully-inked neighbors in
   // the character panes. Drop the dim and keep the small "N" badge as the
@@ -383,7 +385,7 @@ function favoriteItemHtml(kind, item, countLabel = "picks") {
     tooltipClass = "relic-tooltip-wrap";
   }
 
-  return `<div class="fav-item" tabindex="0" role="img" aria-label="${label} — ${sub}" style="display:flex;align-items:center;gap:0.4rem;min-width:0">
+  return `<div class="fav-item" tabindex="0" role="img" aria-label="${label} — ${plainSub}" style="display:flex;align-items:center;gap:0.4rem;min-width:0">
     ${thumbHtml}
     <div style="overflow:hidden;min-width:0">
       <div style="font-size:0.78rem;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
