@@ -15,8 +15,8 @@ const ELITE_IDS = [...new Set(ALL_FIGHTS.filter(f => f.type === "elite").map(f =
 
 // ---- Fight filtering ----
 
-function filterFights(opts = {}) {
-  const okTs = filteredRunTsSet(opts);
+function filterFights() {
+  const okTs = filteredRunTsSet();
   const char = singleCharFallback();
   return ALL_FIGHTS.filter(f => f.char === char && okTs.has(f.ts));
 }
@@ -152,10 +152,7 @@ function summarizeFights(bucket) {
   };
 }
 
-// allAscFights drives the "ALL" bucket (every ascension this player has
-// fought this encounter at), independent of the ascension filter; fights
-// drives the per-column buckets as before.
-function aggregateFights(fights, allAscFights) {
+function aggregateFights(fights) {
   const allEncs   = [...BOSS_IDS, ...ELITE_IDS];
   const byEncAsc  = {};
   allEncs.forEach(enc => {
@@ -168,10 +165,7 @@ function aggregateFights(fights, allAscFights) {
     if (!byEncAsc[f.enc]) return;
     const b = byEncAsc[f.enc][ascColumnKey(f.asc)];
     if (b) addFight(b, f);
-  });
-  allAscFights.forEach(f => {
-    if (!byEncAsc[f.enc]) return;
-    addFight(byEncAsc[f.enc]["ALL"], f);
+    addFight(byEncAsc[f.enc]["ALL"],   f);
   });
 
   const result = {};
@@ -210,8 +204,7 @@ function summarizeDeckAct(bucket) {
 }
 
 // Returns { act: { asc: summarizeDeckAct, ALL: summarizeDeckAct } }
-// allAscFights drives the "ALL" bucket, same reasoning as aggregateFights.
-function aggregateDeckByAct(fights, allAscFights) {
+function aggregateDeckByAct(fights) {
   const acts = [1, 2, 3];
   const byActAsc = {};
   acts.forEach(act => {
@@ -226,12 +219,7 @@ function aggregateDeckByAct(fights, allAscFights) {
     if (!act) return;
     const b = byActAsc[act][ascColumnKey(f.asc)];
     if (b) addDeckAct(b, f);
-  });
-  allAscFights.forEach(f => {
-    if (f.type !== "boss") return;
-    const act = bossAct(f.enc);
-    if (!act) return;
-    addDeckAct(byActAsc[act]["ALL"], f);
+    addDeckAct(byActAsc[act]["ALL"],   f);
   });
 
   const result = {};
@@ -258,7 +246,7 @@ function renderDeckActTable(tableId, deckData) {
   let html = `<thead><tr>
     <th class="char-head">Act</th>
     ${visAscs.map(col => `<th>${col.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">ALL<br><span style="${subStyle}">W / L median</span></th>
+    <th class="all-col" style="border-left:2px solid #3f4147">All columns<br><span style="${subStyle}">W / L median</span></th>
   </tr></thead><tbody>`;
   [1, 2, 3].forEach(act => {
     const s = deckData[act];
@@ -365,7 +353,7 @@ function renderFightTable(tableId, encGroups, fightData, cellFn, rangeFn) {
   let html = `<thead><tr>
     <th class="char-head">Encounter</th>
     ${visAscs.map(col => `<th>${col.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">ALL</th>
+    <th class="all-col" style="border-left:2px solid #3f4147">All<br>columns</th>
     ${rangeHeader}
   </tr></thead><tbody>`;
 
@@ -405,11 +393,10 @@ function updateDetail() {
     note.style.display = "none";
   }
 
-  const fights       = filterFights();
-  const allAscFights = filterFights({ ignoreAsc: true });
-  const fightData    = aggregateFights(fights, allAscFights);
-  const deckData     = aggregateDeckByAct(fights, allAscFights);
-  const groups       = DATA.encGroups;
+  const fights    = filterFights();
+  const fightData = aggregateFights(fights);
+  const deckData  = aggregateDeckByAct(fights);
+  const groups    = DATA.encGroups;
 
   const bossGroups  = groups.filter(g => g.label.includes("Boss"));
   const eliteGroups = groups.filter(g => g.label.includes("Elite"));

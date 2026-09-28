@@ -449,7 +449,7 @@ function renderWinPivot(pivotData) {
   let html = `<thead><tr>
     <th class="char-head">Character</th>
     ${ascs.map(col => `<th>${col.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">ALL</th>
+    <th class="all-col" style="border-left:2px solid #3f4147">All<br>columns</th>
   </tr></thead><tbody>`;
 
   chars.forEach(char => {
@@ -500,30 +500,31 @@ const ACT3_BOSS_IDS = new Set(
     .flatMap(g => g.ids)
 );
 
-// A run's final-boss win/loss is marked into byCA -- either the per-column
-// buckets (asc column + A10 stage columns) or, when onlyAll is set, just the
-// "ALL" bucket. Two passes over two different run sets (see
-// aggregateFinalBossWins) share this so the "ALL" column can mean "every
-// ascension" while the per-column buckets keep respecting the filter.
-function markFinalBossWins(byCA, runs, onlyAll) {
-  runs.forEach(run => {
+function aggregateFinalBossWins(filteredRuns) {
+  const chars = DATA.characters;
+  const ascs  = ascColumns().map(col => col.key);
+
+  const makeBucket = () => ({ reached: 0, won: 0 });
+  const byCA = {};
+  [...chars, "ALL"].forEach(char => {
+    byCA[char] = {};
+    [...ascs, ...A10_STAGE_KEYS, "ALL"].forEach(asc => { byCA[char][asc] = makeBucket(); });
+  });
+
+  filteredRuns.forEach(run => {
     const fights = run.fights || [];
     const bossFights = fights.filter(f => f.type === "boss");
     if (!bossFights.length) return;  // never reached a boss node
 
     const finalBoss = bossFights[bossFights.length - 1];
     const won = finalBoss.won;
+
     const mark = (bucket) => { bucket.reached += 1; if (won) bucket.won += 1; };
-
-    if (onlyAll) {
-      if (byCA[run.char]?.["ALL"]) mark(byCA[run.char]["ALL"]);
-      mark(byCA["ALL"]["ALL"]);
-      return;
-    }
-
-    const asc = ascColumnKey(run.asc);
-    if (byCA[run.char]?.[asc]) mark(byCA[run.char][asc]);
-    if (byCA["ALL"]?.[asc])    mark(byCA["ALL"][asc]);
+    const asc  = ascColumnKey(run.asc);
+    if (byCA[run.char]?.[asc])     mark(byCA[run.char][asc]);
+    if (byCA[run.char]?.["ALL"])   mark(byCA[run.char]["ALL"]);
+    if (byCA["ALL"]?.[asc])        mark(byCA["ALL"][asc]);
+    mark(byCA["ALL"]["ALL"]);
 
     if (run.asc === 10) {
       const act3Bosses = bossFights.filter(f => ACT3_BOSS_IDS.has(f.enc));
@@ -541,28 +542,13 @@ function markFinalBossWins(byCA, runs, onlyAll) {
       }
     }
   });
-}
-
-function aggregateFinalBossWins(filteredRuns, allAscRuns) {
-  const chars = DATA.characters;
-  const ascs  = ascColumns().map(col => col.key);
-
-  const makeBucket = () => ({ reached: 0, won: 0 });
-  const byCA = {};
-  [...chars, "ALL"].forEach(char => {
-    byCA[char] = {};
-    [...ascs, ...A10_STAGE_KEYS, "ALL"].forEach(asc => { byCA[char][asc] = makeBucket(); });
-  });
-
-  markFinalBossWins(byCA, filteredRuns, false);
-  markFinalBossWins(byCA, allAscRuns, true);
 
   return byCA;
 }
 
-function renderFinalBossWinPivot(filteredRuns, allAscRuns) {
+function renderFinalBossWinPivot(filteredRuns) {
   const chars = DATA.characters;
-  const pivotData = aggregateFinalBossWins(filteredRuns, allAscRuns);
+  const pivotData = aggregateFinalBossWins(filteredRuns);
 
   // Ascension 10 has two Act 3 bosses — split its column (A10 on its own,
   // granular or bucketed) into "1st Boss" / "2nd Boss" so the double-boss
@@ -579,7 +565,7 @@ function renderFinalBossWinPivot(filteredRuns, allAscRuns) {
   let html = `<thead><tr>
     <th class="char-head">Character</th>
     ${cols.map(c => `<th>${c.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">ALL</th>
+    <th class="all-col" style="border-left:2px solid #3f4147">All<br>columns</th>
   </tr></thead><tbody>`;
 
   chars.forEach(char => {
@@ -636,7 +622,7 @@ function renderDeckPivot(tableId, pivotData, valueKey, winKey, lossKey, minKey, 
   // Same two-row Won / Lost header as Rest Site Choices, so each cell holds
   // one number instead of a "W / L" pair the reader has to decode.
   const thSub  = `font-size:0.72rem;color:#8a8aa0;font-weight:400;text-align:center`;
-  const groups = [...ascs.map(col => ({ key: col.key, label: col.label, border: "1px" })), { key: "ALL", label: "ALL", border: "2px", all: true }];
+  const groups = [...ascs.map(col => ({ key: col.key, label: col.label, border: "1px" })), { key: "ALL", label: "All<br>columns", border: "2px", all: true }];
   let html = `<thead><tr>
     <th class="char-head" rowspan="2">Character</th>
     ${groups.map(g => `<th colspan="2" class="${g.all ? "all-col" : ""}" style="border-left:${g.border} solid #3f4147;text-align:center">${g.label}</th>`).join("")}
