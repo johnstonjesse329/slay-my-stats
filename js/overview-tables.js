@@ -243,46 +243,36 @@ function renderRestChoicesTable(data, filteredRuns) {
 
   const DIVIDER = "border-top:2px solid #3f4147;";
 
+  // Each ascension column splits into Won / Lost sub-columns (the same
+  // two-row header as Starter Cards Entering Boss), so the header says which
+  // number is which and each cell holds one bare number. Packing both
+  // averages, W/L tags and a run-count line into one cell read as noise.
+  const thHead = `color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;padding:0.5rem 0.9rem`;
+  const thSub  = `font-size:0.72rem;color:#8a8aa0;font-weight:400;text-align:center`;
+  const groups = [...ascs.map(col => ({ label: col.label, border: "1px" })), { label: "ALL", border: "2px", all: true }];
   let html = `<thead><tr>
-    <th class="char-head">Character</th>
-    <th style="color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;padding:0.5rem 0.9rem">Act</th>
-    <th style="border-right:2px solid #3f4147;color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;padding:0.5rem 0.9rem">Choice</th>
-    ${ascs.map(col => `<th>${col.label}</th>`).join("")}
-    <th style="border-left:2px solid #3f4147;text-align:center;padding:0.5rem 0.9rem;color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em">
-      ALL</th>
+    <th class="char-head" rowspan="2">Character</th>
+    <th rowspan="2" style="${thHead}">Act</th>
+    <th rowspan="2" style="border-right:2px solid #3f4147;${thHead}">Choice</th>
+    ${groups.map(g => `<th colspan="2" class="${g.all ? "all-col" : ""}" style="border-left:${g.border} solid #3f4147;text-align:center">${g.label}</th>`).join("")}
+  </tr><tr>
+    ${groups.map(g => `<th class="${g.all ? "all-col" : ""}" style="${thSub};border-left:${g.border} solid #3f4147">Won</th><th class="${g.all ? "all-col" : ""}" style="${thSub}">Lost</th>`).join("")}
   </tr></thead><tbody>`;
 
-  // Same win-green / loss-red as Starter Cards Entering Boss, plus a visible
-  // W/L tag: two bare numbers ("2.8 / 4.6") didn't say which was which, and
-  // the old "Win avg / Loss avg" key only sat under the far-right ALL header.
-  const fmtVal = (v, isLoss) => {
-    const tag = `<span style="font-size:0.68rem;color:#8a8aa0;margin-right:2px">${isLoss ? "L" : "W"}</span>`;
-    return v != null
-      ? `${tag}<span style="color:${isLoss ? "#e05c5c" : "#5cba7d"};${isLoss ? "" : "font-weight:600"}">${v}</span>`
-      : `${tag}<span style="color:#8a8aa0">—</span>`;
+  // Run counts live in the hover tip rather than on the face of the cell.
+  const valCell = (v, n, isLoss, style) => {
+    if (v == null) return `<td class="cell empty" style="${style}">—</td>`;
+    const tip = `${n} ${isLoss ? "lost" : "won"} run${n === 1 ? "" : "s"}`;
+    return `<td class="cell" style="${style}font-size:0.88rem;color:${isLoss ? "#e05c5c" : "#5cba7d"};${isLoss ? "" : "font-weight:600"}" data-tip="${tip}">${v}</td>`;
   };
-
-  // Run count (the only part of the old hover tooltip that wasn't already
-  // visible as the win/loss avg above it) is shown directly as a sub-line
-  // instead, so the cell is self-contained and needs no hover at all.
-  const runsMeta = d => `<div class="meta">${d.wins + d.losses} runs (${d.wins}W / ${d.losses}L)</div>`;
-
-  const dataCell = (d, extraStyle = "") => {
-    if (!d || (d.avgWin == null && d.avgLoss == null))
-      return `<td class="cell empty" style="${extraStyle}">—</td>`;
-    const w = fmtVal(d.avgWin,  false);
-    const l = fmtVal(d.avgLoss, true);
-    return `<td class="cell" style="${extraStyle}font-size:0.82rem;white-space:nowrap">${w} / ${l}${runsMeta(d)}</td>`;
+  const pairCells = (d, extraStyle, border, isAll = false) => {
+    const cls = isAll ? "all-col " : "";
+    const first = `${extraStyle}border-left:${border} solid #3f4147;`;
+    return (valCell(d?.avgWin, d?.wins, false, first) + valCell(d?.avgLoss, d?.losses, true, extraStyle))
+      .replaceAll(`<td class="cell`, `<td class="${cls}cell`);
   };
-
-  const allCell = (d, extraStyle = "") => {
-    const border = `border-left:2px solid #3f4147;`;
-    if (!d || (d.avgWin == null && d.avgLoss == null))
-      return `<td class="cell all-col empty" style="${border}${extraStyle}">—</td>`;
-    const w = fmtVal(d.avgWin,  false);
-    const l = fmtVal(d.avgLoss, true);
-    return `<td class="cell all-col" style="${border}${extraStyle}font-size:0.82rem;white-space:nowrap">${w} / ${l}${runsMeta(d)}</td>`;
-  };
+  const dataCell = (d, extraStyle = "") => pairCells(d, extraStyle, "1px");
+  const allCell  = (d, extraStyle = "") => pairCells(d, extraStyle, "2px", true);
 
   // Render each character as two <tbody> blocks:
   //   - act-rows tbody (hidden by default, toggled by clicking the char cell)
