@@ -9,16 +9,20 @@ once per clone with `git config core.hooksPath githooks`), or by hand:
 Steps:
   1. `cdk diff`. If the stack changed, print the diff and ask y/N before
      `cdk deploy`. No changes -> skip straight to the site.
-  2. `build_site.py`, then `aws s3 sync` dist/ and the game-art folders to
-     the site bucket (never --delete; art uses --size-only so an unchanged
-     checkout doesn't re-upload thousands of images just because mtimes moved).
-  3. CloudFront invalidation of /* (one path, well inside the 1,000 free
-     invalidation paths a month), so index.html/app.js don't serve stale.
+  2. `build_site.py`, then upload only the dist/ files whose content changed,
+     and `aws s3 sync` the game-art folders (never --delete; art uses
+     --size-only so an unchanged checkout doesn't re-upload thousands of
+     images just because mtimes moved).
+  3. CloudFront invalidation of just the uploaded paths (or /* past ten of
+     them), so index.html/app.js don't serve stale. Nothing uploaded, no
+     invalidation. The first 1,000 paths a month are free.
 
 Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 `git push --no-verify`.
 """
 
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -122,12 +126,50 @@ def deploy_infra() -> None:
     run(["cdk", "deploy", "--require-approval", "never"], cwd=_INFRA, env=env)
 
 
+def upload_changed_dist() -> list[str]:
+    """
+    Upload only the dist/ files whose content differs from S3. `aws s3 sync`
+    can't tell: build_site.py rewrites every file, so all of them always look
+    newer. Compares MD5 against the S3 ETag, which is the MD5 for any object
+    uploaded in one part (dist files are far below the CLI's 8 MB multipart
+    threshold). Returns the uploaded keys.
+    """
+    listing = run([
+        "aws", "s3api", "list-objects-v2", "--bucket", SITE_BUCKET, "--output", "json",
+        "--query", "Contents[?!contains(Key, '/')].[Key, ETag]",
+    ], capture=True).stdout
+    remote = {key: etag.strip('"') for key, etag in (json.loads(listing) or [])}
+
+    dist = _HERE / "dist"
+    uploaded = []
+    for f in sorted(p for p in dist.rglob("*") if p.is_file()):
+        key = f.relative_to(dist).as_posix()
+        if remote.get(key) == hashlib.md5(f.read_bytes()).hexdigest():
+            continue
+        run(["aws", "s3", "cp", str(f), f"s3://{SITE_BUCKET}/{key}", "--no-progress"])
+        uploaded.append(key)
+    return uploaded
+
+
 def deploy_site() -> None:
     run([sys.executable, str(_HERE / "build_site.py")])
-    run(["aws", "s3", "sync", str(_HERE / "dist"), f"s3://{SITE_BUCKET}", "--no-progress"])
+    changed = upload_changed_dist()
     for d in ART_DIRS:
-        run(["aws", "s3", "sync", str(_HERE / d), f"s3://{SITE_BUCKET}/{d}",
-             "--size-only", "--no-progress"])
+        out = run(["aws", "s3", "sync", str(_HERE / d), f"s3://{SITE_BUCKET}/{d}",
+                   "--size-only", "--no-progress"], capture=True).stdout
+        print(out, end="")
+        # "upload: <local path> to s3://<bucket>/<key>"
+        changed += [line.split(f"s3://{SITE_BUCKET}/", 1)[1]
+                    for line in out.splitlines() if line.startswith("upload:")]
+
+    if not changed:
+        print("Site: no changes, skipping CloudFront invalidation.")
+        return
+    # Each listed path counts against the 1,000 free a month, so past a
+    # handful one wildcard is cheaper. /u/* profile URLs are cached under
+    # /index.html (the viewer-request rewrite runs before the cache lookup),
+    # so invalidating /index.html covers them.
+    paths = ["/*"] if len(changed) > 10 else ["/" + key for key in changed]
 
     dist_id = run([
         "aws", "cloudfront", "list-distributions", "--output", "text",
@@ -136,7 +178,7 @@ def deploy_site() -> None:
     if not dist_id:
         raise DeployError(f"no CloudFront distribution found for {DOMAIN_NAME}")
     run(["aws", "cloudfront", "create-invalidation", "--distribution-id", dist_id,
-         "--paths", "/*", "--output", "text", "--query", "Invalidation.Id"])
+         "--paths", *paths, "--output", "text", "--query", "Invalidation.Id"])
 
 
 def main() -> int:
