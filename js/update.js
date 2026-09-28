@@ -4,11 +4,8 @@
 
 function updateAll() {
   const filteredRuns = filterRuns();
-  // "ALL" columns mean "every ascension the player has run", not "whichever
-  // ascensions are currently checked" -- see filterRuns()'s ignoreAsc option.
-  const allAscRuns = filterRuns({ ignoreAsc: true });
 
-  const { pivot, grand, charStats } = aggregateRuns(filteredRuns, allAscRuns);
+  const { pivot, grand, charStats } = aggregateRuns(filteredRuns);
 
   winChart.data.datasets[0].data       = charStats.map(s => s.win_pct    ?? 0);
   floorChart.data.datasets[0].data     = charStats.map(s => s.median_floor ?? 0);
@@ -26,8 +23,8 @@ function updateAll() {
   renderDeckPivot("relics-table", pivot, "median_win_relics", "median_win_relics", "median_loss_relics", "min_win_relics", "max_win_relics", "#c49fe8");
   renderDeckPivot("elites-table", pivot, "median_win_elites", "median_win_elites", "median_loss_elites", "min_win_elites", "max_win_elites", "#e0c468");
   renderStarterCardsTable(aggregateStarterCards(filteredRuns));
-  renderFinalBossWinPivot(filteredRuns, allAscRuns);
-  renderRestChoicesTable(aggregateRestChoices(filteredRuns, allAscRuns), filteredRuns);
+  renderFinalBossWinPivot(filteredRuns);
+  renderRestChoicesTable(aggregateRestChoices(filteredRuns), filteredRuns);
   updateRestWinCharts(filteredRuns);
   updateEliteActCharts(filteredRuns);
   updateMonthlyWinChart(filteredRuns);
@@ -120,14 +117,10 @@ const SHARED_FILTER_HARDCODED_DEFAULTS = {
   mode: "solo", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
 };
 
-// opts.ignoreAsc skips the ascension checkbox filter, for building the
-// "ALL" column of per-ascension tables -- it should mean "every ascension
-// this player has run" (subject to every other active filter), not
-// "whichever ascensions happen to be checked right now".
-function filterRuns(opts = {}) {
+function filterRuns() {
   return DATA.runsData.filter(run => {
     if (sharedActiveChar !== "ALL" && run.char !== sharedActiveChar) return false;
-    if (!opts.ignoreAsc && !sharedActiveAscs.has(run.asc)) return false;
+    if (!sharedActiveAscs.has(run.asc))     return false;
     if (!sharedActiveBuilds.has(run.build)) return false;
     if (run.ts < sharedTsFrom || run.ts > sharedTsTo) return false;
     if (sharedActiveMode === "solo"  && (run.mp || run.mode === "daily")) return false;
@@ -137,8 +130,8 @@ function filterRuns(opts = {}) {
   });
 }
 
-function filteredRunTsSet(opts = {}) {
-  return new Set(filterRuns(opts).map(r => r.ts));
+function filteredRunTsSet() {
+  return new Set(filterRuns().map(r => r.ts));
 }
 
 // Character Detail is inherently single-character (its tables only make
