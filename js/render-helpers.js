@@ -403,7 +403,7 @@ function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column 
     ${thumbHtml}
     ${column
       ? `<div style="min-width:0">
-      <div style="font-size:0.76rem;color:#ccc;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere" lang="en">${label}</div>
+      <div style="font-size:0.76rem;color:#ccc;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;hyphens:auto" lang="en">${label}</div>
       <div style="font-size:0.7rem;color:#a0a0b8;display:flex;flex-wrap:wrap;align-items:center;column-gap:0.3rem;line-height:1.35">
         ${pieces.map(p => `<span style="white-space:nowrap">${p}</span>`).join("")}${lowSampleBadge}
       </div>
