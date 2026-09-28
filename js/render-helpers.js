@@ -233,7 +233,7 @@ function renderPersonalBests() {
           ${row("Best win streak", b.longestStreak)}
           ${row("Fastest win", link(b.fastestWin, fmtHrsMinSec))}
           ${row("Most elites", link(b.mostElites))}
-          ${heading("In wins", "fewest – most")}
+          ${heading("Winning runs", "fewest – most")}
           ${row("Elites", range(b.fewestElites, b.mostElitesWin))}
           ${row("Cards", range(b.fewestCards, b.mostCards))}
           ${row("Relics", range(b.fewestRelics, b.mostRelics))}
