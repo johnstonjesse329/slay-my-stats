@@ -598,3 +598,31 @@ function updateUnsavedIndicator() {
 
 
 
+
+// =========================================================================
+// Map scroll parallax
+// =========================================================================
+
+// body::before pins the map scroll behind the page (dashboard.css). Pan it
+// from its curled top to its torn bottom as the page scrolls, so the whole
+// map goes by over any page's length instead of only its top ever showing.
+// --map-scroll is the page's scroll fraction (0..1); a background-position
+// percentage lines that fraction of the image up with the same fraction of
+// the viewport, so no image dimensions are needed here.
+(function initMapParallax() {
+  let queued = false;
+  function update() {
+    queued = false;
+    const range = document.documentElement.scrollHeight - innerHeight;
+    const p = range > 0 ? Math.min(1, Math.max(0, scrollY / range)) : 0;
+    document.body.style.setProperty("--map-scroll", p.toFixed(4));
+  }
+  function queue() {
+    if (!queued) { queued = true; requestAnimationFrame(update); }
+  }
+  addEventListener("scroll", queue, { passive: true });
+  addEventListener("resize", queue);
+  // Tab switches and filter changes change the page's height without scrolling.
+  new ResizeObserver(queue).observe(document.body);
+  update();
+})();
