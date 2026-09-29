@@ -40,8 +40,7 @@
 .finder-name { font-weight: 600; overflow-wrap: anywhere; }
 .finder-runs { color: var(--text-dim); font-size: 0.85rem; white-space: nowrap; }
 
-/* Way back to the finder: the title and the Home tab (run.py's home_links). */
+/* Way back to the finder: the title (run.py's home_links). */
 .home-link { color: inherit; text-decoration: none; }
 .home-link:hover { filter: brightness(1.15); }
 .home-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
-a.page-tab { display: inline-flex; align-items: center; text-decoration: none; }
