@@ -86,6 +86,7 @@ MAX_SLUG_CHARS = 32
 MAX_SLUG_TRIES = 50
 INDEX_KEY = "users/_index.json.gz"
 INDEX_RETRIES = 5
+STATS_KEY = "users/_stats.json.gz"
 
 
 class StoreConflict(Exception):
@@ -406,6 +407,104 @@ def _update_index(store, slug: str, name: str, runs: int, now: float) -> None:
     print(json.dumps({"warning": "index_update_failed", "slug": slug}))
 
 
+# ---------------------------------------------------------------------------
+# Site-wide stats: running totals, updated from each upload's new runs only
+# ---------------------------------------------------------------------------
+#
+# Every figure is a sum ([runs, wins] pairs, counts, minutes) or a best-so-far
+# record, so an upload's new runs make a small tally that's added onto the
+# totals without rereading anyone's history. Solo runs only, apart from
+# allRuns, by the same rule as the dashboard's Solo filter: no multiplayer
+# or daily runs, whose win rates aren't comparable. Card and relic counts are
+# kept raw for every id, and the home page ranks them. Adding a new figure
+# means recounting once with tools/rebuild_stats.py.
+
+def empty_stats() -> dict:
+    return {"v": 1, "allRuns": 0, "runs": 0, "wins": 0, "minutes": 0,
+            "chars": {}, "asc": {}, "cards": {}, "relics": {}, "killers": {}, "records": {}}
+
+
+def _bump(pairs: dict, key, won: bool) -> None:
+    pair = pairs.setdefault(key, [0, 0])
+    pair[0] += 1
+    pair[1] += won
+
+
+def _better_record(kind: str, new: dict, old: dict | None) -> bool:
+    if old is None:
+        return True
+    if kind == "fastestWin":
+        return new["mins"] < old["mins"]
+    return new["asc"] > old["asc"]  # highestWin: the first to reach it keeps it
+
+
+def _offer_record(records: dict, kind: str, rec: dict) -> None:
+    if _better_record(kind, rec, records.get(kind)):
+        records[kind] = rec
+
+
+def tally(runs: list[dict], slug: str) -> dict:
+    stats = empty_stats()
+    for r in runs:
+        stats["allRuns"] += 1
+        if r.get("mp") or r.get("mode") == "daily":
+            continue
+        won = bool(r.get("won"))
+        mins = r.get("mins") or 0
+        stats["runs"] += 1
+        stats["wins"] += won
+        stats["minutes"] += mins
+        _bump(stats["chars"], r.get("char") or "UNKNOWN", won)
+        _bump(stats["asc"], str(r.get("asc", 0)), won)
+        for cid in {c.get("id") for c in r.get("finalDeck") or []} - {None}:
+            _bump(stats["cards"], cid, won)
+        for rid in {c.get("id") for c in r.get("finalRelics") or []} - {None}:
+            _bump(stats["relics"], rid, won)
+        fights = r.get("fights") or []
+        if not won and fights and fights[-1].get("won") is False and fights[-1].get("enc"):
+            enc = fights[-1]["enc"]
+            stats["killers"][enc] = stats["killers"].get(enc, 0) + 1
+        if won and mins > 0:
+            rec = {"slug": slug, "char": r.get("char"), "asc": r.get("asc", 0), "mins": mins, "ts": r.get("ts")}
+            _offer_record(stats["records"], "fastestWin", rec)
+            _offer_record(stats["records"], "highestWin", rec)
+    return stats
+
+
+def merge_stats(total: dict, delta: dict) -> dict:
+    for k in ("allRuns", "runs", "wins", "minutes"):
+        total[k] = total.get(k, 0) + delta.get(k, 0)
+    total["minutes"] = round(total["minutes"], 1)
+    for k in ("chars", "asc", "cards", "relics"):
+        pairs = total.setdefault(k, {})
+        for key, (n, w) in delta.get(k, {}).items():
+            pair = pairs.setdefault(key, [0, 0])
+            pair[0] += n
+            pair[1] += w
+    killers = total.setdefault("killers", {})
+    for enc, n in delta.get("killers", {}).items():
+        killers[enc] = killers.get(enc, 0) + n
+    records = total.setdefault("records", {})
+    for kind, rec in delta.get("records", {}).items():
+        _offer_record(records, kind, rec)
+    return total
+
+
+def _update_stats(store, delta: dict) -> None:
+    """Add an upload's tally onto the public totals. Best effort, like the
+    index: the profile is already saved, and a missed tally only leaves the
+    totals a little short until the next rebuild."""
+    for _ in range(INDEX_RETRIES):
+        got = store.get(STATS_KEY)
+        total = _unpack(got[0]) if got else empty_stats()
+        try:
+            store.put(STATS_KEY, _pack(merge_stats(total, delta)), {}, got[2] if got else None)
+            return
+        except StoreConflict:
+            continue
+    print(json.dumps({"warning": "stats_update_failed", "runs": delta.get("allRuns")}))
+
+
 def ingest(params: dict, body: bytes, store, allowed_return_to: list[str],
            now: float | None = None, post=_post_to_steam, lookup_name=None) -> dict:
     """
@@ -462,6 +561,8 @@ def ingest(params: dict, body: bytes, store, allowed_return_to: list[str],
 
     merged = sorted(old_runs + added, key=lambda r: r["ts"])
     slug = save_profile(store, steam_id, slug, etag, name, merged, {"last-nonce": nonce}, now)
+    # Only the runs this upload added: the rest are already in the totals.
+    _update_stats(store, tally(added, slug))
     result.update(slug=slug, name=name)
     return result
 

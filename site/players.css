@@ -39,3 +39,41 @@
 .finder-list a:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 .finder-name { font-weight: 600; overflow-wrap: anywhere; }
 .finder-runs { color: var(--text-dim); font-size: 0.85rem; white-space: nowrap; }
+
+/* Site-wide stats under the finder (boot.js showSiteStats). The cards reuse
+   dashboard.css's .cards/.card; this grid just has 6 of them. */
+.site-stats { margin-top: 2.5rem; }
+.site-stats h2 { color: var(--gold); margin-bottom: 1rem; }
+.site-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.site-cards .sub a { color: var(--text); }
+.site-list {
+  background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+}
+.site-list h3 { color: var(--gold); font-size: 1rem; margin-bottom: 0.25rem; }
+.site-note { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 0.6rem; line-height: 1.4; }
+.site-list ul, .site-list ol { list-style: none; margin: 0; padding: 0; }
+.site-list li {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.3rem 0; font-size: 0.9rem;
+}
+.site-list li + li { border-top: 1px solid var(--hairline); }
+.site-row-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.site-row-num { color: var(--text-dim); font-size: 0.82rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.site-chars { margin-bottom: 1rem; }
+.site-chars .site-row-name { flex: 0 0 8rem; }
+.site-bar { flex: 1 1 auto; height: 0.5rem; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
+.site-bar-fill { display: block; height: 100%; border-radius: 4px; }
+.site-chars .site-row-num { flex: 0 0 9.5rem; text-align: right; }
+.site-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+@media (max-width: 1200px) {
+  .site-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .site-lists { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .site-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .site-chars .site-row-name { flex-basis: 6rem; }
+  .site-chars .site-row-num { flex-basis: auto; }
+}

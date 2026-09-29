@@ -61,6 +61,7 @@ Steam IDs are never public. The data bucket holds:
 |-----|--------|----------|
 | `users/<slug>.json.gz` | yes | `{"v":1, "name", "runs"}` |
 | `users/_index.json.gz` | yes | every player's slug, name, run count and last upload, for the home page's search |
+| `users/_stats.json.gz` | yes | site-wide running totals for the home page (see below) |
 | `ids/<steamid>.json.gz` | no (CloudFront only serves `users/*`) | `{"slug"}`, so an upload finds its profile |
 
 The Lambda gets the name from Steam's `GetPlayerSummaries` API using the key in SSM, and falls back to the
@@ -113,9 +114,26 @@ flowchart TB
      each other's runs;
    - looks up your current Steam name; on a first upload, it claims your address with a must-not-exist write,
      so two new players with the same name can't both get it;
-   - updates the home page's player list.
+   - updates the home page's player list;
+   - adds the new runs, and only those, to the site-wide stats.
 
    It responds with your address, name and counts. The browser remembers the address for next time.
+
+### Site-wide stats
+
+The home page shows stats across every player's solo runs (no multiplayer or daily runs, matching the
+dashboard's Solo filter): win rate overall, by character and by ascension; the cards and relics most often
+in winning runs; the fights that end the most runs; and the fastest win and highest ascension won.
+
+Every figure is a running total: `[runs, wins]` pairs, counts, minutes, and best-so-far records. The upload
+Lambda tallies just the runs an upload added and adds that onto `users/_stats.json.gz` with a conditional
+write. No one's history is ever reread, and a duplicate run is never counted twice. The file holds raw
+counts for every card and relic, around 8 KB for 600 runs, so the page does the ranking and its thresholds
+can change without recounting.
+
+The update is best effort, like the player list. `tools/rebuild_stats.py` recounts everything from the
+profiles: run it by hand after adding a new figure, removing a profile, or if an update was missed
+(`--bucket slay-my-stats-data` for the live site).
 
 **Cost guard:** every service involved stays inside the free tier at normal traffic. If any spend appears, a
 $1 budget alarm triggers a small Lambda that throttles the ingest function to zero.
@@ -176,10 +194,10 @@ To skip it for one push, use `SKIP_DEPLOY=1 git push`. The Steam Web API key is 
 |------|------|
 | `run.py` | Run parser plus the local HTML generator. The Lambda imports it too. |
 | `js/`, `dashboard.css` | Dashboard code and styles. They are inlined by `run.py`, and bundled to `app.js` for the site. |
-| `site/` | Site-only scripts: `boot.js` (loads a profile, or the player search on `/`), `players.css`, and `upload.js` / `upload.css` (sign-in and upload). |
+| `site/` | Site-only scripts: `boot.js` (loads a profile, or the player search and site-wide stats on `/`), `players.css`, and `upload.js` / `upload.css` (sign-in and upload). |
 | `build_site.py` | Builds `dist/`: `index.html`, `app.js`, `catalog.json` (game-data catalog) and `site-config.json`. |
 | `infra/` | CDK app: buckets, CloudFront, DNS, the ingest Lambda and its tests, and the kill switch. |
-| `tools/` | Dev server, deploy script, user-blob builder, and the game-data pipeline (below). |
+| `tools/` | Dev server, deploy script, user-blob builder, stats rebuild, and the game-data pipeline (below). |
 | `card_data.json`, `relic_data.json`, `potion_data.json` | Card, relic and potion metadata extracted from the game. |
 | `card_final/`, `card_portraits/`, `relic_images/`, `potion_images/`, `node_icons/`, `ui_icons/` | Committed, downscaled game art, served as-is. |
 | `data_provenance.json` | Which game build produced the data and art above. |

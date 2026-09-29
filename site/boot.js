@@ -300,6 +300,108 @@
     };
     input.addEventListener("input", render);
     render();
+    showSiteStats(main, players);
+  }
+
+  // ---- Site-wide stats (the root page, below the finder) --------------------
+  //
+  // /users/_stats.json.gz holds running totals the ingest Lambda adds each
+  // upload's new runs onto: [runs, wins] pairs per character, ascension,
+  // card and relic, loss counts per fight, and two records. Ranking happens
+  // here, so the thresholds below can change without recounting anything.
+  // Solo runs only (as the dashboard's Solo filter: no multiplayer or
+  // daily), apart from allRuns.
+  const TOP_N = 10;
+  const isBasic = id => /^CARD\.(STRIKE|DEFEND)_/.test(id);
+
+  async function showSiteStats(main, players) {
+    let stats, catalog;
+    try {
+      const [s, c] = await Promise.all([
+        fetch("/users/_stats.json.gz", { cache: "no-cache" }),
+        fetch("/catalog.json"),
+      ]);
+      if (!s.ok || !c.ok) return;
+      [stats, catalog] = await Promise.all([s.json(), c.json()]);
+    } catch (e) {
+      return;  // the finder still works; the stats are extra
+    }
+    if (!stats.runs) return;
+
+    const names = Object.fromEntries(players.map(p => [p.slug, p.name]));
+    const pct = (w, n) => n ? (100 * w / n).toFixed(1) + "%" : "—";
+    const charName = c => pythonTitle(stripPrefix(c || "", "CHARACTER.").replace(/_/g, " "));
+    const cardName = id => (catalog.cardData[id] && catalog.cardData[id].title) || fmtCard(id);
+    const relicName = id => (catalog.relicData[id] && catalog.relicData[id].title) || fmtRelic(id);
+    // A card or relic needs this many runs before its win rate is ranked.
+    const minRuns = Math.max(10, Math.ceil(stats.runs * 0.03));
+
+    const card = (label, value, sub) => el("div", { className: "card" }, [
+      el("div", { className: "label", textContent: label }),
+      el("div", { className: "value", textContent: value }),
+      el("div", { className: "sub" }, sub ? [sub] : []),
+    ]);
+    const byLine = (rec, text) => {
+      const frag = document.createDocumentFragment();
+      frag.append(text + " · ");
+      frag.append(names[rec.slug]
+        ? el("a", { href: `/u/${rec.slug}`, textContent: names[rec.slug] })
+        : "a past player");
+      return frag;
+    };
+    const recs = stats.records || {};
+    const cards = [
+      card("Players", players.length.toLocaleString()),
+      card("Runs uploaded", stats.allRuns.toLocaleString(), `${stats.runs.toLocaleString()} solo`),
+      card("Solo win rate", pct(stats.wins, stats.runs), `${stats.wins.toLocaleString()} wins`),
+      card("Hours played", Math.round(stats.minutes / 60).toLocaleString(), "Solo runs"),
+    ];
+    if (recs.highestWin) cards.push(card("Highest ascension won", `A${recs.highestWin.asc}`,
+      byLine(recs.highestWin, charName(recs.highestWin.char))));
+    if (recs.fastestWin) cards.push(card("Fastest win", `${recs.fastestWin.mins}m`,
+      byLine(recs.fastestWin, charName(recs.fastestWin.char))));
+
+    const charRows = Object.entries(stats.chars).sort((a, b) => b[1][0] - a[1][0]).map(([c, [n, w]]) =>
+      el("li", {}, [
+        el("span", { className: "site-row-name", textContent: charName(c) }),
+        el("span", { className: "site-bar" }, [el("span", {
+          className: "site-bar-fill",
+          style: `width:${n ? 100 * w / n : 0}%;background:${catalog.charColorMap[c] || "var(--gold)"}`,
+        })]),
+        el("span", { className: "site-row-num", textContent: `${pct(w, n)} · ${n.toLocaleString()} runs` }),
+      ]));
+
+    const ranked = (pairs, skip) => Object.entries(pairs)
+      .filter(([id, [n]]) => n >= minRuns && !(skip && skip(id)))
+      .sort((a, b) => b[1][1] / b[1][0] - a[1][1] / a[1][0] || b[1][0] - a[1][0])
+      .slice(0, TOP_N);
+    const list = (title, note, rows) => el("section", { className: "site-list" }, [
+      el("h3", { textContent: title }),
+      el("p", { className: "site-note", textContent: note }),
+      el("ol", {}, rows.map(([name, num]) => el("li", {}, [
+        el("span", { className: "site-row-name", textContent: name }),
+        el("span", { className: "site-row-num", textContent: num }),
+      ]))),
+    ]);
+    const losses = stats.runs - stats.wins;
+    const killers = Object.entries(stats.killers).sort((a, b) => b[1] - a[1]).slice(0, TOP_N);
+
+    main.append(el("section", { className: "site-stats" }, [
+      el("h2", { textContent: "Across all players" }),
+      el("div", { className: "cards site-cards" }, cards),
+      el("section", { className: "site-list site-chars" }, [
+        el("h3", { textContent: "Win rate by character" }),
+        el("ul", {}, charRows),
+      ]),
+      el("div", { className: "site-lists" }, [
+        list("Cards in winning decks", `Highest win rate when in the final deck, at least ${minRuns} runs. Strikes and Defends left out.`,
+          ranked(stats.cards, isBasic).map(([id, [n, w]]) => [cardName(id), `${pct(w, n)} · ${n} runs`])),
+        list("Relics in winning runs", `Highest win rate when held at the end, at least ${minRuns} runs.`,
+          ranked(stats.relics).map(([id, [n, w]]) => [relicName(id), `${pct(w, n)} · ${n} runs`])),
+        list("Deadliest fights", "The fight that ended the run, share of all losses.",
+          killers.map(([enc, n]) => [fmtEncounter(enc), pct(n, losses)])),
+      ]),
+    ]));
   }
 
   function showNoProfile() {
