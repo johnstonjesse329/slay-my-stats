@@ -54,9 +54,11 @@ header .upload-btn { position: absolute; top: 0.25rem; right: 0; }
   user-select: all;
 }
 .upload-note { color: var(--text-dim); font-size: 0.85rem; }
+.upload-path { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.upload-copied { color: var(--text-dim); font-size: 0.85rem; }
 .upload-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
 /* Visually hidden but still reachable: the <label>s are the visible controls. */
-.upload-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.upload-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; user-select: none; }
 .upload-status:empty { display: none; }
 .upload-status { color: var(--text); }
 

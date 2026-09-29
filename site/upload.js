@@ -169,24 +169,40 @@
     folderInput.setAttribute("webkitdirectory", "");
     const filesInput = el("input", { type: "file", multiple: true, accept: ".run", className: "upload-input", id: "upload-files" });
 
-    const pathHint = el("code", {
-      textContent: navigator.platform.startsWith("Mac")
-        ? "~/Library/Application Support/SlayTheSpire2/steam/" + signIn.steamId + "/profile1/saves/history"
-        : "%APPDATA%\\SlayTheSpire2\\steam\\" + signIn.steamId + "\\profile1\\saves\\history",
-    });
+    // A page can't open the picker at a path of its choosing (browsers only
+    // offer Documents, Downloads and the like as starting points), so the
+    // next best thing: the button copies the path, ready to paste.
+    const isMac = navigator.platform.startsWith("Mac");
+    const historyPath = isMac
+      ? "~/Library/Application Support/SlayTheSpire2/steam/" + signIn.steamId + "/profile1/saves/history"
+      : "%APPDATA%\\SlayTheSpire2\\steam\\" + signIn.steamId + "\\profile1\\saves\\history";
+    const copied = el("span", { className: "upload-copied", role: "status" });
+    const copyPath = () => {
+      if (!navigator.clipboard) return;
+      navigator.clipboard.writeText(historyPath).then(
+        () => { copied.textContent = "Copied"; },
+        () => { /* no clipboard access: the path is still there to select */ });
+    };
+    const copyBtn = el("button", { type: "button", className: "upload-link", textContent: "Copy" });
+    copyBtn.addEventListener("click", copyPath);
+    const folderBtn = el("button", { type: "button", className: "upload-btn", textContent: "Choose history folder" });
+    folderBtn.addEventListener("click", () => { copyPath(); folderInput.click(); });
 
     const panel = el("section", { className: "upload-panel" }, [
       el("h2", { textContent: "Upload your runs" }),
       el("p", {}, [
         "Signed in with Steam as ",
         el("a", { href: profileUrl, textContent: signIn.steamId }),
-        ". Choose your Slay the Spire 2 run history folder:",
+        ". Your Slay the Spire 2 run history folder is:",
       ]),
-      el("p", {}, [pathHint]),
+      el("p", { className: "upload-path" }, [el("code", { textContent: historyPath }), copyBtn, copied]),
+      el("p", { className: "upload-note", textContent: isMac
+        ? "Choose history folder copies that path. In the picker, press ⌘⇧G, paste it and press Return, then choose the folder."
+        : "Choose history folder copies that path. In the picker, paste it into the address bar at the top (Ctrl+V, Enter), then click Upload / Select Folder." }),
       el("p", { className: "upload-note", textContent:
-        "Only runs this profile doesn't already have are sent. On Windows, paste the path above into the folder picker's address bar." }),
+        "The picker only lists folders, never files, so the history folder looks empty. That's expected: select it anyway. Only runs your profile doesn't already have are sent." }),
       el("div", { className: "upload-actions" }, [
-        el("label", { className: "upload-btn", htmlFor: "upload-folder", textContent: "Choose history folder" }),
+        folderBtn,
         folderInput,
         el("label", { className: "upload-link", htmlFor: "upload-files", textContent: "or pick .run files" }),
         filesInput,
