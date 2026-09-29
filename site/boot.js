@@ -255,9 +255,11 @@
     const count = el("p", { className: "finder-count", role: "status" });
     main.textContent = "";
     main.append(el("section", { className: "finder" }, [
-      el("h2", { textContent: "Find a player" }),
-      el("p", { textContent: "Slay the Spire 2 run histories, one page per player. " +
-                             "Search by Steam name. To add your own, upload your runs from the PC you play on." }),
+      el("h1", { textContent: "Slay the Spire 2 run history." }),
+      el("p", { textContent: "Win rates by character and ascension, card pick rates, your fastest wins, " +
+                             "and every run's path and deck, built from the run files the game already saves." }),
+      el("p", { textContent: "Sign in with Steam from the PC you play on and upload your history folder. " +
+                             "You get a page at slay-my-stats.com/u/yourname to share. Or search for a player below." }),
       el("label", { htmlFor: "finder-input", className: "finder-label", textContent: "Search players" }),
       input,
       count,
@@ -465,11 +467,47 @@
     document.body.appendChild(script);
   }
 
+  // ---- About (/about) -------------------------------------------------------
+
+  function showAbout() {
+    showFallback("");
+    document.querySelector(".site-link[href='/about']")?.setAttribute("aria-current", "page");
+    document.title = "About — Slay My Stats";
+    const main = document.getElementById("main-content");
+    if (!main) return;
+    const section = (title, ...paras) => [el("h2", { textContent: title }),
+                                          ...paras.map(t => el("p", { textContent: t }))];
+    main.textContent = "";
+    main.append(el("section", { className: "about" }, [
+      el("h1", { textContent: "About Slay My Stats" }),
+      el("p", { textContent: "Slay My Stats turns Slay the Spire 2 run history into stats: win rates by " +
+                             "character and ascension, card pick rates, your fastest wins, and every run's " +
+                             "path and deck. It reads the run files the game already saves on your PC." }),
+      ...section("Uploading your runs",
+        "Upload runs signs you in with Steam. Steam tells this site your Steam ID and nothing else; " +
+        "your password never comes here.",
+        "Then you pick your run history folder. Your browser reads the run files and sends them to be added " +
+        "to your profile. Upload again any time: runs your profile already has are skipped, so only new ones are added.",
+        "Uploading needs the PC you play on, since that's where the run files are. Viewing works anywhere."),
+      ...section("What's public",
+        "Your profile page, at slay-my-stats.com/u/yourname, is public: your Steam display name and your runs. " +
+        "It's listed in the player search, and its runs count toward the stats across all players.",
+        "Your Steam ID is kept private. It's only used to match your uploads to your profile."),
+      ...section("Fan project",
+        "Slay My Stats is a fan project, not affiliated with or endorsed by Mega Crit. " +
+        "Slay the Spire 2 and its art belong to Mega Crit."),
+    ]));
+  }
+
   // ---- Entry point ---------------------------------------------------------
 
   async function main() {
     if (location.pathname === "/" || location.pathname === "/index.html") {
       showFinder();
+      return;
+    }
+    if (/^\/about\/?$/.test(location.pathname)) {
+      showAbout();
       return;
     }
     // Strict match: /u/<a-z0-9>[-<n>], optional trailing slash. Any case is

@@ -5,7 +5,7 @@ stdlib-only (http.server), so no extra install is needed to preview the
 built site. Routing mirrors what CloudFront will be configured to do against
 the site bucket:
 
-    /u/<anything>        -> dist/index.html            (client-side router)
+    /u/<anything>, /about -> dist/index.html           (client-side router)
     /users/<name>        -> local_data/users/<name>     (gzip'd user blobs)
     /card_final/...      -> card_final/...              (game art, repo root)
     /card_portraits/...  -> card_portraits/...
@@ -90,8 +90,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, {"ingestUrl": "/api/ingest"})
             return
 
-        # /u/<anything> -> the SPA shell
-        if parts and parts[0] == "u":
+        # /u/<anything> and /about -> the SPA shell
+        if parts and (parts[0] == "u" or parts == ["about"]):
             self._serve_file(_DIST / "index.html")
             return
 

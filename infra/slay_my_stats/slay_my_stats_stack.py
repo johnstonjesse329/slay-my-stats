@@ -75,11 +75,11 @@ def lambda_handler(event, context):
     print("Throttled", os.environ["TARGET_FUNCTION_NAME"], "to 0 concurrency")
 """
 
-# The site bucket only has /index.html at the root -- profile URLs like
-# /u/<slug> have no matching object, so CloudFront needs to rewrite the
-# request before it reaches S3. Done at the edge (not with S3 error-document
-# fallback) so the URL in the address bar stays /u/<slug> for sharing.
-PROFILE_URL_REWRITE_CODE = """
+# The site bucket only has /index.html at the root -- page URLs like
+# /u/<slug> and /about have no matching object, so CloudFront needs to
+# rewrite the request before it reaches S3. Done at the edge (not with S3
+# error-document fallback) so the URL in the address bar stays as typed.
+PAGE_URL_REWRITE_CODE = """
 function handler(event) {
     var request = event.request;
     request.uri = "/index.html";
@@ -118,19 +118,30 @@ class SlayMyStatsStack(Stack):
             self, "SiteCertificate", CERTIFICATE_ARN,
         )
 
-        # Reused for both the default behavior and "u/*" below (same object,
-        # not two calls) so the distribution binds one S3 origin / one OAC
+        # Reused for the default behavior and the page behaviors below (same
+        # object, not several calls) so the distribution binds one S3 origin / one OAC
         # for the site bucket instead of standing up a duplicate.
         site_origin = origins.S3BucketOrigin.with_origin_access_control(site_bucket)
 
-        # Rewrites /u/<anything> to /index.html so profile URLs resolve to the
-        # SPA shell, which then renders the profile client-side. Associated
-        # only on the "u/*" behavior below, not the default one, so it never
-        # runs for asset/image requests and doesn't burn function invocations.
-        profile_url_rewrite_fn = cloudfront.Function(
+        # Rewrites page URLs to /index.html, the SPA shell, which then renders
+        # the page client-side (site/boot.js). Associated only on the page
+        # behaviors below, not the default one, so it never runs for
+        # asset/image requests and doesn't burn function invocations.
+        page_url_rewrite_fn = cloudfront.Function(
             self, "ProfileUrlRewriteFunction",
             runtime=cloudfront.FunctionRuntime.JS_2_0,
-            code=cloudfront.FunctionCode.from_inline(PROFILE_URL_REWRITE_CODE),
+            code=cloudfront.FunctionCode.from_inline(PAGE_URL_REWRITE_CODE),
+        )
+        page_behavior = cloudfront.BehaviorOptions(
+            origin=site_origin,
+            viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
+            function_associations=[
+                cloudfront.FunctionAssociation(
+                    function=page_url_rewrite_fn,
+                    event_type=cloudfront.FunctionEventType.VIEWER_REQUEST,
+                ),
+            ],
         )
 
         distribution = cloudfront.Distribution(
@@ -151,17 +162,9 @@ class SlayMyStatsStack(Stack):
                     # after an upload must see that upload, not a cached miss.
                     cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
                 ),
-                "u/*": cloudfront.BehaviorOptions(
-                    origin=site_origin,
-                    viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                    cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
-                    function_associations=[
-                        cloudfront.FunctionAssociation(
-                            function=profile_url_rewrite_fn,
-                            event_type=cloudfront.FunctionEventType.VIEWER_REQUEST,
-                        ),
-                    ],
-                ),
+                "u/*": page_behavior,
+                # "about*" so /about/ works too.
+                "about*": page_behavior,
             },
         )
 

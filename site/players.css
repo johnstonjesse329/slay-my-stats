@@ -1,7 +1,7 @@
 /* Player finder on the root page (site/boot.js). Live site only, like
    upload.css. */
 
-.finder {
+.finder, .about {
   max-width: 44rem;
   background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
@@ -9,8 +9,10 @@
   border-radius: 10px;
   padding: 1.25rem 1.5rem;
 }
+.finder h1, .about h1 { color: var(--gold); font-size: 1.5rem; margin-bottom: 0.75rem; }
 .finder h2 { color: var(--gold); margin-bottom: 0.75rem; }
-.finder p { line-height: 1.5; margin-bottom: 0.75rem; }
+.about h2 { color: var(--gold); font-size: 1.1rem; margin: 1.25rem 0 0.5rem; }
+.finder p, .about p { line-height: 1.5; margin-bottom: 0.75rem; }
 .finder-label { display: block; font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.35rem; }
 .finder-input {
   font: inherit;
@@ -58,7 +60,13 @@
 }
 .site-brand:hover { color: var(--gold-bright); }
 .site-links { display: flex; align-items: center; gap: 1.25rem; }
-.site-brand:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+.site-link {
+  font-size: 0.9rem; font-weight: 600; color: var(--text-dim); text-decoration: none;
+  padding: 0.35rem 0; border-bottom: 2px solid transparent;
+}
+.site-link:hover { color: var(--text); }
+.site-link[aria-current="page"] { color: var(--gold); border-bottom-color: var(--gold); }
+.site-brand:focus-visible, .site-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
 .site-nav .upload-btn { padding: 0.35rem 0.8rem; }
 /* Run files live on the PC the game runs on, and phone browsers can't pick
    a folder anyway: no upload button on touch screens. */

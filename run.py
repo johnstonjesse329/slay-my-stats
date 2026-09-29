@@ -888,14 +888,16 @@ def dashboard_body_html(subtitle: str = "", home_links: bool = False) -> str:
     generator) and build_site.py (the static site).
 
     home_links (live site only): a site bar in place of the header, with the
-    site's name (a link home) and room for links to the rest of the site;
+    site's name (a link home) and links to the rest of the site;
     site/upload.js adds its button to .site-links. The local file has no site
     to link to, so it keeps the plain title header.
     """
     top = ("""
 <nav class="site-nav" aria-label="Site">
   <a class="site-brand" href="/">Slay My Stats</a>
-  <div class="site-links"></div>
+  <div class="site-links">
+    <a class="site-link" href="/about">About</a>
+  </div>
 </nav>
 """ if home_links else f"""
 <header>
