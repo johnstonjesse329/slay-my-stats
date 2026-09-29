@@ -191,13 +191,15 @@ function renderCardsPage() {
     // markup, since this table lives inside a scrolling .pivot-wrap
     // (overflow-y:auto) that would clip an absolutely-positioned popup.
     const src = cardImgSrc(r.id);
+    // The thumbnail and the name are one trigger, so hovering, tapping or
+    // tabbing to either opens the card.
     const icon = src
-      ? `<span class="fav-item" data-card-id="${r.id}" style="display:inline-block;vertical-align:middle;margin-right:6px;line-height:0">
-          <img loading="lazy" src="${src}" alt="${r.title}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;vertical-align:middle">
+      ? `<span style="display:inline-block;vertical-align:middle;margin-right:6px;line-height:0">
+          <img loading="lazy" src="${src}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:4px;vertical-align:middle">
         </span>`
       : "";
     return `<tr>
-    <td style="padding:0.18rem 0.5rem;font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${icon}<span data-tip="${r.title}">${r.title}</span></td>
+    <td style="padding:0.18rem 0.5rem;font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
     <td style="padding:0.18rem 0.5rem;font-size:0.75rem;color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "#bcbcd0"}">${r.owner}</td>
     <td style="padding:0.18rem 0.5rem;font-size:0.75rem;color:${TYPE_COLOR[r.type] || "#bcbcd0"}">${r.type}</td>
     <td style="padding:0.18rem 0.5rem;font-size:0.75rem;color:${RARITY_COLOR[r.rarity] || "#bcbcd0"}">${r.rarity}</td>
@@ -209,8 +211,12 @@ function renderCardsPage() {
   }).join("");
 
   document.getElementById("cards-tbody").querySelectorAll(".fav-item[data-card-id]").forEach(el => {
-    el.addEventListener("mouseenter", () => showFloatingHtmlTooltip(el, buildCardTooltip(el.dataset.cardId, 0)));
+    const show = () => showFloatingHtmlTooltip(el, buildCardTooltip(el.dataset.cardId, 0));
+    el.addEventListener("mouseenter", show);
     el.addEventListener("mouseleave", hideFloatingHtmlTooltip);
+    // Tap or keyboard: focus shows it; the next tap anywhere blurs it (tooltip.js).
+    el.addEventListener("focus", show);
+    el.addEventListener("blur", hideFloatingHtmlTooltip);
   });
 }
 
