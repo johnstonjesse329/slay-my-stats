@@ -46,7 +46,8 @@ def main():
     # write fail rather than lose its tally; run it again.
     current = store.get(handler.STATS_KEY)
     store.put(handler.STATS_KEY, handler._pack(total), {}, current[2] if current else None)
-    print(f"{len(players)} players, {total['allRuns']} runs ({total['runs']} solo) -> {handler.STATS_KEY}")
+    print(f"{len(players)} players, {total['allRuns']} runs ({total['solo']['runs']} solo, "
+          f"{total['multi']['runs']} multiplayer) -> {handler.STATS_KEY}")
 
 
 if __name__ == "__main__":

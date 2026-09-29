@@ -63,10 +63,13 @@
 .site-row-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .site-row-num { color: var(--text-dim); font-size: 0.82rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .site-chars { margin-bottom: 1rem; }
-.site-chars .site-row-name { flex: 0 0 8rem; }
+/* Name, then a solo and a multiplayer bar with their numbers. */
+.site-chars li, .site-chars-head { display: grid; grid-template-columns: 8rem minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; }
+.site-chars-head { color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 0.2rem; }
+.site-bar-cell { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
 .site-bar { flex: 1 1 auto; height: 0.5rem; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
 .site-bar-fill { display: block; height: 100%; border-radius: 4px; }
-.site-chars .site-row-num { flex: 0 0 9.5rem; text-align: right; }
+.site-bar-cell .site-row-num { flex: 0 0 7.5rem; text-align: right; }
 .site-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 @media (max-width: 1200px) {
   .site-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -74,6 +77,7 @@
 }
 @media (max-width: 700px) {
   .site-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .site-chars .site-row-name { flex-basis: 6rem; }
-  .site-chars .site-row-num { flex-basis: auto; }
+  .site-chars li, .site-chars-head { grid-template-columns: 5.5rem minmax(0, 1fr) minmax(0, 1fr); gap: 0.6rem; }
+  .site-bar-cell { flex-direction: column; align-items: stretch; gap: 0.2rem; }
+  .site-bar-cell .site-row-num { flex: none; text-align: left; }
 }

@@ -413,15 +413,24 @@ def _update_index(store, slug: str, name: str, runs: int, now: float) -> None:
 #
 # Every figure is a sum ([runs, wins] pairs, counts, minutes) or a best-so-far
 # record, so an upload's new runs make a small tally that's added onto the
-# totals without rereading anyone's history. Solo runs only, apart from
-# allRuns, by the same rule as the dashboard's Solo filter: no multiplayer
-# or daily runs, whose win rates aren't comparable. Card and relic counts are
-# kept raw for every id, and the home page ranks them. Adding a new figure
-# means recounting once with tools/rebuild_stats.py.
+# totals without rereading anyone's history. Solo and multiplayer runs are
+# counted apart, since their win rates aren't comparable; solo follows the
+# dashboard's Solo filter, which leaves out daily runs (they only count in
+# allRuns). Card and relic counts are kept raw for every id, and the home
+# page ranks them. Adding a new figure means recounting once with
+# tools/rebuild_stats.py.
+
+MODES = ("solo", "multi")
+PAIR_KEYS = ("chars", "cards", "relics")
+
+
+def _empty_mode() -> dict:
+    return {"runs": 0, "wins": 0, "minutes": 0, "chars": {}, "cards": {}, "relics": {},
+            "killers": {}, "records": {}}
+
 
 def empty_stats() -> dict:
-    return {"v": 1, "allRuns": 0, "runs": 0, "wins": 0, "minutes": 0,
-            "chars": {}, "asc": {}, "cards": {}, "relics": {}, "killers": {}, "records": {}}
+    return {"v": 1, "allRuns": 0, **{m: _empty_mode() for m in MODES}}
 
 
 def _bump(pairs: dict, key, won: bool) -> None:
@@ -430,63 +439,60 @@ def _bump(pairs: dict, key, won: bool) -> None:
     pair[1] += won
 
 
-def _better_record(kind: str, new: dict, old: dict | None) -> bool:
-    if old is None:
-        return True
-    if kind == "fastestWin":
-        return new["mins"] < old["mins"]
-    return new["asc"] > old["asc"]  # highestWin: the first to reach it keeps it
-
-
-def _offer_record(records: dict, kind: str, rec: dict) -> None:
-    if _better_record(kind, rec, records.get(kind)):
-        records[kind] = rec
+def _offer_fastest(records: dict, rec: dict) -> None:
+    old = records.get("fastestWin")
+    if old is None or rec["mins"] < old["mins"]:
+        records["fastestWin"] = rec
 
 
 def tally(runs: list[dict], slug: str) -> dict:
     stats = empty_stats()
     for r in runs:
         stats["allRuns"] += 1
-        if r.get("mp") or r.get("mode") == "daily":
+        if r.get("mp"):
+            m = stats["multi"]
+        elif r.get("mode") == "daily":
             continue
+        else:
+            m = stats["solo"]
         won = bool(r.get("won"))
         mins = r.get("mins") or 0
-        stats["runs"] += 1
-        stats["wins"] += won
-        stats["minutes"] += mins
-        _bump(stats["chars"], r.get("char") or "UNKNOWN", won)
-        _bump(stats["asc"], str(r.get("asc", 0)), won)
+        m["runs"] += 1
+        m["wins"] += won
+        m["minutes"] += mins
+        _bump(m["chars"], r.get("char") or "UNKNOWN", won)
         for cid in {c.get("id") for c in r.get("finalDeck") or []} - {None}:
-            _bump(stats["cards"], cid, won)
+            _bump(m["cards"], cid, won)
         for rid in {c.get("id") for c in r.get("finalRelics") or []} - {None}:
-            _bump(stats["relics"], rid, won)
+            _bump(m["relics"], rid, won)
         fights = r.get("fights") or []
         if not won and fights and fights[-1].get("won") is False and fights[-1].get("enc"):
             enc = fights[-1]["enc"]
-            stats["killers"][enc] = stats["killers"].get(enc, 0) + 1
+            m["killers"][enc] = m["killers"].get(enc, 0) + 1
         if won and mins > 0:
-            rec = {"slug": slug, "char": r.get("char"), "asc": r.get("asc", 0), "mins": mins, "ts": r.get("ts")}
-            _offer_record(stats["records"], "fastestWin", rec)
-            _offer_record(stats["records"], "highestWin", rec)
+            _offer_fastest(m["records"], {"slug": slug, "char": r.get("char"), "mins": mins, "ts": r.get("ts")})
     return stats
 
 
 def merge_stats(total: dict, delta: dict) -> dict:
-    for k in ("allRuns", "runs", "wins", "minutes"):
-        total[k] = total.get(k, 0) + delta.get(k, 0)
-    total["minutes"] = round(total["minutes"], 1)
-    for k in ("chars", "asc", "cards", "relics"):
-        pairs = total.setdefault(k, {})
-        for key, (n, w) in delta.get(k, {}).items():
-            pair = pairs.setdefault(key, [0, 0])
-            pair[0] += n
-            pair[1] += w
-    killers = total.setdefault("killers", {})
-    for enc, n in delta.get("killers", {}).items():
-        killers[enc] = killers.get(enc, 0) + n
-    records = total.setdefault("records", {})
-    for kind, rec in delta.get("records", {}).items():
-        _offer_record(records, kind, rec)
+    total["allRuns"] = total.get("allRuns", 0) + delta.get("allRuns", 0)
+    for mode in MODES:
+        t, d = total.setdefault(mode, _empty_mode()), delta.get(mode, {})
+        for k in ("runs", "wins", "minutes"):
+            t[k] = t.get(k, 0) + d.get(k, 0)
+        t["minutes"] = round(t["minutes"], 1)
+        for k in PAIR_KEYS:
+            pairs = t.setdefault(k, {})
+            for key, (n, w) in d.get(k, {}).items():
+                pair = pairs.setdefault(key, [0, 0])
+                pair[0] += n
+                pair[1] += w
+        killers = t.setdefault("killers", {})
+        for enc, n in d.get("killers", {}).items():
+            killers[enc] = killers.get(enc, 0) + n
+        rec = d.get("records", {}).get("fastestWin")
+        if rec:
+            _offer_fastest(t.setdefault("records", {}), rec)
     return total
 
 

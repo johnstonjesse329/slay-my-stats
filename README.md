@@ -121,14 +121,15 @@ flowchart TB
 
 ### Site-wide stats
 
-The home page shows stats across every player's solo runs (no multiplayer or daily runs, matching the
-dashboard's Solo filter): win rate overall, by character and by ascension; the cards and relics most often
-in winning runs; the fights that end the most runs; and the fastest win and highest ascension won.
+The home page shows stats across every player's runs, solo and multiplayer side by side (solo leaves out
+daily runs, matching the dashboard's Solo filter): win rate for each and by character; the uncommon and
+rarer cards and the relics with the best win rates (at least 10 runs each); the fights that end the most
+runs; and the fastest solo win.
 
 Every figure is a running total: `[runs, wins]` pairs, counts, minutes, and best-so-far records. The upload
 Lambda tallies just the runs an upload added and adds that onto `users/_stats.json.gz` with a conditional
 write. No one's history is ever reread, and a duplicate run is never counted twice. The file holds raw
-counts for every card and relic, around 8 KB for 600 runs, so the page does the ranking and its thresholds
+counts for every card and relic, around 11 KB for 660 runs, so the page does the ranking and its thresholds
 can change without recounting.
 
 The update is best effort, like the player list. `tools/rebuild_stats.py` recounts everything from the

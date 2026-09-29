@@ -306,13 +306,31 @@
   // ---- Site-wide stats (the root page, below the finder) --------------------
   //
   // /users/_stats.json.gz holds running totals the ingest Lambda adds each
-  // upload's new runs onto: [runs, wins] pairs per character, ascension,
-  // card and relic, loss counts per fight, and two records. Ranking happens
-  // here, so the thresholds below can change without recounting anything.
-  // Solo runs only (as the dashboard's Solo filter: no multiplayer or
-  // daily), apart from allRuns.
+  // upload's new runs onto, kept apart for solo and multiplayer runs:
+  // [runs, wins] pairs per character, card and relic, loss counts per
+  // fight, and the fastest win. Solo leaves out daily runs, like the
+  // dashboard's Solo filter. Ranking happens here, so the thresholds below
+  // can change without recounting anything.
   const TOP_N = 10;
-  const isBasic = id => /^CARD\.(STRIKE|DEFEND)_/.test(id);
+  const MIN_RUNS = 10;  // before a card or relic's win rate is ranked
+  // Starter cards, commons, and cards nobody picks say little about a win.
+  const DULL_RARITIES = new Set(["Basic", "Common", "Curse", "Status", "Token"]);
+
+  // Adds the solo and multiplayer [runs, wins] pairs (or counts) together.
+  function pooled(a, b) {
+    const out = {};
+    for (const src of [a || {}, b || {}]) {
+      for (const [k, v] of Object.entries(src)) {
+        if (Array.isArray(v)) {
+          const cur = out[k] || [0, 0];
+          out[k] = [cur[0] + v[0], cur[1] + v[1]];
+        } else {
+          out[k] = (out[k] || 0) + v;
+        }
+      }
+    }
+    return out;
+  }
 
   async function showSiteStats(main, players) {
     let stats, catalog;
@@ -326,79 +344,95 @@
     } catch (e) {
       return;  // the finder still works; the stats are extra
     }
-    if (!stats.runs) return;
+    const solo = stats.solo || {}, multi = stats.multi || {};
+    if (!solo.runs && !multi.runs) return;
 
     const names = Object.fromEntries(players.map(p => [p.slug, p.name]));
+    const num = n => (n || 0).toLocaleString();
     const pct = (w, n) => n ? (100 * w / n).toFixed(1) + "%" : "—";
     const charName = c => pythonTitle(stripPrefix(c || "", "CHARACTER.").replace(/_/g, " "));
-    const cardName = id => (catalog.cardData[id] && catalog.cardData[id].title) || fmtCard(id);
+    const cardMeta = id => catalog.cardData[id] || {};
+    const cardName = id => cardMeta(id).title || fmtCard(id);
     const relicName = id => (catalog.relicData[id] && catalog.relicData[id].title) || fmtRelic(id);
-    // A card or relic needs this many runs before its win rate is ranked.
-    const minRuns = Math.max(10, Math.ceil(stats.runs * 0.03));
 
     const card = (label, value, sub) => el("div", { className: "card" }, [
       el("div", { className: "label", textContent: label }),
       el("div", { className: "value", textContent: value }),
       el("div", { className: "sub" }, sub ? [sub] : []),
     ]);
-    const byLine = (rec, text) => {
-      const frag = document.createDocumentFragment();
-      frag.append(text + " · ");
-      frag.append(names[rec.slug]
-        ? el("a", { href: `/u/${rec.slug}`, textContent: names[rec.slug] })
-        : "a past player");
-      return frag;
-    };
-    const recs = stats.records || {};
     const cards = [
-      card("Players", players.length.toLocaleString()),
-      card("Runs uploaded", stats.allRuns.toLocaleString(), `${stats.runs.toLocaleString()} solo`),
-      card("Solo win rate", pct(stats.wins, stats.runs), `${stats.wins.toLocaleString()} wins`),
-      card("Hours played", Math.round(stats.minutes / 60).toLocaleString(), "Solo runs"),
+      card("Players", num(players.length)),
+      card("Runs uploaded", num(stats.allRuns), `${num(solo.runs)} solo · ${num(multi.runs)} multiplayer`),
+      card("Hours played", num(Math.round(((solo.minutes || 0) + (multi.minutes || 0)) / 60))),
+      card("Solo win rate", pct(solo.wins, solo.runs), `${num(solo.wins)} of ${num(solo.runs)}`),
+      card("Multiplayer win rate", pct(multi.wins, multi.runs), `${num(multi.wins)} of ${num(multi.runs)}`),
     ];
-    if (recs.highestWin) cards.push(card("Highest ascension won", `A${recs.highestWin.asc}`,
-      byLine(recs.highestWin, charName(recs.highestWin.char))));
-    if (recs.fastestWin) cards.push(card("Fastest win", `${recs.fastestWin.mins}m`,
-      byLine(recs.fastestWin, charName(recs.fastestWin.char))));
+    const fastest = (solo.records || {}).fastestWin;
+    if (fastest) {
+      const sub = document.createDocumentFragment();
+      sub.append(charName(fastest.char) + " · ");
+      sub.append(names[fastest.slug]
+        ? el("a", { href: `/u/${fastest.slug}`, textContent: names[fastest.slug] })
+        : "a past player");
+      cards.push(card("Fastest solo win", `${fastest.mins}m`, sub));
+    }
 
-    const charRows = Object.entries(stats.chars).sort((a, b) => b[1][0] - a[1][0]).map(([c, [n, w]]) =>
-      el("li", {}, [
-        el("span", { className: "site-row-name", textContent: charName(c) }),
+    // One row per character, solo and multiplayer side by side.
+    const bar = (pair, color) => {
+      const [n, w] = pair || [0, 0];
+      return el("span", { className: "site-bar-cell" }, [
         el("span", { className: "site-bar" }, [el("span", {
-          className: "site-bar-fill",
-          style: `width:${n ? 100 * w / n : 0}%;background:${catalog.charColorMap[c] || "var(--gold)"}`,
+          className: "site-bar-fill", style: `width:${n ? 100 * w / n : 0}%;background:${color}`,
         })]),
-        el("span", { className: "site-row-num", textContent: `${pct(w, n)} · ${n.toLocaleString()} runs` }),
-      ]));
+        el("span", { className: "site-row-num", textContent: n ? `${pct(w, n)} · ${num(n)}` : "—" }),
+      ]);
+    };
+    const allChars = pooled(solo.chars, multi.chars);
+    const charRows = Object.keys(allChars).sort((a, b) => allChars[b][0] - allChars[a][0]).map(c => {
+      const color = catalog.charColorMap[c] || "var(--gold)";
+      return el("li", {}, [
+        el("span", { className: "site-row-name", textContent: charName(c) }),
+        bar((solo.chars || {})[c], color),
+        bar((multi.chars || {})[c], color),
+      ]);
+    });
 
-    const ranked = (pairs, skip) => Object.entries(pairs)
-      .filter(([id, [n]]) => n >= minRuns && !(skip && skip(id)))
+    const ranked = (pairs, keep) => Object.entries(pairs)
+      .filter(([id, [n]]) => n >= MIN_RUNS && (!keep || keep(id)))
       .sort((a, b) => b[1][1] / b[1][0] - a[1][1] / a[1][0] || b[1][0] - a[1][0])
       .slice(0, TOP_N);
     const list = (title, note, rows) => el("section", { className: "site-list" }, [
       el("h3", { textContent: title }),
       el("p", { className: "site-note", textContent: note }),
-      el("ol", {}, rows.map(([name, num]) => el("li", {}, [
+      el("ol", {}, rows.map(([name, value]) => el("li", {}, [
         el("span", { className: "site-row-name", textContent: name }),
-        el("span", { className: "site-row-num", textContent: num }),
+        el("span", { className: "site-row-num", textContent: value }),
       ]))),
     ]);
-    const losses = stats.runs - stats.wins;
-    const killers = Object.entries(stats.killers).sort((a, b) => b[1] - a[1]).slice(0, TOP_N);
+    const losses = (solo.runs - solo.wins) + (multi.runs - multi.wins);
+    const killers = Object.entries(pooled(solo.killers, multi.killers)).sort((a, b) => b[1] - a[1]).slice(0, TOP_N);
+    const both = "solo and multiplayer";
 
     main.append(el("section", { className: "site-stats" }, [
       el("h2", { textContent: "Across all players" }),
       el("div", { className: "cards site-cards" }, cards),
       el("section", { className: "site-list site-chars" }, [
         el("h3", { textContent: "Win rate by character" }),
+        el("div", { className: "site-chars-head" }, [
+          el("span"), el("span", { textContent: "Solo" }), el("span", { textContent: "Multiplayer" }),
+        ]),
         el("ul", {}, charRows),
       ]),
       el("div", { className: "site-lists" }, [
-        list("Cards in winning decks", `Highest win rate when in the final deck, at least ${minRuns} runs. Strikes and Defends left out.`,
-          ranked(stats.cards, isBasic).map(([id, [n, w]]) => [cardName(id), `${pct(w, n)} · ${n} runs`])),
-        list("Relics in winning runs", `Highest win rate when held at the end, at least ${minRuns} runs.`,
-          ranked(stats.relics).map(([id, [n, w]]) => [relicName(id), `${pct(w, n)} · ${n} runs`])),
-        list("Deadliest fights", "The fight that ended the run, share of all losses.",
+        list("Cards in winning decks",
+          `Highest win rate when in the final deck, ${both}. Uncommon and rarer cards in at least ${MIN_RUNS} runs.`,
+          ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity))
+            .map(([id, [n, w]]) => [cardName(id), `${pct(w, n)} · ${num(n)} runs`])),
+        list("Relics in winning runs",
+          `Highest win rate when held at the end, ${both}. Relics in at least ${MIN_RUNS} runs.`,
+          ranked(pooled(solo.relics, multi.relics))
+            .map(([id, [n, w]]) => [relicName(id), `${pct(w, n)} · ${num(n)} runs`])),
+        list("Deadliest fights", `The fight that ended the run, as a share of all losses, ${both}.`,
           killers.map(([enc, n]) => [fmtEncounter(enc), pct(n, losses)])),
       ]),
     ]));
