@@ -230,8 +230,9 @@
 
   function showNoProfile() {
     showFallback(
-      "This is a Slay the Spire 2 run-history site. Profiles live at " +
-      "/u/steam-<SteamID64> (upload/sign-in coming soon)."
+      "This is a Slay the Spire 2 run-history site. Sign in with Steam " +
+      "(\"Upload your runs\", above) to put your run history on your own " +
+      "profile page."
     );
   }
 

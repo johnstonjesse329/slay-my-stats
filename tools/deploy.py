@@ -9,7 +9,8 @@ once per clone with `git config core.hooksPath githooks`), or by hand:
 Steps:
   1. `cdk diff`. If the stack changed, print the diff and ask y/N before
      `cdk deploy`. No changes -> skip straight to the site.
-  2. `build_site.py`, then upload only the dist/ files whose content changed,
+  2. `build_site.py` (given the stack's ingest Function URL for the upload
+     page), then upload only the dist/ files whose content changed,
      and `aws s3 sync` the game-art folders (never --delete; art uses
      --size-only so an unchanged checkout doesn't re-upload thousands of
      images just because mtimes moved).
@@ -33,6 +34,7 @@ _HERE = Path(__file__).resolve().parent.parent
 _INFRA = _HERE / "infra"
 SITE_BUCKET = "slay-my-stats-site"
 DOMAIN_NAME = "slay-my-stats.com"
+STACK_NAME = "SlayMyStatsStack"
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
 ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons"]
 ZERO_SHA = "0" * 40
@@ -151,8 +153,19 @@ def upload_changed_dist() -> list[str]:
     return uploaded
 
 
+def ingest_function_url() -> str:
+    """The ingest Lambda's Function URL, from the deployed stack's outputs."""
+    url = run([
+        "aws", "cloudformation", "describe-stacks", "--stack-name", STACK_NAME, "--output", "text",
+        "--query", "Stacks[0].Outputs[?OutputKey=='IngestFunctionUrl'].OutputValue",
+    ], capture=True).stdout.strip()
+    if not url.startswith("https://"):
+        raise DeployError("stack has no IngestFunctionUrl output")
+    return url
+
+
 def deploy_site() -> None:
-    run([sys.executable, str(_HERE / "build_site.py")])
+    run([sys.executable, str(_HERE / "build_site.py"), "--ingest-url", ingest_function_url()])
     changed = upload_changed_dist()
     for d in ART_DIRS:
         out = run(["aws", "s3", "sync", str(_HERE / d), f"s3://{SITE_BUCKET}/{d}",

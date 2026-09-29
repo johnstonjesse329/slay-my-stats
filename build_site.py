@@ -15,10 +15,11 @@ window.DATA from them, then loads /app.js — the same js/*.js bundle run.py
 inlines, just fetched instead of embedded.
 
 Usage:
-    python build_site.py
+    python build_site.py [--ingest-url URL]
         Cleans dist/ and rebuilds it from card_data.json / relic_data.json /
-        potion_data.json, dashboard.css, js/*.js, and (if
-        present) site/boot.js.
+        potion_data.json, dashboard.css, js/*.js, and site/ (boot.js and
+        the upload button/panel). --ingest-url is the ingest Lambda's
+        Function URL, written to dist/site-config.json for the upload page.
 """
 
 import json
@@ -102,10 +103,12 @@ def build_index_html() -> str:
   <link rel="icon" type="image/png" href="/node_icons/elite.png">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
   <link rel="stylesheet" href="/dashboard.css">
+  <link rel="stylesheet" href="/upload.css">
 </head>
 <body>
 {body}
 <script src="/boot.js"></script>
+<script src="/upload.js"></script>
 </body>
 </html>"""
 
@@ -132,6 +135,17 @@ def main():
         write("boot.js", _SITE_BOOT_JS.read_text(encoding="utf-8"))
     else:
         print(f"WARNING: {_SITE_BOOT_JS} does not exist yet — dist/boot.js not written.")
+    for name in ("upload.js", "upload.css"):
+        write(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
+
+    # Where site/upload.js POSTs runs: the ingest Lambda's Function URL, which
+    # only exists once the stack is deployed (tools/deploy.py passes it in).
+    # Without it, the upload button still works up to the POST and then says
+    # uploads aren't available. tools/serve_site.py answers this path itself.
+    ingest_url = sys.argv[sys.argv.index("--ingest-url") + 1] if "--ingest-url" in sys.argv else None
+    if ingest_url is None:
+        print("NOTE: no --ingest-url; dist/site-config.json has uploads disabled.")
+    write("site-config.json", json.dumps({"ingestUrl": ingest_url}))
 
     catalog_json = json.dumps(build_catalog(), separators=(",", ":"))
     write("catalog.json", catalog_json)

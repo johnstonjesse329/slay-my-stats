@@ -83,6 +83,12 @@ class Handler(BaseHTTPRequestHandler):
         url_path = unquote(urlsplit(self.path).path)
         parts = [p for p in url_path.split("/") if p]
 
+        # Point the upload page at this server's own /api/ingest instead of
+        # whatever Function URL the last build baked in.
+        if url_path == "/site-config.json":
+            self._send_json(200, {"ingestUrl": "/api/ingest"})
+            return
+
         # /u/<anything> -> the SPA shell
         if parts and parts[0] == "u":
             self._serve_file(_DIST / "index.html")
