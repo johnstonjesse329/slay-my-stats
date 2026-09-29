@@ -52,7 +52,7 @@ def run(args, *, cwd=_HERE, env=None, capture=False) -> subprocess.CompletedProc
     print("$", " ".join(args), flush=True)
     result = subprocess.run(
         [exe, *args[1:]], cwd=cwd, env=env, stdin=subprocess.DEVNULL,
-        capture_output=capture, text=True,
+        capture_output=capture, text=True, encoding="utf-8", errors="replace",  # cdk prints ✨ and └─
     )
     if result.returncode != 0:
         if capture:
@@ -64,7 +64,7 @@ def run(args, *, cwd=_HERE, env=None, capture=False) -> subprocess.CompletedProc
 def git(*args) -> str:
     return subprocess.run(
         ["git", *args], cwd=_HERE, stdin=subprocess.DEVNULL,
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     ).stdout.strip()
 
 
@@ -195,6 +195,8 @@ def deploy_site() -> None:
 
 
 def main() -> int:
+    # The cdk diff echoed below has ✨ and └─; a cp1252 console can't print them.
+    sys.stdout.reconfigure(errors="replace")
     pre_push = "--pre-push" in sys.argv
     try:
         if pre_push and not check_pre_push(sys.stdin.read().splitlines()):
