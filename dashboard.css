@@ -89,12 +89,17 @@ h1 {
    every card is the same width, and one wrapping to a second row still lines
    up under the column above it. minmax(220px, 1fr): wide enough that none of
    the nine cards' content wraps awkwardly, narrow enough to fit 4-5 per row
-   on a laptop-width screen. */
+   on a laptop-width screen. Fixed counts that divide the nine cards evenly
+   (5 + 4, then 3 + 3 + 3) rather than auto-fit, which left 7 + a lonely 2
+   on wide screens and 4 + 4 + 1 at 1280px. */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1rem;
   margin-bottom: 2.5rem;
+}
+@media (max-width: 1200px) {
+  .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* Personal bests: force 5 equal columns so tiles never leave an orphan.
