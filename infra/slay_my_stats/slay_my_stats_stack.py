@@ -95,14 +95,14 @@ class SlayMyStatsStack(Stack):
         # users/<slug>.json.gz: one gzip JSON blob per player, plus the public
         # users/_index.json.gz list; ids/<steamid>.json.gz maps Steam IDs to
         # slugs and stays private (CloudFront only serves users/*).
-        # DESTROY/auto-delete is fine while no real user data lives here --
-        # switch to RETAIN before this bucket holds anything worth protecting.
+        # RETAIN: players' uploads live only here, so tearing the stack down
+        # leaves the bucket behind. Standing the stack up again then needs it
+        # imported or emptied and deleted by hand first.
         data_bucket = s3.Bucket(
             self, "DataBucket",
             bucket_name="slay-my-stats-data",
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
+            removal_policy=RemovalPolicy.RETAIN,
         )
 
         # Built static site (index.html, js/*.js, dashboard.css, game art).

@@ -1,2 +1,5 @@
 aws-cdk-lib>=2.170.0,<3.0.0
 constructs>=10.0.0,<11.0.0
+# tools/rebuild_stats.py --bucket reads the live bucket (Lambda has its own copy);
+# [crt] lets it use `aws login` credentials.
+boto3[crt]>=1.34,<2.0

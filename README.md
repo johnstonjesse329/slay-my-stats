@@ -143,7 +143,7 @@ $1 budget alarm triggers a small Lambda that throttles the ingest function to ze
 
 ```sh
 python -m venv infra/.venv
-infra\.venv\Scripts\pip install -r infra/requirements.txt      # CDK (only needed for infra/deploy)
+infra\.venv\Scripts\pip install -r infra/requirements.txt      # CDK and boto3 (infra, deploy, live stats recount)
 
 infra\.venv\Scripts\python.exe build_site.py                   # builds dist/
 infra\.venv\Scripts\python.exe tools/build_user_blob.py        # your runs -> local_data/ (optional)
