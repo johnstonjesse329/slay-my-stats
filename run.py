@@ -856,7 +856,8 @@ def build_card_images(url_for=Path.as_uri) -> dict[str, str]:
 
 def dashboard_body_html(subtitle: str, home_links: bool = False) -> str:
     """
-    The markup between <body> and the <script> tag: skip link, header, the
+    The markup between <body> and the <script> tag: the map background
+    (dashboard.css; panned by js/page-nav.js), skip link, header, the
     shared filter bar, and all five pages (Overview / Character Detail / Run
     Detail / Card Stats / Seed Data). Shared by build_html() (the local HTML
     generator) and build_site.py (the static site, whose subtitle differs
@@ -869,7 +870,8 @@ def dashboard_body_html(subtitle: str, home_links: bool = False) -> str:
     title = '<a class="home-link" href="/">Slay the Spire 2</a>' if home_links else "Slay the Spire 2"
     actions = ('\n<div class="header-actions"><a class="find-player-link" href="/">Find another player</a></div>'
                if home_links else "")
-    return f"""<a class="skip-link" href="#main-content">Skip to content</a>
+    return f"""<div class="map-bg" aria-hidden="true"></div>
+<a class="skip-link" href="#main-content">Skip to content</a>
 
 <header>
 <h1>{title}</h1>

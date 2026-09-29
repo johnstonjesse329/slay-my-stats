@@ -611,11 +611,11 @@ function updateUnsavedIndicator() {
 // It moves by transform on its own element, which the compositor handles
 // alone. (Setting a custom property on body restyled the whole page and
 // repainted the background every frame, which flickered on phones.)
+// The element is in the page's markup (run.py), not made here: the player
+// finder at / never loads this script, and it still shows the map.
 (function initMapParallax() {
-  const bg = document.createElement("div");
-  bg.className = "map-bg";
-  bg.setAttribute("aria-hidden", "true");
-  document.body.prepend(bg);
+  const bg = document.querySelector(".map-bg");
+  if (!bg) return;
 
   let queued = false;
   function update() {
