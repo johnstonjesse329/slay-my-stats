@@ -17,9 +17,37 @@ from aws_cdk import (
     aws_sns as sns,
     aws_ssm as ssm,
 )
+import shutil
+from pathlib import Path
+
+import jsii
+from aws_cdk import BundlingOptions, DockerImage, ILocalBundling
 from constructs import Construct
 
-STEAM_API_KEY_PARAM_NAME = "/slay-my-stats/steam-api-key"
+INGEST_DIR = Path(__file__).resolve().parents[1] / "lambda" / "ingest"
+# The handler parses uploads with the same run.py the local dashboard uses,
+# so the two can't drift apart. It lives at the repo root, outside the asset
+# folder, and gets copied in at synth time.
+RUN_PY = Path(__file__).resolve().parents[2] / "run.py"
+
+
+@jsii.implements(ILocalBundling)
+class _CopyIngestSources:
+    def try_bundle(self, output_dir: str, *, image=None, **_kwargs) -> bool:
+        shutil.copy(INGEST_DIR / "handler.py", output_dir)
+        shutil.copy(RUN_PY, output_dir)
+        return True
+
+
+def _ingest_asset_hash() -> str:
+    import hashlib
+    h = hashlib.sha256()
+    for p in (INGEST_DIR / "handler.py", RUN_PY):
+        h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+STEAM_API_KEY_PARAM_NAME ="/slay-my-stats/steam-api-key"
 DOMAIN_NAME = "slay-my-stats.com"
 # Must be in us-east-1 -- CloudFront's control plane only looks there for
 # certificates, regardless of what region the rest of this stack deploys to.
@@ -156,12 +184,29 @@ class SlayMyStatsStack(Stack):
             self, "IngestFunction",
             runtime=lambda_.Runtime.PYTHON_3_12,
             handler="handler.lambda_handler",
-            code=lambda_.Code.from_asset("lambda/ingest"),
-            timeout=Duration.seconds(10),
-            memory_size=256,
+            code=lambda_.Code.from_asset(
+                str(INGEST_DIR),
+                # Local-only bundling; the image is never pulled because
+                # try_bundle always succeeds.
+                bundling=BundlingOptions(
+                    image=DockerImage.from_registry("unused"),
+                    local=_CopyIngestSources(),
+                ),
+                # Hash the sources that end up in the bundle, including
+                # run.py, so a parser change alone still redeploys.
+                asset_hash=_ingest_asset_hash(),
+            ),
+            # A whole history (hundreds of runs) arrives in one upload: the
+            # parse is ~0.4 s at full CPU, but the merged blob is ~18 MB of
+            # JSON in memory before gzip. Lambda CPU scales with memory.
+            timeout=Duration.seconds(30),
+            memory_size=1024,
             log_group=ingest_log_group,
             environment={
                 "DATA_BUCKET": data_bucket.bucket_name,
+                # The OpenID return_to origins sign-ins are accepted from; an
+                # assertion Steam issued for any other site is refused.
+                "ALLOWED_RETURN_TO": f"https://{DOMAIN_NAME}/",
             },
         )
         data_bucket.grant_read_write(ingest_fn)
@@ -193,6 +238,7 @@ class SlayMyStatsStack(Stack):
             cors=lambda_.FunctionUrlCorsOptions(
                 allowed_origins=["https://slay-my-stats.com"],
                 allowed_methods=[lambda_.HttpMethod.POST],
+                allowed_headers=["content-type"],
             ),
         )
 

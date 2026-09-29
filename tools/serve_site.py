@@ -15,6 +15,9 @@ the site bucket:
     /ui_icons/...        -> ui_icons/...
     everything else      -> dist/...   (/ -> dist/index.html)
 
+    POST /api/ingest     -> the ingest Lambda's handler, storing into
+                            local_data/users/ (stands in for the Function URL)
+
 A missing /users/<name> answers 403, not 404 — that's what S3 (behind
 CloudFront with Origin Access Control) returns for a key that doesn't exist,
 and boot.js needs to tell "no data yet" apart from a real network failure.
@@ -24,12 +27,17 @@ Usage:
     python tools/serve_site.py --port 8080
 """
 
+import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+# The ingest Lambda's handler (and the run.py it imports), so /api/ingest
+# runs exactly the code that's deployed.
+sys.path[:0] = [str(_REPO_ROOT), str(_REPO_ROOT / "infra" / "lambda" / "ingest")]
+import handler as ingest_handler  # noqa: E402
 _DIST = _REPO_ROOT / "dist"
 _USERS_DIR = _REPO_ROOT / "local_data" / "users"
 
@@ -104,6 +112,36 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_file(_DIST / "index.html")
             return
         self._serve_file(_safe_join(_DIST, parts))
+
+    def do_POST(self):
+        # /api/ingest -> the real ingest Lambda's code, writing into
+        # local_data/users/ instead of S3. Steam verification is still real:
+        # sign in through Steam with a return_to on this server's origin.
+        if urlsplit(self.path).path != "/api/ingest":
+            self.send_error(404)
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > 6 * 1024 * 1024:  # the Function URL's own request limit
+            self._send_json(413, {"error": "too_large", "message": "Upload is over 6 MB."})
+            return
+        body = self.rfile.read(length)
+        params = dict(parse_qsl(urlsplit(self.path).query, keep_blank_values=True))
+        port = self.server.server_address[1]
+        allowed = [f"http://127.0.0.1:{port}/", f"http://localhost:{port}/"]
+        try:
+            result = ingest_handler.ingest(params, body, ingest_handler.DirStore(_USERS_DIR), allowed)
+        except ingest_handler.IngestError as e:
+            self._send_json(e.status, {"error": e.code, "message": e.message})
+            return
+        self._send_json(200, result)
+
+    def _send_json(self, status: int, payload: dict):
+        body = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_file(self, file_path: Path | None, content_type: str | None = None,
                      content_encoding: str | None = None):

@@ -504,13 +504,24 @@ def parse_run(path: Path) -> dict:
     with path.open(encoding="utf-8") as f:
         data = json.load(f)  # parse the JSON text into a Python dict
 
-    # In multiplayer, every player has their own entry. Find the local player by
-    # matching their Steam ID against the Steam ID embedded in the save path
+    # The Steam ID is embedded in the save path
     # (.../steam/<steamID>/profile1/saves/history/<file>.run — index -5 from the file).
-    # Fall back to index 0 for solo runs or non-standard paths.
-    players = data.get("players", [{}])
     parts = path.parts
     steam_id = parts[-5] if len(parts) >= 5 else None
+    return parse_run_data(data, steam_id=steam_id, fallback_ts=int(path.stem))
+
+
+def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | None = None) -> dict:
+    """
+    parse_run() minus the file: takes an already-loaded .run JSON object, the
+    local player's Steam ID (to pick them out of a multiplayer run) and the
+    timestamp to fall back on if the file lacks start_time. The ingest Lambda
+    calls this directly with the Steam ID it verified, since uploads arrive
+    as JSON, not files at a save-folder path.
+    """
+    # In multiplayer, every player has their own entry. Find the local player by
+    # matching their Steam ID. Fall back to index 0 for solo runs or no Steam ID.
+    players = data.get("players", [{}])
     player = players[0]
     if steam_id and len(players) > 1:
         for p in players:
@@ -519,7 +530,7 @@ def parse_run(path: Path) -> dict:
                 break
 
     # Use start_time if present; fall back to the filename (they should match).
-    ts = data.get("start_time", int(path.stem))
+    ts = data.get("start_time", fallback_ts)
 
     # Strip the "CHARACTER." prefix so we store just "IRONCLAD", "SILENT", etc.
     character = strip_prefix(player.get("character", ""), "CHARACTER.")
