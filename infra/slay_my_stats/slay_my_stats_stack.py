@@ -76,9 +76,9 @@ def lambda_handler(event, context):
 """
 
 # The site bucket only has /index.html at the root -- profile URLs like
-# /u/steam-<id> have no matching object, so CloudFront needs to rewrite the
+# /u/<slug> have no matching object, so CloudFront needs to rewrite the
 # request before it reaches S3. Done at the edge (not with S3 error-document
-# fallback) so the URL in the address bar stays /u/steam-<id> for sharing.
+# fallback) so the URL in the address bar stays /u/<slug> for sharing.
 PROFILE_URL_REWRITE_CODE = """
 function handler(event) {
     var request = event.request;
@@ -92,7 +92,9 @@ class SlayMyStatsStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # One gzip JSON blob per user at users/steam-<steamid64>.json.gz.
+        # users/<slug>.json.gz: one gzip JSON blob per player, plus the public
+        # users/_index.json.gz list; ids/<steamid>.json.gz maps Steam IDs to
+        # slugs and stays private (CloudFront only serves users/*).
         # DESTROY/auto-delete is fine while no real user data lives here --
         # switch to RETAIN before this bucket holds anything worth protecting.
         data_bucket = s3.Bucket(

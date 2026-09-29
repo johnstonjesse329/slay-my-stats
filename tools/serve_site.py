@@ -97,7 +97,7 @@ class Handler(BaseHTTPRequestHandler):
         # /users/<name> -> a gzip'd per-user data blob; 403 if it's not there,
         # same as S3-via-OAC would answer for a missing key.
         if parts and parts[0] == "users":
-            if len(parts) != 2:
+            if len(parts) != 2 or not parts[1].endswith(".json.gz"):
                 self.send_error(403)
                 return
             user_path = _safe_join(_USERS_DIR, parts[1:])
@@ -135,7 +135,7 @@ class Handler(BaseHTTPRequestHandler):
         port = self.server.server_address[1]
         allowed = [f"http://127.0.0.1:{port}/", f"http://localhost:{port}/"]
         try:
-            result = ingest_handler.ingest(params, body, ingest_handler.DirStore(_USERS_DIR), allowed)
+            result = ingest_handler.ingest(params, body, ingest_handler.DirStore(_USERS_DIR.parent), allowed)
         except ingest_handler.IngestError as e:
             self._send_json(e.status, {"error": e.code, "message": e.message})
             return

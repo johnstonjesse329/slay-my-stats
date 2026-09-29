@@ -73,8 +73,27 @@ class MemStore:
         self.puts += 1
         self.objects[key] = (data, self.clock, f"etag{self.puts}", dict(metadata))
 
+    def delete(self, key):
+        self.objects.pop(key, None)
+
+    def json(self, key):
+        return json.loads(gzip.decompress(self.objects[key][0]))
+
+    def slug(self, steam_id=STEAM_ID):
+        return self.json(handler.id_key(steam_id))["slug"]
+
+    def profile(self, steam_id=STEAM_ID):
+        return self.json(handler.blob_key(self.slug(steam_id)))
+
     def runs(self, steam_id=STEAM_ID):
-        return json.loads(gzip.decompress(self.objects[handler.blob_key(steam_id)][0]))["runs"]
+        return self.profile(steam_id)["runs"]
+
+    def index(self):
+        return self.json(handler.INDEX_KEY)["players"]
+
+
+def named(name):
+    return lambda steam_id: name
 
 
 def minimal_run(start_time, **extra):
@@ -212,9 +231,9 @@ class IngestTests(unittest.TestCase):
     def setUp(self):
         self.store = MemStore()
 
-    def ingest(self, body, now=NOW, **param_kw):
+    def ingest(self, body, now=NOW, name="Mr. Bean!", **param_kw):
         return handler.ingest(openid_params(issued=now - 60, **param_kw), body, self.store, ALLOWED,
-                              now=now, post=steam_says())
+                              now=now, post=steam_says(), lookup_name=named(name))
 
     def test_first_upload_then_dedupe(self):
         res = self.ingest(body_of(minimal_run(1700000002), minimal_run(1700000001), minimal_run(1700000001)))
@@ -231,15 +250,87 @@ class IngestTests(unittest.TestCase):
 
     def test_stored_blob_is_gzip_json(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        blob = json.loads(gzip.decompress(self.store.objects[handler.blob_key(STEAM_ID)][0]))
-        self.assertEqual(blob["v"], 1)
+        blob = json.loads(gzip.decompress(self.store.objects["users/mrbean.json.gz"][0]))
+        self.assertEqual((blob["v"], blob["name"]), (1, "Mr. Bean!"))
 
     def test_nothing_new_does_not_write(self):
         self.ingest(body_of(minimal_run(1700000001)))
+        puts = self.store.puts
         self.store.clock = NOW
         res = self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120, nonce_suffix="again")
-        self.assertEqual((res["added"], res["duplicates"]), (0, 1))
-        self.assertEqual(self.store.puts, 1)
+        self.assertEqual((res["added"], res["duplicates"], res["slug"]), (0, 1, "mrbean"))
+        self.assertEqual(self.store.puts, puts)
+
+    def test_slugify(self):
+        for name, slug in [("Mr. Bean!", "mrbean"), ("Zoë-99", "zoe99"), ("日本語", "player"),
+                           ("a" * 80, "a" * 32), ("ＦＵＬＬ", "full")]:
+            self.assertEqual(handler.slugify(name), slug, name)
+        self.assertEqual(handler.clean_name("  x​\n y "), "x y")
+        self.assertIsNone(handler.clean_name(" \t"))
+
+    def test_first_upload_creates_profile_record_and_index(self):
+        res = self.ingest(body_of(minimal_run(1700000001)))
+        self.assertEqual((res["slug"], res["name"]), ("mrbean", "Mr. Bean!"))
+        self.assertEqual(self.store.slug(), "mrbean")
+        self.assertEqual(self.store.index(),
+                         [{"slug": "mrbean", "name": "Mr. Bean!", "runs": 1, "updated": int(NOW)}])
+
+    def test_steam_id_never_public(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        self.assertNotIn("steamId", self.ingest(body_of(), nonce_suffix="x", now=NOW + 120))
+        for key, (data, *_rest) in self.store.objects.items():
+            if key.startswith("users/"):
+                self.assertNotIn(STEAM_ID, key)
+                self.assertNotIn(STEAM_ID.encode(), gzip.decompress(data))
+
+    def test_same_name_gets_numbered_slug(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        other = "76561198000000002"
+        res = self.ingest(body_of(minimal_run(1700000001)), steam_id=other, name="mr bean")
+        self.assertEqual(res["slug"], "mrbean-2")
+        res = self.ingest(body_of(minimal_run(1700000001)), steam_id="76561198000000003", name="MRBEAN")
+        self.assertEqual(res["slug"], "mrbean-3")
+        self.assertEqual([p["slug"] for p in self.store.index()], ["mrbean", "mrbean-2", "mrbean-3"])
+
+    def test_slug_taken_but_not_yet_indexed(self):
+        # Another new player created "mrbean" but hasn't updated the index yet.
+        self.store.put("users/mrbean.json.gz", b"x", {}, None)
+        self.assertEqual(self.ingest(body_of(minimal_run(1700000001)))["slug"], "mrbean-2")
+        self.assertEqual(self.store.objects["users/mrbean.json.gz"][0], b"x")
+
+    def test_rename_keeps_slug(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        self.store.clock = NOW
+        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2", name="Sir Bean")
+        self.assertEqual((res["slug"], res["name"]), ("mrbean", "Sir Bean"))
+        self.assertEqual(self.store.profile()["name"], "Sir Bean")
+        self.assertEqual([(p["slug"], p["name"], p["runs"]) for p in self.store.index()], [("mrbean", "Sir Bean", 2)])
+
+    def test_new_player_needs_a_name(self):
+        with self.assertRaises(handler.IngestError) as cm:
+            self.ingest(body_of(minimal_run(1700000001)), name=None)
+        self.assertEqual(cm.exception.code, "steam_unreachable")
+        self.assertEqual(self.store.objects, {})
+
+    def test_returning_player_keeps_name_if_steam_is_down(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        self.store.clock = NOW
+        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2", name=None)
+        self.assertEqual((res["added"], res["name"]), (1, "Mr. Bean!"))
+
+    def test_racing_first_uploads_leave_no_orphan(self):
+        # Between our read of ids/<steamid> and our write, another tab's first
+        # upload for the same player recorded a different slug.
+        class Racy(MemStore):
+            def put(self, key, data, metadata, if_match):
+                if key == handler.id_key(STEAM_ID) and key not in self.objects:
+                    super().put(key, handler._pack({"slug": "elsewhere"}), {}, None)
+                super().put(key, data, metadata, if_match)
+        self.store = Racy()
+        with self.assertRaises(handler.IngestError) as cm:
+            self.ingest(body_of(minimal_run(1700000001)))
+        self.assertEqual(cm.exception.code, "conflict")
+        self.assertNotIn("users/mrbean.json.gz", self.store.objects)
 
     def test_cooldown(self):
         self.store.clock = NOW
@@ -266,12 +357,18 @@ class IngestTests(unittest.TestCase):
         self.assertEqual((res["added"], res["rejected"]), (1, 5))
 
     def test_conflict(self):
+        # Another write to this profile lands between our read and our put.
         class Racy(MemStore):
-            def put(self, *a):
-                raise handler.StoreConflict()
+            racing = False
+            def put(self, key, *a):
+                if self.racing:
+                    raise handler.StoreConflict()
+                super().put(key, *a)
         self.store = Racy()
+        self.ingest(body_of(minimal_run(1700000001)))
+        self.store.clock, self.store.racing = NOW, True
         with self.assertRaises(handler.IngestError) as cm:
-            self.ingest(body_of(minimal_run(1700000001)))
+            self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2")
         self.assertEqual(cm.exception.status, 409)
 
     def test_too_many_runs(self):
@@ -289,7 +386,7 @@ class DirStoreTests(unittest.TestCase):
     def test_roundtrip_and_conflict(self):
         with tempfile.TemporaryDirectory() as d:
             store = handler.DirStore(d)
-            key = handler.blob_key(STEAM_ID)
+            key = handler.blob_key("mrbean")
             self.assertIsNone(store.get(key))
             store.put(key, b"one", {"last-nonce": "n1"}, None)
             data, _, etag, meta = store.get(key)
@@ -311,6 +408,8 @@ class LambdaHandlerTests(unittest.TestCase):
         handler.verify_openid = lambda p, a, now=None, post=None: orig_verify(p, a, now=NOW, post=steam_says())
         orig_time = handler.time.time
         handler.time.time = lambda: NOW
+        orig_lookup = handler.lookup_steam_name
+        handler.lookup_steam_name = named("Mr. Bean!")
         try:
             import os
             os.environ["ALLOWED_RETURN_TO"] = ",".join(ALLOWED)
@@ -323,6 +422,7 @@ class LambdaHandlerTests(unittest.TestCase):
             resp = handler.lambda_handler(event, None)
             self.assertEqual(resp["statusCode"], 200, resp["body"])
             self.assertEqual(json.loads(resp["body"])["added"], 1)
+            self.assertEqual(json.loads(resp["body"])["slug"], "mrbean")
 
             event["requestContext"]["http"]["method"] = "GET"
             self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
@@ -331,6 +431,7 @@ class LambdaHandlerTests(unittest.TestCase):
             handler._post_to_steam = orig_post
             handler.verify_openid = orig_verify
             handler.time.time = orig_time
+            handler.lookup_steam_name = orig_lookup
 
 
 class RealHistoryTests(unittest.TestCase):
@@ -345,7 +446,8 @@ class RealHistoryTests(unittest.TestCase):
         body = gzip.compress("\n".join(json.dumps(json.loads(f.read_text(encoding="utf-8"))) for f in files).encode())
 
         store = MemStore()
-        res = handler.ingest(openid_params(steam_id=steam_id), body, store, ALLOWED, now=NOW, post=steam_says())
+        res = handler.ingest(openid_params(steam_id=steam_id), body, store, ALLOWED, now=NOW, post=steam_says(),
+                             lookup_name=named("Me"))
         self.assertEqual(res["rejected"], 0, res)
         expected = sorted((run.parse_run(f) for f in files), key=lambda r: r["ts"])
         self.assertEqual(store.runs(steam_id), json.loads(json.dumps(expected)))

@@ -1,6 +1,7 @@
 // =========================================================================
-// Boot script — builds window.DATA for a /u/steam-<id> profile, then loads
-// the dashboard bundle (/app.js).
+// Boot script — builds window.DATA for a /u/<slug> profile, then loads
+// the dashboard bundle (/app.js). On the root page it shows the player
+// finder instead.
 //
 // The dashboard JS (js/*.js in the repo, concatenated to /app.js at deploy
 // time) is a classic script whose top-level code reads a global DATA the
@@ -10,10 +11,12 @@
 // shape in the browser from two fetches:
 //   - /catalog.json        — the game-data catalog (cards/relics/encounters/
 //                             images), the same for every profile.
-//   - /users/steam-<id>.json.gz — this profile's parsed runs (parse_run()
-//                             output, one entry per run, already sorted by
-//                             ts), served gzip-encoded — fetch()/Response
-//                             decode that transparently.
+//   - /users/<slug>.json.gz — this profile's display name and parsed runs
+//                             (parse_run() output, one entry per run,
+//                             already sorted by ts), served gzip-encoded —
+//                             fetch()/Response decode that transparently.
+// Slugs are the player's Steam name reduced to a-z0-9, plus "-2", "-3", ...
+// when a name is already taken (the ingest Lambda hands them out).
 //
 // Classic script (no type=module) wrapped in an IIFE so the only thing it
 // leaves behind on window is DATA itself, exactly like the code it's
@@ -228,16 +231,93 @@
     document.querySelectorAll(".page-tabs").forEach(el => { el.style.display = "none"; });
   }
 
+  function el(tag, props, children) {
+    const node = document.createElement(tag);
+    Object.assign(node, props || {});
+    for (const c of children || []) node.append(c);
+    return node;
+  }
+
+  // ---- Player finder (the root page) ----------------------------------------
+  //
+  // /users/_index.json.gz lists every profile as {slug, name, runs, updated}
+  // (no Steam IDs), small enough to search in the browser.
+  const FINDER_LIMIT = 50;
+
+  async function showFinder() {
+    showFallback("");
+    const main = document.getElementById("main-content");
+    if (!main) return;
+    const input = el("input", { type: "search", className: "finder-input", id: "finder-input",
+                               placeholder: "Steam name", autocomplete: "off", spellcheck: false });
+    const list = el("ul", { className: "finder-list" });
+    const count = el("p", { className: "finder-count", role: "status" });
+    main.textContent = "";
+    main.append(el("section", { className: "finder" }, [
+      el("h2", { textContent: "Find a player" }),
+      el("p", { textContent: "Slay the Spire 2 run histories, one page per player. " +
+                             "Search by Steam name, or put your own runs up with \"Upload your runs\"." }),
+      el("label", { htmlFor: "finder-input", className: "finder-label", textContent: "Search players" }),
+      input,
+      count,
+      list,
+    ]));
+
+    let players;
+    try {
+      const resp = await fetch("/users/_index.json.gz", { cache: "no-cache" });
+      players = resp.ok ? (await resp.json()).players || [] : [];
+    } catch (e) {
+      count.textContent = "Couldn't load the player list. Please try again later.";
+      return;
+    }
+    if (!players.length) {
+      count.textContent = "No one has uploaded yet — be the first.";
+      input.disabled = true;
+      return;
+    }
+    // Most recently active first. Search ignores case and accents.
+    players.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    const fold = t => String(t).toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "");
+
+    const render = () => {
+      const q = fold(input.value.trim());
+      const qSlug = q.replace(/[^a-z0-9]/g, "");
+      const hits = !q ? players : players.filter(p => fold(p.name).includes(q) || (qSlug && p.slug.includes(qSlug)));
+      list.textContent = "";
+      for (const p of hits.slice(0, FINDER_LIMIT)) {
+        list.append(el("li", {}, [
+          el("a", { href: `/u/${p.slug}` }, [
+            el("span", { className: "finder-name", textContent: p.name }),
+            el("span", { className: "finder-runs", textContent: `${p.runs} run${p.runs === 1 ? "" : "s"}` }),
+          ]),
+        ]));
+      }
+      count.textContent = !hits.length ? "No players match."
+        : hits.length > FINDER_LIMIT ? `Showing ${FINDER_LIMIT} of ${hits.length} players — keep typing to narrow it down.`
+        : q ? `${hits.length} player${hits.length === 1 ? "" : "s"} match.`
+        : `${hits.length} player${hits.length === 1 ? "" : "s"}, most recently updated first.`;
+    };
+    input.addEventListener("input", render);
+    render();
+  }
+
   function showNoProfile() {
-    showFallback(
-      "This is a Slay the Spire 2 run-history site. Sign in with Steam " +
-      "(\"Upload your runs\", above) to put your run history on your own " +
-      "profile page."
-    );
+    showFallback("There's no player at this address.");
+    const main = document.getElementById("main-content");
+    if (main) main.append(el("p", {}, [el("a", { href: "/", textContent: "Find a player" })]));
   }
 
   function showNoRuns() {
     showFallback("No runs have been uploaded for this profile yet.");
+  }
+
+  // The header's subtitle and the tab title say whose runs these are.
+  function showPlayerName(name) {
+    if (!name) return;
+    const subtitle = document.querySelector("header .subtitle");
+    if (subtitle) subtitle.textContent = `${name}'s run history.`;
+    document.title = `${name} — Slay the Spire 2 Run History`;
   }
 
   function showError() {
@@ -253,19 +333,25 @@
   // ---- Entry point ---------------------------------------------------------
 
   async function main() {
-    // Strict match: /u/steam-<17 digits>, optional trailing slash.
-    const match = location.pathname.match(/^\/u\/steam-(\d{17})\/?$/);
+    if (location.pathname === "/" || location.pathname === "/index.html") {
+      showFinder();
+      return;
+    }
+    // Strict match: /u/<a-z0-9>[-<n>], optional trailing slash. Any case is
+    // accepted for people typing it, and the address bar corrected.
+    const match = location.pathname.match(/^\/u\/([a-z0-9]{1,32}(?:-[1-9][0-9]{0,5})?)\/?$/i);
     if (!match) {
       showNoProfile();
       return;
     }
-    const steamId = match[1];
+    const slug = match[1].toLowerCase();
+    if (match[1] !== slug) history.replaceState(null, "", `/u/${slug}` + location.search + location.hash);
 
     let catalogResp, userResp;
     try {
       [catalogResp, userResp] = await Promise.all([
         fetch("/catalog.json"),
-        fetch(`/users/steam-${steamId}.json.gz`),
+        fetch(`/users/${slug}.json.gz`, { cache: "no-cache" }),
       ]);
     } catch (e) {
       showError();
@@ -276,7 +362,7 @@
     // known, expected case with its own message, regardless of how the
     // catalog fetch went.
     if (userResp.status === 403 || userResp.status === 404) {
-      showNoRuns();
+      showNoProfile();
       return;
     }
     if (!catalogResp.ok || !userResp.ok) {
@@ -292,7 +378,12 @@
       return;
     }
 
-    window.DATA = buildData(catalog, userDoc.runs || []);
+    showPlayerName(userDoc.name);
+    if (!(userDoc.runs || []).length) {
+      showNoRuns();
+      return;
+    }
+    window.DATA = buildData(catalog, userDoc.runs);
     loadAppScript();
   }
 

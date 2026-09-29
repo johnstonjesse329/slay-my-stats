@@ -9,16 +9,29 @@ Request (POST to the Function URL, sent by the browser upload page):
     body          gzip'd NDJSON: one raw .run file's JSON per line (the
                   browser re-serializes each file onto a single line).
 
-Flow: verify the OpenID assertion -> read the user's blob and refuse if it
-was written less than COOLDOWN_SECONDS ago (a cost circuit-breaker, not a
-feature) or by this same sign-in -> stream-decompress the body, parsing
-each run with run.py's parse_run_data -> reject anything outside a strict
-shape/charset allowlist -> dedupe by ts -> merge -> conditional PutObject.
-Responds with counts only, never the blob (a big history is larger than the
-6 MB response limit); the page re-fetches it through CloudFront.
+Flow: verify the OpenID assertion -> find the player's profile and refuse
+if it was written less than COOLDOWN_SECONDS ago (a cost circuit-breaker,
+not a feature) or by this same sign-in -> stream-decompress the body,
+parsing each run with run.py's parse_run_data -> reject anything outside a
+strict shape/charset allowlist -> dedupe by ts -> merge -> conditional
+PutObject -> update the player list. Responds with counts, the profile's
+address and name, never the blob (a big history is larger than the 6 MB
+response limit); the page re-fetches it through CloudFront.
+
+Storage (the data bucket; CloudFront serves users/* only):
+    users/<slug>.json.gz    public profile: {"v":1, "name", "runs":[...]}
+    users/_index.json.gz    public player list: {"v":1, "players":[{slug,
+                            name, runs, updated}]}, for search
+    ids/<steamid>.json.gz   private: {"slug"}. The only place a Steam ID is
+                            kept, so nothing public links a profile to a
+                            Steam account.
+A profile's slug is its Steam display name at first upload, lowercased with
+everything but a-z0-9 dropped ("Mr. Bean!" -> "mrbean"; "player" if nothing
+is left), plus "-2", "-3"... if taken. It never changes after that, so
+shared links keep working; a rename only updates the shown name.
 
 The core (ingest()) takes a storage object rather than calling S3 itself, so
-tools/serve_site.py can run the same code against local_data/users/.
+tools/serve_site.py can run the same code against local_data/.
 """
 import base64
 import gzip
@@ -27,6 +40,7 @@ import math
 import os
 import re
 import time
+import unicodedata
 import urllib.parse
 import urllib.request
 import zlib
@@ -64,6 +78,14 @@ MAX_DEPTH = 12
 MAX_ABS_INT = 2 ** 53
 # Plausible run start times: 2020-01-01 .. 2100-01-01.
 TS_MIN, TS_MAX = 1577836800, 4102444800
+
+PLAYER_SUMMARIES_URL = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
+PROFILE_XML_URL = "https://steamcommunity.com/profiles/{}?xml=1"
+MAX_NAME_CHARS = 64
+MAX_SLUG_CHARS = 32
+MAX_SLUG_TRIES = 50
+INDEX_KEY = "users/_index.json.gz"
+INDEX_RETRIES = 5
 
 
 class StoreConflict(Exception):
@@ -143,6 +165,80 @@ def verify_openid(params: dict, allowed_return_to: list[str], now: float | None 
     if "is_valid:true" not in answer.splitlines():
         raise IngestError(401, "bad_openid", "Steam did not confirm the sign-in.")
     return m.group(1)
+
+
+# ---------------------------------------------------------------------------
+# Steam display name
+# ---------------------------------------------------------------------------
+
+_api_key = None  # cached per Lambda container once read
+
+
+def _steam_api_key() -> str:
+    """The Steam Web API key: $STEAM_API_KEY if set (dev), else the SSM
+    parameter named by $STEAM_API_KEY_PARAM_NAME (Lambda), else ""."""
+    global _api_key
+    if _api_key is None:
+        key = os.environ.get("STEAM_API_KEY", "")
+        param = os.environ.get("STEAM_API_KEY_PARAM_NAME")
+        if not key and param:
+            try:
+                import boto3
+                key = boto3.client("ssm").get_parameter(Name=param, WithDecryption=True)["Parameter"]["Value"]
+            except Exception:
+                return ""  # not cached: try again on the next upload
+        _api_key = key
+    return _api_key
+
+
+def _http_get(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "slay-my-stats"})
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return resp.read(65536).decode("utf-8", "replace")
+
+
+def lookup_steam_name(steam_id: str) -> str | None:
+    """
+    The player's current Steam display name, or None if Steam couldn't be
+    asked. Tries the Web API (needs the key), then the public profile XML
+    (no key; what the dev server uses). Errors are swallowed without being
+    logged -- the API URL carries the key.
+    """
+    key = _steam_api_key()
+    if key:
+        try:
+            q = urllib.parse.urlencode({"key": key, "steamids": steam_id})
+            players = json.loads(_http_get(f"{PLAYER_SUMMARIES_URL}?{q}"))["response"]["players"]
+            if players and players[0].get("personaname"):
+                return players[0]["personaname"]
+        except Exception:
+            pass
+    try:
+        m = re.search(r"<steamID><!\[CDATA\[(.*?)\]\]></steamID>", _http_get(PROFILE_XML_URL.format(steam_id)), re.S)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def clean_name(name) -> str | None:
+    """A display name fit to store: no control/format characters (which
+    includes bidi overrides), whitespace collapsed, length capped. The page
+    only ever shows it via textContent."""
+    if not isinstance(name, str):
+        return None
+    name = "".join(ch for ch in name if unicodedata.category(ch)[0] != "C")
+    name = " ".join(name.split())[:MAX_NAME_CHARS]
+    return name or None
+
+
+def slugify(name: str) -> str:
+    """A name's URL form: lowercase a-z0-9 only, so easy to type. Dashes are
+    reserved for the "-2" suffix, which keeps "bob-2" from ever clashing
+    with a player actually named "bob2". Accents fold ("Zoë" -> "zoe")."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", ascii_name.lower())[:MAX_SLUG_CHARS] or "player"
 
 
 # ---------------------------------------------------------------------------
@@ -242,25 +338,93 @@ def parse_upload(body: bytes, steam_id: str) -> tuple[list[dict], int]:
 # Storage + merge
 # ---------------------------------------------------------------------------
 
-def blob_key(steam_id: str) -> str:
-    return f"users/steam-{steam_id}.json.gz"
+def blob_key(slug: str) -> str:
+    return f"users/{slug}.json.gz"
+
+
+def id_key(steam_id: str) -> str:
+    return f"ids/{steam_id}.json.gz"
+
+
+def _pack(obj) -> bytes:
+    return gzip.compress(json.dumps(obj, separators=(",", ":")).encode("utf-8"), compresslevel=6, mtime=0)
+
+
+def _unpack(raw: bytes):
+    return json.loads(gzip.decompress(raw))
+
+
+def _read_index(store) -> tuple[list[dict], str | None]:
+    got = store.get(INDEX_KEY)
+    return (_unpack(got[0]).get("players", []), got[2]) if got else ([], None)
+
+
+def _claim_slug(store, steam_id: str, name: str, data: bytes, meta: dict) -> str:
+    """
+    Create a first-time player's profile under the first free slug for their
+    name and record it against their Steam ID. Creating the profile with a
+    must-not-exist write is what reserves the slug, so two new players with
+    the same name can't both get it.
+    """
+    taken = {p["slug"] for p in _read_index(store)[0]}
+    base, n, tries = slugify(name), 1, 0
+    while True:
+        slug = base if n == 1 else f"{base}-{n}"
+        n += 1
+        if slug in taken:
+            continue
+        try:
+            store.put(blob_key(slug), data, meta, None)
+            break
+        except StoreConflict:  # created since the index was written
+            tries += 1
+            if tries >= MAX_SLUG_TRIES:
+                raise IngestError(503, "busy", "Couldn't set up your profile. Try again shortly.")
+    try:
+        store.put(id_key(steam_id), _pack({"slug": slug}), {}, None)
+    except StoreConflict:
+        # This player's first upload from another tab won the race; give the
+        # slug back rather than leave a second, orphaned copy.
+        store.delete(blob_key(slug))
+        raise IngestError(409, "conflict", "Another upload for this profile landed at the same time. Try again.")
+    return slug
+
+
+def _update_index(store, slug: str, name: str, runs: int, now: float) -> None:
+    """Upsert this player into the public list. Best effort: the profile is
+    already saved, and the next upload rewrites this entry anyway."""
+    for _ in range(INDEX_RETRIES):
+        players, etag = _read_index(store)
+        players = [p for p in players if p["slug"] != slug]
+        players.append({"slug": slug, "name": name, "runs": runs, "updated": int(now)})
+        players.sort(key=lambda p: p["slug"])
+        try:
+            store.put(INDEX_KEY, _pack({"v": 1, "players": players}), {}, etag)
+            return
+        except StoreConflict:
+            continue
+    print(json.dumps({"warning": "index_update_failed", "slug": slug}))
 
 
 def ingest(params: dict, body: bytes, store, allowed_return_to: list[str],
-           now: float | None = None, post=_post_to_steam) -> dict:
+           now: float | None = None, post=_post_to_steam, lookup_name=None) -> dict:
     """
     The whole upload, storage-agnostic. `store` provides:
         get(key) -> (bytes, last_modified_epoch, etag, metadata) or None
         put(key, bytes, metadata, if_match_etag or None for "must not exist")
             raising StoreConflict if that precondition fails
+        delete(key)
+    `lookup_name(steam_id)` gives the current Steam display name (or None).
     """
     now = time.time() if now is None else now
+    lookup_name = lookup_name or lookup_steam_name
     steam_id = verify_openid(params, allowed_return_to, now=now, post=post)
     nonce = params["openid.response_nonce"]
-    key = blob_key(steam_id)
 
-    existing = store.get(key)
-    etag = None
+    record = store.get(id_key(steam_id))
+    slug = _unpack(record[0])["slug"] if record else None
+    existing = store.get(blob_key(slug)) if slug else None
+    etag = old_name = None
     old_runs: list[dict] = []
     if existing is not None:
         raw, last_modified, etag, meta = existing
@@ -268,7 +432,8 @@ def ingest(params: dict, body: bytes, store, allowed_return_to: list[str],
             raise IngestError(409, "signin_used", "This sign-in was already used for an upload. Sign in again.")
         if now - last_modified < COOLDOWN_SECONDS:
             raise IngestError(429, "cooldown", "You just uploaded. Wait a minute and try again.")
-        old_runs = json.loads(gzip.decompress(raw)).get("runs", [])
+        doc = _unpack(raw)
+        old_runs, old_name = doc.get("runs", []), doc.get("name")
 
     new_runs, rejected = parse_upload(body, steam_id)
 
@@ -281,20 +446,41 @@ def ingest(params: dict, body: bytes, store, allowed_return_to: list[str],
             seen.add(r["ts"])
             added.append(r)
 
-    result = {"steamId": steam_id, "added": len(added), "duplicates": duplicates,
+    result = {"slug": slug, "name": old_name, "added": len(added), "duplicates": duplicates,
               "rejected": rejected, "total": len(old_runs) + len(added)}
     if not added:
         return result
     if result["total"] > MAX_RUNS_TOTAL:
         raise IngestError(413, "too_many_runs", f"Profiles are capped at {MAX_RUNS_TOTAL} runs.")
 
+    # Only asked once there's something to save, so junk uploads never reach
+    # Steam. A returning player keeps their old name if Steam can't be asked;
+    # a new one can't be given an address without one.
+    name = clean_name(lookup_name(steam_id)) or old_name
+    if name is None:
+        raise IngestError(502, "steam_unreachable", "Couldn't get your Steam name from Steam. Try again shortly.")
+
     merged = sorted(old_runs + added, key=lambda r: r["ts"])
-    payload = json.dumps({"v": 1, "runs": merged}, separators=(",", ":")).encode("utf-8")
-    try:
-        store.put(key, gzip.compress(payload, compresslevel=6, mtime=0), {"last-nonce": nonce}, etag)
-    except StoreConflict:
-        raise IngestError(409, "conflict", "Another upload for this profile landed at the same time. Try again.")
+    slug = save_profile(store, steam_id, slug, etag, name, merged, {"last-nonce": nonce}, now)
+    result.update(slug=slug, name=name)
     return result
+
+
+def save_profile(store, steam_id: str, slug: str | None, etag: str | None, name: str,
+                 runs: list[dict], meta: dict, now: float) -> str:
+    """Write a profile (claiming a slug if the player has none yet) and list
+    it in the public index. `etag` is the profile as read, or None. Returns
+    the slug."""
+    data = _pack({"v": 1, "name": name, "runs": runs})
+    if slug:
+        try:
+            store.put(blob_key(slug), data, meta, etag)
+        except StoreConflict:
+            raise IngestError(409, "conflict", "Another upload for this profile landed at the same time. Try again.")
+    else:
+        slug = _claim_slug(store, steam_id, name, data, meta)
+    _update_index(store, slug, name, len(runs), now)
+    return slug
 
 
 class S3Store:
@@ -326,6 +512,9 @@ class S3Store:
                 raise StoreConflict() from e
             raise
 
+    def delete(self, key):
+        self._s3.delete_object(Bucket=self._bucket, Key=key)
+
 
 class DirStore:
     """
@@ -338,7 +527,7 @@ class DirStore:
         self._root = Path(root)
 
     def _path(self, key):
-        return self._root / key.split("/", 1)[1]  # "users/x" -> <root>/x
+        return self._root / key  # "users/x" -> <root>/users/x
 
     def get(self, key):
         p = self._path(key)
@@ -357,6 +546,11 @@ class DirStore:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(data)
         p.with_name(p.name + ".meta.json").write_text(json.dumps(metadata))
+
+    def delete(self, key):
+        p = self._path(key)
+        for f in (p, p.with_name(p.name + ".meta.json")):
+            f.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

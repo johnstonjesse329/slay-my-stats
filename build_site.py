@@ -8,17 +8,18 @@ root-absolute paths mirroring this repo's folders (/card_final/..,
 /card_portraits/.., /node_icons/.., /relic_images/.., /potion_images/..,
 /ui_icons/..),
 reference data (card/relic/potion metadata, encounter groupings, ...) is
-published once as /catalog.json, and per-run data comes from a per-user
-blob at /users/steam-<steamid64>.json.gz (see tools/build_user_blob.py).
-site/boot.js fetches /catalog.json + the user blob at page load, builds
-window.DATA from them, then loads /app.js — the same js/*.js bundle run.py
-inlines, just fetched instead of embedded.
+published once as /catalog.json, and per-run data comes from a per-player
+blob at /users/<slug>.json.gz (see tools/build_user_blob.py). On /u/<slug>,
+site/boot.js fetches /catalog.json + that blob, builds window.DATA from
+them, then loads /app.js — the same js/*.js bundle run.py inlines, just
+fetched instead of embedded. On / it shows a player finder over
+/users/_index.json.gz instead.
 
 Usage:
     python build_site.py [--ingest-url URL]
         Cleans dist/ and rebuilds it from card_data.json / relic_data.json /
         potion_data.json, dashboard.css, js/*.js, and site/ (boot.js and
-        the upload button/panel). --ingest-url is the ingest Lambda's
+        the upload button/panel, the player finder's CSS). --ingest-url is the ingest Lambda's
         Function URL, written to dist/site-config.json for the upload page.
 """
 
@@ -104,6 +105,7 @@ def build_index_html() -> str:
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
   <link rel="stylesheet" href="/dashboard.css">
   <link rel="stylesheet" href="/upload.css">
+  <link rel="stylesheet" href="/players.css">
 </head>
 <body>
 {body}
@@ -135,7 +137,7 @@ def main():
         write("boot.js", _SITE_BOOT_JS.read_text(encoding="utf-8"))
     else:
         print(f"WARNING: {_SITE_BOOT_JS} does not exist yet — dist/boot.js not written.")
-    for name in ("upload.js", "upload.css"):
+    for name in ("upload.js", "upload.css", "players.css"):
         write(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
 
     # Where site/upload.js POSTs runs: the ingest Lambda's Function URL, which

@@ -9,10 +9,16 @@
 //      address bar (so they don't linger in history or get shared) into
 //      sessionStorage, and the upload panel takes over the page.
 //   3. The player picks their history folder. Each .run file is re-serialized
-//      onto one line (NDJSON), runs the server already has are dropped, and
+//      onto one line (NDJSON), runs their profile already has are dropped, and
 //      the rest are gzip'd with CompressionStream and POSTed along with the
 //      OpenID params to the ingest endpoint, which re-verifies them with
-//      Steam and merges the runs into the player's profile.
+//      Steam and merges the runs into the player's profile (skipping any it
+//      already has, too).
+//
+// Profiles live at /u/<slug>, a slug the server picks from the Steam name on
+// the first upload. The page can't work that out from a sign-in, so each
+// upload's answer ({slug, name}) is remembered in localStorage for next
+// time; until then nothing is filtered here and the server does it alone.
 //
 // The ingest endpoint's URL comes from /site-config.json (the Lambda's
 // Function URL, written at deploy time; tools/serve_site.py answers it with
@@ -25,6 +31,7 @@
 
   const STEAM_LOGIN = "https://steamcommunity.com/openid/login";
   const SIGNIN_KEY = "sms-steam-signin";
+  const PROFILE_KEY = "sms-profile-";  // + steamId -> {slug, name}
   // The ingest endpoint refuses sign-ins older than 30 minutes; stop offering
   // an upload a bit before that so it doesn't fail at the last step.
   const SIGNIN_MAX_AGE_MS = 25 * 60 * 1000;
@@ -82,6 +89,18 @@
     try { sessionStorage.removeItem(SIGNIN_KEY); } catch (e) { /* ignore */ }
   }
 
+  function knownProfile(steamId) {
+    try {
+      const p = JSON.parse(localStorage.getItem(PROFILE_KEY + steamId) || "null");
+      if (p && /^[a-z0-9]{1,32}(-[1-9][0-9]{0,5})?$/.test(p.slug)) return p;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  function rememberProfile(steamId, slug, name) {
+    try { localStorage.setItem(PROFILE_KEY + steamId, JSON.stringify({ slug, name })); } catch (e) { /* ignore */ }
+  }
+
   // ---- Reading the history folder ------------------------------------------
 
   // Resolves to [{start, line}] for every readable .run file, oldest first.
@@ -105,9 +124,10 @@
   }
 
   // ts values already on the player's profile, so they aren't re-sent.
-  async function existingTimestamps(steamId) {
+  async function existingTimestamps(profile) {
+    if (!profile) return new Set();
     try {
-      const resp = await fetch(`/users/steam-${steamId}.json.gz`, { cache: "no-store" });
+      const resp = await fetch(`/users/${profile.slug}.json.gz`, { cache: "no-store" });
       if (!resp.ok) return new Set();
       const doc = await resp.json();
       return new Set((doc.runs || []).map(r => r.ts));
@@ -163,7 +183,7 @@
     if (filterBar) filterBar.style.display = "none";
     document.querySelectorAll(".page-tabs").forEach(n => { n.style.display = "none"; });
 
-    const profileUrl = `/u/steam-${signIn.steamId}`;
+    const profile = knownProfile(signIn.steamId);
     const status = el("p", { className: "upload-status", role: "status" });
     const folderInput = el("input", { type: "file", multiple: true, className: "upload-input", id: "upload-folder" });
     folderInput.setAttribute("webkitdirectory", "");
@@ -198,11 +218,9 @@
     const step = (title, ...body) => el("li", {}, [el("strong", { textContent: title }), ...body]);
     const panel = el("section", { className: "upload-panel" }, [
       el("h2", { textContent: "Upload your runs" }),
-      el("p", {}, [
-        "Signed in with Steam as ",
-        el("a", { href: profileUrl, textContent: signIn.steamId }),
-        ".",
-      ]),
+      el("p", {}, profile
+        ? ["Signed in with Steam as ", el("a", { href: `/u/${profile.slug}`, textContent: profile.name }), "."]
+        : ["Signed in with Steam. Your profile's address comes from your Steam name."]),
       el("ol", { className: "upload-steps" }, [
         step("Copy your run history folder's location.",
           el("div", { className: "upload-path" }, [pathCode, copyBtn])),
@@ -214,7 +232,7 @@
         step("Select it", " even though it looks empty (the picker only shows folders, not the run files inside)"
           + " and click Upload (or Select). If your browser asks whether to upload the files, say yes."),
       ]),
-      el("p", { className: "upload-note", textContent: "Only runs your profile doesn't already have are sent." }),
+      el("p", { className: "upload-note", textContent: "Runs already on your profile are skipped." }),
       status,
     ]);
     main.textContent = "";
@@ -225,7 +243,7 @@
       if (busy || !input.files.length) return;
       busy = true;
       try {
-        await upload(signIn, [...input.files], status, profileUrl);
+        await upload(signIn, [...input.files], status);
       } finally {
         busy = false;
         input.value = "";
@@ -239,7 +257,7 @@
     if (link) status.append(" ", el("a", { href: link.href, textContent: link.text }));
   }
 
-  async function upload(signIn, files, status, profileUrl) {
+  async function upload(signIn, files, status) {
     if (Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) {
       forgetSignIn();
       setStatus(status, "Your Steam sign-in has expired.");
@@ -256,10 +274,12 @@
     }
 
     setStatus(status, `Found ${runs.length} runs. Checking which are new…`);
-    const have = await existingTimestamps(signIn.steamId);
+    const profile = knownProfile(signIn.steamId);
+    const have = await existingTimestamps(profile);
     const fresh = runs.filter(r => !have.has(r.start)).map(r => r.line);
     if (!fresh.length) {
-      setStatus(status, `All ${runs.length} runs are already on your profile.`, { href: profileUrl, text: "View profile" });
+      setStatus(status, `All ${runs.length} runs are already on your profile.`,
+                { href: `/u/${profile.slug}`, text: "View profile" });
       return;
     }
 
@@ -302,13 +322,21 @@
       return;
     }
 
+    const profileLink = result.slug ? { href: `/u/${result.slug}`, text: "View profile" } : null;
+    if (result.slug) rememberProfile(signIn.steamId, result.slug, result.name);
+    if (!result.added) {
+      setStatus(status, result.duplicates
+        ? `All ${result.duplicates} runs are already on your profile.`
+        : "None of those files could be read as runs.", profileLink);
+      return;
+    }
     // One sign-in, one write: the server refuses the same sign-in twice.
-    if (result.added) forgetSignIn();
+    forgetSignIn();
     const parts = [`Added ${result.added} run${result.added === 1 ? "" : "s"}; your profile now has ${result.total}.`];
     if (result.rejected + unreadable) parts.push(`${result.rejected + unreadable} file(s) couldn't be read as runs and were skipped.`);
     const left = fresh.length - count;
     if (left > 0) parts.push(`${left} more runs didn't fit in one upload — sign in again in a minute to send the rest.`);
-    setStatus(status, parts.join(" "), { href: profileUrl, text: "View profile" });
+    setStatus(status, parts.join(" "), profileLink);
   }
 
   // ---- Entry point -----------------------------------------------------------

@@ -1,11 +1,13 @@
 """
 tools/build_user_blob.py — Build a per-user data blob for the static site.
 
-Parses a local STS2 history folder the same way run.py does, then writes a
-gzip-compressed, compact-JSON blob to local_data/users/steam-<steamid64>.json.gz.
-That's the file boot.js fetches at /users/steam-<steamid64>.json.gz on the
-live site (see build_site.py's docstring for how the whole static site fits
-together).
+Parses a local STS2 history folder the same way run.py does, then saves it
+into local_data/ exactly as an upload would (the ingest Lambda's storage
+code, so the layout can't drift): the profile at users/<slug>.json.gz, the
+private ids/<steamid>.json.gz record, and the users/_index.json.gz list.
+boot.js fetches the profile at /users/<slug>.json.gz; see build_site.py's
+docstring for how the whole static site fits together. Rebuilding replaces
+the profile's runs but keeps its slug.
 
 Usage:
     python tools/build_user_blob.py
@@ -17,26 +19,31 @@ Usage:
 
     python tools/build_user_blob.py --steam-id 76561198000000001
         Pick a Steam account when auto-detection finds more than one.
+
+    python tools/build_user_blob.py --name "Mr. Bean"
+        Use this display name instead of asking Steam for it.
 """
 
-import gzip
-import json
 import sys
+import time
 from pathlib import Path
 
-# Make run.py importable regardless of cwd.
+# Make run.py and the ingest handler importable regardless of cwd.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
+sys.path.insert(0, str(_REPO_ROOT / "infra" / "lambda" / "ingest"))
 import run
+import handler
 
-_OUT_DIR = _REPO_ROOT / "local_data" / "users"
+_DATA_DIR = _REPO_ROOT / "local_data"
 
 
 def parse_args():
     args = sys.argv[1:]
     history_dir = Path(args[args.index("--history") + 1]) if "--history" in args else None
     steam_id_arg = args[args.index("--steam-id") + 1] if "--steam-id" in args else None
-    return history_dir, steam_id_arg
+    name_arg = args[args.index("--name") + 1] if "--name" in args else None
+    return history_dir, steam_id_arg, name_arg
 
 
 def resolve_history_dir(history_dir: Path | None, steam_id_arg: str | None) -> Path:
@@ -71,7 +78,7 @@ def resolve_history_dir(history_dir: Path | None, steam_id_arg: str | None) -> P
 
 
 def main():
-    history_dir_arg, steam_id_arg = parse_args()
+    history_dir_arg, steam_id_arg, name_arg = parse_args()
     history_dir = resolve_history_dir(history_dir_arg, steam_id_arg)
 
     if not history_dir.exists():
@@ -106,18 +113,25 @@ def main():
 
     runs.sort(key=lambda r: r["ts"])
 
-    payload = json.dumps({"v": 1, "runs": runs}, separators=(",", ":")).encode("utf-8")
-    gzipped = gzip.compress(payload)
+    store = handler.DirStore(_DATA_DIR)
+    record = store.get(handler.id_key(steam_id))
+    slug = handler._unpack(record[0])["slug"] if record else None
+    existing = store.get(handler.blob_key(slug)) if slug else None
+    old_name = handler._unpack(existing[0]).get("name") if existing else None
 
-    _OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = _OUT_DIR / f"steam-{steam_id}.json.gz"
-    out_path.write_bytes(gzipped)
+    name = handler.clean_name(name_arg or handler.lookup_steam_name(steam_id)) or old_name
+    if name is None:
+        print("Couldn't get your Steam name from Steam. Pass --name.")
+        sys.exit(1)
 
-    print(f"Steam ID:      {steam_id}")
+    slug = handler.save_profile(store, steam_id, slug, existing[2] if existing else None,
+                                name, runs, {}, time.time())
+    out_path = _DATA_DIR / handler.blob_key(slug)
+
+    print(f"Name:          {name}")
     print(f"Runs:          {len(runs)}")
-    print(f"Raw JSON size: {len(payload):,} bytes")
-    print(f"Gzipped size:  {len(gzipped):,} bytes")
-    print(f"Wrote {out_path}")
+    print(f"Gzipped size:  {out_path.stat().st_size:,} bytes")
+    print(f"Wrote {out_path}  (site URL /u/{slug})")
 
 
 if __name__ == "__main__":
