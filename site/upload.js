@@ -167,46 +167,54 @@
     const status = el("p", { className: "upload-status", role: "status" });
     const folderInput = el("input", { type: "file", multiple: true, className: "upload-input", id: "upload-folder" });
     folderInput.setAttribute("webkitdirectory", "");
-    const filesInput = el("input", { type: "file", multiple: true, accept: ".run", className: "upload-input", id: "upload-files" });
 
     // A page can't open the picker at a path of its choosing (browsers only
     // offer Documents, Downloads and the like as starting points), so the
-    // next best thing: the button copies the path, ready to paste.
+    // next best thing: copy the path, ready to paste into the picker.
     const isMac = navigator.platform.startsWith("Mac");
     const historyPath = isMac
       ? "~/Library/Application Support/SlayTheSpire2/steam/" + signIn.steamId + "/profile1/saves/history"
       : "%APPDATA%\\SlayTheSpire2\\steam\\" + signIn.steamId + "\\profile1\\saves\\history";
-    const copied = el("span", { className: "upload-copied", role: "status" });
+    const pathCode = el("code", { textContent: historyPath });
+    const copyBtn = el("button", { type: "button", className: "upload-copy", textContent: "Copy" });
+    let copiedTimer;
     const copyPath = () => {
-      if (!navigator.clipboard) return;
-      navigator.clipboard.writeText(historyPath).then(
-        () => { copied.textContent = "Copied"; },
-        () => { /* no clipboard access: the path is still there to select */ });
+      const done = () => {
+        copyBtn.textContent = "Copied ✓";
+        clearTimeout(copiedTimer);
+        copiedTimer = setTimeout(() => { copyBtn.textContent = "Copy"; }, 2500);
+      };
+      // No clipboard access (old browser, not https): select the path so
+      // Ctrl+C gets it.
+      const fallback = () => { getSelection().selectAllChildren(pathCode); };
+      if (navigator.clipboard) navigator.clipboard.writeText(historyPath).then(done, fallback);
+      else fallback();
     };
-    const copyBtn = el("button", { type: "button", className: "upload-link", textContent: "Copy" });
     copyBtn.addEventListener("click", copyPath);
     const folderBtn = el("button", { type: "button", className: "upload-btn", textContent: "Choose history folder" });
+    // Copies too, in case step 1 was skipped.
     folderBtn.addEventListener("click", () => { copyPath(); folderInput.click(); });
 
+    const step = (title, ...body) => el("li", {}, [el("strong", { textContent: title }), ...body]);
     const panel = el("section", { className: "upload-panel" }, [
       el("h2", { textContent: "Upload your runs" }),
       el("p", {}, [
         "Signed in with Steam as ",
         el("a", { href: profileUrl, textContent: signIn.steamId }),
-        ". Your Slay the Spire 2 run history folder is:",
+        ".",
       ]),
-      el("p", { className: "upload-path" }, [el("code", { textContent: historyPath }), copyBtn, copied]),
-      el("p", { className: "upload-note", textContent: isMac
-        ? "Choose history folder copies that path. In the picker, press ⌘⇧G, paste it and press Return, then choose the folder."
-        : "Choose history folder copies that path. In the picker, paste it into the address bar at the top (Ctrl+V, Enter), then click Upload / Select Folder." }),
-      el("p", { className: "upload-note", textContent:
-        "The picker only lists folders, never files, so the history folder looks empty. That's expected: select it anyway. Only runs your profile doesn't already have are sent." }),
-      el("div", { className: "upload-actions" }, [
-        folderBtn,
-        folderInput,
-        el("label", { className: "upload-link", htmlFor: "upload-files", textContent: "or pick .run files" }),
-        filesInput,
+      el("ol", { className: "upload-steps" }, [
+        step("Copy your run history folder's location.",
+          el("div", { className: "upload-path" }, [pathCode, copyBtn])),
+        step("Click Choose history folder below.",
+          el("div", { className: "upload-actions" }, [folderBtn, folderInput])),
+        isMac
+          ? step("Go to the folder:", " press ⌘⇧G, paste (⌘V) and press Return.")
+          : step("Go to the folder:", " click the address bar at the top of the window that opens, paste (Ctrl+V) and press Enter."),
+        step("Select it", " even though it looks empty (the picker only shows folders, not the run files inside)"
+          + " and click Upload (or Select). If your browser asks whether to upload the files, say yes."),
       ]),
+      el("p", { className: "upload-note", textContent: "Only runs your profile doesn't already have are sent." }),
       status,
     ]);
     main.textContent = "";
@@ -224,7 +232,6 @@
       }
     };
     folderInput.addEventListener("change", () => onPick(folderInput));
-    filesInput.addEventListener("change", () => onPick(filesInput));
   }
 
   function setStatus(status, text, link) {

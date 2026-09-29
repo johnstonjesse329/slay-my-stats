@@ -54,9 +54,29 @@ header .upload-btn { position: absolute; top: 0.25rem; right: 0; }
   user-select: all;
 }
 .upload-note { color: var(--text-dim); font-size: 0.85rem; }
-.upload-path { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-.upload-copied { color: var(--text-dim); font-size: 0.85rem; }
-.upload-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+.upload-steps { margin: 0 0 0.75rem 1.4rem; line-height: 1.5; }
+.upload-steps li { margin-bottom: 0.9rem; padding-left: 0.2rem; }
+.upload-steps li::marker { color: var(--gold); font-weight: 700; }
+.upload-steps strong { color: var(--text); }
+/* The path and its Copy button read as one field. */
+.upload-path { display: flex; align-items: stretch; margin-top: 0.4rem; max-width: 100%; }
+.upload-panel .upload-path code {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center;
+  border-radius: 4px 0 0 4px; border-right: none; padding: 0.4rem 0.6rem;
+}
+.upload-copy {
+  font: inherit; font-size: 0.82rem; font-weight: 600; white-space: nowrap;
+  color: var(--gold);
+  background: rgba(224,196,104,0.10);
+  border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent);
+  border-radius: 0 4px 4px 0;
+  padding: 0 0.9rem;
+  min-width: 5.5rem;
+  cursor: pointer;
+}
+.upload-copy:hover { background: rgba(224,196,104,0.2); }
+.upload-copy:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.upload-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 0.5rem; }
 /* Visually hidden but still reachable: the <label>s are the visible controls. */
 .upload-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; user-select: none; }
 .upload-status:empty { display: none; }
