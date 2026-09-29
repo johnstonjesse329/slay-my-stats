@@ -664,11 +664,15 @@ _JS_MODULES = [
     "seeds.js",
     "run-detail.js",
     "card-face.js",
+    "map-bg.js",
 ]
 
 
-def read_dashboard_js() -> str:
-    """Concatenate js/*.js in _JS_MODULES order into one script."""
+def read_dashboard_js(skip=()) -> str:
+    """
+    Concatenate js/*.js in _JS_MODULES order into one script, leaving out
+    `skip` (files the caller serves on their own).
+    """
     unlisted = sorted(
         f.name for f in _JS_DIR.glob("*.js") if f.name not in _JS_MODULES
     )
@@ -679,7 +683,7 @@ def read_dashboard_js() -> str:
     missing = [n for n in _JS_MODULES if not (_JS_DIR / n).exists()]
     if missing:
         raise SystemExit(f"_JS_MODULES lists files that do not exist: {missing}")
-    return "".join((_JS_DIR / n).read_text(encoding="utf-8") for n in _JS_MODULES)
+    return "".join((_JS_DIR / n).read_text(encoding="utf-8") for n in _JS_MODULES if n not in skip)
 
 _PORTRAIT_ROOT  = _HERE / "card_portraits"  # downscaled 144px-wide PNGs; falls back to full-res if absent
 _PORTRAIT_ROOT_FULL = _HERE / "pck_recover_full" / "images" / "packed" / "card_portraits"
@@ -857,7 +861,7 @@ def build_card_images(url_for=Path.as_uri) -> dict[str, str]:
 def dashboard_body_html(subtitle: str, home_links: bool = False) -> str:
     """
     The markup between <body> and the <script> tag: the map background
-    (dashboard.css; panned by js/page-nav.js), skip link, header, the
+    (dashboard.css; panned by js/map-bg.js), skip link, header, the
     shared filter bar, and all five pages (Overview / Character Detail / Run
     Detail / Card Stats / Seed Data). Shared by build_html() (the local HTML
     generator) and build_site.py (the static site, whose subtitle differs

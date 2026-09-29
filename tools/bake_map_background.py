@@ -10,7 +10,7 @@ committed node_icons/, recolored to the sepia ink the game draws unvisited
 nodes in, joined by dashed ink paths that stop short of each icon.
 
 Output: ui_icons/map_scroll.webp (committed; dashboard.css draws it behind
-the page via .map-bg, panned by js/page-nav.js).
+the page via .map-bg, panned by js/map-bg.js).
 
 Run after a full PCK extraction (see CLAUDE.md):
     python tools/bake_map_background.py [--pck PATH] [--act overgrowth]

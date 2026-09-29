@@ -54,8 +54,8 @@ body {
 /* The act-map parchment scroll (baked, darkened, by
    tools/bake_map_background.py), pinned behind the page like the map screen.
    .map-bg (in run.py's page markup) is panned top-to-bottom as the page
-   scrolls by js/page-nav.js, or sits at its top where that isn't loaded; fixed elements rather than background-attachment:fixed,
-   which iOS Safari ignores. It's the viewport's width up to 1400px, but at
+   scrolls by js/map-bg.js. Fixed elements rather than
+   background-attachment:fixed, which iOS Safari ignores. It's the viewport's width up to 1400px, but at
    least 1.5 screens tall, so on a phone (where the full width would be barely
    a screen tall) it crops the slate at its sides and still has room to pan. */
 .map-bg {

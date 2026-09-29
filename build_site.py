@@ -109,6 +109,7 @@ def build_index_html() -> str:
 </head>
 <body>
 {body}
+<script src="/map-bg.js"></script>
 <script src="/boot.js"></script>
 <script src="/upload.js"></script>
 </body>
@@ -130,7 +131,10 @@ def main():
         written.append((rel_path, len(data)))
 
     write("index.html", build_index_html())
-    write("app.js", run.read_dashboard_js())
+    # map-bg.js pans the background on every page, the finder at / included,
+    # which never loads app.js; so it's served on its own and not bundled.
+    write("app.js", run.read_dashboard_js(skip=("map-bg.js",)))
+    write("map-bg.js", (_HERE / "js" / "map-bg.js").read_text(encoding="utf-8"))
     write("dashboard.css", (_HERE / "dashboard.css").read_text(encoding="utf-8"))
 
     if _SITE_BOOT_JS.exists():
