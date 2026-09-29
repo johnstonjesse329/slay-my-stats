@@ -332,6 +332,52 @@ class IngestTests(unittest.TestCase):
         self.assertEqual(cm.exception.code, "conflict")
         self.assertNotIn("users/mrbean.json.gz", self.store.objects)
 
+    def stats(self):
+        return self.store.json(handler.STATS_KEY)
+
+    def test_stats_count_each_run_once(self):
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002, win=False)))
+        self.store.clock = NOW
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000003, run_time=900)),
+                    now=NOW + 120, nonce_suffix="second")
+        s = self.stats()
+        solo = s["solo"]
+        self.assertEqual((s["allRuns"], solo["runs"], solo["wins"], solo["minutes"]), (3, 3, 2, 55))
+        self.assertEqual(solo["chars"], {"IRONCLAD": [3, 2]})
+        self.assertEqual(solo["records"]["fastestWin"]["mins"], 15)
+        self.assertEqual(solo["records"]["fastestWin"]["slug"], "mrbean")
+
+    def test_stats_split_multiplayer_and_leave_out_daily(self):
+        second = {"character": "CHARACTER.SILENT", "deck": [], "relics": []}
+        players = [{"character": "CHARACTER.IRONCLAD", "deck": [], "relics": []}, second]
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002, players=players, win=False),
+                            minimal_run(1700000003, game_mode="daily")))
+        s = self.stats()
+        self.assertEqual((s["allRuns"], s["solo"]["runs"], s["multi"]["runs"], s["multi"]["wins"]), (3, 1, 1, 0))
+
+    def test_stats_retry_on_conflict(self):
+        class Busy(MemStore):
+            clashes = 2
+            def put(self, key, data, metadata, if_match):
+                if key == handler.STATS_KEY and self.clashes:
+                    self.clashes -= 1
+                    raise handler.StoreConflict()
+                super().put(key, data, metadata, if_match)
+        self.store = Busy()
+        self.ingest(body_of(minimal_run(1700000001)))
+        self.assertEqual(self.stats()["solo"]["runs"], 1)
+
+    def test_tallies_add_up_to_a_recount(self):
+        run = lambda ts, **kw: handler.run.parse_run_data(minimal_run(ts, **kw))
+        a = [run(1700000001), run(1700000002, win=False)]
+        b = [run(1700000003, run_time=900), run(1700000004, run_time=3000)]
+        merged = handler.merge_stats(handler.merge_stats(handler.empty_stats(), handler.tally(a, "x")),
+                                     handler.tally(b, "y"))
+        whole = handler.merge_stats(handler.empty_stats(), handler.tally(a + b, "y"))
+        self.assertEqual(merged, whole)
+        self.assertEqual(merged["solo"]["records"]["fastestWin"], whole["solo"]["records"]["fastestWin"])
+        self.assertEqual(merged["solo"]["records"]["fastestWin"]["mins"], 15)
+
     def test_cooldown(self):
         self.store.clock = NOW
         self.ingest(body_of(minimal_run(1700000001)))
