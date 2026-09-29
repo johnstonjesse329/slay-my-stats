@@ -94,7 +94,7 @@ def build_index_html() -> str:
     but with dashboard.css linked instead of inlined, and /boot.js (not an
     embedded DATA blob) driving the page.
     """
-    body = run.dashboard_body_html("Slay the Spire 2 run history.", home_links=True)
+    body = run.dashboard_body_html(home_links=True)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>

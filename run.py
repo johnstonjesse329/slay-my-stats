@@ -858,35 +858,33 @@ def build_card_images(url_for=Path.as_uri) -> dict[str, str]:
     return result
 
 
-def dashboard_body_html(subtitle: str, home_links: bool = False) -> str:
+def dashboard_body_html(subtitle: str = "", home_links: bool = False) -> str:
     """
     The markup between <body> and the <script> tag: the map background
     (dashboard.css; panned by js/map-bg.js), skip link, header, the
     shared filter bar, and all five pages (Overview / Character Detail / Run
     Detail / Card Stats / Seed Data). Shared by build_html() (the local HTML
-    generator) and build_site.py (the static site, whose subtitle differs
-    since there's no "local save data" on the live site).
+    generator) and build_site.py (the static site).
 
-    home_links (live site only): a site bar above the header, with the site's
-    name and links to the rest of the site; site/upload.js adds its button
-    to .site-links. The local file has no site to link to.
+    home_links (live site only): a site bar in place of the header, with the
+    site's name (a link home) and room for links to the rest of the site;
+    site/upload.js adds its button to .site-links. The local file has no site
+    to link to, so it keeps the plain title header.
     """
-    site_bar = ("""
+    top = ("""
 <nav class="site-nav" aria-label="Site">
   <a class="site-brand" href="/">Slay My Stats</a>
-  <div class="site-links">
-    <a class="site-link" href="/">Players</a>
-  </div>
+  <div class="site-links"></div>
 </nav>
-""" if home_links else "")
-    return f"""<div class="map-bg" aria-hidden="true"></div>
-<a class="skip-link" href="#main-content">Skip to content</a>
-{site_bar}
+""" if home_links else f"""
 <header>
 <h1>Slay the Spire 2</h1>
 <p class="subtitle">{subtitle}</p>
 </header>
-
+""")
+    return f"""<div class="map-bg" aria-hidden="true"></div>
+<a class="skip-link" href="#main-content">Skip to content</a>
+{top}
 <nav class="page-tabs" aria-label="Pages">
   <button class="page-tab active" id="tab-overview" onclick="showPage('overview')">Overview</button>
   <button class="page-tab" id="tab-character" onclick="showPage('character')">Character Detail</button>

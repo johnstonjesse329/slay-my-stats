@@ -246,8 +246,6 @@
 
   async function showFinder() {
     showFallback("");
-    // The site bar's Players link is this page.
-    document.querySelector(".site-link[href='/']")?.setAttribute("aria-current", "page");
     const main = document.getElementById("main-content");
     if (!main) return;
     const input = el("input", { type: "search", className: "finder-input", id: "finder-input",
@@ -450,11 +448,9 @@
     showFallback("No runs have been uploaded for this profile yet.");
   }
 
-  // The header's subtitle and the tab title say whose runs these are.
+  // The tab title says whose runs these are.
   function showPlayerName(name) {
     if (!name) return;
-    const subtitle = document.querySelector("header .subtitle");
-    if (subtitle) subtitle.textContent = `${name}'s run history.`;
     document.title = `${name} — Slay the Spire 2 Run History`;
   }
 

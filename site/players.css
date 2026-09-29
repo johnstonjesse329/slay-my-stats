@@ -58,13 +58,7 @@
 }
 .site-brand:hover { color: var(--gold-bright); }
 .site-links { display: flex; align-items: center; gap: 1.25rem; }
-.site-link {
-  font-size: 0.9rem; font-weight: 600; color: var(--text-dim); text-decoration: none;
-  padding: 0.35rem 0; border-bottom: 2px solid transparent;
-}
-.site-link:hover { color: var(--text); }
-.site-link[aria-current="page"] { color: var(--gold); border-bottom-color: var(--gold); }
-.site-brand:focus-visible, .site-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+.site-brand:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
 .site-nav .upload-btn { padding: 0.35rem 0.8rem; }
 /* Run files live on the PC the game runs on, and phone browsers can't pick
    a folder anyway: no upload button on touch screens. */
