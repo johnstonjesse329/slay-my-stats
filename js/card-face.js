@@ -72,7 +72,7 @@ function buildCardTooltip(id, upgrade) {
   const baseVars = (upgrade > 0 && info?.varsUpgraded) ? info.varsUpgraded : info?.vars;
   const vars = { ...(baseVars || {}), IfUpgraded: upgrade > 0 ? 1 : 0 };
   const rawDesc = (upgrade > 0 && info?.descUpgraded) ? info.descUpgraded : info?.desc;
-  const desc = rawDesc ? substituteDescVars(rawDesc, vars) : null;
+  const desc = rawDesc ? substituteDescVars(rawDesc, vars, { pool: info?.pool }) : null;
   const descHtml = desc ? `<div class="ct-desc">${desc.replace(/\n/g, "<br>")}</div>` : "";
 
   return `<div class="card-tooltip">

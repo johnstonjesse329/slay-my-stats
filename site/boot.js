@@ -203,6 +203,7 @@
       potionData: catalog.potionData,
       nodeIcons: catalog.nodeIcons,
       cardFinal: catalog.cardFinal,
+      energyIcons: catalog.energyIcons,
       runsData: runs,
     };
   }

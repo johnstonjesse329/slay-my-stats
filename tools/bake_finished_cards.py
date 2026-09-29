@@ -196,6 +196,20 @@ def substitute_desc_vars_runs(desc, variables):
             # means 0.
             count = 1 if value is None else int(value)
             if kind == "energy":
+                # TODO: this draws Segoe UI Symbol's literal lightning-bolt
+                # glyph, which doesn't match the real energy orb (the same
+                # chrome sprite, energy_<pool>.png, pasted for the cost badge
+                # just above in the same image) -- js/run-detail.js's
+                # substituteDescVars() had the same mismatch and now inlines
+                # the actual per-pool orb image (ui_icons/energy_<pool>.png,
+                # DATA.energyIcons from run.py's build_energy_icons(),
+                # .desc-energy-icon in dashboard.css) for the live (non-baked)
+                # relic/potion tooltips instead. Matching that here means pasting a scaled
+                # copy of the chrome sprite mid-line instead of drawing a font
+                # glyph, which this run-based text layout doesn't support yet
+                # (a run is text in one font, not an arbitrary image); untried
+                # since this tool needs PCK_ROOT (the extracted game files),
+                # which isn't in every checkout that touches this file.
                 emit("⚡" * count, symbol=True)
             elif kind == "stars":
                 emit("✦" * count, color=STARS_BOLD_COLOR, symbol=True)

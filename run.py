@@ -721,6 +721,28 @@ def build_card_final_images(url_for=Path.as_uri) -> dict[str, str]:
     return {p.stem: url_for(p) for p in sorted(_CARD_FINAL_DIR.glob("*.webp"))}
 
 
+_UI_ICONS_DIR = _HERE / "ui_icons"
+
+
+def build_energy_icons(url_for=Path.as_uri) -> dict[str, str]:
+    """
+    Character pool ("ironclad", "colorless", ...) -> energy orb icon URL, for
+    the inline "Gain N Energy" glyph in relic/potion descriptions and the
+    non-baked card tooltip fallback (js/run-detail.js's substituteDescVars).
+    ui_icons/energy_<pool>.png are copies of the same card_chrome/ sprites
+    tools/bake_finished_cards.py pastes onto a baked card's cost badge, so
+    which pools have their own colored orb (vs. falling back to "colorless")
+    is derived from whichever files actually exist here, not hardcoded --
+    stays in sync automatically if a pool's icon is added or removed.
+    """
+    if not _UI_ICONS_DIR.exists():
+        return {}
+    return {
+        p.stem.removeprefix("energy_"): url_for(p)
+        for p in sorted(_UI_ICONS_DIR.glob("energy_*.png"))
+    }
+
+
 def build_node_icons(url_for=Path.as_uri) -> dict[str, str]:
     """
     type -> icon URL for each generic node type, plus one entry per boss
@@ -1226,9 +1248,10 @@ def build_html(runs: list[dict]) -> str:
     builds = sorted({run["build"] for run in runs}, key=build_sort_key, reverse=True)
     char_colors = [CHAR_COLORS.get(c, "#888") for c in characters]
 
-    card_images = build_card_images()
-    node_icons  = build_node_icons()
-    card_final  = build_card_final_images()
+    card_images  = build_card_images()
+    node_icons   = build_node_icons()
+    card_final   = build_card_final_images()
+    energy_icons = build_energy_icons()
     card_data   = json.loads(_CARD_DATA_FILE.read_text(encoding="utf-8"))  if _CARD_DATA_FILE.exists()  else {}
     relic_data  = json.loads(_RELIC_DATA_FILE.read_text(encoding="utf-8")) if _RELIC_DATA_FILE.exists() else {}
     relic_data  = resolve_image_paths(relic_data)
@@ -1287,6 +1310,7 @@ def build_html(runs: list[dict]) -> str:
         "potionData":         potion_data,
         "nodeIcons":          node_icons,
         "cardFinal":          card_final,
+        "energyIcons":        energy_icons,
         "runsData":           runs,
     })
 

@@ -12,6 +12,7 @@ the site bucket:
     /node_icons/...      -> node_icons/...
     /relic_images/...    -> relic_images/...
     /potion_images/...   -> potion_images/...
+    /ui_icons/...        -> ui_icons/...
     everything else      -> dist/...   (/ -> dist/index.html)
 
 A missing /users/<name> answers 403, not 404 — that's what S3 (behind
@@ -34,7 +35,7 @@ _USERS_DIR = _REPO_ROOT / "local_data" / "users"
 
 # Committed game-art folders, served straight from the repo root — these
 # mirror the root-absolute paths the real site bucket serves them at.
-_ART_DIRS = {"card_final", "card_portraits", "node_icons", "relic_images", "potion_images"}
+_ART_DIRS = {"card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons"}
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",

@@ -803,9 +803,15 @@ function buildRelicTooltip(id) {
 //
 // `html: false` emits bare glyphs with no markup, for callers embedding
 // the result in an attribute (e.g. data-tip) rather than element content.
-function substituteDescVars(desc, vars, { html = true } = {}) {
+// `pool`: the card's color/character (info.pool), so the inline energy glyph
+// matches that card's own cost-badge color. Relics/potions aren't tied to a
+// pool, so they default to colorless -- the same default DATA.energyIcons
+// (run.py's build_energy_icons()) uses for any pool without its own sprite.
+function substituteDescVars(desc, vars, { html = true, pool = "colorless" } = {}) {
   if (!desc) return desc;
   const v = vars || {};
+  const energyIcons = DATA.energyIcons || {};
+  const energyIconUrl = energyIcons[pool?.toLowerCase()] || energyIcons.colorless;
   const b = (inner, style) => html
     ? `<b${style ? ` style="${style}"` : ""}>${inner}</b>`
     : inner;
@@ -832,7 +838,11 @@ function substituteDescVars(desc, vars, { html = true } = {}) {
     const kind  = c2 < 0 ? after : after.slice(0, c2);
     const arg   = c2 < 0 ? "" : after.slice(c2 + 1);
 
-    if (kind === "energy") return b("⚡".repeat(v[name] ?? 1));
+    // The actual in-game energy orb image, colored for this pool -- not a
+    // lightning bolt. See .desc-energy-icon in dashboard.css.
+    if (kind === "energy") return html
+      ? (energyIconUrl ? `<span class="desc-energy-icon" aria-hidden="true" style="background-image:url(${energyIconUrl})"></span>` : "⚡").repeat(v[name] ?? 1)
+      : "⚡".repeat(v[name] ?? 1);
     if (kind === "stars")  return b("✦".repeat(v[name] ?? 1), "color:#5b9bd5");
     // Word forms and conditional branches are prose, not values — no <b>.
     if (kind === "plural") {

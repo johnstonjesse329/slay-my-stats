@@ -34,7 +34,7 @@ _INFRA = _HERE / "infra"
 SITE_BUCKET = "slay-my-stats-site"
 DOMAIN_NAME = "slay-my-stats.com"
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
-ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images"]
+ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons"]
 ZERO_SHA = "0" * 40
 
 

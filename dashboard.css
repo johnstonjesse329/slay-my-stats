@@ -1333,6 +1333,23 @@ h1 {
   color: #f0b030;
   font-weight: 700;
 }
+/* Inline "gain N Energy" glyph in a relic/potion/card description -- the
+   actual in-game energy orb, colored per character pool (ui_icons/energy_
+   <pool>.png, copies of the same chrome sprites baked onto a card's
+   top-left corner -- Ironclad's is a red hexagon, Defect's a blue diamond,
+   etc., not just a color swap). The specific pool's file is set as an
+   inline background-image by substituteDescVars(); this class only sizes
+   it to sit in a line of prose instead of a card's corner badge. */
+.desc-energy-icon {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  vertical-align: -0.15em;
+  margin: 0 1px;
+}
 
 /* ---- Final deck + relics ---- */
 

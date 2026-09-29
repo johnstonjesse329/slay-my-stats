@@ -5,7 +5,8 @@ Builds dist/, the folder that gets synced to the S3 site bucket and served
 through CloudFront. Unlike run.py's self-contained HTML file, the static
 site has no data embedded in it: game art already lives in the bucket at
 root-absolute paths mirroring this repo's folders (/card_final/..,
-/card_portraits/.., /node_icons/.., /relic_images/.., /potion_images/..),
+/card_portraits/.., /node_icons/.., /relic_images/.., /potion_images/..,
+/ui_icons/..),
 reference data (card/relic/potion metadata, encounter groupings, ...) is
 published once as /catalog.json, and per-run data comes from a per-user
 blob at /users/steam-<steamid64>.json.gz (see tools/build_user_blob.py).
@@ -52,7 +53,7 @@ def build_catalog() -> dict:
     Everything run.py's build_html() computes that ISN'T per-run: card/relic/
     potion metadata, encounter groupings, and image URL maps. Only the
     committed repo folders count here (card_portraits/, node_icons/,
-    relic_images/, potion_images/, card_final/) — no pck_recover_full
+    relic_images/, potion_images/, card_final/, ui_icons/) — no pck_recover_full
     fallback, since that gitignored extraction never ships to the bucket.
     """
     card_data = (
@@ -81,6 +82,7 @@ def build_catalog() -> dict:
         "potionData":         potion_data,
         "nodeIcons":          run.build_node_icons(url_for=repo_url),
         "cardFinal":          run.build_card_final_images(url_for=repo_url),
+        "energyIcons":        run.build_energy_icons(url_for=repo_url),
     }
 
 
