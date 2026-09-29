@@ -854,22 +854,27 @@ def build_card_images(url_for=Path.as_uri) -> dict[str, str]:
     return result
 
 
-def dashboard_body_html(subtitle: str) -> str:
+def dashboard_body_html(subtitle: str, home_links: bool = False) -> str:
     """
     The markup between <body> and the <script> tag: skip link, header, the
     shared filter bar, and all five pages (Overview / Character Detail / Run
     Detail / Card Stats / Seed Data). Shared by build_html() (the local HTML
     generator) and build_site.py (the static site, whose subtitle differs
     since there's no "local save data" on the live site).
+
+    home_links (live site only): the title and a Home tab link back to the
+    player finder at /. The local file has no home page to go back to.
     """
+    title = '<a class="home-link" href="/">Slay the Spire 2</a>' if home_links else "Slay the Spire 2"
+    home_tab = '\n  <a class="page-tab" href="/">Home</a>' if home_links else ""
     return f"""<a class="skip-link" href="#main-content">Skip to content</a>
 
 <header>
-<h1>Slay the Spire 2</h1>
+<h1>{title}</h1>
 <p class="subtitle">{subtitle}</p>
 </header>
 
-<nav class="page-tabs" aria-label="Pages">
+<nav class="page-tabs" aria-label="Pages">{home_tab}
   <button class="page-tab active" id="tab-overview" onclick="showPage('overview')">Overview</button>
   <button class="page-tab" id="tab-character" onclick="showPage('character')">Character Detail</button>
   <button class="page-tab" id="tab-detail" onclick="showPage('detail')">Run Detail</button>
