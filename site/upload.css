@@ -33,7 +33,7 @@ header .upload-btn { position: absolute; top: 0.25rem; right: 0; }
 
 .upload-panel {
   max-width: 44rem;
-  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel) 100%);
+  background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
   border-top-color: var(--gold-glow);
   border-radius: 10px;

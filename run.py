@@ -1326,6 +1326,10 @@ def build_html(runs: list[dict]) -> str:
     })
 
     css = (_HERE / "dashboard.css").read_text(encoding="utf-8")
+    # dashboard.css references ui_icons/ by its root-absolute site URL (e.g.
+    # the map scroll background); point that at the repo folder instead, the
+    # same way every other image in this build resolves to a file:// URI.
+    css = css.replace("url(/ui_icons/", f"url({_UI_ICONS_DIR.as_uri()}/")
     # data.js no longer declares DATA itself (it's a global provided before the
     # bundle runs — see js/data.js's header comment), so emit the declaration
     # here, ahead of the concatenated js/*.js.

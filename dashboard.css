@@ -11,10 +11,9 @@ html {
   overflow-x: hidden;
   /* body's own background only ever covers body's box. When the viewport is
      briefly taller than that (address-bar collapse, phone rotation) html's
-     background shows through at the edges -- give it the same near-black as
-     the darkest stop of body's gradient so that gap reads as background,
-     not a white bar. */
-  background: #05060e;
+     background shows through at the edges -- give it the same slate as
+     body's so that gap reads as background, not a white bar. */
+  background: #191d20;
 }
 
 :root {
@@ -24,6 +23,10 @@ html {
   --panel:        #211e36;
   --panel-2:      #2a2545;
   --panel-border: #4a3f6e;
+  /* --panel/--panel-2 at 65% for the top-level panel surfaces, so the map
+     scroll behind the page (body::before) shows through them faintly. */
+  --panel-glass:   rgba(33, 30, 54, 0.65);
+  --panel-2-glass: rgba(42, 37, 69, 0.65);
   --hairline:     #3a3460;
   --gold:         #e0c468;
   --gold-bright:  #f3d98a;
@@ -43,32 +46,24 @@ body {
      body's content but above html's background, not under html's too. */
   position: relative;
   z-index: 0;
-  /* Night-sky backdrop evoking the game's map screen: deep blue base with
-     soft blue/violet nebulas and a faint gold ember low on the right, kept
-     dark and low-contrast so the content panels above it stay readable. */
-  background:
-    radial-gradient(1200px 720px at 85% -10%, rgba(118, 132, 200, 0.20), transparent 60%),
-    radial-gradient(900px 620px at 6% -4%, rgba(96, 122, 216, 0.16), transparent 55%),
-    radial-gradient(760px 540px at 48% 120%, rgba(92, 94, 178, 0.18), transparent 60%),
-    radial-gradient(640px 440px at 88% 96%, rgba(224, 196, 104, 0.08), transparent 62%),
-    linear-gradient(160deg, #05060e 0%, #0a1020 42%, #0e1730 74%, #141d3a 100%);
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
+  /* The game's map-screen slate; the scroll itself is body::before. */
+  background: #191d20;
 }
-/* Subtle fixed overlay of map-node dots + extra depth, purely decorative. */
+/* The act-map parchment scroll (baked, darkened, by
+   tools/bake_map_background.py), pinned behind the page like the map screen,
+   with a vignette easing its edges into the slate. A fixed pseudo-element
+   rather than background-attachment:fixed, which iOS Safari ignores.
+   --map-scroll (0..1, set by js/page-nav.js from the page's scroll fraction)
+   pans the scroll top-to-bottom as the page scrolls. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background-image:
-    radial-gradient(circle at 28% 22%, rgba(120, 150, 220, 0.10), transparent 46%),
-    radial-gradient(circle at 74% 30%, rgba(150, 122, 220, 0.10), transparent 50%),
-    radial-gradient(rgba(224, 196, 104, 0.05) 1px, transparent 1.5px),
-    radial-gradient(rgba(160, 180, 230, 0.05) 1px, transparent 1.5px);
-  background-size: auto, auto, 34px 34px, 34px 34px;
-  background-position: 0 0, 0 0, 0 0, 17px 17px;
+  background:
+    radial-gradient(ellipse at 50% 40%, transparent 50%, rgba(10, 12, 14, 0.55) 100%),
+    url(/ui_icons/map_scroll.webp) center calc(var(--map-scroll, 0) * 100%) / min(1400px, 100%) auto no-repeat;
 }
 
 h1 {
@@ -133,7 +128,7 @@ h1 {
 }
 .card {
   flex: 0 0 auto;
-  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel) 100%);
+  background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
   border-top-color: var(--gold-glow);
   border-radius: 10px;
@@ -165,7 +160,7 @@ h1 {
 .grid-1 { margin-bottom: 2rem; }
 
 .chart-box {
-  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel) 100%);
+  background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
   border-top-color: var(--gold-glow);
   border-radius: 10px;
@@ -266,7 +261,7 @@ h1 {
 
 /* ---- Filter bar ---- */
 .filter-bar {
-  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel) 100%);
+  background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
   border-top-color: var(--gold-glow);
   border-radius: 10px;
@@ -673,7 +668,7 @@ h1 {
 /* ---- Run list (left column) ---- */
 
 #detail-run-list {
-  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel) 100%);
+  background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
   border-top-color: var(--gold-glow);
   border-radius: 8px;
@@ -882,7 +877,7 @@ h1 {
   align-items: center;
   width: 88px;
   padding: 0.45rem 0.3rem 0.4rem;
-  background: linear-gradient(165deg, var(--panel-2), var(--panel));
+  background: linear-gradient(165deg, var(--panel-2-glass), var(--panel-glass));
   border: 1px solid var(--hairline);
   border-radius: 6px;
   cursor: default;
