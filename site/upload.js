@@ -172,7 +172,7 @@
       else if (onRoot) showUploadPanel(signIn);
       else location.assign("/#upload");
     });
-    header.append(btn);
+    (header.querySelector(".header-actions") || header).append(btn);
   }
 
   // Replaces the page (like boot.js's fallbacks do) with the upload panel.

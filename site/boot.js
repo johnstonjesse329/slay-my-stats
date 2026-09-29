@@ -246,6 +246,8 @@
 
   async function showFinder() {
     showFallback("");
+    // Already here: the header's "Find another player" link has nowhere to go.
+    document.querySelector(".find-player-link")?.remove();
     const main = document.getElementById("main-content");
     if (!main) return;
     const input = el("input", { type: "search", className: "finder-input", id: "finder-input",

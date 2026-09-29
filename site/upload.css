@@ -2,7 +2,8 @@
    rather than in dashboard.css, which run.py's local build inlines too. */
 
 header { position: relative; }
-header .upload-btn { position: absolute; top: 0.25rem; right: 0; }
+/* Holds the upload button and run.py's "Find another player" link. */
+.header-actions { position: absolute; top: 0.25rem; right: 0; display: flex; align-items: center; gap: 0.75rem; }
 
 .upload-btn {
   font: inherit;
@@ -85,5 +86,5 @@ header .upload-btn { position: absolute; top: 0.25rem; right: 0; }
 @media (max-width: 600px) {
   /* Below the subtitle (whose 2rem bottom margin comes first), pulled up
      toward it and clear of whatever follows. */
-  header .upload-btn { position: static; margin: -1.25rem 0 1.25rem; }
+  .header-actions { position: static; flex-wrap: wrap; margin: -1.25rem 0 1.25rem; }
 }
