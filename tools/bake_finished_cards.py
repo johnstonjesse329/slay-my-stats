@@ -171,19 +171,23 @@ def _split_by_color(desc):
 
 def substitute_desc_vars_runs(desc, variables):
     """Port of substituteDescVars(desc, vars, {html:true}) that returns a list
-    of (text, color, symbol) runs instead of an HTML string, so the baker can
-    draw mixed-style text without a browser. `desc` may contain the color
-    sentinel chars from clean_desc_with_color; segments inside a [gold]/[blue]/
-    [purple] span get that color unless a run sets its own (only the :stars
-    token does, and the game never wraps a :stars token in a color tag).
+    of (text, color, kind) runs instead of an HTML string, so the baker can
+    draw mixed-style text without a browser. `kind` is None for plain text,
+    "symbol" for the Segoe UI Symbol :stars glyph, or "orb" for a run of
+    energy-icon placeholder chars (one per pip) that draw_wrapped_desc pastes
+    as the real per-pool orb image instead of a font glyph. `desc` may contain
+    the color sentinel chars from clean_desc_with_color; segments inside a
+    [gold]/[blue]/[purple] span get that color unless a run sets its own
+    (only the :stars token does, and the game never wraps a :stars token in a
+    color tag).
     """
     runs = []
     pattern = re.compile(r"\{\{(\w+)(?::(\w+)(?::([^}]*))?)?\}\}")
 
     for segment, seg_color in _split_by_color(desc):
-        def emit(text, color=None, symbol=False, _seg_color=seg_color):
+        def emit(text, color=None, kind=None, _seg_color=seg_color):
             if text:
-                runs.append((text, color if color is not None else _seg_color, symbol))
+                runs.append((text, color if color is not None else _seg_color, kind))
 
         pos = 0
         for m in pattern.finditer(segment):
@@ -196,23 +200,12 @@ def substitute_desc_vars_runs(desc, variables):
             # means 0.
             count = 1 if value is None else int(value)
             if kind == "energy":
-                # TODO: this draws Segoe UI Symbol's literal lightning-bolt
-                # glyph, which doesn't match the real energy orb (the same
-                # chrome sprite, energy_<pool>.png, pasted for the cost badge
-                # just above in the same image) -- js/run-detail.js's
-                # substituteDescVars() had the same mismatch and now inlines
-                # the actual per-pool orb image (ui_icons/energy_<pool>.png,
-                # DATA.energyIcons from run.py's build_energy_icons(),
-                # .desc-energy-icon in dashboard.css) for the live (non-baked)
-                # relic/potion tooltips instead. Matching that here means pasting a scaled
-                # copy of the chrome sprite mid-line instead of drawing a font
-                # glyph, which this run-based text layout doesn't support yet
-                # (a run is text in one font, not an arbitrary image); untried
-                # since this tool needs PCK_ROOT (the extracted game files),
-                # which isn't in every checkout that touches this file.
-                emit("⚡" * count, symbol=True)
+                # One placeholder char per pip; draw_wrapped_desc pastes the
+                # same energy_<pool>.png chrome sprite used for the cost
+                # badge in place of each one, instead of drawing a glyph.
+                emit("\x05" * count, kind="orb")
             elif kind == "stars":
-                emit("✦" * count, color=STARS_BOLD_COLOR, symbol=True)
+                emit("✦" * count, color=STARS_BOLD_COLOR, kind="symbol")
             elif kind == "plural":
                 one, many = (arg.split("|", 1) + [""])[:2]
                 emit(one if value == 1 else many)
@@ -506,18 +499,18 @@ def draw_outlined_line(draw, text, box, font, fill, outline_color, outline_size,
                       anchor="ls", stroke_width=sw, stroke_fill=sf)
 
 
-def wrap_runs(draw, runs, font_regular, font_symbol, max_width):
-    """Greedy word-wrap a list of (text, color, symbol) runs into lines.
+def wrap_runs(draw, runs, font_regular, font_symbol, max_width, orb_size):
+    """Greedy word-wrap a list of (text, color, kind) runs into lines.
 
-    A "word" here is a list of (fragment, color, symbol) pieces, not
+    A "word" here is a list of (fragment, color, kind) pieces, not
     necessarily from a single run: a value substitution glues directly onto
     following punctuation with no space in the source text (e.g. the literal
     template is "{{Energy:energy}}." with no space before the period), so a
     run boundary must NOT always become a word boundary — only an actual " "
     or "\n" in the underlying text does.
     """
-    def font_for(symbol):
-        return font_symbol if symbol else font_regular
+    def font_for(kind):
+        return font_symbol if kind == "symbol" else font_regular
 
     words, cur_word = [], []
 
@@ -527,7 +520,7 @@ def wrap_runs(draw, runs, font_regular, font_symbol, max_width):
             words.append(cur_word)
             cur_word = []
 
-    for text, color, symbol in runs:
+    for text, color, kind in runs:
         for para_i, para in enumerate(text.split("\n")):
             if para_i > 0:
                 flush_word()
@@ -536,11 +529,12 @@ def wrap_runs(draw, runs, font_regular, font_symbol, max_width):
                 if si > 0:
                     flush_word()
                 if sw:
-                    cur_word.append((sw, color, symbol))
+                    cur_word.append((sw, color, kind))
     flush_word()
 
     def word_width(word):
-        return sum(draw.textlength(t, font=font_for(s)) for t, _, s in word)
+        return sum(orb_size * len(t) if k == "orb" else draw.textlength(t, font=font_for(k))
+                   for t, _, k in word)
 
     space_w = draw.textlength(" ", font=font_regular)
     lines, cur, cur_w = [], [], 0.0
@@ -561,26 +555,38 @@ def wrap_runs(draw, runs, font_regular, font_symbol, max_width):
     return lines
 
 
-def draw_wrapped_desc(draw, runs, box, font_regular, font_symbol, line_pitch, single_line_height):
+def draw_wrapped_desc(draw, image, runs, box, font_regular, font_symbol, line_pitch,
+                      single_line_height, orb_img, orb_size):
     """line_pitch is the y-distance from one line's top to the next one's
     (see main()). single_line_height sizes the block's first line for
     vertical centering only, never as a between-lines increment.
+
+    `image` is the RGBA layer `draw` was created from — needed alongside
+    `draw` because an "orb" run pastes `orb_img` (the real per-pool energy
+    sprite) rather than drawing a font glyph, which ImageDraw can't do.
     """
     x0, y0, x1, y1 = box
-    lines = wrap_runs(draw, runs, font_regular, font_symbol, x1 - x0)
+    lines = wrap_runs(draw, runs, font_regular, font_symbol, x1 - x0, orb_size)
     total_h = single_line_height + line_pitch * max(0, len(lines) - 1)
     y = y0 + (y1 - y0 - total_h) / 2
     space_w = draw.textlength(" ", font=font_regular)
+    asc, desc_m = font_regular.getmetrics()
+    orb_y_offset = (asc + desc_m - orb_size) / 2
 
     for line in lines:
         line_w = sum(ww for _, ww in line) + space_w * max(0, len(line) - 1)
         x = x0 + (x1 - x0 - line_w) / 2
         for word, _ in line:
-            for frag, color, symbol in word:
-                font = font_symbol if symbol else font_regular
-                fill = color or DESC_COLOR
-                fw = draw.textlength(frag, font=font)
-                draw_shadowed(draw, (x, y), frag, font, fill)
+            for frag, color, kind in word:
+                if kind == "orb" and orb_img is not None:
+                    for i in range(len(frag)):
+                        image.alpha_composite(orb_img, (round(x + i * orb_size), round(y + orb_y_offset)))
+                    fw = orb_size * len(frag)
+                else:
+                    font = font_symbol if kind == "symbol" else font_regular
+                    fill = color or DESC_COLOR
+                    fw = draw.textlength(frag, font=font)
+                    draw_shadowed(draw, (x, y), frag, font, fill)
                 x += fw
             x += space_w
         y += line_pitch
@@ -626,10 +632,14 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
     paste_layer(canvas, chrome(f"banner_{mat}"), rect_px(banner_ribbon_rect(rects["TitleBanner"]), bounds, scale))
     paste_layer(canvas, chrome(f"plaque_{mat}"), rect_px(rects["TypePlaque"], bounds, scale))
 
+    # Same sprite for the cost badge (pasted below, if this card has one) and
+    # any inline {{Energy:energy}} pips in its description (drawn further
+    # down) — a card's pool determines both, so this is resolved once.
+    orb_name = f"energy_{pool}" if chrome(f"energy_{pool}") is not None else "energy_colorless"
+
     energy = info.get("energyUpgraded") if (upgraded and info.get("energyUpgraded") is not None) else info.get("energy", -1)
     has_cost = bool(info.get("costsX")) or (energy is not None and energy >= 0)
     if has_cost:
-        orb_name = f"energy_{pool}" if chrome(f"energy_{pool}") is not None else "energy_colorless"
         paste_layer(canvas, chrome(orb_name), rect_px(rects["EnergyIcon"], bounds, scale))
 
     # Text goes on its own layer, composited at the end: ImageDraw writes
@@ -671,8 +681,12 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
     desc = clean_desc_with_color(raw_desc) if raw_desc else info.get("desc")
     if desc:
         runs = substitute_desc_vars_runs(desc, variables)
-        draw_wrapped_desc(draw, runs, rect_px(rects["DescriptionLabel"], bounds, scale),
-                           desc_font, desc_symbol_font, line_pitch, single_line_height)
+        orb_size = round(desc_font.size * 0.9)  # matches dashboard.css's .desc-energy-icon (0.9em)
+        orb_sprite = chrome(orb_name)
+        orb_img = orb_sprite.resize((orb_size, orb_size), Image.LANCZOS) if orb_sprite is not None else None
+        draw_wrapped_desc(draw, text_layer, runs, rect_px(rects["DescriptionLabel"], bounds, scale),
+                           desc_font, desc_symbol_font, line_pitch, single_line_height,
+                           orb_img, orb_size)
 
     canvas.alpha_composite(text_layer)
     return canvas
