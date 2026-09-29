@@ -15,6 +15,34 @@ The dashboard has five pages: Overview, Character Detail, Run Detail, Card Stats
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup.
 
+**Contents:** [How it fits together](#how-it-fits-together) ·
+[Local use](#local-use) ·
+[The website](#the-website) ·
+[Development](#development) ·
+[Repository layout](#repository-layout) ·
+[Refreshing game data](#refreshing-game-data)
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    game["Slay the Spire 2"] -- "saves after every run" --> runs[("history/*.run")]
+    runs --> runpy["run.py<br/>(parser)"]
+    runpy --> local["sts2_viz.html<br/>(local, self-contained)"]
+
+    runs -- "picked in the browser,<br/>uploaded after Steam sign-in" --> lambda["Ingest Lambda<br/>(imports run.py)"]
+    lambda --> s3[("S3<br/>player profiles")]
+    s3 --> cf["CloudFront<br/>slay-my-stats.com"]
+    cf --> viewers["Anyone's browser<br/>/u/&lt;name&gt;"]
+
+    dash["js/*.js + dashboard.css<br/>(the dashboard)"] --> local
+    dash --> cf
+```
+
+The parser (`run.py`) and the dashboard (`js/`, `dashboard.css`) are shared. The local HTML file inlines them;
+the site bundles them into `app.js`, and the ingest Lambda runs the same `run.py` on uploads, so the two can't
+drift apart.
+
 ## Local use
 
 Needs only Python 3.10+. No packages to install.
@@ -46,7 +74,95 @@ flowchart LR
 
 The site is static: an S3 bucket behind CloudFront. The only server-side code is one Lambda, which handles
 uploads. For each player it stores one gzip'd JSON file, their Steam name and parsed runs, which the browser
-downloads and renders.
+downloads and renders. There are no accounts, sessions, cookies or database.
+
+### Architecture
+
+```mermaid
+flowchart TB
+    subgraph browser["Browser"]
+        boot["boot.js<br/>routes /, /u/&lt;slug&gt;;<br/>builds window.DATA"] --> app["app.js<br/>(js/*.js bundle)"]
+        upload["upload.js<br/>sign-in + upload panel"]
+    end
+
+    subgraph edge["DNS + edge"]
+        r53["Route 53<br/>A alias record"]
+        cf["CloudFront<br/>slay-my-stats.com<br/>(ACM cert, us-east-1)"]
+        rewrite["CloudFront Function<br/>URL rewrite -> /index.html"]
+    end
+
+    subgraph aws["AWS (us-west-2)"]
+        site[("S3 site bucket<br/>index.html, app.js, boot.js, upload.js,<br/>catalog.json, site-config.json, game art")]
+        data[("S3 data bucket<br/>users/*.json.gz (public),<br/>ids/*.json.gz (private)")]
+        fn["Ingest Lambda<br/>Python 3.12, Function URL"]
+        ssm["SSM SecureString<br/>Steam Web API key"]
+        budget["Budget: $1/month<br/>Lambda + CloudWatch + S3"]
+        sns["SNS topic"]
+        kill["Kill-switch Lambda"]
+    end
+
+    steam["Steam<br/>OpenID + Web API"]
+
+    browser --> r53 --> cf
+    cf -- "u/* (via rewrite)" --> rewrite --> site
+    cf -- "default: /, assets, art" --> site
+    cf -- "users/* (no caching)" --> data
+    upload -- "1. sign in" --> steam
+    steam -- "2. redirect back with<br/>signed openid.* params" --> upload
+    upload -- "3. POST gzip'd runs + openid.* params" --> fn
+    fn -- "check_authentication,<br/>Steam name" --> steam
+    fn -- "read, merge,<br/>conditional write" --> data
+    fn -. "reads" .-> ssm
+    budget -- "over $1" --> sns --> kill
+    kill -. "reserved concurrency 0" .-> fn
+```
+
+### AWS resources
+
+Everything is one CDK stack, `SlayMyStatsStack` (`infra/slay_my_stats/slay_my_stats_stack.py`), deployed to
+the CLI's default account and region (us-west-2 today).
+
+| Resource | Configuration | Why |
+|----------|---------------|-----|
+| **Site bucket** `slay-my-stats-site` | Private (CloudFront OAC only). Destroyed with the stack. | The built `dist/` plus game art. Rebuildable from the repo at any time. |
+| **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` only). **Retained** if the stack is deleted. | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
+| **CloudFront distribution** | `slay-my-stats.com`, HTTP redirects to HTTPS, default root `index.html`. Behaviors below. | One domain for the site and the profile data, so the browser needs no CORS for reads. |
+| **CloudFront Function** (`ProfileUrlRewriteFunction`) | Viewer request, JS 2.0. Sets the URI to `/index.html`. | Page URLs like `/u/<slug>` have no S3 object. Rewriting at the edge keeps the shareable URL in the address bar. Attached only to page behaviors, so asset requests never pay for it. |
+| **Route 53 A record** | Alias to the distribution, in an existing hosted zone. | The domain. The hosted zone is created outside CDK. |
+| **ACM certificate** | Imported by ARN, us-east-1. | CloudFront only reads certificates from us-east-1. Created outside CDK. |
+| **Ingest Lambda** | Python 3.12, 1024 MB, 30 s timeout, one-week log retention. Public Function URL, CORS for `https://slay-my-stats.com` POSTs only. | Verifies the Steam sign-in itself, so no API Gateway. Memory buys CPU: a whole history parses in one call, and the merged blob is ~18 MB of JSON before gzip. |
+| **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the Lambda gets read and `kms:Decrypt`. | Steam Web API key for display names. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
+| **Budget** `slay-my-stats-kill-switch` | $1/month, actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so any spend means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
+| **SNS topic + kill-switch Lambda** | Python 3.12, 128 MB. Only permission: `lambda:PutFunctionConcurrency` on the ingest function. | Sets the ingest function's reserved concurrency to 0. Budgets evaluate a few times a day, so this bounds a sustained attack rather than stopping it instantly. Undo with `aws lambda delete-function-concurrency`. |
+
+Stack outputs: `SiteBucketName`, `DataBucketName`, `DistributionDomainName` and `IngestFunctionUrl` (which
+`tools/deploy.py` reads when building the site).
+
+### Routing
+
+| Path | CloudFront behavior | Origin | Caching |
+|------|---------------------|--------|---------|
+| `/u/*` | rewrite to `/index.html` | site bucket | optimized (`/index.html`'s cache entry) |
+| `/users/*` | none | data bucket | **disabled**, so a profile shows an upload straight away |
+| everything else (`/`, `/app.js`, `/catalog.json`, art) | none | site bucket | optimized |
+
+`ids/*` in the data bucket has no behavior, so it's unreachable from outside.
+
+Inside the page, `site/boot.js` decides what to draw from `location.pathname`: the player finder and
+site-wide stats on `/`, or a profile on `/u/<slug>`, which it loads by fetching `/catalog.json` and
+`/users/<slug>.json.gz`, building `window.DATA` and then loading `/app.js`.
+
+### Stored data
+
+| Key | Served | Contents |
+|-----|--------|----------|
+| `users/<slug>.json.gz` | yes | `{"v":1, "name", "runs"}` |
+| `users/_index.json.gz` | yes | every player's slug, name, run count and last upload, for the home page's search |
+| `users/_stats.json.gz` | yes | site-wide running totals for the home page (see below) |
+| `ids/<steamid>.json.gz` | no | `{"slug"}`, so an upload finds its profile |
+
+Steam IDs are never public. The Lambda gets the display name from Steam's `GetPlayerSummaries` API using the
+key in SSM, and falls back to the public profile XML if the API call fails.
 
 ### Player addresses
 
@@ -55,54 +171,40 @@ address is set on the first upload and never changes. A later player with the sa
 `mrbean-3`, and so on. A name with nothing usable left, such as one written entirely in Japanese, becomes
 `player`, `player-2`, and so on. Renaming on Steam updates the name shown on the profile, not the address.
 
-Steam IDs are never public. The data bucket holds:
-
-| Key | Served | Contents |
-|-----|--------|----------|
-| `users/<slug>.json.gz` | yes | `{"v":1, "name", "runs"}` |
-| `users/_index.json.gz` | yes | every player's slug, name, run count and last upload, for the home page's search |
-| `users/_stats.json.gz` | yes | site-wide running totals for the home page (see below) |
-| `ids/<steamid>.json.gz` | no (CloudFront only serves `users/*`) | `{"slug"}`, so an upload finds its profile |
-
-The Lambda gets the name from Steam's `GetPlayerSummaries` API using the key in SSM, and falls back to the
-public profile XML if the API call fails.
-
-```mermaid
-flowchart TB
-    subgraph browser["Browser"]
-        boot["boot.js<br/>builds window.DATA"] --> app["app.js<br/>(js/*.js bundle)"]
-        upload["upload.js<br/>sign-in + upload panel"]
-    end
-
-    subgraph aws["AWS"]
-        cf["CloudFront<br/>slay-my-stats.com"]
-        site[("S3 site bucket<br/>index.html, app.js, catalog.json,<br/>site-config.json, game art")]
-        data[("S3 data bucket<br/>users/&lt;slug&gt;.json.gz, users/_index.json.gz,<br/>ids/&lt;steamid&gt;.json.gz (private)")]
-        fn["Ingest Lambda<br/>(Function URL)"]
-        budget["$1 budget -> SNS -><br/>kill-switch Lambda"]
-    end
-
-    steam["Steam OpenID"]
-
-    cf -- "/, /u/* (rewritten to index.html)" --> site
-    cf -- "/users/* (no caching)" --> data
-    boot -- "GET /catalog.json<br/>GET /users/&lt;slug&gt;.json.gz<br/>GET /users/_index.json.gz (search)" --> cf
-    upload -- "1. sign in" --> steam
-    steam -- "2. redirect back with<br/>signed openid.* params" --> upload
-    upload -- "3. POST gzip'd runs + openid.* params" --> fn
-    fn -- "check_authentication,<br/>Steam name" --> steam
-    fn -- "read, merge, conditional write" --> data
-    budget -. "concurrency 0" .-> fn
-```
-
 ### What an upload does
 
-1. **Sign in.** "Upload runs" in the site bar sends you to Steam's OpenID login. Steam redirects back to the site with
-   signed `openid.*` parameters, which prove your Steam ID. There are no accounts, sessions or cookies: every
-   upload carries that proof, and the Lambda re-checks it with Steam.
+```mermaid
+sequenceDiagram
+    actor P as Player
+    participant B as Browser (upload.js)
+    participant S as Steam
+    participant L as Ingest Lambda
+    participant D as Data bucket
+
+    P->>B: Upload runs
+    B->>S: OpenID checkid_setup (return_to = site root)
+    S-->>B: redirect to / with signed openid.* params
+    Note over B: params moved from the URL<br/>into sessionStorage
+    P->>B: picks the history folder
+    Note over B: reads .run files locally, drops runs<br/>the profile already has, gzips NDJSON
+    B->>L: POST body + openid.* params
+    L->>S: check_authentication
+    S-->>L: is_valid
+    L->>D: read ids/<steamid>, users/<slug>
+    Note over L: parse with run.py, validate,<br/>dedupe by start time
+    L->>S: display name (Web API, else profile XML)
+    L->>D: conditional writes: profile, index, stats
+    L-->>B: {slug, name, added, duplicates, total}
+    B-->>P: result + link to /u/<slug>
+```
+
+1. **Sign in.** "Upload runs" in the site bar sends you to Steam's OpenID login. Steam redirects back to the
+   site with signed `openid.*` parameters, which prove your Steam ID. Every upload carries that proof, and the
+   Lambda re-checks it with Steam.
 2. **Pick the folder.** The browser reads the `.run` files locally. It drops runs your profile already has
    (once this browser has seen your profile's address from an earlier upload; otherwise it sends them all and
-   the Lambda skips them), gzips the rest as NDJSON (one run per line) and POSTs them.
+   the Lambda skips them), gzips the rest as NDJSON (one run per line) and POSTs them. A body over 4 MB is
+   split: the rest goes in the next upload.
 3. **Ingest.** The Lambda (`infra/lambda/ingest/handler.py`) then:
    - verifies the sign-in: Steam confirms the signature, `return_to` is this site, the sign-in is under
      30 minutes old, and it isn't the one that made the last write;
@@ -118,6 +220,18 @@ flowchart TB
    - adds the new runs, and only those, to the site-wide stats.
 
    It responds with your address, name and counts. The browser remembers the address for next time.
+
+Upload limits, from the top of `handler.py`:
+
+| Limit | Value |
+|-------|-------|
+| Sign-in age | 30 minutes (±5 minutes clock skew) |
+| Cooldown between writes | 60 seconds |
+| Request body | 6 MB (the Function URL's cap; the browser sends at most 4 MB) |
+| Decompressed body | 200 MB, 4 MB per line |
+| Runs per upload / per profile | 3,000 / 20,000 |
+| Parsed run size | 1 MB |
+| Strings in a run | `[A-Za-z0-9_.-]`, up to 80 characters |
 
 ### Site-wide stats
 
@@ -135,9 +249,6 @@ can change without recounting.
 The update is best effort, like the player list. `tools/rebuild_stats.py` recounts everything from the
 profiles: run it by hand after adding a new figure, removing a profile, or if an update was missed
 (`--bucket slay-my-stats-data` for the live site).
-
-**Cost guard:** every service involved stays inside the free tier at normal traffic. If any spend appears, a
-$1 budget alarm triggers a small Lambda that throttles the ingest function to zero.
 
 ## Development
 
@@ -180,33 +291,115 @@ must match `run.py`'s output exactly.
 
 ### Deploying
 
-`git config core.hooksPath githooks` (once per clone) makes every push of `main` run `tools/deploy.py`, which:
+`git config core.hooksPath githooks` (once per clone) makes every push of `main` run `tools/deploy.py`:
 
-1. runs `cdk diff`, and if the stack changed, asks y/N before `cdk deploy`;
-2. builds `dist/`, with the ingest Function URL read from the stack outputs;
-3. uploads only the files that changed and invalidates just those paths in CloudFront.
+```mermaid
+flowchart TB
+    push["git push (main)"] --> hook["githooks/pre-push"]
+    hook --> check{"HEAD is the pushed commit,<br/>tree clean, fast-forward?"}
+    check -- no --> abort["push aborted"]
+    check -- yes --> diff["cdk diff"]
+    diff -- "no differences" --> build
+    diff -- "changes" --> ask{"Deploy these<br/>infra changes? y/N"}
+    ask -- N --> abort
+    ask -- y --> deploy["cdk deploy"] --> build
+    build["build_site.py<br/>(ingest URL from stack outputs)"] --> upload["upload dist/ files whose MD5<br/>differs from the S3 ETag;<br/>aws s3 sync the art folders"]
+    upload --> inval["CloudFront invalidation<br/>of just those paths (/* past 10)"]
+    inval --> done["push goes through"]
+```
 
-To skip it for one push, use `SKIP_DEPLOY=1 git push`. The Steam Web API key is a SecureString in SSM
-(`/slay-my-stats/steam-api-key`), created outside CDK.
+Any change to `run.py` or the handler shows up in `cdk diff` as a new `IngestFunction` code key, since the
+Lambda bundles both. To skip deploying for one push, use `SKIP_DEPLOY=1 git push`.
+
+Set up once, outside CDK:
+
+- the Route 53 hosted zone and the ACM certificate in us-east-1 (their IDs are constants at the top of the
+  stack file);
+- the Steam Web API key: `aws ssm put-parameter --name /slay-my-stats/steam-api-key --type SecureString`;
+- `cdk bootstrap` for the account and region.
 
 ## Repository layout
 
-| Path | What |
-|------|------|
-| `run.py` | Run parser plus the local HTML generator. The Lambda imports it too. |
-| `js/`, `dashboard.css` | Dashboard code and styles. They are inlined by `run.py`, and bundled to `app.js` for the site. |
-| `site/` | Site-only scripts: `boot.js` (loads a profile, or the player search and site-wide stats on `/`), `players.css`, and `upload.js` / `upload.css` (sign-in and upload). |
-| `build_site.py` | Builds `dist/`: `index.html`, `app.js`, `catalog.json` (game-data catalog) and `site-config.json`. |
-| `infra/` | CDK app: buckets, CloudFront, DNS, the ingest Lambda and its tests, and the kill switch. |
-| `tools/` | Dev server, deploy script, user-blob builder, stats rebuild, and the game-data pipeline (below). |
-| `card_data.json`, `relic_data.json`, `potion_data.json` | Card, relic and potion metadata extracted from the game. |
-| `card_final/`, `card_portraits/`, `relic_images/`, `potion_images/`, `node_icons/`, `ui_icons/` | Committed, downscaled game art, served as-is. |
-| `data_provenance.json` | Which game build produced the data and art above. |
+```text
+slay-my-stats/
+├── run.py                   Run parser + local HTML generator (the Lambda imports it too)
+├── build_site.py            Builds dist/ for the site: index.html, app.js, catalog.json, site-config.json
+├── dashboard.css            Dashboard styles (shared by the local file and the site)
+├── js/                      Dashboard code, one module per page or concern (shared)
+│   ├── data.js              window.DATA shape and helpers
+│   ├── aggregation.js       filtering and stat roll-ups
+│   ├── page-nav.js          tabs and the shared filter bar
+│   ├── overview-tables.js   Overview page
+│   ├── character-detail.js  Character Detail page
+│   ├── run-detail.js        Run Detail page
+│   ├── cards-page.js        Card Stats page
+│   ├── seeds.js             Seed Data page
+│   ├── charts.js            Chart.js setup
+│   ├── card-face.js         card rendering
+│   ├── render-helpers.js    shared markup builders
+│   ├── tooltip.js           floating tooltips
+│   ├── update.js            re-render on filter change
+│   └── map-bg.js            background map panning
+├── site/                    Site-only code (not in the local file)
+│   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>
+│   ├── players.css          site bar, finder, site stats
+│   ├── upload.js            Steam sign-in and the upload panel
+│   └── upload.css
+├── infra/                   CDK app
+│   ├── app.py
+│   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see above)
+│   ├── lambda/ingest/handler.py               the ingest Lambda
+│   ├── tests/test_ingest.py
+│   └── requirements.txt     CDK, boto3
+├── tools/
+│   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
+│   ├── deploy.py            pre-push deploy (above)
+│   ├── build_user_blob.py   local history -> local_data/, as an upload would
+│   ├── rebuild_stats.py     recount users/_stats.json.gz from every profile
+│   ├── refresh_game_data.py game-data pipeline driver (below)
+│   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
+│   └── requirements.txt     pipeline requirements
+├── githooks/pre-push        runs tools/deploy.py when main is pushed
+├── TODO.md                  planned work
+├── card_data.json           card metadata extracted from the game
+├── relic_data.json          relic metadata
+├── potion_data.json         potion metadata
+├── data_provenance.json     which game build produced the data and art
+├── card_final/              finished card images, base and upgraded (served)
+├── card_portraits/          card art thumbnails (served)
+├── relic_images/            (served)
+├── potion_images/           (served)
+├── node_icons/              map node icons (served)
+├── ui_icons/                energy icons, map_scroll.webp background (served)
+├── card_chrome/             card frames and banners (input to bake_finished_cards.py; not served)
+└── images/                  README screenshots
+```
 
-### Refreshing game data
+Generated and ignored: `dist/` (site build), `local_data/` (dev server data), `infra/cdk.out/`, and the
+full-resolution `pck_recover*/` game extractions.
 
-After a game update, run `python tools/refresh_game_data.py`. It recovers the game's `.pck` with
-[GDRE Tools](https://github.com/GDRETools/gdsdecomp/releases), then re-extracts card, relic and potion data
-from the game DLL (via pythonnet). Next it re-bakes card art and chrome, and checks that everything came
-from the same build. Its requirements are in `tools/requirements.txt`. `--check` verifies without changing
-anything, and `--stale` reports whether the installed game is newer than the committed assets.
+## Refreshing game data
+
+After a game update, run `python tools/refresh_game_data.py`. Its requirements are in
+`tools/requirements.txt`. `--check` verifies without changing anything, and `--stale` reports whether the
+installed game is newer than the committed assets.
+
+```mermaid
+flowchart LR
+    pck["game .pck"] -- "GDRE Tools" --> rec[("pck_recover_full/<br/>(ignored)")]
+    dll["sts2.dll"] --> extract
+    rec --> portraits["downscale_portraits.py"] --> cp["card_portraits/"]
+    rec --> art["downscale_art.py"] --> ra["relic_images/<br/>potion_images/<br/>node_icons/"]
+    rec --> extract["extract_card_data.py<br/>(pythonnet)"] --> json["card_data.json<br/>relic_data.json<br/>potion_data.json"]
+    rec --> chrome["bake_card_chrome.py"] --> cc["card_chrome/"]
+    cc --> final["bake_finished_cards.py"]
+    json --> final
+    rec --> final
+    final --> cf["card_final/"]
+    json -.-> prov["data_provenance.json"]
+```
+
+It recovers the game's `.pck` with [GDRE Tools](https://github.com/GDRETools/gdsdecomp/releases), then
+re-extracts card, relic and potion data from the game DLL. Next it re-bakes card art and chrome, and checks
+that everything came from the same build. The map background (`ui_icons/map_scroll.webp`) is baked
+separately by `tools/bake_map_background.py`.
