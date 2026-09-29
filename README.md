@@ -97,7 +97,7 @@ flowchart TB
 
 ### What an upload does
 
-1. **Sign in.** "Upload your runs" sends you to Steam's OpenID login. Steam redirects back to the site with
+1. **Sign in.** "Upload runs" in the site bar sends you to Steam's OpenID login. Steam redirects back to the site with
    signed `openid.*` parameters, which prove your Steam ID. There are no accounts, sessions or cookies: every
    upload carries that proof, and the Lambda re-checks it with Steam.
 2. **Pick the folder.** The browser reads the `.run` files locally. It drops runs your profile already has

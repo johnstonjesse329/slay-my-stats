@@ -40,14 +40,40 @@
 .finder-name { font-weight: 600; overflow-wrap: anywhere; }
 .finder-runs { color: var(--text-dim); font-size: 0.85rem; white-space: nowrap; }
 
-/* Ways back to the finder: the title and the header link (run.py's
-   home_links). The link is hidden on the finder itself (boot.js). */
-.home-link { color: inherit; text-decoration: none; }
-.home-link:hover { filter: brightness(1.15); }
-.home-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
-.find-player-link { font-size: 0.85rem; font-weight: 600; color: var(--text-dim); text-decoration: none; padding: 0.4rem 0.2rem; }
-.find-player-link:hover { color: var(--gold); text-decoration: underline; }
-.find-player-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 4px; }
+/* The site nav (run.py's home_links): the site's name and its pages, full
+   width across the top, above whatever page this is. The negative margins
+   undo body's gutter (2rem; 14px on phones, dashboard.css). */
+.site-nav {
+  --gutter: 2rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  margin: calc(-1 * var(--gutter)) calc(-1 * var(--gutter)) 1.75rem;
+  padding: 0.55rem var(--gutter);
+  background: var(--panel-glass);
+  border-bottom: 1px solid var(--panel-border);
+  backdrop-filter: blur(6px);
+}
+.site-brand {
+  font-weight: 700; font-size: 1.05rem; letter-spacing: .02em;
+  color: var(--gold); text-decoration: none; white-space: nowrap;
+}
+.site-brand:hover { color: var(--gold-bright); }
+.site-links { display: flex; align-items: center; gap: 1.25rem; }
+.site-link {
+  font-size: 0.9rem; font-weight: 600; color: var(--text-dim); text-decoration: none;
+  padding: 0.35rem 0; border-bottom: 2px solid transparent;
+}
+.site-link:hover { color: var(--text); }
+.site-link[aria-current="page"] { color: var(--gold); border-bottom-color: var(--gold); }
+.site-brand:focus-visible, .site-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+.site-nav .upload-btn { padding: 0.35rem 0.8rem; }
+/* Run files live on the PC the game runs on, and phone browsers can't pick
+   a folder anyway: no upload button on touch screens. */
+@media (hover: none) and (pointer: coarse) {
+  .site-nav .upload-btn { display: none; }
+}
+@media (max-width: 700px), (orientation: landscape) and (max-height: 500px) {
+  .site-nav { --gutter: 14px; margin-bottom: 1.25rem; }
+}
 
 /* Site-wide stats under the finder (boot.js showSiteStats). The cards reuse
    dashboard.css's .cards/.card; this grid just has 6 of them. */

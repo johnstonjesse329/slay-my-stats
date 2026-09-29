@@ -246,8 +246,8 @@
 
   async function showFinder() {
     showFallback("");
-    // Already here: the header's "Find another player" link has nowhere to go.
-    document.querySelector(".find-player-link")?.remove();
+    // The site bar's Players link is this page.
+    document.querySelector(".site-link[href='/']")?.setAttribute("aria-current", "page");
     const main = document.getElementById("main-content");
     if (!main) return;
     const input = el("input", { type: "search", className: "finder-input", id: "finder-input",
@@ -258,7 +258,7 @@
     main.append(el("section", { className: "finder" }, [
       el("h2", { textContent: "Find a player" }),
       el("p", { textContent: "Slay the Spire 2 run histories, one page per player. " +
-                             "Search by Steam name, or put your own runs up with \"Upload your runs\"." }),
+                             "Search by Steam name. To add your own, upload your runs from the PC you play on." }),
       el("label", { htmlFor: "finder-input", className: "finder-label", textContent: "Search players" }),
       input,
       count,

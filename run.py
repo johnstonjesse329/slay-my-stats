@@ -867,19 +867,24 @@ def dashboard_body_html(subtitle: str, home_links: bool = False) -> str:
     generator) and build_site.py (the static site, whose subtitle differs
     since there's no "local save data" on the live site).
 
-    home_links (live site only): the title and a "Find another player" link
-    go back to the player finder at /. The local file has no home page to go
-    back to. site/upload.js adds its button to the same .header-actions.
+    home_links (live site only): a site bar above the header, with the site's
+    name and links to the rest of the site; site/upload.js adds its button
+    to .site-links. The local file has no site to link to.
     """
-    title = '<a class="home-link" href="/">Slay the Spire 2</a>' if home_links else "Slay the Spire 2"
-    actions = ('\n<div class="header-actions"><a class="find-player-link" href="/">Find another player</a></div>'
-               if home_links else "")
+    site_bar = ("""
+<nav class="site-nav" aria-label="Site">
+  <a class="site-brand" href="/">Slay My Stats</a>
+  <div class="site-links">
+    <a class="site-link" href="/">Players</a>
+  </div>
+</nav>
+""" if home_links else "")
     return f"""<div class="map-bg" aria-hidden="true"></div>
 <a class="skip-link" href="#main-content">Skip to content</a>
-
+{site_bar}
 <header>
-<h1>{title}</h1>
-<p class="subtitle">{subtitle}</p>{actions}
+<h1>Slay the Spire 2</h1>
+<p class="subtitle">{subtitle}</p>
 </header>
 
 <nav class="page-tabs" aria-label="Pages">

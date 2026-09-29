@@ -2,7 +2,7 @@
 // Upload — "Sign in with Steam" and the run-history upload, live site only.
 //
 // Flow:
-//   1. The header's "Upload your runs" button sends the browser to Steam's
+//   1. The site bar's "Upload runs" button sends the browser to Steam's
 //      OpenID login, with this site's root as return_to.
 //   2. Steam redirects back to /?openid.mode=id_res&openid.claimed_id=...
 //      Those params are the proof of who signed in; they're moved out of the
@@ -164,15 +164,15 @@
   // ---- UI -------------------------------------------------------------------
 
   function addHeaderButton(signIn, onRoot) {
-    const header = document.querySelector("header");
-    if (!header) return;
-    const btn = el("button", { type: "button", className: "upload-btn", textContent: "Upload your runs" });
+    const links = document.querySelector(".site-links");
+    if (!links) return;
+    const btn = el("button", { type: "button", className: "upload-btn", textContent: "Upload runs" });
     btn.addEventListener("click", () => {
       if (!signIn || Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) startSignIn();
       else if (onRoot) showUploadPanel(signIn);
       else location.assign("/#upload");
     });
-    (header.querySelector(".header-actions") || header).append(btn);
+    links.append(btn);
   }
 
   // Replaces the page (like boot.js's fallbacks do) with the upload panel.
