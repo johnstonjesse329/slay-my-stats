@@ -24,7 +24,7 @@ html {
   --panel-2:      #2a2545;
   --panel-border: #4a3f6e;
   /* --panel/--panel-2 at 65% for the top-level panel surfaces, so the map
-     scroll behind the page (body::before) shows through them faintly. */
+     scroll behind the page (.map-bg) shows through them faintly. */
   --panel-glass:   rgba(33, 30, 54, 0.65);
   --panel-2-glass: rgba(42, 37, 69, 0.65);
   --hairline:     #3a3460;
@@ -42,8 +42,9 @@ body {
   color: var(--text);
   padding: 2rem;
   min-height: 100vh;
-  /* Own stacking context so body::before's z-index:-1 (below) stacks under
-     body's content but above html's background, not under html's too. */
+  /* Own stacking context so .map-bg and body::before (negative z-index,
+     below) stack under body's content but above html's background, not
+     under html's too. */
   position: relative;
   z-index: 0;
   /* The map-screen slate as baked into the scroll's edges (darkened with
@@ -51,20 +52,33 @@ body {
   background: #07090a;
 }
 /* The act-map parchment scroll (baked, darkened, by
-   tools/bake_map_background.py), pinned behind the page like the map screen,
-   with a vignette easing its edges into the slate. A fixed pseudo-element
-   rather than background-attachment:fixed, which iOS Safari ignores.
-   --map-scroll (0..1, set by js/page-nav.js from the page's scroll fraction)
-   pans the scroll top-to-bottom as the page scrolls. */
+   tools/bake_map_background.py), pinned behind the page like the map screen.
+   .map-bg is added and panned top-to-bottom as the page scrolls by
+   js/page-nav.js; fixed elements rather than background-attachment:fixed,
+   which iOS Safari ignores. It's the viewport's width up to 1400px, but at
+   least 1.5 screens tall, so on a phone (where the full width would be barely
+   a screen tall) it crops the slate at its sides and still has room to pan. */
+.map-bg {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: -2;
+  pointer-events: none;
+  width: max(min(1400px, 100%), calc(150vh * 1400 / 2971));
+  width: max(min(1400px, 100%), calc(150lvh * 1400 / 2971));
+  aspect-ratio: 1400 / 2971;
+  background: url(/ui_icons/map_scroll.webp) 0 0 / 100% 100% no-repeat;
+  transform: translate3d(-50%, 0, 0);
+  will-change: transform;
+}
+/* A vignette easing the scroll's edges into the slate; it never moves. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background:
-    radial-gradient(ellipse at 50% 40%, transparent 50%, rgba(10, 12, 14, 0.55) 100%),
-    url(/ui_icons/map_scroll.webp) center calc(var(--map-scroll, 0) * 100%) / min(1400px, 100%) auto no-repeat;
+  background: radial-gradient(ellipse at 50% 40%, transparent 50%, rgba(10, 12, 14, 0.55) 100%);
 }
 
 h1 {
