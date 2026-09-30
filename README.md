@@ -25,18 +25,23 @@ and seed lookup.
 ## How it fits together
 
 ```mermaid
-flowchart LR
+flowchart TB
     game["Slay the Spire 2"] -- "saves after every run" --> runs[("history/*.run")]
-    runs --> runpy["run.py<br/>(parser)"]
-    runpy --> local["sts2_viz.html<br/>(local, self-contained)"]
 
-    runs -- "picked in the browser,<br/>uploaded after Steam sign-in" --> lambda["Ingest Lambda<br/>(imports run.py)"]
-    lambda --> s3[("S3<br/>player profiles")]
-    s3 --> cf["CloudFront<br/>slay-my-stats.com"]
-    cf --> viewers["Anyone's browser<br/>/u/&lt;name&gt;"]
+    subgraph local["Local"]
+        direction LR
+        runpy["run.py"] --> html["sts2_viz.html<br/>(self-contained)"]
+    end
 
-    dash["js/*.js + dashboard.css<br/>(the dashboard)"] --> local
-    dash --> cf
+    subgraph online["Online"]
+        direction LR
+        upload["Browser<br/>(Steam sign-in)"] --> lambda["Ingest Lambda<br/>(runs run.py)"]
+        lambda --> s3[("S3<br/>player profiles")]
+        s3 --> cf["CloudFront<br/>slay-my-stats.com/u/&lt;name&gt;"]
+    end
+
+    runs --> runpy
+    runs --> upload
 ```
 
 The parser (`run.py`) and the dashboard (`js/`, `dashboard.css`) are shared. The local HTML file inlines them;
