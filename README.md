@@ -40,7 +40,7 @@ and seed lookup.
 
 ```text
 slay-my-stats/
-├── run.py                   Run parser + local HTML generator (the Lambda imports it too)
+├── run.py                   Reads .run files into dashboard data and writes the local HTML file. The upload Lambda uses the same parsing code.
 ├── build_site.py            Builds dist/ for the site: index.html, app.js, catalog.json, site-config.json
 ├── dashboard.css            Dashboard styles (shared by the local file and the site)
 ├── js/                      Dashboard code, one module per page or concern (shared)
