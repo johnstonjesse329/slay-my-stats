@@ -9,18 +9,93 @@ It works two ways, from the same parser and the same dashboard code:
   folder from the browser. Your profile lives at `/u/<name>`, named after your Steam name, and anyone can find
   it by searching on the home page.
 
-![Overview page](images/dashboard-example-1.png)
+**Overview:** totals, then a card for each character with its records and most-picked cards.
+
+![Overview tab of a player profile](images/site-overview.png)
+
+**Run Detail:** every run in a list; pick one to see its path, fights and final deck.
+
+![Run Detail tab showing a run's final deck](images/site-run-detail.png)
+
+**Character Detail:** win rates against each boss and elite.
+
+![Character Detail tab with boss and elite win rates](images/site-character-detail.png)
+
+**Card Stats:** pick and win rates for every card.
+
+![Card Stats tab with card pick rates](images/site-card-stats.png)
 
 The dashboard has five pages: Overview, Character Detail, Run Detail, Card Stats and Seed Data. They cover win
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup.
 
-**Contents:** [How it fits together](#how-it-fits-together) ·
+**Contents:** [Repository layout](#repository-layout) ·
+[How it fits together](#how-it-fits-together) ·
 [Local use](#local-use) ·
 [The website](#the-website) ·
 [Development](#development) ·
-[Repository layout](#repository-layout) ·
 [Refreshing game data](#refreshing-game-data)
+
+## Repository layout
+
+```text
+slay-my-stats/
+├── run.py                   Run parser + local HTML generator (the Lambda imports it too)
+├── build_site.py            Builds dist/ for the site: index.html, app.js, catalog.json, site-config.json
+├── dashboard.css            Dashboard styles (shared by the local file and the site)
+├── js/                      Dashboard code, one module per page or concern (shared)
+│   ├── data.js              window.DATA shape and helpers
+│   ├── aggregation.js       filtering and stat roll-ups
+│   ├── page-nav.js          tabs and the shared filter bar
+│   ├── overview-tables.js   Overview page
+│   ├── character-detail.js  Character Detail page
+│   ├── run-detail.js        Run Detail page
+│   ├── cards-page.js        Card Stats page
+│   ├── seeds.js             Seed Data page
+│   ├── charts.js            Chart.js setup
+│   ├── card-face.js         card rendering
+│   ├── render-helpers.js    shared markup builders
+│   ├── tooltip.js           floating tooltips
+│   ├── update.js            re-render on filter change
+│   └── map-bg.js            background map panning
+├── site/                    Site-only code (not in the local file)
+│   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>
+│   ├── players.css          site bar, finder, site stats
+│   ├── upload.js            Steam sign-in and the upload panel
+│   └── upload.css
+├── infra/                   CDK app
+│   ├── app.py
+│   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
+│   ├── lambda/ingest/handler.py               the ingest Lambda
+│   ├── tests/test_ingest.py
+│   └── requirements.txt     CDK, boto3
+├── tools/
+│   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
+│   ├── deploy.py            pre-push deploy (see "Deploying")
+│   ├── build_user_blob.py   local history -> local_data/, as an upload would
+│   ├── rebuild_stats.py     recount users/_stats.json.gz from every profile
+│   ├── refresh_game_data.py game-data pipeline driver (see "Refreshing game data")
+│   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
+│   └── requirements.txt     pipeline requirements
+├── githooks/pre-push        runs tools/deploy.py when main is pushed
+├── docs/                    architecture diagram source (draw.io)
+├── TODO.md                  planned work
+├── card_data.json           card metadata extracted from the game
+├── relic_data.json          relic metadata
+├── potion_data.json         potion metadata
+├── data_provenance.json     which game build produced the data and art
+├── card_final/              finished card images, base and upgraded (served)
+├── card_portraits/          card art thumbnails (served)
+├── relic_images/            (served)
+├── potion_images/           (served)
+├── node_icons/              map node icons (served)
+├── ui_icons/                energy icons, map_scroll.webp background (served)
+├── card_chrome/             card frames and banners (input to bake_finished_cards.py; not served)
+└── images/                  README screenshots and the architecture diagram
+```
+
+Generated and ignored: `dist/` (site build), `local_data/` (dev server data), `infra/cdk.out/`, and the
+full-resolution `pck_recover*/` game extractions.
 
 ## How it fits together
 
@@ -68,11 +143,11 @@ The history folder is usually here:
 ```mermaid
 flowchart LR
     runs[("history/*.run")] --> parse["run.py<br/>parse_run()"]
-    data["card_data.json<br/>relic_data.json<br/>potion_data.json"] --> build
     parse --> build["run.py<br/>build_html()"]
+    data["card_data.json<br/>relic_data.json<br/>potion_data.json"] --> build
     js["js/*.js<br/>dashboard.css"] --> build
-    art["card_final/ card_portraits/<br/>relic_images/ node_icons/ ..."] -. "file:// links" .-> html
     build --> html["sts2_viz.html"]
+    art["card_final/ card_portraits/<br/>relic_images/ node_icons/ ..."] -. "file:// links" .-> html
 ```
 
 ## The website
@@ -83,44 +158,10 @@ downloads and renders. There are no accounts, sessions, cookies or database.
 
 ### Architecture
 
-```mermaid
-flowchart TB
-    subgraph browser["Browser"]
-        boot["boot.js<br/>routes /, /u/&lt;slug&gt;;<br/>builds window.DATA"] --> app["app.js<br/>(js/*.js bundle)"]
-        upload["upload.js<br/>sign-in + upload panel"]
-    end
+![AWS architecture: Route 53 and CloudFront in front of two S3 buckets, an ingest Lambda that verifies Steam sign-in, and a budget kill switch](images/aws-architecture.png)
 
-    subgraph edge["DNS + edge"]
-        r53["Route 53<br/>A alias record"]
-        cf["CloudFront<br/>slay-my-stats.com<br/>(ACM cert, us-east-1)"]
-        rewrite["CloudFront Function<br/>URL rewrite -> /index.html"]
-    end
-
-    subgraph aws["AWS (us-west-2)"]
-        site[("S3 site bucket<br/>index.html, app.js, boot.js, upload.js,<br/>catalog.json, site-config.json, game art")]
-        data[("S3 data bucket<br/>users/*.json.gz (public),<br/>ids/*.json.gz (private)")]
-        fn["Ingest Lambda<br/>Python 3.12, Function URL"]
-        ssm["SSM SecureString<br/>Steam Web API key"]
-        budget["Budget: $1/month<br/>Lambda + CloudWatch + S3"]
-        sns["SNS topic"]
-        kill["Kill-switch Lambda"]
-    end
-
-    steam["Steam<br/>OpenID + Web API"]
-
-    browser --> r53 --> cf
-    cf -- "u/* (via rewrite)" --> rewrite --> site
-    cf -- "default: /, assets, art" --> site
-    cf -- "users/* (no caching)" --> data
-    upload -- "1. sign in" --> steam
-    steam -- "2. redirect back with<br/>signed openid.* params" --> upload
-    upload -- "3. POST gzip'd runs + openid.* params" --> fn
-    fn -- "check_authentication,<br/>Steam name" --> steam
-    fn -- "read, merge,<br/>conditional write" --> data
-    fn -. "reads" .-> ssm
-    budget -- "over $1" --> sns --> kill
-    kill -. "reserved concurrency 0" .-> fn
-```
+The diagram's source is [docs/slay-my-stats-architecture.drawio](docs/slay-my-stats-architecture.drawio); open it in
+[draw.io](https://app.diagrams.net/) to edit, then re-export the PNG.
 
 ### AWS resources
 
@@ -137,7 +178,7 @@ the CLI's default account and region (us-west-2 today).
 | **ACM certificate** | Imported by ARN, us-east-1. | CloudFront only reads certificates from us-east-1. Created outside CDK. |
 | **Ingest Lambda** | Python 3.12, 1024 MB, 30 s timeout, one-week log retention. Public Function URL, CORS for `https://slay-my-stats.com` POSTs only. | Verifies the Steam sign-in itself, so no API Gateway. Memory buys CPU: a whole history parses in one call, and the merged blob is ~18 MB of JSON before gzip. |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the Lambda gets read and `kms:Decrypt`. | Steam Web API key for display names. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
-| **Budget** `slay-my-stats-kill-switch` | $1/month, actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so any spend means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
+| **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
 | **SNS topic + kill-switch Lambda** | Python 3.12, 128 MB. Only permission: `lambda:PutFunctionConcurrency` on the ingest function. | Sets the ingest function's reserved concurrency to 0. Budgets evaluate a few times a day, so this bounds a sustained attack rather than stopping it instantly. Undo with `aws lambda delete-function-concurrency`. |
 
 Stack outputs: `SiteBucketName`, `DataBucketName`, `DistributionDomainName` and `IngestFunctionUrl` (which
@@ -304,10 +345,10 @@ flowchart TB
     hook --> check{"HEAD is the pushed commit,<br/>tree clean, fast-forward?"}
     check -- no --> abort["push aborted"]
     check -- yes --> diff["cdk diff"]
-    diff -- "no differences" --> build
     diff -- "changes" --> ask{"Deploy these<br/>infra changes? y/N"}
-    ask -- N --> abort
+    ask -- N --> abort2["push aborted"]
     ask -- y --> deploy["cdk deploy"] --> build
+    diff -- "no differences" --> build
     build["build_site.py<br/>(ingest URL from stack outputs)"] --> upload["upload dist/ files whose MD5<br/>differs from the S3 ETag;<br/>aws s3 sync the art folders"]
     upload --> inval["CloudFront invalidation<br/>of just those paths (/* past 10)"]
     inval --> done["push goes through"]
@@ -323,66 +364,6 @@ Set up once, outside CDK:
 - the Steam Web API key: `aws ssm put-parameter --name /slay-my-stats/steam-api-key --type SecureString`;
 - `cdk bootstrap` for the account and region.
 
-## Repository layout
-
-```text
-slay-my-stats/
-├── run.py                   Run parser + local HTML generator (the Lambda imports it too)
-├── build_site.py            Builds dist/ for the site: index.html, app.js, catalog.json, site-config.json
-├── dashboard.css            Dashboard styles (shared by the local file and the site)
-├── js/                      Dashboard code, one module per page or concern (shared)
-│   ├── data.js              window.DATA shape and helpers
-│   ├── aggregation.js       filtering and stat roll-ups
-│   ├── page-nav.js          tabs and the shared filter bar
-│   ├── overview-tables.js   Overview page
-│   ├── character-detail.js  Character Detail page
-│   ├── run-detail.js        Run Detail page
-│   ├── cards-page.js        Card Stats page
-│   ├── seeds.js             Seed Data page
-│   ├── charts.js            Chart.js setup
-│   ├── card-face.js         card rendering
-│   ├── render-helpers.js    shared markup builders
-│   ├── tooltip.js           floating tooltips
-│   ├── update.js            re-render on filter change
-│   └── map-bg.js            background map panning
-├── site/                    Site-only code (not in the local file)
-│   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>
-│   ├── players.css          site bar, finder, site stats
-│   ├── upload.js            Steam sign-in and the upload panel
-│   └── upload.css
-├── infra/                   CDK app
-│   ├── app.py
-│   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see above)
-│   ├── lambda/ingest/handler.py               the ingest Lambda
-│   ├── tests/test_ingest.py
-│   └── requirements.txt     CDK, boto3
-├── tools/
-│   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
-│   ├── deploy.py            pre-push deploy (above)
-│   ├── build_user_blob.py   local history -> local_data/, as an upload would
-│   ├── rebuild_stats.py     recount users/_stats.json.gz from every profile
-│   ├── refresh_game_data.py game-data pipeline driver (below)
-│   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
-│   └── requirements.txt     pipeline requirements
-├── githooks/pre-push        runs tools/deploy.py when main is pushed
-├── TODO.md                  planned work
-├── card_data.json           card metadata extracted from the game
-├── relic_data.json          relic metadata
-├── potion_data.json         potion metadata
-├── data_provenance.json     which game build produced the data and art
-├── card_final/              finished card images, base and upgraded (served)
-├── card_portraits/          card art thumbnails (served)
-├── relic_images/            (served)
-├── potion_images/           (served)
-├── node_icons/              map node icons (served)
-├── ui_icons/                energy icons, map_scroll.webp background (served)
-├── card_chrome/             card frames and banners (input to bake_finished_cards.py; not served)
-└── images/                  README screenshots
-```
-
-Generated and ignored: `dist/` (site build), `local_data/` (dev server data), `infra/cdk.out/`, and the
-full-resolution `pck_recover*/` game extractions.
-
 ## Refreshing game data
 
 After a game update, run `python tools/refresh_game_data.py`. Its requirements are in
@@ -390,18 +371,22 @@ After a game update, run `python tools/refresh_game_data.py`. Its requirements a
 installed game is newer than the committed assets.
 
 ```mermaid
-flowchart LR
+flowchart TB
     pck["game .pck"] -- "GDRE Tools" --> rec[("pck_recover_full/<br/>(ignored)")]
-    dll["sts2.dll"] --> extract
-    rec --> portraits["downscale_portraits.py"] --> cp["card_portraits/"]
-    rec --> art["downscale_art.py"] --> ra["relic_images/<br/>potion_images/<br/>node_icons/"]
-    rec --> extract["extract_card_data.py<br/>(pythonnet)"] --> json["card_data.json<br/>relic_data.json<br/>potion_data.json"]
-    rec --> chrome["bake_card_chrome.py"] --> cc["card_chrome/"]
-    cc --> final["bake_finished_cards.py"]
+    dll["sts2.dll"]
+    rec --> portraits["downscale_portraits.py"]
+    rec --> art["downscale_art.py"]
+    rec --> chrome["bake_card_chrome.py"]
+    rec --> extract["extract_card_data.py<br/>(pythonnet)"]
+    dll --> extract
+    portraits --> cp["card_portraits/"]
+    art --> ra["relic_images/<br/>potion_images/<br/>node_icons/"]
+    chrome --> cc["card_chrome/"]
+    extract --> json["card_data.json<br/>relic_data.json<br/>potion_data.json"]
+    cc --> final["bake_finished_cards.py<br/>(also reads full-size art<br/>from pck_recover_full/)"]
     json --> final
-    rec --> final
-    final --> cf["card_final/"]
     json -.-> prov["data_provenance.json"]
+    final --> cf["card_final/"]
 ```
 
 It recovers the game's `.pck` with [GDRE Tools](https://github.com/GDRETools/gdsdecomp/releases), then
