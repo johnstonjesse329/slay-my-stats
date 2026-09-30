@@ -1,8 +1,8 @@
 # slay-my-stats
 
-Run-history stats for **Slay the Spire 2**, built from the `.run` files the game saves after every run.
-
-It works two ways, from the same parser and the same dashboard code:
+Yet another Slay the Spire 2 analysis solution, built from the `.run` files the game saves, but this time it's
+focused on you and your progression, not social stats. It works two ways, from the same parser and the same
+dashboard code:
 
 - **Locally:** `run.py` reads your history folder and writes one HTML file.
 - **Online at [slay-my-stats.com](https://slay-my-stats.com):** you sign in with Steam and upload your history
