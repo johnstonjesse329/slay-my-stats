@@ -416,9 +416,8 @@ separately by `tools/bake_map_background.py`.
 
 Copyright (C) 2026 JesseJ.
 
-The code is licensed under the [GNU Affero General Public License v3.0](LICENSE). You can use, change and
-share it, including running your own copy as a website, as long as you keep the copyright notice and
-publish your changes under the same license.
+The code is licensed under the [MIT License](LICENSE): you can use, change and share it, including
+commercially, as long as you keep the copyright notice and license text.
 
 The license covers the code only. The game's art, card data and other assets in this repository are
 Mega Crit's, from Slay the Spire 2. This is a fan project, not affiliated with or endorsed by Mega Crit.
