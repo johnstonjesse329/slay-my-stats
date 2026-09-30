@@ -35,7 +35,6 @@ function updateAll() {
 
 // -------------------------------------------------------------------------
 // Shared filter state — used identically by all 5 pages.
-// See "Filter architecture" in CLAUDE.md for the full design.
 // -------------------------------------------------------------------------
 
 const allTimestamps = DATA.runsData.map(run => run.ts);
@@ -140,8 +139,7 @@ function filteredRunTsSet() {
 // current filtered view, so the default drill-down opens on dense data
 // rather than a sparsely-played character full of "—" cells. (Card Stats
 // does NOT use this — it genuinely aggregates across every character's
-// card pool when "All" is selected; see Filter architecture in
-// CLAUDE.md.) showPage() also pushes this fallback into the SHARED
+// card pool when "All" is selected.) showPage() also pushes this fallback into the SHARED
 // character filter itself when landing on this tab with "All" active, so
 // the filter bar and the page can never show conflicting state.
 function singleCharFallback() {

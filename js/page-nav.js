@@ -70,8 +70,8 @@ function showPage(page) {
     document.getElementById("tab-"  + p).classList.toggle("active", p === page);
   });
   // Character Detail's tables are only meaningful for one character at a
-  // time (unlike Card Stats, which genuinely aggregates for "All" — see
-  // CLAUDE.md's Filter architecture section). Rather than silently
+  // time (unlike Card Stats, which genuinely aggregates for "All").
+  // Rather than silently
   // rendering one character's data while the shared filter still reads
   // "All" (previously surfaced via a barely-visible page note, easy to
   // miss), landing on this tab with "All" active now sets the SHARED

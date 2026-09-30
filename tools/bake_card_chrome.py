@@ -27,7 +27,7 @@ Output: card_chrome/ (committed to the repo)
     energy_<pool>.png
     layout.json                       logical rects from scenes/cards/card.tscn
 
-Run after a full PCK extraction (see CLAUDE.md):
+Run after a full PCK extraction (see README "Refreshing game data"):
     python tools/bake_card_chrome.py [--width 300]
 
 Requires: pip install Pillow numpy
@@ -208,7 +208,7 @@ def main():
 
     if not SPRITE_DIR.exists():
         raise SystemExit(f"Source not found: {SPRITE_DIR}\n"
-                         "Run the full PCK extraction first (see CLAUDE.md).")
+                         "Run the full PCK extraction first (see README \"Refreshing game data\").")
 
     frame_mats  = load_materials(FRAME_MAT_D, "card_frame_")
     banner_mats = load_materials(BANNER_MAT_D, "card_banner_")

@@ -419,7 +419,7 @@ print(f"Wrote {len(card_results)} cards to {CARD_OUT}")
 if _untitled:
     print(f"  ! skipped {len(_untitled)} card(s) with no localized title — "
           f"{LOC_CARDS.parent.parent.parent.name}/ is older than the DLL. "
-          f"Re-run the GDRE recovery (CLAUDE.md step 1) to pick them up:")
+          f"Re-run the GDRE recovery to pick them up:")
     print("    " + ", ".join(sorted(_untitled)))
 
 if relic_results:

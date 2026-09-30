@@ -21,7 +21,7 @@ TARGET_W = 144
 
 if not SRC.exists():
     print(f"Source not found: {SRC}")
-    print("Run the full PCK extraction first (see CLAUDE.md).")
+    print('Run the full PCK extraction first (see README "Refreshing game data").')
     raise SystemExit(1)
 
 shutil.rmtree(DST, ignore_errors=True)

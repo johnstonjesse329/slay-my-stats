@@ -123,7 +123,7 @@ def copy_node_icons():
 def main():
     if not RELIC_SRC.exists():
         raise SystemExit(f"Source not found: {RELIC_SRC}\n"
-                         "Run the GDRE recovery first (see CLAUDE.md).")
+                         "Run the GDRE recovery first (see README \"Refreshing game data\").")
     n, size = downscale_relics()
     print(f"Relics : {n} images -> {RELIC_DST}  ({size/1024/1024:.2f} MB at {RELIC_W}px)")
     pn, psize = downscale_potions()

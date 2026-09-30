@@ -81,23 +81,30 @@ slay-my-stats/
 │   └── requirements.txt     pipeline requirements
 ├── githooks/pre-push        runs tools/deploy.py when main is pushed
 ├── docs/                    architecture diagram source (draw.io)
-├── TODO.md                  planned work
+└── images/                  README screenshots and the architecture diagram
+```
+
+Generated and ignored: `dist/` (site build), `local_data/` (dev server data), `infra/cdk.out/`, and the
+full-resolution `pck_recover*/` game extractions.
+
+**Not in the repo:** the game's art and data. They're Mega Crit's, so they aren't redistributed here;
+[Refreshing game data](#refreshing-game-data) builds them from your own copy of the game into these ignored
+paths:
+
+```text
 ├── card_data.json           card metadata extracted from the game
 ├── relic_data.json          relic metadata
 ├── potion_data.json         potion metadata
 ├── data_provenance.json     which game build produced the data and art
 ├── card_final/              finished card images, base and upgraded (served)
 ├── card_portraits/          card art thumbnails (served)
+├── thumbs/                  icon-size copies of the art (served)
 ├── relic_images/            (served)
 ├── potion_images/           (served)
 ├── node_icons/              map node icons (served)
 ├── ui_icons/                energy icons, map_scroll.webp background (served)
-├── card_chrome/             card frames and banners (input to bake_finished_cards.py; not served)
-└── images/                  README screenshots and the architecture diagram
+└── card_chrome/             card frames and banners (input to bake_finished_cards.py; not served)
 ```
-
-Generated and ignored: `dist/` (site build), `local_data/` (dev server data), `infra/cdk.out/`, and the
-full-resolution `pck_recover*/` game extractions.
 
 ## How it fits together
 
@@ -145,7 +152,8 @@ the only code involved is a small CloudFront Function that sends every `/u/<name
 
 ## Local use
 
-Needs only Python 3.10+. No packages to install.
+Needs Python 3.10+ and no packages, plus the game art and data, which aren't in the repo: build them first
+with [Refreshing game data](#refreshing-game-data).
 
 ```sh
 python run.py                           # finds your save folder, writes ~/sts2_viz.html, opens it
@@ -381,8 +389,8 @@ Lambda bundles both. To skip deploying for one push, use `SKIP_DEPLOY=1 git push
 
 Set up once, outside CDK:
 
-- the Route 53 hosted zone and the ACM certificate in us-east-1 (their IDs are constants at the top of the
-  stack file);
+- the Route 53 hosted zone and the ACM certificate in us-east-1, with their IDs in `infra/cdk.context.json`
+  (ignored by git): `{"certificateArn": "arn:aws:acm:us-east-1:…", "hostedZoneId": "Z…"}`;
 - the Steam Web API key: `aws ssm put-parameter --name /slay-my-stats/steam-api-key --type SecureString`;
 - `cdk bootstrap` for the account and region.
 
@@ -423,5 +431,5 @@ Copyright (C) 2026 Jesse Johnston.
 The code is licensed under the [MIT License](LICENSE): you can use, change and share it, including
 commercially, as long as you keep the copyright notice and license text.
 
-The license covers the code only. The game's art, card data and other assets in this repository are
-Mega Crit's, from Slay the Spire 2. This is a fan project, not affiliated with or endorsed by Mega Crit.
+The license covers the code only. The game's art, card data and other assets the site shows are Mega Crit's,
+from Slay the Spire 2, and aren't included in this repository. This is a fan project, not affiliated with or endorsed by Mega Crit.

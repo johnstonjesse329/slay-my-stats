@@ -27,3 +27,25 @@ calibrate_capture.py
 capture_cards.py
 download_card_images.py
 .playwright-mcp/
+
+# Game art and data extracted from Slay the Spire 2 (Mega Crit's). Built locally by
+# tools/refresh_game_data.py and deployed to the site bucket; not redistributed here.
+card_final/
+card_chrome/
+card_portraits/
+relic_images/
+potion_images/
+node_icons/
+ui_icons/
+thumbs/
+card_data.json
+relic_data.json
+potion_data.json
+data_provenance.json
+
+# Account-specific CDK context (certificate ARN, hosted zone ID)
+infra/cdk.context.json
+
+# Internal notes
+TODO.md
+ATTENTION.md

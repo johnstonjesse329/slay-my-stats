@@ -53,10 +53,12 @@ def _ingest_asset_hash() -> str:
 
 STEAM_API_KEY_PARAM_NAME ="/slay-my-stats/steam-api-key"
 DOMAIN_NAME = "slay-my-stats.com"
-# Must be in us-east-1 -- CloudFront's control plane only looks there for
-# certificates, regardless of what region the rest of this stack deploys to.
-CERTIFICATE_ARN = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
-HOSTED_ZONE_ID = "Z0000000000000000000"
+# The ACM certificate and Route 53 hosted zone are created outside CDK and
+# passed in as context ("certificateArn", "hostedZoneId"), which lives in the
+# untracked infra/cdk.context.json so account-specific IDs stay out of the repo.
+# The certificate must be in us-east-1 -- CloudFront's control plane only looks
+# there for certificates, regardless of what region the rest of this stack
+# deploys to.
 # Everything these services bill is covered by free tier at normal traffic,
 # so any actual spend on them means the ingest path is being abused.
 KILL_SWITCH_BUDGET_USD = 1
@@ -96,6 +98,15 @@ class SlayMyStatsStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        def required_context(key: str) -> str:
+            value = self.node.try_get_context(key)
+            if not value:
+                raise ValueError(f'Set "{key}" in infra/cdk.context.json (see README "Deploying").')
+            return value
+
+        certificate_arn = required_context("certificateArn")
+        hosted_zone_id = required_context("hostedZoneId")
+
         # users/<slug>.json.gz: one gzip JSON blob per player, plus the public
         # users/_index.json.gz list; ids/<steamid>.json.gz maps Steam IDs to
         # slugs and stays private (CloudFront only serves users/*).
@@ -119,7 +130,7 @@ class SlayMyStatsStack(Stack):
         )
 
         certificate = acm.Certificate.from_certificate_arn(
-            self, "SiteCertificate", CERTIFICATE_ARN,
+            self, "SiteCertificate", certificate_arn,
         )
 
         # Reused for the default behavior and the page behaviors below (same
@@ -175,7 +186,7 @@ class SlayMyStatsStack(Stack):
 
         hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
             self, "HostedZone",
-            hosted_zone_id=HOSTED_ZONE_ID,
+            hosted_zone_id=hosted_zone_id,
             zone_name=DOMAIN_NAME,
         )
         route53.ARecord(

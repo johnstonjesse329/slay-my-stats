@@ -190,7 +190,7 @@ function updateAscWinChart(filteredRuns) {
 // -------------------------------------------------------------------------
 
 // Bucket key uses local-time year/month per the project's local-time convention
-// for all date display/filtering (see CLAUDE.md).
+// for all date display/filtering.
 function monthKey(ts) {
   const d = new Date(ts * 1000);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;

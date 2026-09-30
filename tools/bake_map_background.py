@@ -12,7 +12,7 @@ nodes in, joined by dashed ink paths that stop short of each icon.
 Output: ui_icons/map_scroll.webp (committed; dashboard.css draws it behind
 the page via .map-bg, panned by js/map-bg.js).
 
-Run after a full PCK extraction (see CLAUDE.md):
+Run after a full PCK extraction (see README "Refreshing game data"):
     python tools/bake_map_background.py [--pck PATH] [--act overgrowth]
 
 Requires: pip install Pillow

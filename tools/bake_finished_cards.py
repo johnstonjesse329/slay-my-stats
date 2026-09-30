@@ -705,7 +705,7 @@ def main():
     for path, what in ((CHROME_DIR, "card_chrome/ (run tools/bake_card_chrome.py first)"),
                        (CARD_DATA, "card_data.json (run tools/extract_card_data.py first)"),
                        (PORTRAIT_SRC, f"the full PCK extraction — set STS2_PCK_ROOT or check out "
-                                      f"sts2-history-dashboard next to this repo (see CLAUDE.md)")):
+                                      f"sts2-history-dashboard next to this repo")):
         if not path.exists():
             raise SystemExit(f"Source not found: {path}\nNeed: {what}")
 

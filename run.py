@@ -283,7 +283,7 @@ def extract_fights(data: dict, char: str, asc: int, won: bool) -> list[dict]:
 
     A fight is won iff hp_after > 0 — the player survived this specific
     node. killed_by_encounter is NOT used: the player may die to a later
-    encounter in the same run (see CLAUDE.md "Fight win detection").
+    encounter in the same run.
     """
     mph      = data.get("map_point_history", [])
     deck     = data.get("players", [{}])[0].get("deck",   [])
