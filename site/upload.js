@@ -167,12 +167,20 @@
     const links = document.querySelector(".site-links");
     if (!links) return;
     const btn = el("button", { type: "button", className: "upload-btn", textContent: "Upload runs" });
-    btn.addEventListener("click", () => {
+    const upload = () => {
       if (!signIn || Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) startSignIn();
       else if (onRoot) showUploadPanel(signIn);
       else location.assign("/#upload");
-    });
+    };
+    btn.addEventListener("click", upload);
     links.insertBefore(btn, links.querySelector(".site-github"));  // null: at the end
+    // <a data-upload> in page text (e.g. the About page) does the same. Delegated,
+    // since boot.js fetches page bodies in after this script has run.
+    document.addEventListener("click", e => {
+      if (!e.target.closest("a[data-upload]")) return;
+      e.preventDefault();
+      upload();
+    });
   }
 
   // Replaces the page (like boot.js's fallbacks do) with the upload panel.
