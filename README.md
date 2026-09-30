@@ -411,3 +411,14 @@ It recovers the game's `.pck` with [GDRE Tools](https://github.com/GDRETools/gds
 re-extracts card, relic and potion data from the game DLL. Next it re-bakes card art and chrome, and checks
 that everything came from the same build. The map background (`ui_icons/map_scroll.webp`) is baked
 separately by `tools/bake_map_background.py`.
+
+## License
+
+Copyright (C) 2026 JesseJ.
+
+The code is licensed under the [GNU Affero General Public License v3.0](LICENSE). You can use, change and
+share it, including running your own copy as a website, as long as you keep the copyright notice and
+publish your changes under the same license.
+
+The license covers the code only. The game's art, card data and other assets in this repository are
+Mega Crit's, from Slay the Spire 2. This is a fan project, not affiliated with or endorsed by Mega Crit.
