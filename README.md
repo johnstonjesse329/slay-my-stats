@@ -424,6 +424,11 @@ re-extracts card, relic and potion data from the game DLL. Next it re-bakes card
 that everything came from the same build. The map background (`ui_icons/map_scroll.webp`) is baked
 separately by `tools/bake_map_background.py`.
 
+## Contributing
+
+Issues, bug reports and ideas are welcome, so open one! PRs I'll take case by case... this is a passion project
+and I'd like to keep steering it, so for anything bigger than a fix, open an issue first so we can talk it over.
+
 ## License
 
 Copyright (C) 2026 Jesse Johnston.
