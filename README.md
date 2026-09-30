@@ -414,7 +414,7 @@ separately by `tools/bake_map_background.py`.
 
 ## License
 
-Copyright (C) 2026 JesseJ.
+Copyright (C) 2026 Jesse Johnston.
 
 The code is licensed under the [MIT License](LICENSE): you can use, change and share it, including
 commercially, as long as you keep the copyright notice and license text.
