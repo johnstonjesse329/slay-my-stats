@@ -147,7 +147,7 @@ flowchart LR
     data["card_data.json<br/>relic_data.json<br/>potion_data.json"] --> build
     js["js/*.js<br/>dashboard.css"] --> build
     build --> html["sts2_viz.html"]
-    art["card_final/ card_portraits/<br/>relic_images/ node_icons/ ..."] -. "file:// links" .-> html
+    html -. "file:// links" .-> art["card_final/ card_portraits/<br/>relic_images/ node_icons/ ..."]
 ```
 
 ## The website
