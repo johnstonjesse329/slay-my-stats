@@ -112,11 +112,11 @@ flowchart TB
         direction LR
         upload["Browser<br/>(Steam sign-in)"] --> lambda["Ingest Lambda<br/>(runs run.py)"]
         lambda --> s3[("S3<br/>player profiles")]
-        s3 --> cf["CloudFront<br/>slay-my-stats.com/u/&lt;name&gt;"]
+        s3 --> cf["CloudFront<br/>slay-my-stats.com<br/>/u/#lt;name#gt;"]
     end
 
-    runs --> runpy
-    runs --> upload
+    runs --> local
+    runs --> online
 ```
 
 The parser (`run.py`) and the dashboard (`js/`, `dashboard.css`) are shared. The local HTML file inlines them;
