@@ -13,6 +13,7 @@ the site bucket:
     /relic_images/...    -> relic_images/...
     /potion_images/...   -> potion_images/...
     /ui_icons/...        -> ui_icons/...
+    /thumbs/...          -> thumbs/...                  (icon-size copies of the art)
     everything else      -> dist/...   (/ -> dist/index.html)
 
     POST /api/ingest     -> the ingest Lambda's handler, storing into
@@ -43,7 +44,7 @@ _USERS_DIR = _REPO_ROOT / "local_data" / "users"
 
 # Committed game-art folders, served straight from the repo root — these
 # mirror the root-absolute paths the real site bucket serves them at.
-_ART_DIRS = {"card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons"}
+_ART_DIRS = {"card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons", "thumbs"}
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",

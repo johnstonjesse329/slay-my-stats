@@ -165,6 +165,7 @@ function showFloatingHtmlTooltip(target, html) {
   const el = getFloatingTooltipEl();
   el.classList.add("chart-tooltip-rich");
   el.innerHTML = html;
+  loadDeferredImages(el);
   el.style.left = "0px";
   el.style.top = "0px";
   el.style.opacity = 1;

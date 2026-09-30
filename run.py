@@ -736,6 +736,27 @@ def build_card_final_images(url_for=Path.as_uri) -> dict[str, str]:
     return {p.stem: url_for(p) for p in sorted(_CARD_FINAL_DIR.glob("*.webp"))}
 
 
+_THUMBS_DIR = _HERE / "thumbs"
+
+
+def build_thumb_roots(url_for=Path.as_uri) -> dict:
+    """
+    Where tools/bake_thumbs.py's small copies of the art live, for
+    js/card-face.js's thumbSrc(): "art" is the URL prefix every art folder
+    sits under, "thumbs" the thumbs/ folder's URL, and "dirs" the art folders
+    that have thumbnails. Empty if the bake hasn't been run, in which case
+    icon-size art falls back to the full-size files.
+    """
+    if not _THUMBS_DIR.exists():
+        return {}
+    probe = url_for(_HERE / "x")
+    return {
+        "art": probe[:-len("/x")],
+        "thumbs": url_for(_THUMBS_DIR),
+        "dirs": sorted(p.name for p in _THUMBS_DIR.iterdir() if p.is_dir()),
+    }
+
+
 _UI_ICONS_DIR = _HERE / "ui_icons"
 
 
@@ -1338,6 +1359,7 @@ def build_html(runs: list[dict]) -> str:
         "nodeIcons":          node_icons,
         "cardFinal":          card_final,
         "energyIcons":        energy_icons,
+        "thumbRoots":         build_thumb_roots(),
         "runsData":           runs,
     })
 
