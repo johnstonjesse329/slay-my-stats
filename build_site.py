@@ -19,11 +19,14 @@ Usage:
     python build_site.py [--ingest-url URL]
         Cleans dist/ and rebuilds it from card_data.json / relic_data.json /
         potion_data.json, dashboard.css, js/*.js, and site/ (boot.js and
-        the upload button/panel, the player finder's CSS). --ingest-url is the ingest Lambda's
+        the upload button/panel, the player finder's CSS, the hand-written
+        pages in site/pages/ and site/home-intro.html). --ingest-url is the ingest Lambda's
         Function URL, written to dist/site-config.json for the upload page.
 """
 
+import html
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -35,6 +38,35 @@ import run
 
 _DIST = _HERE / "dist"
 _SITE_BOOT_JS = _HERE / "site" / "boot.js"
+# Hand-written pages: site/pages/<name>.html is served at /<name> (see
+# site/pages/README.md). infra/slay_my_stats/slay_my_stats_stack.py lists the
+# same folder to route those URLs, and tools/serve_site.py reads it live.
+PAGES_DIR = _HERE / "site" / "pages"
+HOME_INTRO = _HERE / "site" / "home-intro.html"
+_PAGE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+# First-level paths the site already uses; a page there would shadow them.
+_RESERVED_PAGES = {"u", "users", "ids", "api", "index", "card_final", "card_portraits", "node_icons",
+                   "relic_images", "potion_images", "ui_icons", "thumbs", "card_chrome"}
+_NAV_LABEL = re.compile(r"^\s*<!--\s*nav:\s*(.+?)\s*-->")
+
+
+class PageError(Exception):
+    pass
+
+
+def site_pages() -> list[tuple[str, Path, str | None]]:
+    """(name, file, site-bar label or None) for every site/pages/*.html,
+    sorted by name. Raises PageError for a file name the site can't serve."""
+    pages = []
+    for f in sorted(PAGES_DIR.glob("*.html")):
+        name = f.stem
+        if not _PAGE_NAME.match(name) or name in _RESERVED_PAGES:
+            raise PageError(f"site/pages/{f.name}: page names are lowercase letters, digits and dashes, "
+                            f"and can't be one of {', '.join(sorted(_RESERVED_PAGES))}")
+        first_line = f.read_text(encoding="utf-8").split("\n", 1)[0]
+        label = _NAV_LABEL.match(first_line)
+        pages.append((name, f, label.group(1) if label else None))
+    return pages
 
 
 
@@ -95,7 +127,8 @@ def build_index_html() -> str:
     but with dashboard.css linked instead of inlined, and /boot.js (not an
     embedded DATA blob) driving the page.
     """
-    body = run.dashboard_body_html(home_links=True)
+    links = [(f"/{name}", html.escape(label)) for name, _, label in site_pages() if label]
+    body = run.dashboard_body_html(site_links=links)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -118,6 +151,10 @@ def build_index_html() -> str:
 
 
 def main():
+    try:
+        site_pages()
+    except PageError as e:
+        sys.exit(f"ERROR: {e}")
     if _DIST.exists():
         shutil.rmtree(_DIST)
     _DIST.mkdir(parents=True)
@@ -144,6 +181,11 @@ def main():
         print(f"WARNING: {_SITE_BOOT_JS} does not exist yet — dist/boot.js not written.")
     for name in ("upload.js", "upload.css", "players.css"):
         write(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
+    # Page bodies, fetched by boot.js. Flat names (not a pages/ folder) so
+    # tools/deploy.py's top-level ETag check covers them.
+    write("home-intro.html", HOME_INTRO.read_text(encoding="utf-8"))
+    for name, f, _ in site_pages():
+        write(f"page-{name}.html", f.read_text(encoding="utf-8"))
 
     # Where site/upload.js POSTs runs: the ingest Lambda's Function URL, which
     # only exists once the stack is deployed (tools/deploy.py passes it in).

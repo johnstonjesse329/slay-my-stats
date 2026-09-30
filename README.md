@@ -59,8 +59,10 @@ slay-my-stats/
 │   ├── update.js            re-render on filter change
 │   └── map-bg.js            background map panning
 ├── site/                    Site-only code (not in the local file)
-│   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>
-│   ├── players.css          site bar, finder, site stats
+│   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>, pages
+│   ├── pages/               hand-written pages: <name>.html is served at /<name> (see its README)
+│   ├── home-intro.html      the home page's intro, above the player search
+│   ├── players.css          site bar, finder, site stats, pages
 │   ├── upload.js            Steam sign-in and the upload panel
 │   └── upload.css
 ├── infra/                   CDK app
@@ -207,13 +209,15 @@ Stack outputs: `SiteBucketName`, `DataBucketName`, `DistributionDomainName` and 
 | Path | CloudFront behavior | Origin | Caching |
 |------|---------------------|--------|---------|
 | `/u/*` | rewrite to `/index.html` | site bucket | optimized (`/index.html`'s cache entry) |
+| `/<page>`, `/<page>/` (one pair per `site/pages/` file) | rewrite to `/index.html` | site bucket | optimized |
 | `/users/*` | none | data bucket | **disabled**, so a profile shows an upload straight away |
 | everything else (`/`, `/app.js`, `/catalog.json`, art) | none | site bucket | optimized |
 
 `ids/*` in the data bucket has no behavior, so it's unreachable from outside.
 
 Inside the page, `site/boot.js` decides what to draw from `location.pathname`: the player finder and
-site-wide stats on `/`, or a profile on `/u/<slug>`, which it loads by fetching `/catalog.json` and
+site-wide stats on `/`, a hand-written page on `/<page>` (fetched from `/page-<page>.html`), or a
+profile on `/u/<slug>`, which it loads by fetching `/catalog.json` and
 `/users/<slug>.json.gz`, building `window.DATA` and then loading `/app.js`.
 
 ### Stored data

@@ -5,7 +5,9 @@ stdlib-only (http.server), so no extra install is needed to preview the
 built site. Routing mirrors what CloudFront will be configured to do against
 the site bucket:
 
-    /u/<anything>, /about -> dist/index.html           (client-side router)
+    /, /u/<anything>, /<page> -> index.html, built fresh (client-side router)
+    /page-<page>.html    -> site/pages/<page>.html      (read live, so edits
+    /home-intro.html     -> site/home-intro.html         show on refresh)
     /users/<name>        -> local_data/users/<name>     (gzip'd user blobs)
     /card_final/...      -> card_final/...              (game art, repo root)
     /card_portraits/...  -> card_portraits/...
@@ -39,6 +41,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 # runs exactly the code that's deployed.
 sys.path[:0] = [str(_REPO_ROOT), str(_REPO_ROOT / "infra" / "lambda" / "ingest")]
 import handler as ingest_handler  # noqa: E402
+import build_site  # noqa: E402
 _DIST = _REPO_ROOT / "dist"
 _USERS_DIR = _REPO_ROOT / "local_data" / "users"
 
@@ -90,9 +93,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, {"ingestUrl": "/api/ingest"})
             return
 
-        # /u/<anything> and /about -> the SPA shell
-        if parts and (parts[0] == "u" or parts == ["about"]):
-            self._serve_file(_DIST / "index.html")
+        # The SPA shell, built per request so a new site/pages/ file shows up
+        # in the site bar without a rebuild.
+        if (not parts or parts == ["index.html"] or parts[0] == "u"
+                or (len(parts) == 1 and (build_site.PAGES_DIR / f"{parts[0]}.html").is_file())):
+            self._send_body(build_site.build_index_html().encode("utf-8"), _CONTENT_TYPES[".html"])
+            return
+
+        # Hand-written page bodies, read from site/ rather than dist/.
+        if url_path == "/home-intro.html":
+            self._serve_file(build_site.HOME_INTRO)
+            return
+        if len(parts) == 1 and parts[0].startswith("page-") and parts[0].endswith(".html"):
+            self._serve_file(_safe_join(build_site.PAGES_DIR, [parts[0][len("page-"):]]))
             return
 
         # /users/<name> -> a gzip'd per-user data blob; 403 if it's not there,
@@ -114,10 +127,7 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_file(_safe_join(_REPO_ROOT, parts))
             return
 
-        # Everything else comes from dist/, with / -> index.html.
-        if not parts:
-            self._serve_file(_DIST / "index.html")
-            return
+        # Everything else comes from dist/.
         self._serve_file(_safe_join(_DIST, parts))
 
     def do_POST(self):
@@ -155,9 +165,11 @@ class Handler(BaseHTTPRequestHandler):
         if file_path is None or not file_path.is_file():
             self.send_error(404)
             return
-        body = file_path.read_bytes()
+        self._send_body(file_path.read_bytes(), content_type or _content_type(file_path), content_encoding)
+
+    def _send_body(self, body: bytes, content_type: str, content_encoding: str | None = None):
         self.send_response(200)
-        self.send_header("Content-Type", content_type or _content_type(file_path))
+        self.send_header("Content-Type", content_type)
         if content_encoding:
             self.send_header("Content-Encoding", content_encoding)
         self.send_header("Content-Length", str(len(body)))

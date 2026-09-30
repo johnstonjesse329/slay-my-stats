@@ -7,6 +7,7 @@ once per clone with `git config core.hooksPath githooks`), or by hand:
     infra\\.venv\\Scripts\\python.exe tools/deploy.py
 
 Steps:
+  0. Check site/pages/ file names, since the stack routes a URL per page.
   1. `cdk diff`. If the stack changed, print the diff and ask y/N before
      `cdk deploy`. No changes -> skip straight to the site.
   2. `build_site.py` (given the stack's ingest Function URL for the upload
@@ -213,6 +214,16 @@ def deploy_site() -> None:
          "--paths", *paths, "--output", "text", "--query", "Invalidation.Id"])
 
 
+def check_site_pages() -> None:
+    """Fail before cdk runs if a site/pages/ file name can't be a URL."""
+    sys.path.insert(0, str(_HERE))
+    import build_site
+    try:
+        build_site.site_pages()
+    except build_site.PageError as e:
+        raise DeployError(str(e))
+
+
 def main() -> int:
     # The cdk diff echoed below has ✨ and └─; a cp1252 console can't print them.
     sys.stdout.reconfigure(errors="replace")
@@ -222,6 +233,7 @@ def main() -> int:
             return 0
         if not pre_push and git("status", "--porcelain", "--untracked-files=no"):
             print("Note: deploying a working tree with uncommitted changes.")
+        check_site_pages()
         deploy_infra()
         deploy_site()
     except DeployError as e:

@@ -29,6 +29,10 @@ INGEST_DIR = Path(__file__).resolve().parents[1] / "lambda" / "ingest"
 # so the two can't drift apart. It lives at the repo root, outside the asset
 # folder, and gets copied in at synth time.
 RUN_PY = Path(__file__).resolve().parents[2] / "run.py"
+# Hand-written site pages: site/pages/<name>.html is served at /<name>.
+# tools/deploy.py checks the names (build_site.site_pages()) before cdk
+# runs; each page gets its own CloudFront behavior below.
+SITE_PAGES = sorted(f.stem for f in (Path(__file__).resolve().parents[2] / "site" / "pages").glob("*.html"))
 
 
 @jsii.implements(ILocalBundling)
@@ -163,8 +167,9 @@ class SlayMyStatsStack(Stack):
                     cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
                 ),
                 "u/*": page_behavior,
-                # "about*" so /about/ works too.
-                "about*": page_behavior,
+                # Exact paths, not "<name>*", so a page can't catch an asset
+                # that starts with the same letters; the second is /<name>/.
+                **{pattern: page_behavior for name in SITE_PAGES for pattern in (name, f"{name}/")},
             },
         )
 

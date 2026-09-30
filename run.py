@@ -879,7 +879,7 @@ def build_card_images(url_for=Path.as_uri) -> dict[str, str]:
     return result
 
 
-def dashboard_body_html(subtitle: str = "", home_links: bool = False) -> str:
+def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | None = None) -> str:
     """
     The markup between <body> and the <script> tag: the map background
     (dashboard.css; panned by js/map-bg.js), skip link, header, the
@@ -887,19 +887,19 @@ def dashboard_body_html(subtitle: str = "", home_links: bool = False) -> str:
     Detail / Card Stats / Seed Data). Shared by build_html() (the local HTML
     generator) and build_site.py (the static site).
 
-    home_links (live site only): a site bar in place of the header, with the
-    site's name (a link home) and links to the rest of the site;
-    site/upload.js adds its button to .site-links. The local file has no site
-    to link to, so it keeps the plain title header.
+    site_links (live site only): (href, label) pairs for a site bar in place
+    of the header, after the site's name (a link home); label is HTML.
+    site/upload.js adds its button to .site-links. The local file passes
+    None: it has no site to link to, so it keeps the plain title header.
     """
-    top = ("""
+    links = "".join(f'\n    <a class="site-link" href="{href}">{label}</a>' for href, label in site_links or [])
+    top = (f"""
 <nav class="site-nav" aria-label="Site">
   <a class="site-brand" href="/">Slay My Stats</a>
-  <div class="site-links">
-    <a class="site-link" href="/about">About</a>
+  <div class="site-links">{links}
   </div>
 </nav>
-""" if home_links else f"""
+""" if site_links is not None else f"""
 <header>
 <h1>Slay the Spire 2</h1>
 <p class="subtitle">{subtitle}</p>
