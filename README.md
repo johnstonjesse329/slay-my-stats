@@ -119,9 +119,27 @@ flowchart TB
     runs --> online
 ```
 
-The parser (`run.py`) and the dashboard (`js/`, `dashboard.css`) are shared. The local HTML file inlines them;
-the site bundles them into `app.js`, and the ingest Lambda runs the same `run.py` on uploads, so the two can't
-drift apart.
+The parser (`run.py`) and the dashboard (`js/`, `dashboard.css`) are shared by both paths, so the local file and
+the site always show the same numbers.
+
+**Locally,** `run.py` parses your history and writes one HTML file with your runs, the dashboard code and the
+styles inlined. The game art stays in the repo and the page links to it.
+
+**The site is static.** Every page is the same `index.html` and `app.js`, stored in S3 and served by CloudFront
+from its edge locations worldwide. No server builds pages: visiting `/u/<name>` loads that player's runs file
+(`users/<slug>.json.gz`), and the dashboard code computes every stat in the browser, exactly as it does in the
+local file.
+
+**Uploads appear on the next page load.** The upload Lambda parses new runs with `run.py` and writes the updated
+runs file straight to S3; there's no build step. Runs files are never cached by CloudFront, and the browser checks
+for a newer copy on every visit, so a new upload shows up right away. If nothing changed, that check returns a few
+hundred bytes.
+
+**The home page** reads two small files the Lambda also updates on each upload: the player list for search, and
+the site-wide running totals (see [Site-wide stats](#site-wide-stats)).
+
+**Server-side code** is just the upload Lambda, plus the budget kill switch. Viewing a page runs no Lambda at all;
+the only code involved is a small CloudFront Function that sends every `/u/<name>` address to `index.html`.
 
 ## Local use
 
