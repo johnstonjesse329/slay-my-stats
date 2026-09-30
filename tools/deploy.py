@@ -44,16 +44,34 @@ class DeployError(Exception):
     pass
 
 
-def run(args, *, cwd=_HERE, env=None, capture=False) -> subprocess.CompletedProcess:
-    """Run a command with stdin detached (in pre-push, stdin is git's ref list)."""
+def run(args, *, cwd=_HERE, env=None, capture=False, stream=False) -> subprocess.CompletedProcess:
+    """
+    Run a command with stdin detached (in pre-push, stdin is git's ref list).
+    capture: collect output silently (printed only on failure).
+    stream: print output live as it arrives and also collect it, for slow
+    steps whose output the caller still needs (cdk diff, art syncs) so the
+    push doesn't sit silent for minutes.
+    """
     exe = shutil.which(args[0])
     if exe is None:
         raise DeployError(f"'{args[0]}' is not on PATH")
     print("$", " ".join(args), flush=True)
-    result = subprocess.run(
-        [exe, *args[1:]], cwd=cwd, env=env, stdin=subprocess.DEVNULL,
-        capture_output=capture, text=True, encoding="utf-8", errors="replace",  # cdk prints ✨ and └─
-    )
+    if stream:
+        proc = subprocess.Popen(
+            [exe, *args[1:]], cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        lines = []
+        for line in proc.stdout:
+            print(line, end="", flush=True)
+            lines.append(line)
+        result = subprocess.CompletedProcess(proc.args, proc.wait(), "".join(lines), "")
+    else:
+        result = subprocess.run(
+            [exe, *args[1:]], cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+            capture_output=capture, text=True, encoding="utf-8", errors="replace",  # cdk prints ✨ and └─
+        )
     if result.returncode != 0:
         if capture:
             print(result.stdout + result.stderr)
@@ -117,12 +135,11 @@ def deploy_infra() -> None:
     venv_bin = _INFRA / ".venv" / ("Scripts" if os.name == "nt" else "bin")
     env = {**os.environ, "PATH": f"{venv_bin}{os.pathsep}{os.environ['PATH']}"}
 
-    diff = run(["cdk", "diff"], cwd=_INFRA, env=env, capture=True)
-    output = diff.stdout + diff.stderr
+    print("Infra: comparing the stack with AWS (cdk diff, usually a minute or two)...", flush=True)
+    output = run(["cdk", "diff"], cwd=_INFRA, env=env, stream=True).stdout
     if "There were no differences" in output:
         print("Infra: no changes.")
         return
-    print(output)
     if not ask("Deploy these infra changes?"):
         raise DeployError("infra deploy declined")
     run(["cdk", "deploy", "--require-approval", "never"], cwd=_INFRA, env=env)
@@ -165,12 +182,14 @@ def ingest_function_url() -> str:
 
 
 def deploy_site() -> None:
+    print("Site: building dist/...", flush=True)
     run([sys.executable, str(_HERE / "build_site.py"), "--ingest-url", ingest_function_url()])
+    print("Site: uploading changed dist/ files...", flush=True)
     changed = upload_changed_dist()
     for d in ART_DIRS:
+        print(f"Site: syncing {d}/ (each uploaded file is listed)...", flush=True)
         out = run(["aws", "s3", "sync", str(_HERE / d), f"s3://{SITE_BUCKET}/{d}",
-                   "--size-only", "--no-progress"], capture=True).stdout
-        print(out, end="")
+                   "--size-only", "--no-progress"], stream=True).stdout
         # "upload: <local path> to s3://<bucket>/<key>"
         changed += [line.split(f"s3://{SITE_BUCKET}/", 1)[1]
                     for line in out.splitlines() if line.startswith("upload:")]
