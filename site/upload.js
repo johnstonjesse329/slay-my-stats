@@ -172,7 +172,7 @@
       else if (onRoot) showUploadPanel(signIn);
       else location.assign("/#upload");
     });
-    links.append(btn);
+    links.insertBefore(btn, links.querySelector(".site-github"));  // null: at the end
   }
 
   // Replaces the page (like boot.js's fallbacks do) with the upload panel.
