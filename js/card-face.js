@@ -31,18 +31,68 @@ function cardFaceWidth(minPx, maxPx) {
   return `clamp(${minPx}px, ${vw}vw, ${maxPx}px)`;
 }
 
-function renderCardFace(id, upgrade = 0, width = 200) {
-  const src = DATA.cardFinal && DATA.cardFinal[cardFaceKey(id, upgrade)];
+// ---- Download size: thumbnails and deferred tooltip art -----------------
+//
+// Icon-size art (22-26px) uses tools/bake_thumbs.py's small WebP copies
+// instead of the full-size file, which can be 20x the bytes. Maps a full-size
+// art URL onto its thumbnail; anything without one (no bake, or a folder
+// that isn't thumbnailed) comes back unchanged.
+function thumbSrc(src) {
+  const t = DATA.thumbRoots;
+  if (!src || !t || !t.dirs) return src;
+  const prefix = t.art + "/";
+  if (!src.startsWith(prefix)) return src;
+  const rel = src.slice(prefix.length);
+  if (!t.dirs.includes(rel.split("/")[0])) return src;
+  return `${t.thumbs}/${rel.replace(/\.(png|webp)$/i, ".webp")}`;
+}
+
+// Hover tooltips are built into the page up front, hidden with
+// visibility:hidden, and a hidden image still downloads. Tooltip art is
+// written as data-src instead and only given its real src when its tooltip
+// is first opened (hover, focus or tap below; showFloatingHtmlTooltip for
+// the floating ones), so a page only downloads the art someone looks at.
+function imgSrcAttr(src, deferred) {
+  return deferred ? `data-src="${src}"` : `src="${src}"`;
+}
+
+function loadDeferredImages(root) {
+  for (const img of root.querySelectorAll("img[data-src]")) {
+    img.src = img.dataset.src;
+    img.removeAttribute("data-src");
+  }
+}
+
+// A tooltip's .card-tooltip-wrap / .relic-tooltip-wrap sits right inside
+// the element that opens it, so walk up a few levels from whatever the
+// pointer or focus landed on and load the art of any tooltip found there.
+function loadTooltipArtNear(target) {
+  for (let el = target, depth = 0; el && el.children && depth < 6; el = el.parentElement, depth++) {
+    for (const child of el.children) {
+      if (child.classList.contains("card-tooltip-wrap") || child.classList.contains("relic-tooltip-wrap")) {
+        loadDeferredImages(child);
+      }
+    }
+  }
+}
+document.addEventListener("pointerover", e => loadTooltipArtNear(e.target), { passive: true });
+document.addEventListener("focusin", e => loadTooltipArtNear(e.target));
+
+// opts.thumb: icon-size, use the thumbnail. opts.deferred: tooltip art, see
+// imgSrcAttr().
+function renderCardFace(id, upgrade = 0, width = 200, opts = {}) {
+  let src = DATA.cardFinal && DATA.cardFinal[cardFaceKey(id, upgrade)];
   if (!src) return "";
+  if (opts.thumb) src = thumbSrc(src);
   const w = typeof width === "number" ? `${width}px` : width;
   const name = (cardInfo(id) || {}).title || fmtCardLabel(id);
-  return `<img loading="lazy" class="cardface" style="width:${w}" src="${src}" alt="${name}">`;
+  return `<img loading="lazy" class="cardface" style="width:${w}" ${imgSrcAttr(src, opts.deferred)} alt="${name}">`;
 }
 
 function buildCardTooltip(id, upgrade) {
   // Prefer the real composited card when the chrome bake is present.
   if (cardFaceAvailable()) {
-    return `<div class="card-tooltip card-tooltip-face">${renderCardFace(id, upgrade, cardFaceWidth(150, 210))}</div>`;
+    return `<div class="card-tooltip card-tooltip-face">${renderCardFace(id, upgrade, cardFaceWidth(150, 210), { deferred: true })}</div>`;
   }
   const info  = cardInfo(id);
   const src   = cardImgSrc(id);

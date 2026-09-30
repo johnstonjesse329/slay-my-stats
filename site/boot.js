@@ -207,6 +207,7 @@
       nodeIcons: catalog.nodeIcons,
       cardFinal: catalog.cardFinal,
       energyIcons: catalog.energyIcons,
+      thumbRoots: catalog.thumbRoots,
       runsData: runs,
     };
   }

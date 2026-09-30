@@ -36,7 +36,7 @@ SITE_BUCKET = "slay-my-stats-site"
 DOMAIN_NAME = "slay-my-stats.com"
 STACK_NAME = "SlayMyStatsStack"
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
-ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons"]
+ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons", "thumbs"]
 ZERO_SHA = "0" * 40
 
 

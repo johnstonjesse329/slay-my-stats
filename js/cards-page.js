@@ -195,7 +195,7 @@ function renderCardsPage() {
     // tabbing to either opens the card.
     const icon = src
       ? `<span style="display:inline-block;vertical-align:middle;margin-right:6px;line-height:0">
-          <img loading="lazy" src="${src}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:4px;vertical-align:middle">
+          <img loading="lazy" src="${thumbSrc(src)}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:4px;vertical-align:middle">
         </span>`
       : "";
     return `<tr>

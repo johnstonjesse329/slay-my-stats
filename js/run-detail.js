@@ -220,7 +220,7 @@ function renderDetailRun(run) {
         const src = relicImgSrc(id);
         const tip = buildRelicTooltip(id);
         const iconHtml = src
-          ? `<img loading="lazy" class="run-boon-icon" src="${src}" alt="${fmtRelicLabel(id)}">`
+          ? `<img loading="lazy" class="run-boon-icon" src="${thumbSrc(src)}" alt="${fmtRelicLabel(id)}">`
           : `<span class="run-summary-value">${fmtRelicLabel(id)}</span>`;
         // tabindex: same touch/keyboard tooltip-reveal parity as .relic-tile.
         return `<span class="run-boon-wrap" tabindex="0">${iconHtml}${tip ? `<span class="relic-tooltip-wrap">${tip}</span>` : ""}</span>`;
@@ -331,7 +331,7 @@ function buildNodeTooltip(node) {
   // potions get their own icons.
   const fmtPotion = fmtPotionLabel;
   const iconRow = (cls, src, label, extra = "") =>
-    `<div class="${cls} nt-item">${src ? `<img loading="lazy" class="nt-item-icon" src="${src}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
+    `<div class="${cls} nt-item">${src ? `<img loading="lazy" class="nt-item-icon" src="${thumbSrc(src)}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
   const nodeCardHtml = (id, dim = false) => cardFaceAvailable()
     ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}">${renderCardFace(id, 0, cardFaceWidth(84, 128))}</div>`
     : `<div class="${dim ? "nt-skipped" : "nt-reward-card"}">${fmtCardLabel(id)}</div>`;
@@ -771,7 +771,7 @@ function buildPotionTooltip(id) {
   const rarColor = { Common: "#ccc", Uncommon: "#aad4ff", Rare: "#ffd700", Event: "#c49fe8" }[info.rarity] || "#bcbcd0";
   const desc = substituteDescVars(info.desc || "", info.vars);
   return `<div class="relic-tooltip">
-    ${src ? `<img loading="lazy" class="rt-art" src="${src}" alt="${name}">` : ""}
+    ${src ? `<img loading="lazy" class="rt-art" ${imgSrcAttr(src, true)} alt="${name}">` : ""}
     <div class="rt-header">${name}${info.rarity ? `<div class="rt-rarity" style="color:${rarColor}">${info.rarity}</div>` : ""}</div>
     ${desc ? `<div class="rt-desc">${desc.replace(/\n/g, "<br>")}</div>` : ""}
   </div>`;
@@ -785,7 +785,7 @@ function buildRelicTooltip(id) {
   const rarColor = { Common: "#ccc", Uncommon: "#aad4ff", Rare: "#ffd700", Boss: "#e88", Starter: "#bcbcd0" }[info.rarity] || "#bcbcd0";
   const rawDesc = info.desc || "";
   const desc = substituteDescVars(rawDesc, info.vars);
-  const artHtml = src ? `<img loading="lazy" class="rt-art" src="${src}" alt="${name}">` : "";
+  const artHtml = src ? `<img loading="lazy" class="rt-art" ${imgSrcAttr(src, true)} alt="${name}">` : "";
   const rarHtml = info.rarity ? `<div class="rt-rarity" style="color:${rarColor}">${info.rarity}</div>` : "";
   const descHtml = desc ? `<div class="rt-desc">${desc.replace(/\n/g, "<br>")}</div>` : "";
   return `<div class="relic-tooltip">

@@ -384,6 +384,7 @@ def main():
     extract_out = run_step("card/relic data", ["tools/extract_card_data.py", str(dll)])
     run_step("card chrome", ["tools/bake_card_chrome.py"])
     run_step("finished cards", ["tools/bake_finished_cards.py"])
+    run_step("thumbnails", ["tools/bake_thumbs.py"])
 
     problems, stats = completeness_report()
     # extract_card_data.py drops entries the localization doesn't know about
