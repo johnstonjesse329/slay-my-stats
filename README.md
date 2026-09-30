@@ -4,7 +4,7 @@ Run-history stats for **Slay the Spire 2**, built from the `.run` files the game
 
 It works two ways, from the same parser and the same dashboard code:
 
-- **Locally:** `run.py` reads your history folder and writes one self-contained HTML file.
+- **Locally:** `run.py` reads your history folder and writes one HTML file.
 - **Online at [slay-my-stats.com](https://slay-my-stats.com):** you sign in with Steam and upload your history
   folder from the browser. Your profile lives at `/u/<name>`, named after your Steam name, and anyone can find
   it by searching on the home page.
@@ -105,7 +105,7 @@ flowchart TB
 
     subgraph local["Local"]
         direction LR
-        runpy["run.py"] --> html["sts2_viz.html<br/>(self-contained)"]
+        runpy["run.py"] --> html["sts2_viz.html<br/>(one HTML file)"]
     end
 
     subgraph online["Online"]
