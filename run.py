@@ -511,6 +511,13 @@ def parse_run(path: Path) -> dict:
     return parse_run_data(data, steam_id=steam_id, fallback_ts=int(path.stem))
 
 
+# Bump when a change here alters what parse_run_data returns for runs already
+# uploaded. Profiles record the version that built them, so the ones built by
+# an older parser can be found and rebuilt from their raw uploads
+# (tools/rebuild_profiles.py).
+PARSER_VERSION = 1
+
+
 def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | None = None) -> dict:
     """
     parse_run() minus the file: takes an already-loaded .run JSON object, the

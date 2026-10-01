@@ -1,44 +1,64 @@
-"""Ingest Lambda: verifies a Steam sign-in and merges uploaded runs into the
-user's stored blob.
+"""Ingest: verifies a Steam sign-in, takes the upload straight into S3, and
+merges its runs into the user's stored blob. Two Lambda entry points share
+this file:
 
-Request (POST to the Function URL, sent by the browser upload page):
+lambda_handler -- the Function URL (POST from the browser upload page):
     query string  every openid.* parameter Steam appended to our return_to
                   URL, passed through untouched -- the proof of who is
                   uploading. Re-verified with Steam on every upload; there
                   are no sessions.
-    body          gzip'd NDJSON: one raw .run file's JSON per line (the
-                  browser re-serializes each file onto a single line).
+    Flow: per-IP limit -> verify the OpenID assertion -> refuse if this
+    Steam account asked less than COOLDOWN_SECONDS ago (a cost
+    circuit-breaker, not a feature) or with this same sign-in -> answer
+    with a presigned POST for one new raw/ object, capped at
+    UPLOAD_MAX_BYTES, plus the upload's id.
 
-Flow: verify the OpenID assertion -> find the player's profile and refuse
-if it was written less than COOLDOWN_SECONDS ago (a cost circuit-breaker,
-not a feature) or by this same sign-in -> stream-decompress the body,
-parsing each run with run.py's parse_run_data -> reject anything outside a
-strict shape/charset allowlist -> dedupe by ts -> merge -> conditional
-PutObject -> update the player list. Responds with counts, the profile's
-address and name, never the blob (a big history is larger than the 6 MB
-response limit); the page re-fetches it through CloudFront.
+process_handler -- S3 "object created" events under raw/:
+    The uploaded object is gzip'd NDJSON: one raw .run file's JSON per line
+    (the browser re-serializes each file onto a single line). Stream-
+    decompress it, parsing each run with run.py's parse_run_data -> reject
+    anything outside a strict shape/charset allowlist -> merge by ts
+    (runs already on the profile are re-parsed in place) -> conditional
+    PutObject -> update the player list and site stats -> write the
+    upload's result, which the browser polls for. The raw object is kept
+    so profiles can be rebuilt after a parser fix (rebuild_profile); only
+    uploads with no run in them at all are deleted.
 
 Storage (the data bucket; CloudFront serves users/* only):
-    users/<slug>.json.gz    public profile: {"v":1, "name", "runs":[...]}
+    users/<slug>.json.gz    public profile: {"v":1, "name", "runs":[...],
+                            "noRaw":[ts...], "parser"}. noRaw lists runs
+                            uploaded before raw uploads were kept; the page
+                            sends those again so they get a raw copy.
     users/_index.json.gz    public player list: {"v":1, "players":[{slug,
                             name, runs, updated}]}, for search
+    users/_uploads/<id>.json.gz
+                            public result of one upload, polled by the page
+                            that made it. Counts and the slug only; the id
+                            is random, so nobody else knows where it is.
     ids/<steamid>.json.gz   private: {"slug"}. The only place a Steam ID is
                             kept, so nothing public links a profile to a
                             Steam account.
+    raw/<steamid>/<time>-<id>.ndjson.gz
+                            private: every upload exactly as sent.
+    limits/steam/<steamid>.json.gz, limits/ip/<hash>.json.gz
+                            private: when upload URLs were last handed out.
 A profile's slug is its Steam display name at first upload, lowercased with
 everything but a-z0-9 dropped ("Mr. Bean!" -> "mrbean"; "player" if nothing
 is left), plus "-2", "-3"... if taken. It never changes after that, so
 shared links keep working; a rename only updates the shown name.
 
-The core (ingest()) takes a storage object rather than calling S3 itself, so
-tools/serve_site.py can run the same code against local_data/.
+The cores (authorize(), process_upload()) take a storage object rather than
+calling S3 themselves, so tools/serve_site.py can run the same code against
+local_data/.
 """
-import base64
 import gzip
+import hashlib
+import ipaddress
 import json
 import math
 import os
 import re
+import secrets
 import time
 import unicodedata
 import urllib.parse
@@ -59,15 +79,23 @@ CLAIMED_ID_RE = re.compile(r"^https://steamcommunity\.com/openid/id/(\d{17})$")
 NONCE_MAX_AGE_SECONDS = 30 * 60
 NONCE_MAX_SKEW_SECONDS = 5 * 60
 COOLDOWN_SECONDS = 60
+# Upload URLs per IP address (per /64 for IPv6, which hands out whole
+# blocks) per hour: roomy for a household sharing one address, a wall for
+# one machine spamming uploads.
+IP_UPLOADS_PER_HOUR = 5
+IP_WINDOW_SECONDS = 3600
 
-# Upload limits. A real run is ~63 KB raw on average; 1,700 of them is about
-# what fits the 6 MB request once gzip'd, so these leave generous headroom
-# while still bounding memory against a decompression bomb.
-MAX_DECOMPRESSED_BYTES = 200 * 1024 * 1024
+# Upload limits. A real run is 28-63 KB raw and ~2.7 KB once a whole history
+# is gzip'd together, so 100 MB holds ~35,000 runs: any real history in one
+# go. Decompressed, 20,000 runs is ~1.3 GB; the cap bounds memory against a
+# decompression bomb, and parsing streams, so it never all sits in memory.
+UPLOAD_MAX_BYTES = 100 * 1024 * 1024
+UPLOAD_URL_SECONDS = 10 * 60
+MAX_DECOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_LINE_BYTES = 4 * 1024 * 1024
-MAX_RUNS_PER_UPLOAD = 3000
 MAX_RUNS_TOTAL = 20000
 MAX_PARSED_RUN_BYTES = 1024 * 1024
+MERGE_RETRIES = 5
 
 # Every string in a parsed run is a game id, type, seed or build -- in 666
 # real runs all match [A-Za-z0-9_.] and are at most 39 chars. Anything else
@@ -87,6 +115,8 @@ MAX_SLUG_TRIES = 50
 INDEX_KEY = "users/_index.json.gz"
 INDEX_RETRIES = 5
 STATS_KEY = "users/_stats.json.gz"
+UPLOAD_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16}$")
+RAW_KEY_RE = re.compile(r"^raw/(\d{17})/(\d{8}T\d{6}Z)-([A-Za-z0-9_-]{16})\.ndjson\.gz$")
 
 
 class StoreConflict(Exception):
@@ -264,7 +294,7 @@ def iter_upload_lines(body: bytes):
         pending = d.unconsumed_tail
         total += len(chunk)
         if total > MAX_DECOMPRESSED_BYTES:
-            raise IngestError(413, "too_large", "Upload is too large. Upload in smaller batches.")
+            raise IngestError(413, "too_large", "Upload is too large.")
         buf += chunk
         *lines, buf = buf.split(b"\n")
         for line in lines:
@@ -310,17 +340,20 @@ def check_safe(value, depth: int = 0) -> bool:
     return False
 
 
-def parse_upload(body: bytes, steam_id: str) -> tuple[list[dict], int]:
-    """Parse every run in the upload; returns (good runs, count rejected)."""
-    runs, rejected = [], 0
+def parse_upload(body: bytes, steam_id: str) -> tuple[list[dict], int, int]:
+    """Parse every run in the upload; returns (good runs, count rejected,
+    count that looked like .run files at all -- rejected ones included, since
+    a run the parser can't handle yet may be the parser's fault)."""
+    runs, rejected, run_shaped = [], 0, 0
     for line in iter_upload_lines(body):
-        if len(runs) + rejected >= MAX_RUNS_PER_UPLOAD:
-            raise IngestError(413, "too_many_runs",
-                              f"At most {MAX_RUNS_PER_UPLOAD} runs per upload. Upload in smaller batches.")
+        if len(runs) + rejected >= MAX_RUNS_TOTAL:
+            raise IngestError(413, "too_many_runs", f"At most {MAX_RUNS_TOTAL} runs per upload.")
         try:
             data = json.loads(line, parse_constant=lambda c: None)
             if not isinstance(data, dict):
                 raise ValueError("not an object")
+            if "start_time" in data and "players" in data:
+                run_shaped += 1
             parsed = run.parse_run_data(data, steam_id=steam_id)
             ts = parsed.get("ts")
             ok = (isinstance(ts, int) and not isinstance(ts, bool) and TS_MIN <= ts <= TS_MAX
@@ -332,7 +365,7 @@ def parse_upload(body: bytes, steam_id: str) -> tuple[list[dict], int]:
             runs.append(parsed)
         else:
             rejected += 1
-    return runs, rejected
+    return runs, rejected, run_shaped
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +378,33 @@ def blob_key(slug: str) -> str:
 
 def id_key(steam_id: str) -> str:
     return f"ids/{steam_id}.json.gz"
+
+
+def raw_key(steam_id: str, upload_id: str, now: float) -> str:
+    stamp = datetime.fromtimestamp(now, timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"raw/{steam_id}/{stamp}-{upload_id}.ndjson.gz"
+
+
+def result_key(upload_id: str) -> str:
+    return f"users/_uploads/{upload_id}.json.gz"
+
+
+def steam_limit_key(steam_id: str) -> str:
+    return f"limits/steam/{steam_id}.json.gz"
+
+
+def ip_limit_key(ip: str) -> str:
+    """Keyed by a hash, not the address itself. Bare IPv4 hashes can be
+    brute-forced, so this only keeps addresses out of plain sight in a
+    private bucket."""
+    try:
+        addr = ipaddress.ip_address(ip)
+        if addr.version == 6:
+            addr = ipaddress.ip_network(f"{ip}/64", strict=False)
+        ip = str(addr)
+    except ValueError:
+        pass
+    return f"limits/ip/{hashlib.sha256(ip.encode()).hexdigest()[:32]}.json.gz"
 
 
 def _pack(obj) -> bytes:
@@ -511,74 +571,212 @@ def _update_stats(store, delta: dict) -> None:
     print(json.dumps({"warning": "stats_update_failed", "runs": delta.get("allRuns")}))
 
 
-def ingest(params: dict, body: bytes, store, allowed_return_to: list[str],
-           now: float | None = None, post=_post_to_steam, lookup_name=None) -> dict:
+# ---------------------------------------------------------------------------
+# Handing out upload URLs
+# ---------------------------------------------------------------------------
+
+def authorize(params: dict, ip: str, store, allowed_return_to: list[str], presign,
+              now: float | None = None, post=_post_to_steam) -> dict:
     """
-    The whole upload, storage-agnostic. `store` provides:
+    Check the limits and the sign-in, then hand out a presigned POST for one
+    new raw/ object. Storage-agnostic, like the rest: `store` provides
         get(key) -> (bytes, last_modified_epoch, etag, metadata) or None
         put(key, bytes, metadata, if_match_etag or None for "must not exist")
             raising StoreConflict if that precondition fails
-        delete(key)
-    `lookup_name(steam_id)` gives the current Steam display name (or None).
+        delete(key), list(prefix) -> [key, ...]
+    and `presign(key, max_bytes, expires_seconds)` returns {"url", "fields"}.
     """
     now = time.time() if now is None else now
-    lookup_name = lookup_name or lookup_steam_name
-    steam_id = verify_openid(params, allowed_return_to, now=now, post=post)
-    nonce = params["openid.response_nonce"]
+    # The IP limit comes first, so a flood from one address never reaches Steam.
+    got_ip = store.get(ip_limit_key(ip))
+    ip_times = [t for t in (_unpack(got_ip[0]).get("times", []) if got_ip else []) if now - t < IP_WINDOW_SECONDS]
+    if len(ip_times) >= IP_UPLOADS_PER_HOUR:
+        raise IngestError(429, "rate_limited", "Too many uploads from your network. Try again in an hour.")
 
+    # A sign-in can be used again until it expires; whether Steam accepts the
+    # same one twice is up to Steam. The cooldown and IP limit still apply.
+    steam_id = verify_openid(params, allowed_return_to, now=now, post=post)
+    got = store.get(steam_limit_key(steam_id))
+    if got and now - _unpack(got[0]).get("at", 0) < COOLDOWN_SECONDS:
+        raise IngestError(429, "cooldown", "You just uploaded. Wait a minute and try again.")
+    try:
+        store.put(steam_limit_key(steam_id), _pack({"at": now}), {}, got[2] if got else None)
+        store.put(ip_limit_key(ip), _pack({"times": ip_times + [now]}), {}, got_ip[2] if got_ip else None)
+    except StoreConflict:
+        raise IngestError(409, "conflict", "Another upload started at the same time. Try again.")
+
+    # The slug lets the page skip runs the profile already has, on any device.
+    record = store.get(id_key(steam_id))
+    upload_id = secrets.token_urlsafe(12)
+    return {"uploadId": upload_id, "maxBytes": UPLOAD_MAX_BYTES,
+            "slug": _unpack(record[0])["slug"] if record else None,
+            **presign(raw_key(steam_id, upload_id, now), UPLOAD_MAX_BYTES, UPLOAD_URL_SECONDS)}
+
+
+# ---------------------------------------------------------------------------
+# Processing an upload
+# ---------------------------------------------------------------------------
+
+def _read_profile(store, steam_id: str) -> tuple[str | None, str | None, dict | None]:
+    """(slug, etag, profile) for a player; profile is None if they have none."""
     record = store.get(id_key(steam_id))
     slug = _unpack(record[0])["slug"] if record else None
     existing = store.get(blob_key(slug)) if slug else None
-    etag = old_name = None
-    old_runs: list[dict] = []
-    if existing is not None:
-        raw, last_modified, etag, meta = existing
-        if meta.get("last-nonce") == nonce:
-            raise IngestError(409, "signin_used", "This sign-in was already used for an upload. Sign in again.")
-        if now - last_modified < COOLDOWN_SECONDS:
-            raise IngestError(429, "cooldown", "You just uploaded. Wait a minute and try again.")
-        doc = _unpack(raw)
-        old_runs, old_name = doc.get("runs", []), doc.get("name")
+    return (slug, existing[2], _unpack(existing[0])) if existing else (slug, None, None)
 
-    new_runs, rejected = parse_upload(body, steam_id)
 
-    seen = {r["ts"] for r in old_runs}
-    added, duplicates = [], 0
-    for r in new_runs:
-        if r["ts"] in seen:
-            duplicates += 1
+def _no_raw(doc: dict | None) -> set:
+    """ts of the runs on a profile with no raw copy: every run, on a profile
+    from before raw uploads were kept."""
+    if doc is None:
+        return set()
+    if "noRaw" in doc:
+        return set(doc["noRaw"])
+    return {r["ts"] for r in doc.get("runs", [])}
+
+
+def merge_runs(old_runs: list[dict], new_runs: list[dict]) -> tuple[list[dict], list[dict], int]:
+    """
+    An upload's runs merged into a profile's by ts. A run the profile already
+    has is replaced by the upload's fresh parse, so a parser fix reaches it
+    the next time it's sent. Returns (merged, added, count already there).
+    """
+    by_ts = {r["ts"]: r for r in old_runs}
+    added, already = [], 0
+    for r in {r["ts"]: r for r in new_runs}.values():
+        if r["ts"] in by_ts:
+            already += 1
         else:
-            seen.add(r["ts"])
             added.append(r)
+        by_ts[r["ts"]] = r
+    return sorted(by_ts.values(), key=lambda r: r["ts"]), added, already
 
-    result = {"slug": slug, "name": old_name, "added": len(added), "duplicates": duplicates,
-              "rejected": rejected, "total": len(old_runs) + len(added)}
-    if not added:
+
+def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) -> dict:
+    new_runs, rejected, run_shaped = parse_upload(body, steam_id)
+    if not run_shaped:
+        raise IngestError(400, "no_runs", "None of those files could be read as runs.")
+    name = None
+    for _ in range(MERGE_RETRIES):
+        slug, etag, doc = _read_profile(store, steam_id)
+        old_runs = doc.get("runs", []) if doc else []
+        merged, added, already = merge_runs(old_runs, new_runs)
+        no_raw = _no_raw(doc) - {r["ts"] for r in new_runs}
+        result = {"status": "done", "slug": slug, "name": doc.get("name") if doc else None, "added": len(added),
+                  "duplicates": already, "rejected": rejected, "total": len(merged)}
+        if not new_runs or (doc is not None and merged == old_runs and no_raw == _no_raw(doc)):
+            return result
+        if len(merged) > MAX_RUNS_TOTAL:
+            raise IngestError(413, "too_many_runs", f"Profiles are capped at {MAX_RUNS_TOTAL} runs.")
+
+        # Only asked once there's something to save, so junk uploads never
+        # reach Steam. A returning player keeps their old name if Steam can't
+        # be asked; a new one can't be given an address without one.
+        name = name or clean_name(lookup_name(steam_id)) or (doc.get("name") if doc else None)
+        if name is None:
+            raise IngestError(502, "steam_unreachable", "Couldn't get your Steam name from Steam.")
+        try:
+            slug = save_profile(store, steam_id, slug, etag, name, merged, {}, now, no_raw=sorted(no_raw))
+        except IngestError as e:
+            if e.code == "conflict":  # another upload landed first: merge onto that
+                continue
+            raise
+        # Only the runs this upload added: the rest are already in the totals.
+        _update_stats(store, tally(added, slug))
+        result.update(slug=slug, name=name)
         return result
-    if result["total"] > MAX_RUNS_TOTAL:
-        raise IngestError(413, "too_many_runs", f"Profiles are capped at {MAX_RUNS_TOTAL} runs.")
+    raise IngestError(503, "busy", "Your profile is busy. Try again shortly.")
 
-    # Only asked once there's something to save, so junk uploads never reach
-    # Steam. A returning player keeps their old name if Steam can't be asked;
-    # a new one can't be given an address without one.
-    name = clean_name(lookup_name(steam_id)) or old_name
-    if name is None:
-        raise IngestError(502, "steam_unreachable", "Couldn't get your Steam name from Steam. Try again shortly.")
 
-    merged = sorted(old_runs + added, key=lambda r: r["ts"])
-    slug = save_profile(store, steam_id, slug, etag, name, merged, {"last-nonce": nonce}, now)
-    # Only the runs this upload added: the rest are already in the totals.
-    _update_stats(store, tally(added, slug))
-    result.update(slug=slug, name=name)
+def _put_over(store, key: str, data: bytes) -> None:
+    """Write whether or not the key exists (S3 event deliveries can repeat)."""
+    for _ in range(INDEX_RETRIES):
+        got = store.get(key)
+        try:
+            store.put(key, data, {}, got[2] if got else None)
+            return
+        except StoreConflict:
+            continue
+
+
+def process_upload(key: str, store, now: float | None = None, lookup_name=None) -> dict | None:
+    """
+    Merge one uploaded raw/ object into its player's profile and publish the
+    upload's result for the page to poll. The Steam ID comes from the key,
+    which authorize() chose, never from the upload. Returns the result, or
+    None for a key that isn't an upload or is already gone. Raises
+    IngestError (status >= 500) when trying again later may work; the Lambda
+    then retries, and the raw object stays either way.
+    """
+    m = RAW_KEY_RE.match(key)
+    got = store.get(key) if m else None
+    if got is None:
+        return None
+    steam_id, _, upload_id = m.groups()
+    now = time.time() if now is None else now
+    try:
+        result = _merge_upload(store, steam_id, got[0], now, lookup_name or lookup_steam_name)
+    except IngestError as e:
+        if e.status >= 500:
+            raise
+        # Not a run history at all: spam, not a parser problem, so not kept.
+        if e.code in ("no_runs", "bad_body", "too_large"):
+            store.delete(key)
+        result = {"status": "failed", "error": e.code, "message": e.message}
+    _put_over(store, result_key(upload_id), _pack(result))
     return result
 
 
+def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: bool = False) -> dict:
+    """
+    Re-parse every raw upload a player has made with the current parser and
+    rewrite their profile from it; runs with no raw copy stay as they are.
+    Site stats aren't touched: run tools/rebuild_stats.py afterwards.
+    """
+    now = time.time() if now is None else now
+    fresh, unreadable = {}, 0
+    for key in sorted(store.list(f"raw/{steam_id}/")):  # oldest first: later copies win
+        got = store.get(key) if RAW_KEY_RE.match(key) else None
+        if got is None:
+            continue
+        try:
+            runs, _, _ = parse_upload(got[0], steam_id)
+        except IngestError:
+            unreadable += 1
+            continue
+        fresh.update((r["ts"], r) for r in runs)
+    for _ in range(MERGE_RETRIES):
+        slug, etag, doc = _read_profile(store, steam_id)
+        if doc is None:
+            raise IngestError(404, "no_profile", f"No profile for {steam_id}.")
+        no_raw = _no_raw(doc) - fresh.keys()
+        merged = sorted([r for r in doc.get("runs", []) if r["ts"] in no_raw] + list(fresh.values()),
+                        key=lambda r: r["ts"])
+        summary = {"slug": slug, "runs": len(merged), "fromRaw": len(fresh), "noRaw": len(no_raw),
+                   "dropped": len({r["ts"] for r in doc.get("runs", [])} - {r["ts"] for r in merged}),
+                   "unreadableUploads": unreadable}
+        if dry_run:
+            return summary
+        try:
+            save_profile(store, steam_id, slug, etag, doc["name"], merged, {}, now, no_raw=sorted(no_raw))
+        except IngestError as e:
+            if e.code == "conflict":
+                continue
+            raise
+        return summary
+    raise IngestError(503, "busy", "Profile kept changing; try again.")
+
+
 def save_profile(store, steam_id: str, slug: str | None, etag: str | None, name: str,
-                 runs: list[dict], meta: dict, now: float) -> str:
+                 runs: list[dict], meta: dict, now: float, no_raw: list[int] | None = None) -> str:
     """Write a profile (claiming a slug if the player has none yet) and list
-    it in the public index. `etag` is the profile as read, or None. Returns
-    the slug."""
-    data = _pack({"v": 1, "name": name, "runs": runs})
+    it in the public index. `etag` is the profile as read, or None. `no_raw`
+    lists the runs with no raw copy; None means none of them have one.
+    Returns the slug."""
+    doc = {"v": 1, "name": name, "runs": runs, "parser": run.PARSER_VERSION}
+    if no_raw is not None:
+        doc["noRaw"] = no_raw
+    data = _pack(doc)
     if slug:
         try:
             store.put(blob_key(slug), data, meta, etag)
@@ -622,6 +820,27 @@ class S3Store:
     def delete(self, key):
         self._s3.delete_object(Bucket=self._bucket, Key=key)
 
+    def list(self, prefix):
+        pages = self._s3.get_paginator("list_objects_v2").paginate(Bucket=self._bucket, Prefix=prefix)
+        return [o["Key"] for page in pages for o in page.get("Contents", [])]
+
+    def presign_post(self, key, max_bytes, expires):
+        """A form POST straight to S3 for exactly this key. The size cap is
+        part of the signed policy, so S3 itself refuses anything bigger."""
+        import boto3
+        from botocore.config import Config
+        region = os.environ.get("AWS_REGION", "us-west-2")
+        # The regional endpoint: the global one redirects POSTs for buckets
+        # outside us-east-1, which a browser form upload can't follow.
+        s3 = boto3.client("s3", region_name=region, endpoint_url=f"https://s3.{region}.amazonaws.com",
+                          config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}))
+        return s3.generate_presigned_post(
+            Bucket=self._bucket, Key=key,
+            Fields={"Content-Type": "application/gzip"},
+            Conditions=[{"Content-Type": "application/gzip"}, ["content-length-range", 1, max_bytes]],
+            ExpiresIn=expires,
+        )
+
 
 class DirStore:
     """
@@ -659,12 +878,26 @@ class DirStore:
         for f in (p, p.with_name(p.name + ".meta.json")):
             f.unlink(missing_ok=True)
 
+    def list(self, prefix):
+        folder = self._path(prefix).parent if not prefix.endswith("/") else self._path(prefix)
+        if not folder.is_dir():
+            return []
+        keys = (f.relative_to(self._root).as_posix() for f in folder.rglob("*") if f.is_file())
+        return [k for k in keys if k.startswith(prefix) and not k.endswith(".meta.json")]
+
 
 # ---------------------------------------------------------------------------
-# Lambda entry point (Function URL, payload format 2.0)
+# Lambda entry points
 # ---------------------------------------------------------------------------
 
 _store = None
+
+
+def _get_store():
+    global _store
+    if _store is None:
+        _store = S3Store(os.environ["DATA_BUCKET"])
+    return _store
 
 
 def _response(status: int, body: dict) -> dict:
@@ -673,19 +906,28 @@ def _response(status: int, body: dict) -> dict:
 
 
 def lambda_handler(event, context):
-    global _store
-    if event.get("requestContext", {}).get("http", {}).get("method") != "POST":
+    """The Function URL (payload format 2.0): hands out upload URLs."""
+    http = event.get("requestContext", {}).get("http", {})
+    if http.get("method") != "POST":
         return _response(405, {"error": "method_not_allowed", "message": "POST only."})
     params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", ""), keep_blank_values=True))
-    body = event.get("body") or ""
-    body = base64.b64decode(body) if event.get("isBase64Encoded") else body.encode("latin-1")
     allowed = [p for p in os.environ.get("ALLOWED_RETURN_TO", "").split(",") if p]
-    if _store is None:
-        _store = S3Store(os.environ["DATA_BUCKET"])
+    store = _get_store()
     try:
-        result = ingest(params, body, _store, allowed)
+        result = authorize(params, http.get("sourceIp", ""), store, allowed, store.presign_post)
     except IngestError as e:
         print(json.dumps({"status": e.status, "code": e.code}))
         return _response(e.status, {"error": e.code, "message": e.message})
-    print(json.dumps({"status": 200, **result}))
+    print(json.dumps({"status": 200, "uploadId": result["uploadId"]}))
     return _response(200, result)
+
+
+def process_handler(event, context):
+    """S3 "object created" events for raw/. Invoked asynchronously, so an
+    exception here makes Lambda retry the event (twice) and then hand it to
+    the failure queue; the raw object stays put for a later rebuild."""
+    for record in event.get("Records", []):
+        key = urllib.parse.unquote_plus(record["s3"]["object"]["key"])
+        result = process_upload(key, _get_store())
+        log = {k: v for k, v in (result or {}).items() if k != "name"}
+        print(json.dumps({"key": key, **log}))

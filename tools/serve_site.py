@@ -9,6 +9,7 @@ the site bucket:
     /page-<page>.html    -> site/pages/<page>.html      (read live, so edits
     /home-intro.html     -> site/home-intro.html         show on refresh)
     /users/<name>        -> local_data/users/<name>     (gzip'd user blobs)
+    /users/_uploads/<id> -> local_data/users/_uploads/<id>  (upload results)
     /card_final/...      -> card_final/...              (game art, repo root)
     /card_portraits/...  -> card_portraits/...
     /node_icons/...      -> node_icons/...
@@ -18,8 +19,12 @@ the site bucket:
     /thumbs/...          -> thumbs/...                  (icon-size copies of the art)
     everything else      -> dist/...   (/ -> dist/index.html)
 
-    POST /api/ingest     -> the ingest Lambda's handler, storing into
-                            local_data/users/ (stands in for the Function URL)
+    POST /api/ingest     -> the ingest Lambda's authorize(), storing into
+                            local_data/ (stands in for the Function URL); the
+                            upload URL it hands out is this server's own:
+    POST /api/raw-upload -> stands in for the presigned S3 POST: stores the
+                            file under local_data/raw/ and processes it on
+                            the spot (stands in for the S3 event)
 
 A missing /users/<name> answers 403, not 404 — that's what S3 (behind
 CloudFront with Origin Access Control) returns for a key that doesn't exist,
@@ -30,8 +35,10 @@ Usage:
     python tools/serve_site.py --port 8080
 """
 
+import email.parser
 import json
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlsplit
@@ -44,6 +51,12 @@ import handler as ingest_handler  # noqa: E402
 import build_site  # noqa: E402
 _DIST = _REPO_ROOT / "dist"
 _USERS_DIR = _REPO_ROOT / "local_data" / "users"
+_DATA_DIR = _USERS_DIR.parent
+
+# Raw keys handed out by /api/ingest and not yet used: what the presigned
+# POST's signature pins down on real S3.
+_issued_keys: set[str] = set()
+_issued_lock = threading.Lock()
 
 # Committed game-art folders, served straight from the repo root — these
 # mirror the root-absolute paths the real site bucket serves them at.
@@ -111,7 +124,8 @@ class Handler(BaseHTTPRequestHandler):
         # /users/<name> -> a gzip'd per-user data blob; 403 if it's not there,
         # same as S3-via-OAC would answer for a missing key.
         if parts and parts[0] == "users":
-            if len(parts) != 2 or not parts[1].endswith(".json.gz"):
+            if (len(parts) not in (2, 3) or (len(parts) == 3 and parts[1] != "_uploads")
+                    or not parts[-1].endswith(".json.gz")):
                 self.send_error(403)
                 return
             user_path = _safe_join(_USERS_DIR, parts[1:])
@@ -131,26 +145,66 @@ class Handler(BaseHTTPRequestHandler):
         self._serve_file(_safe_join(_DIST, parts))
 
     def do_POST(self):
-        # /api/ingest -> the real ingest Lambda's code, writing into
-        # local_data/users/ instead of S3. Steam verification is still real:
-        # sign in through Steam with a return_to on this server's origin.
-        if urlsplit(self.path).path != "/api/ingest":
+        path = urlsplit(self.path).path
+        if path == "/api/ingest":
+            self._authorize()
+        elif path == "/api/raw-upload":
+            self._raw_upload()
+        else:
             self.send_error(404)
-            return
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > 6 * 1024 * 1024:  # the Function URL's own request limit
-            self._send_json(413, {"error": "too_large", "message": "Upload is over 6 MB."})
-            return
-        body = self.rfile.read(length)
+
+    def _authorize(self):
+        # The real ingest Lambda's authorize(), writing into local_data/
+        # instead of S3. Steam verification is still real: sign in through
+        # Steam with a return_to on this server's origin.
         params = dict(parse_qsl(urlsplit(self.path).query, keep_blank_values=True))
         port = self.server.server_address[1]
         allowed = [f"http://127.0.0.1:{port}/", f"http://localhost:{port}/"]
+
+        def presign(key, max_bytes, expires):
+            with _issued_lock:
+                _issued_keys.add(key)
+            return {"url": "/api/raw-upload", "fields": {"key": key, "Content-Type": "application/gzip"}}
         try:
-            result = ingest_handler.ingest(params, body, ingest_handler.DirStore(_USERS_DIR.parent), allowed)
+            result = ingest_handler.authorize(params, self.client_address[0], ingest_handler.DirStore(_DATA_DIR),
+                                              allowed, presign)
         except ingest_handler.IngestError as e:
             self._send_json(e.status, {"error": e.code, "message": e.message})
             return
         self._send_json(200, result)
+
+    def _raw_upload(self):
+        # Stands in for S3: a multipart form POST whose "key" field must be
+        # one /api/ingest handed out, and whose "file" is capped at the same
+        # size. Then the S3 event's processing, run right here.
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > ingest_handler.UPLOAD_MAX_BYTES + 64 * 1024:
+            self.send_error(400, "EntityTooLarge")
+            return
+        head = f"Content-Type: {self.headers.get('Content-Type', '')}\r\n\r\n".encode()
+        form = email.parser.BytesParser().parsebytes(head + self.rfile.read(length))
+        fields = {part.get_param("name", header="content-disposition"): part.get_payload(decode=True)
+                  for part in form.get_payload()} if form.is_multipart() else {}
+        key = (fields.get("key") or b"").decode()
+        data = fields.get("file")
+        with _issued_lock:
+            issued = key in _issued_keys
+            _issued_keys.discard(key)
+        if not issued or data is None:
+            self.send_error(403, "AccessDenied")
+            return
+        if len(data) > ingest_handler.UPLOAD_MAX_BYTES:
+            self.send_error(400, "EntityTooLarge")
+            return
+        store = ingest_handler.DirStore(_DATA_DIR)
+        store.put(key, data, {}, None)
+        self.send_response(204)
+        self.end_headers()
+        try:
+            ingest_handler.process_upload(key, store)
+        except ingest_handler.IngestError as e:
+            # The Lambda would retry; here it just stays in raw/ for a rebuild.
+            print(f"processing {key} failed: {e.code}", file=sys.stderr)
 
     def _send_json(self, status: int, payload: dict):
         body = json.dumps(payload).encode()

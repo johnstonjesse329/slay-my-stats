@@ -187,7 +187,7 @@ def main():
     for name, f, _ in site_pages():
         write(f"page-{name}.html", f.read_text(encoding="utf-8"))
 
-    # Where site/upload.js POSTs runs: the ingest Lambda's Function URL, which
+    # Where site/upload.js asks for an upload URL: the ingest Lambda's Function URL, which
     # only exists once the stack is deployed (tools/deploy.py passes it in).
     # Without it, the upload button still works up to the POST and then says
     # uploads aren't available. tools/serve_site.py answers this path itself.
