@@ -17,7 +17,7 @@ from aws_cdk import (
     aws_s3 as s3,
     aws_s3_notifications as s3n,
     aws_sns as sns,
-    aws_sqs as sqs,
+    aws_sns_subscriptions as subscriptions,
     aws_ssm as ssm,
 )
 import shutil
@@ -107,8 +107,11 @@ class SlayMyStatsStack(Stack):
 
         certificate_arn = required_context("certificateArn")
         hosted_zone_id = required_context("hostedZoneId")
+        # Where failed uploads are emailed. Kept out of the repo with the rest.
+        alert_email = required_context("alertEmail")
 
-        # users/<slug>.json.gz: one gzip JSON blob per player, plus the public
+        # users/<slug>.json.gz and users/<slug>/<YYYY-MM>.json.gz: each
+        # player's profile summary and runs by month, plus the public
         # users/_index.json.gz list and users/_uploads/<id>.json.gz, each
         # upload's result for the page to poll. Private (CloudFront only
         # serves users/*): ids/<steamid>.json.gz maps Steam IDs to slugs,
@@ -249,22 +252,40 @@ class SlayMyStatsStack(Stack):
         data_bucket.grant_read_write(ingest_fn)
 
         # Merges each upload into its player's profile, run by S3 as the
-        # upload lands. The whole merged profile is held in memory: measured
-        # locally, 667 runs took 1.3 s and ~185 MB, 5,000 runs 10 s and
-        # ~790 MB. So 1 GB covers profiles up to roughly 6,000 runs, with time
-        # to spare at Lambda's slower CPU for this memory size.
+        # upload lands. It goes a month at a time, so only the months an
+        # upload touches are ever in memory: 667 runs took 7.8 s and 155 MB
+        # live, and the profile's size doesn't matter.
         process_log_group = logs.LogGroup(
             self, "ProcessLogGroup",
             retention=logs.RetentionDays.ONE_WEEK,
             removal_policy=RemovalPolicy.DESTROY,
         )
-        # Uploads that still failed after Lambda's retries. Their raw/ object
-        # is kept, so they can be processed again once whatever broke is fixed.
-        # Only ever written to (nothing polls it), so it costs nothing idle.
-        process_failures = sqs.Queue(
-            self, "ProcessFailures",
-            retention_period=Duration.days(14),
+        # Lambda calls this directly (no queue, so nothing costs anything
+        # while uploads work) once an upload has failed every retry, by error
+        # or timeout: it tells the uploader's page, logs it, and emails you. The raw/
+        # object is kept, so the upload can be processed again once whatever
+        # broke is fixed.
+        failure_log_group = logs.LogGroup(
+            self, "ProcessFailureLogGroup",
+            retention=logs.RetentionDays.ONE_MONTH,
+            removal_policy=RemovalPolicy.DESTROY,
         )
+        failure_fn = lambda_.Function(
+            self, "ProcessFailureFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="handler.failure_handler",
+            code=ingest_code,
+            timeout=Duration.seconds(15),
+            log_group=failure_log_group,
+            environment={"DATA_BUCKET": data_bucket.bucket_name},
+        )
+        data_bucket.grant_read_write(failure_fn, "users/_uploads/*")
+        # Emails you about each one. AWS sends a confirmation email first:
+        # nothing arrives until the link in it is clicked.
+        alert_topic = sns.Topic(self, "AlertTopic")
+        alert_topic.add_subscription(subscriptions.EmailSubscription(alert_email))
+        alert_topic.grant_publish(failure_fn)
+        failure_fn.add_environment("ALERT_TOPIC_ARN", alert_topic.topic_arn)
         # S3 invokes this directly. No queue in between: Lambda polling one
         # costs SQS requests even while nothing is uploaded. How many copies
         # run at once is capped only by the account's concurrency limit (10);
@@ -275,12 +296,14 @@ class SlayMyStatsStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_12,
             handler="handler.process_handler",
             code=ingest_code,
-            timeout=Duration.minutes(2),
+            # A 20,000-run upload took ~50 s on a desktop; Lambda's CPU at this
+            # size is slower. Only an upload that big ever runs this long.
+            timeout=Duration.minutes(5),
             memory_size=1024,
             log_group=process_log_group,
             environment={"DATA_BUCKET": data_bucket.bucket_name},
             retry_attempts=2,
-            on_failure=lambda_destinations.SqsDestination(process_failures),
+            on_failure=lambda_destinations.LambdaDestination(failure_fn),
         )
         data_bucket.grant_read_write(process_fn)  # and delete: junk uploads aren't kept
         data_bucket.add_event_notification(
@@ -395,4 +418,3 @@ class SlayMyStatsStack(Stack):
         CfnOutput(self, "DataBucketName", value=data_bucket.bucket_name)
         CfnOutput(self, "DistributionDomainName", value=distribution.distribution_domain_name)
         CfnOutput(self, "IngestFunctionUrl", value=fn_url.url)
-        CfnOutput(self, "ProcessFailuresQueueUrl", value=process_failures.queue_url)

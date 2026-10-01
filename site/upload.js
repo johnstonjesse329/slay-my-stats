@@ -40,7 +40,7 @@
   // first upload takes a while; past this the page stops waiting, but the
   // upload still lands.
   const POLL_MS = 2000;
-  const POLL_GIVE_UP_MS = 5 * 60 * 1000;
+  const POLL_GIVE_UP_MS = 6 * 60 * 1000;  // the process Lambda's timeout, plus a minute
   // An upload URL is good for 10 minutes; reuse one after a failed send
   // only while it has a bit of that left.
   const UPLOAD_URL_MAX_AGE_MS = 8 * 60 * 1000;
@@ -129,17 +129,19 @@
     return { runs, unreadable };
   }
 
-  // ts values already on the player's profile, so they aren't re-sent. Runs
-  // the server has no raw copy of (noRaw; every run, on a profile from before
-  // raw copies were kept) are sent again so it gets one.
+  // ts values already on the player's profile, so they aren't re-sent; the
+  // profile's summary lists them by month. Runs the server has no raw copy
+  // of (noRaw; every run, on a profile from before raw copies were kept) are
+  // sent again so it gets one.
   async function existingTimestamps(slug) {
     if (!slug) return new Set();
     try {
       const resp = await fetch(`/users/${slug}.json.gz`, { cache: "no-store" });
       if (!resp.ok) return new Set();
       const doc = await resp.json();
-      const noRaw = new Set(doc.noRaw || (doc.runs || []).map(r => r.ts));
-      return new Set((doc.runs || []).map(r => r.ts).filter(ts => !noRaw.has(ts)));
+      const all = doc.months ? Object.values(doc.months).flat() : (doc.runs || []).map(r => r.ts);
+      const noRaw = new Set(doc.noRaw || all);
+      return new Set(all.filter(ts => !noRaw.has(ts)));
     } catch (e) {
       return new Set();
     }
@@ -389,7 +391,7 @@
     }
     pending = null;
 
-    setStatus(status, `Uploaded. Adding ${fresh.length} runs to your profile…`);
+    setStatus(status, `Sent. Adding ${fresh.length} runs to your profile…`);
     const result = await waitForResult(auth.uploadId);
     const profileLink = (result && result.slug) || slug
       ? { href: `/u/${(result && result.slug) || slug}`, text: "View profile" } : null;

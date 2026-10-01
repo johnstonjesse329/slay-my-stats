@@ -8,7 +8,9 @@ the site bucket:
     /, /u/<anything>, /<page> -> index.html, built fresh (client-side router)
     /page-<page>.html    -> site/pages/<page>.html      (read live, so edits
     /home-intro.html     -> site/home-intro.html         show on refresh)
-    /users/<name>        -> local_data/users/<name>     (gzip'd user blobs)
+    /users/<name>        -> local_data/users/<name>     (gzip'd profile summaries,
+                                                         index, site stats)
+    /users/<slug>/<month> -> local_data/users/<slug>/<month>  (a profile's runs, by month)
     /users/_uploads/<id> -> local_data/users/_uploads/<id>  (upload results)
     /card_final/...      -> card_final/...              (game art, repo root)
     /card_portraits/...  -> card_portraits/...
@@ -124,8 +126,7 @@ class Handler(BaseHTTPRequestHandler):
         # /users/<name> -> a gzip'd per-user data blob; 403 if it's not there,
         # same as S3-via-OAC would answer for a missing key.
         if parts and parts[0] == "users":
-            if (len(parts) not in (2, 3) or (len(parts) == 3 and parts[1] != "_uploads")
-                    or not parts[-1].endswith(".json.gz")):
+            if len(parts) not in (2, 3) or not parts[-1].endswith(".json.gz"):
                 self.send_error(403)
                 return
             user_path = _safe_join(_USERS_DIR, parts[1:])

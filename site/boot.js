@@ -8,13 +8,15 @@
 // instant it loads — see js/data.js's header comment. run.py used to build
 // that object in Python (build_html()) and inline it straight into the
 // page; now that the site is static, this file rebuilds the exact same
-// shape in the browser from two fetches:
+// shape in the browser from these fetches:
 //   - /catalog.json        — the game-data catalog (cards/relics/encounters/
 //                             images), the same for every profile.
-//   - /users/<slug>.json.gz — this profile's display name and parsed runs
-//                             (parse_run() output, one entry per run,
-//                             already sorted by ts), served gzip-encoded —
-//                             fetch()/Response decode that transparently.
+//   - /users/<slug>.json.gz — this profile's summary: display name and the
+//                             ts of every run, by month ("YYYY-MM").
+//   - /users/<slug>/<YYYY-MM>.json.gz — one per month, fetched in parallel:
+//                             that month's parsed runs (parse_run() output,
+//                             sorted by ts).
+// All served gzip-encoded — fetch()/Response decode that transparently.
 // Slugs are the player's Steam name reduced to a-z0-9, plus "-2", "-3", ...
 // when a name is already taken (the ingest Lambda hands them out).
 //
@@ -561,13 +563,38 @@
       return;
     }
 
+    let runs;
+    try {
+      runs = await loadRuns(slug, userDoc);
+    } catch (e) {
+      showError();
+      return;
+    }
+
     showPlayerName(userDoc.name);
-    if (!(userDoc.runs || []).length) {
+    if (!runs.length) {
       showNoRuns();
       return;
     }
-    window.DATA = buildData(catalog, userDoc.runs);
+    window.DATA = buildData(catalog, runs);
     loadAppScript();
+  }
+
+  // Every run on a profile, oldest first. The summary lists its months; each
+  // month's runs are in /users/<slug>/<YYYY-MM>.json.gz, fetched all at once.
+  // A month that's missing (403/404) counts as empty: a rebuild can be
+  // between removing it and rewriting the summary. A profile from before
+  // month files has its runs in the summary itself.
+  async function loadRuns(slug, userDoc) {
+    if (!userDoc.months) return userDoc.runs || [];
+    const months = Object.keys(userDoc.months).sort();
+    const parts = await Promise.all(months.map(async m => {
+      const resp = await fetch(`/users/${slug}/${m}.json.gz`, { cache: "no-cache" });
+      if (resp.status === 403 || resp.status === 404) return [];
+      if (!resp.ok) throw new Error(`${m}: ${resp.status}`);
+      return (await resp.json()).runs || [];
+    }));
+    return parts.flat();
   }
 
   main();

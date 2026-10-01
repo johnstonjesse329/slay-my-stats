@@ -17,6 +17,10 @@ Usage:
     python tools/rebuild_profiles.py --slug mrbean
     python tools/rebuild_profiles.py --steam-id 76561198000000001
         Rebuild one profile.
+    python tools/rebuild_profiles.py --migrate
+        Split profiles from before month files (every run in
+        users/<slug>.json.gz) into month files, as they are: nothing is
+        re-parsed. An upload does this for its own profile anyway.
 
     --dry-run            Report what would change without writing.
     --bucket <name>      The live data bucket (needs AWS credentials);
@@ -56,6 +60,23 @@ def main():
     dry_run = "--dry-run" in args
 
     players = _players(store)
+    if "--migrate" in args:
+        migrated = 0
+        for slug in sorted(players.values()):
+            if dry_run:
+                got = store.get(handler.blob_key(slug))
+                todo = bool(got) and handler._unpack(got[0]).get("v", 1) < 2
+            else:
+                try:
+                    todo = handler.migrate_profile(store, slug)
+                except handler.IngestError as e:
+                    print(f"  {slug}: {e.message}")
+                    continue
+            if todo:
+                migrated += 1
+                print(f"  {slug}")
+        print(f"{migrated} profile(s) {'would be ' if dry_run else ''}split into month files.")
+        return
     if arg("--steam-id"):
         targets = [arg("--steam-id")]
     elif arg("--slug"):

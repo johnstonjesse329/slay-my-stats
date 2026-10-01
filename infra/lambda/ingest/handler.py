@@ -1,6 +1,6 @@
 """Ingest: verifies a Steam sign-in, takes the upload straight into S3, and
 merges its runs into the user's stored blob. Two Lambda entry points share
-this file:
+this file (plus failure_handler, below):
 
 lambda_handler -- the Function URL (POST from the browser upload page):
     query string  every openid.* parameter Steam appended to our return_to
@@ -9,26 +9,43 @@ lambda_handler -- the Function URL (POST from the browser upload page):
                   are no sessions.
     Flow: per-IP limit -> verify the OpenID assertion -> refuse if this
     Steam account asked less than COOLDOWN_SECONDS ago (a cost
-    circuit-breaker, not a feature) or with this same sign-in -> answer
-    with a presigned POST for one new raw/ object, capped at
-    UPLOAD_MAX_BYTES, plus the upload's id.
+    circuit-breaker, not a feature) -> answer with a presigned POST for one
+    new raw/ object, capped at UPLOAD_MAX_BYTES, plus the upload's id. A
+    sign-in works again (after the cooldown) until it expires.
 
 process_handler -- S3 "object created" events under raw/:
     The uploaded object is gzip'd NDJSON: one raw .run file's JSON per line
-    (the browser re-serializes each file onto a single line). Stream-
-    decompress it, parsing each run with run.py's parse_run_data -> reject
-    anything outside a strict shape/charset allowlist -> merge by ts
-    (runs already on the profile are re-parsed in place) -> conditional
-    PutObject -> update the player list and site stats -> write the
-    upload's result, which the browser polls for. The raw object is kept
-    so profiles can be rebuilt after a parser fix (rebuild_profile); only
-    uploads with no run in them at all are deleted.
+    (the browser re-serializes each file onto a single line), in any order.
+    Stream-decompress it, parsing each run with run.py's parse_run_data ->
+    reject anything outside a strict shape/charset allowlist -> park the
+    runs on local disk by month (Spool) -> merge each month into its file
+    by ts (runs already on the profile are re-parsed in place), with a
+    conditional PutObject per month -> the profile summary last -> update
+    the player list and site stats -> write the upload's result, which the
+    browser polls for. Only the months an upload touches are read or
+    written, so an upload costs the same however big the profile is. The
+    raw object is kept so profiles can be rebuilt after a parser fix
+    (rebuild_profile); only uploads with no run in them at all are deleted.
+
+failure_handler -- the process function's on-failure destination:
+    Lambda calls it (directly; no queue) once an upload has failed every
+    try, by error or timeout. It writes a failed result for that upload, so
+    the page that sent it says so instead of waiting, logs the key, and
+    emails the site owner through SNS.
 
 Storage (the data bucket; CloudFront serves users/* only):
-    users/<slug>.json.gz    public profile: {"v":1, "name", "runs":[...],
-                            "noRaw":[ts...], "parser"}. noRaw lists runs
-                            uploaded before raw uploads were kept; the page
-                            sends those again so they get a raw copy.
+    users/<slug>.json.gz    public profile summary: {"v":2, "name", "parser",
+                            "months":{"YYYY-MM":[ts...]}, "noRaw":[ts...]}.
+                            noRaw lists runs uploaded before raw uploads
+                            were kept; the page sends those again so they
+                            get a raw copy. A v1 profile ({"v":1, "name",
+                            "runs":[...]}, from before month files) is split
+                            into month files by its next upload
+                            (migrate_profile).
+    users/<slug>/<YYYY-MM>.json.gz
+                            public: {"v":2, "runs":[...]}, the month's
+                            parsed runs (UTC start time), sorted by ts.
+                            Written before the summary lists them.
     users/_index.json.gz    public player list: {"v":1, "players":[{slug,
                             name, runs, updated}]}, for search
     users/_uploads/<id>.json.gz
@@ -59,6 +76,7 @@ import math
 import os
 import re
 import secrets
+import tempfile
 import time
 import unicodedata
 import urllib.parse
@@ -89,11 +107,16 @@ IP_WINDOW_SECONDS = 3600
 # is gzip'd together, so 100 MB holds ~35,000 runs: any real history in one
 # go. Decompressed, 20,000 runs is ~1.3 GB; the cap bounds memory against a
 # decompression bomb, and parsing streams, so it never all sits in memory.
+# Runs per upload are capped so the biggest one is processed well inside
+# the Lambda's timeout (20,000 took ~50 s locally); a profile itself has no
+# cap, since it's stored a month at a time. Months per upload are capped
+# because each one is an open spool file and an S3 write.
 UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 UPLOAD_URL_SECONDS = 10 * 60
 MAX_DECOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_LINE_BYTES = 4 * 1024 * 1024
-MAX_RUNS_TOTAL = 20000
+MAX_RUNS_PER_UPLOAD = 20000
+MAX_MONTHS_PER_UPLOAD = 240
 MAX_PARSED_RUN_BYTES = 1024 * 1024
 MERGE_RETRIES = 5
 
@@ -340,14 +363,62 @@ def check_safe(value, depth: int = 0) -> bool:
     return False
 
 
-def parse_upload(body: bytes, steam_id: str) -> tuple[list[dict], int, int]:
-    """Parse every run in the upload; returns (good runs, count rejected,
-    count that looked like .run files at all -- rejected ones included, since
-    a run the parser can't handle yet may be the parser's fault)."""
-    runs, rejected, run_shaped = [], 0, 0
+def month_of(ts: int) -> str:
+    """The UTC month a run started in, "YYYY-MM": which month file it's in."""
+    return time.strftime("%Y-%m", time.gmtime(ts))
+
+
+class Spool:
+    """
+    Parsed runs parked on local disk (/tmp on Lambda), one gzip file per
+    month, so an upload of any size is never held in memory at once: it's
+    read through once, run by run, and then each month is merged on its
+    own. Uploads can be in any order. Also remembers every ts it was given.
+    """
+    def __init__(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self._files = {}
+        self.ts = set()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        for f in self._files.values():
+            f.close()
+        self._dir.cleanup()
+
+    def add(self, parsed: dict) -> None:
+        m = month_of(parsed["ts"])
+        f = self._files.get(m)
+        if f is None:
+            if len(self._files) >= MAX_MONTHS_PER_UPLOAD:
+                raise IngestError(413, "too_many_months", f"An upload can span at most {MAX_MONTHS_PER_UPLOAD} months.")
+            f = self._files[m] = gzip.open(os.path.join(self._dir.name, m), "wb", compresslevel=1)
+        f.write(json.dumps(parsed, separators=(",", ":")).encode("utf-8") + b"\n")
+        self.ts.add(parsed["ts"])
+
+    def months(self) -> list[str]:
+        for f in self._files.values():
+            f.close()  # flushes; reading starts once adding is done
+        return sorted(self._files)
+
+    def runs(self, month: str) -> list[dict]:
+        if month not in self._files:
+            return []
+        with gzip.open(os.path.join(self._dir.name, month), "rb") as f:
+            return [json.loads(line) for line in f]
+
+
+def spool_upload(body: bytes, steam_id: str, spool: Spool) -> tuple[int, int, int]:
+    """Parse every run in the upload into the spool; returns (count good,
+    count rejected, count that looked like .run files at all -- rejected ones
+    included, since a run the parser can't handle yet may be the parser's
+    fault)."""
+    good, rejected, run_shaped = 0, 0, 0
     for line in iter_upload_lines(body):
-        if len(runs) + rejected >= MAX_RUNS_TOTAL:
-            raise IngestError(413, "too_many_runs", f"At most {MAX_RUNS_TOTAL} runs per upload.")
+        if good + rejected >= MAX_RUNS_PER_UPLOAD:
+            raise IngestError(413, "too_many_runs", f"At most {MAX_RUNS_PER_UPLOAD} runs per upload.")
         try:
             data = json.loads(line, parse_constant=lambda c: None)
             if not isinstance(data, dict):
@@ -362,10 +433,11 @@ def parse_upload(body: bytes, steam_id: str) -> tuple[list[dict], int, int]:
         except (ValueError, TypeError, KeyError, AttributeError, IndexError, RecursionError):
             ok = False
         if ok:
-            runs.append(parsed)
+            spool.add(parsed)
+            good += 1
         else:
             rejected += 1
-    return runs, rejected, run_shaped
+    return good, rejected, run_shaped
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +446,10 @@ def parse_upload(body: bytes, steam_id: str) -> tuple[list[dict], int, int]:
 
 def blob_key(slug: str) -> str:
     return f"users/{slug}.json.gz"
+
+
+def month_key(slug: str, month: str) -> str:
+    return f"users/{slug}/{month}.json.gz"
 
 
 def id_key(steam_id: str) -> str:
@@ -618,7 +694,8 @@ def authorize(params: dict, ip: str, store, allowed_return_to: list[str], presig
 # ---------------------------------------------------------------------------
 
 def _read_profile(store, steam_id: str) -> tuple[str | None, str | None, dict | None]:
-    """(slug, etag, profile) for a player; profile is None if they have none."""
+    """(slug, etag, profile summary) for a player; the summary is None if
+    they have no profile."""
     record = store.get(id_key(steam_id))
     slug = _unpack(record[0])["slug"] if record else None
     existing = store.get(blob_key(slug)) if slug else None
@@ -633,6 +710,30 @@ def _no_raw(doc: dict | None) -> set:
     if "noRaw" in doc:
         return set(doc["noRaw"])
     return {r["ts"] for r in doc.get("runs", [])}
+
+
+def _total(doc: dict) -> int:
+    return sum(len(ts) for ts in doc.get("months", {}).values())
+
+
+def _summary(name: str, months: dict, no_raw, parser: int) -> dict:
+    return {"v": 2, "name": name, "parser": parser, "months": dict(sorted(months.items())),
+            "noRaw": sorted(no_raw)}
+
+
+def stored_months(store, slug: str, doc: dict):
+    """Yield (month, runs) for every month on a profile, oldest first, one
+    month in memory at a time. Reads a profile from before month files
+    (v1, every run in the one file) too."""
+    if doc.get("v", 1) < 2:
+        by_month = {}
+        for r in doc.get("runs", []):
+            by_month.setdefault(month_of(r["ts"]), []).append(r)
+        yield from sorted(by_month.items())
+        return
+    for m in sorted(doc.get("months", {})):
+        got = store.get(month_key(slug, m))
+        yield m, _unpack(got[0])["runs"] if got else []
 
 
 def merge_runs(old_runs: list[dict], new_runs: list[dict]) -> tuple[list[dict], list[dict], int]:
@@ -652,40 +753,127 @@ def merge_runs(old_runs: list[dict], new_runs: list[dict]) -> tuple[list[dict], 
     return sorted(by_ts.values(), key=lambda r: r["ts"]), added, already
 
 
-def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) -> dict:
-    new_runs, rejected, run_shaped = parse_upload(body, steam_id)
-    if not run_shaped:
-        raise IngestError(400, "no_runs", "None of those files could be read as runs.")
-    name = None
+def _merge_month(store, slug: str, month: str, new_runs: list[dict]) -> tuple[list[int], list[dict], int, bool]:
+    """Merge runs into one month file. Returns (every ts now in the month,
+    runs added, count already there, whether the file changed)."""
+    key = month_key(slug, month)
     for _ in range(MERGE_RETRIES):
-        slug, etag, doc = _read_profile(store, steam_id)
-        old_runs = doc.get("runs", []) if doc else []
-        merged, added, already = merge_runs(old_runs, new_runs)
-        no_raw = _no_raw(doc) - {r["ts"] for r in new_runs}
-        result = {"status": "done", "slug": slug, "name": doc.get("name") if doc else None, "added": len(added),
-                  "duplicates": already, "rejected": rejected, "total": len(merged)}
-        if not new_runs or (doc is not None and merged == old_runs and no_raw == _no_raw(doc)):
-            return result
-        if len(merged) > MAX_RUNS_TOTAL:
-            raise IngestError(413, "too_many_runs", f"Profiles are capped at {MAX_RUNS_TOTAL} runs.")
-
-        # Only asked once there's something to save, so junk uploads never
-        # reach Steam. A returning player keeps their old name if Steam can't
-        # be asked; a new one can't be given an address without one.
-        name = name or clean_name(lookup_name(steam_id)) or (doc.get("name") if doc else None)
-        if name is None:
-            raise IngestError(502, "steam_unreachable", "Couldn't get your Steam name from Steam.")
+        got = store.get(key)
+        old = _unpack(got[0])["runs"] if got else []
+        merged, added, already = merge_runs(old, new_runs)
+        ts = [r["ts"] for r in merged]
+        if merged == old:
+            return ts, added, already, False
         try:
-            slug = save_profile(store, steam_id, slug, etag, name, merged, {}, now, no_raw=sorted(no_raw))
-        except IngestError as e:
-            if e.code == "conflict":  # another upload landed first: merge onto that
-                continue
-            raise
-        # Only the runs this upload added: the rest are already in the totals.
-        _update_stats(store, tally(added, slug))
-        result.update(slug=slug, name=name)
-        return result
+            store.put(key, _pack({"v": 2, "runs": merged}), {}, got[2] if got else None)
+            return ts, added, already, True
+        except StoreConflict:  # another upload wrote this month first: merge onto that
+            continue
     raise IngestError(503, "busy", "Your profile is busy. Try again shortly.")
+
+
+def migrate_profile(store, slug: str) -> bool:
+    """Split a profile from before month files (v1: every run in
+    users/<slug>.json.gz) into month files plus the summary. Month files go
+    first, so the summary never lists one that isn't there. Returns whether
+    there was anything to do; raises IngestError "conflict" if the profile
+    changed meanwhile."""
+    got = store.get(blob_key(slug))
+    if got is None:
+        return False
+    doc = _unpack(got[0])
+    if doc.get("v", 1) >= 2:
+        return False
+    months = {}
+    for m, runs in stored_months(store, slug, doc):
+        runs.sort(key=lambda r: r["ts"])
+        _put_over(store, month_key(slug, m), _pack({"v": 2, "runs": runs}))
+        months[m] = [r["ts"] for r in runs]
+    summary = _summary(doc["name"], months, _no_raw(doc), doc.get("parser", 0))
+    try:
+        store.put(blob_key(slug), _pack(summary), {}, got[2])
+    except StoreConflict:
+        raise IngestError(409, "conflict", "The profile changed while it was being migrated. Try again.")
+    return True
+
+
+def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) -> dict:
+    with Spool() as spool:
+        good, rejected, run_shaped = spool_upload(body, steam_id, spool)
+        if not run_shaped:
+            raise IngestError(400, "no_runs", "None of those files could be read as runs.")
+        slug, etag, doc = _read_profile(store, steam_id)
+        if doc is not None and doc.get("v", 1) < 2:
+            migrate_profile(store, slug)
+            slug, etag, doc = _read_profile(store, steam_id)
+        result = {"status": "done", "slug": slug, "name": doc.get("name") if doc else None, "added": 0,
+                  "duplicates": 0, "rejected": rejected, "total": _total(doc) if doc else 0}
+        if not good:
+            return result
+
+        # A player's name is only asked once there's something to save, so
+        # junk uploads never reach Steam. A returning player keeps their old
+        # name if Steam can't be asked; a new one can't be given an address
+        # without one, so their slug is claimed (with an empty profile)
+        # before any month is written under it.
+        name = None
+        if doc is None:
+            name = clean_name(lookup_name(steam_id))
+            if name is None:
+                raise IngestError(502, "steam_unreachable", "Couldn't get your Steam name from Steam.")
+            empty = _pack(_summary(name, {}, [], run.PARSER_VERSION))
+            claimed = False
+            if slug is None:
+                try:
+                    slug, claimed = _claim_slug(store, steam_id, name, empty, {}), True
+                except IngestError as e:
+                    if e.code != "conflict":
+                        raise
+                    # Their first upload from another tab claimed a slug first: use that one.
+                    slug = _unpack(store.get(id_key(steam_id))[0])["slug"]
+            if not claimed:  # a record whose profile isn't there (yet): create it in place
+                try:
+                    store.put(blob_key(slug), empty, {}, None)
+                except StoreConflict:
+                    pass
+
+        # One month at a time: merged into its file, written, then dropped.
+        months, delta, changed = {}, empty_stats(), False
+        for m in spool.months():
+            ts, added, already, wrote = _merge_month(store, slug, m, spool.runs(m))
+            months[m] = ts
+            result["added"] += len(added)
+            result["duplicates"] += already
+            changed |= wrote
+            # Only the runs this upload added: the rest are already in the totals.
+            merge_stats(delta, tally(added, slug))
+
+        if not changed and doc is not None and not (_no_raw(doc) & spool.ts):
+            return result
+        name = name or clean_name(lookup_name(steam_id)) or doc["name"]
+
+        # The summary last. Another upload may have added to the same months
+        # meanwhile; runs are never taken away here, so the ts lists are
+        # unioned rather than replaced.
+        for _ in range(MERGE_RETRIES):
+            got = store.get(blob_key(slug))
+            cur = _unpack(got[0])
+            merged = dict(cur.get("months", {}))
+            for m, ts in months.items():
+                merged[m] = sorted(set(merged.get(m, [])) | set(ts))
+            new = _summary(name, merged, _no_raw(cur) - spool.ts, cur.get("parser", run.PARSER_VERSION))
+            try:
+                store.put(blob_key(slug), _pack(new), {}, got[2])
+                break
+            except StoreConflict:
+                continue
+        else:
+            raise IngestError(503, "busy", "Your profile is busy. Try again shortly.")
+    _update_index(store, slug, name, _total(new), now)
+    if delta["allRuns"]:
+        _update_stats(store, delta)
+    result.update(slug=slug, name=name, total=_total(new))
+    return result
 
 
 def _put_over(store, key: str, data: bytes) -> None:
@@ -731,61 +919,124 @@ def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: boo
     """
     Re-parse every raw upload a player has made with the current parser and
     rewrite their profile from it; runs with no raw copy stay as they are.
-    Site stats aren't touched: run tools/rebuild_stats.py afterwards.
+    Like an upload, it goes a month at a time. Site stats aren't touched:
+    run tools/rebuild_stats.py afterwards.
     """
-    now = time.time() if now is None else now
-    fresh, unreadable = {}, 0
-    for key in sorted(store.list(f"raw/{steam_id}/")):  # oldest first: later copies win
-        got = store.get(key) if RAW_KEY_RE.match(key) else None
-        if got is None:
-            continue
-        try:
-            runs, _, _ = parse_upload(got[0], steam_id)
-        except IngestError:
-            unreadable += 1
-            continue
-        fresh.update((r["ts"], r) for r in runs)
-    for _ in range(MERGE_RETRIES):
-        slug, etag, doc = _read_profile(store, steam_id)
-        if doc is None:
-            raise IngestError(404, "no_profile", f"No profile for {steam_id}.")
-        no_raw = _no_raw(doc) - fresh.keys()
-        merged = sorted([r for r in doc.get("runs", []) if r["ts"] in no_raw] + list(fresh.values()),
-                        key=lambda r: r["ts"])
-        summary = {"slug": slug, "runs": len(merged), "fromRaw": len(fresh), "noRaw": len(no_raw),
-                   "dropped": len({r["ts"] for r in doc.get("runs", [])} - {r["ts"] for r in merged}),
+    slug, etag, doc = _read_profile(store, steam_id)
+    if doc is None:
+        raise IngestError(404, "no_profile", f"No profile for {steam_id}.")
+    unreadable = 0
+    with Spool() as spool:
+        for key in sorted(store.list(f"raw/{steam_id}/")):  # oldest first: later copies win
+            got = store.get(key) if RAW_KEY_RE.match(key) else None
+            if got is None:
+                continue
+            try:
+                spool_upload(got[0], steam_id, spool)
+            except IngestError:
+                unreadable += 1
+        no_raw = _no_raw(doc) - spool.ts
+        fresh_months = set(spool.months())
+
+        def every_month():
+            for m, old in stored_months(store, slug, doc):
+                fresh_months.discard(m)
+                yield m, old
+            for m in sorted(fresh_months):
+                yield m, []
+
+        months, dropped = {}, 0
+        for m, old in every_month():
+            runs = merge_runs([r for r in old if r["ts"] in no_raw], spool.runs(m))[0]
+            dropped += len({r["ts"] for r in old} - {r["ts"] for r in runs})
+            if runs:
+                months[m] = [r["ts"] for r in runs]
+            if dry_run:
+                continue
+            if runs:
+                _put_over(store, month_key(slug, m), _pack({"v": 2, "runs": runs}))
+            else:
+                store.delete(month_key(slug, m))
+        summary = {"slug": slug, "runs": sum(len(ts) for ts in months.values()),
+                   "fromRaw": len(spool.ts), "noRaw": len(no_raw), "dropped": dropped,
                    "unreadableUploads": unreadable}
         if dry_run:
             return summary
-        try:
-            save_profile(store, steam_id, slug, etag, doc["name"], merged, {}, now, no_raw=sorted(no_raw))
-        except IngestError as e:
-            if e.code == "conflict":
-                continue
-            raise
-        return summary
-    raise IngestError(503, "busy", "Profile kept changing; try again.")
+    try:
+        store.put(blob_key(slug), _pack(_summary(doc["name"], months, no_raw, run.PARSER_VERSION)), {}, etag)
+    except StoreConflict:
+        raise IngestError(503, "busy", "The profile changed during the rebuild; run it again.")
+    return summary
 
 
 def save_profile(store, steam_id: str, slug: str | None, etag: str | None, name: str,
                  runs: list[dict], meta: dict, now: float, no_raw: list[int] | None = None) -> str:
-    """Write a profile (claiming a slug if the player has none yet) and list
-    it in the public index. `etag` is the profile as read, or None. `no_raw`
-    lists the runs with no raw copy; None means none of them have one.
-    Returns the slug."""
-    doc = {"v": 1, "name": name, "runs": runs, "parser": run.PARSER_VERSION}
-    if no_raw is not None:
-        doc["noRaw"] = no_raw
-    data = _pack(doc)
+    """Write a whole profile from a list of runs, replacing whatever was
+    there (claiming a slug if the player has none yet), and list it in the
+    public index. For tools and tests; uploads merge month by month instead.
+    `etag` is the summary as read, or None. `no_raw` lists the runs with no
+    raw copy; None means none of them have one. Returns the slug."""
+    by_month = {}
+    for r in sorted(runs, key=lambda r: r["ts"]):
+        by_month.setdefault(month_of(r["ts"]), []).append(r)
+    no_raw = [r["ts"] for r in runs] if no_raw is None else no_raw
+    old_months = set()
     if slug:
-        try:
-            store.put(blob_key(slug), data, meta, etag)
-        except StoreConflict:
+        got = store.get(blob_key(slug))
+        if (got[2] if got else None) != etag:
             raise IngestError(409, "conflict", "Another upload for this profile landed at the same time. Try again.")
+        if got:
+            old = _unpack(got[0])
+            old_months = set(old.get("months", {})) if old.get("v", 1) >= 2 else set()
     else:
-        slug = _claim_slug(store, steam_id, name, data, meta)
+        slug = _claim_slug(store, steam_id, name, _pack(_summary(name, {}, [], run.PARSER_VERSION)), meta)
+        etag = store.get(blob_key(slug))[2]
+    for m, month_runs in by_month.items():
+        _put_over(store, month_key(slug, m), _pack({"v": 2, "runs": month_runs}))
+    for m in old_months - by_month.keys():
+        store.delete(month_key(slug, m))
+    months = {m: [r["ts"] for r in month_runs] for m, month_runs in by_month.items()}
+    try:
+        store.put(blob_key(slug), _pack(_summary(name, months, no_raw, run.PARSER_VERSION)), meta, etag)
+    except StoreConflict:
+        raise IngestError(409, "conflict", "Another upload for this profile landed at the same time. Try again.")
     _update_index(store, slug, name, len(runs), now)
     return slug
+
+
+def remove_profile(store, slug: str, raw: bool = False, dry_run: bool = False) -> dict:
+    """
+    Take a profile off the site: its month files, its summary, its entry in
+    the player list and the record tying it to a Steam account, so the
+    player's next upload starts a fresh profile (under the same slug, if
+    it's still free). With raw=True their kept uploads go too. Site stats
+    aren't touched: run tools/rebuild_stats.py afterwards.
+    """
+    steam_ids = [k[len("ids/"):-len(".json.gz")] for k in store.list("ids/")
+                 if (got := store.get(k)) and _unpack(got[0]).get("slug") == slug]
+    keys = sorted(store.list(f"users/{slug}/"))
+    if store.get(blob_key(slug)):
+        keys.append(blob_key(slug))
+    keys += [id_key(s) for s in steam_ids]
+    if raw:
+        keys += [k for s in steam_ids for k in sorted(store.list(f"raw/{s}/"))]
+    summary = {"slug": slug, "steamIds": steam_ids, "deleted": keys}
+    if dry_run:
+        return summary
+    for _ in range(INDEX_RETRIES):
+        players, etag = _read_index(store)
+        if all(p["slug"] != slug for p in players):
+            break
+        try:
+            store.put(INDEX_KEY, _pack({"v": 1, "players": [p for p in players if p["slug"] != slug]}), {}, etag)
+            break
+        except StoreConflict:
+            continue
+    else:
+        raise IngestError(503, "busy", "The player list kept changing; run it again.")
+    for k in keys:
+        store.delete(k)
+    return summary
 
 
 class S3Store:
@@ -925,9 +1176,40 @@ def lambda_handler(event, context):
 def process_handler(event, context):
     """S3 "object created" events for raw/. Invoked asynchronously, so an
     exception here makes Lambda retry the event (twice) and then hand it to
-    the failure queue; the raw object stays put for a later rebuild."""
+    failure_handler; the raw object stays put for a later rebuild."""
     for record in event.get("Records", []):
         key = urllib.parse.unquote_plus(record["s3"]["object"]["key"])
         result = process_upload(key, _get_store())
         log = {k: v for k, v in (result or {}).items() if k != "name"}
         print(json.dumps({"key": key, **log}))
+
+
+def _alert(subject: str, message: str) -> None:
+    """Email the site owner, through the SNS topic the stack names (the dev
+    server has none)."""
+    topic = os.environ.get("ALERT_TOPIC_ARN")
+    if topic:
+        import boto3  # only on Lambda
+        boto3.client("sns").publish(TopicArn=topic, Subject=subject[:100], Message=message)
+
+
+def failure_handler(event, context):
+    """Lambda's on-failure record for a process_handler event that failed
+    every try: the original event plus the last error. Tells the page that
+    sent the upload (its runs aren't on the profile, so sending them again
+    later picks them up) and emails the site owner."""
+    error = (event.get("responsePayload") or {}).get("errorMessage")
+    keys = []
+    for record in (event.get("requestPayload") or {}).get("Records", []):
+        key = urllib.parse.unquote_plus(record["s3"]["object"]["key"])
+        m = RAW_KEY_RE.match(key)
+        if m:
+            _put_over(_get_store(), result_key(m.group(3)), _pack({
+                "status": "failed", "error": "process_failed",
+                "message": "Something went wrong adding those runs. Try again later."}))
+        print(json.dumps({"failed": key, "error": error}))
+        keys.append(key)
+    _alert("Slay My Stats: an upload failed",
+           "An upload failed every try and wasn't added. Its raw copy is kept.\n\n"
+           + "\n".join(keys) + f"\n\nLast error: {error}\n\n"
+           + "Details are in the process function's logs (ProcessLogGroup in CloudWatch).")

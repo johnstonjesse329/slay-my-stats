@@ -91,7 +91,13 @@ class MemStore:
         return self.json(handler.blob_key(self.slug(steam_id)))
 
     def runs(self, steam_id=STEAM_ID):
-        return self.profile(steam_id)["runs"]
+        slug = self.slug(steam_id)
+        return [r for _, runs in handler.stored_months(self, slug, self.profile(steam_id)) for r in runs]
+
+    def months(self, slug="mrbean"):
+        """The month files stored for a profile."""
+        prefix = f"users/{slug}/"
+        return sorted(k[len(prefix):-len(".json.gz")] for k in self.objects if k.startswith(prefix))
 
     def index(self):
         return self.json(handler.INDEX_KEY)["players"]
@@ -346,8 +352,27 @@ class ProcessTests(Uploads, unittest.TestCase):
     def test_stored_blob_is_gzip_json(self):
         self.ingest(body_of(minimal_run(1700000001)))
         blob = json.loads(gzip.decompress(self.store.objects["users/mrbean.json.gz"][0]))
-        self.assertEqual((blob["v"], blob["name"], blob["noRaw"], blob["parser"]),
-                         (1, "Mr. Bean!", [], run.PARSER_VERSION))
+        self.assertEqual(blob, {"v": 2, "name": "Mr. Bean!", "parser": run.PARSER_VERSION,
+                                "months": {"2023-11": [1700000001]}, "noRaw": []})
+        month = json.loads(gzip.decompress(self.store.objects["users/mrbean/2023-11.json.gz"][0]))
+        self.assertEqual((month["v"], [r["ts"] for r in month["runs"]]), (2, [1700000001]))
+
+    def test_uploads_in_any_order_land_in_month_files(self):
+        # 2024-03, 2023-07, then 2023-11 between them and a resend of 2023-07.
+        self.ingest(body_of(minimal_run(1710000000), minimal_run(1690000000)))
+        res = self.ingest(body_of(minimal_run(1700000000), minimal_run(1690000000)),
+                          now=NOW + 120, nonce_suffix="2")
+        self.assertEqual((res["added"], res["duplicates"], res["total"]), (1, 1, 3))
+        self.assertEqual(self.store.months(), ["2023-07", "2023-11", "2024-03"])
+        self.assertEqual(self.store.profile()["months"],
+                         {"2023-07": [1690000000], "2023-11": [1700000000], "2024-03": [1710000000]})
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1690000000, 1700000000, 1710000000])
+
+    def test_only_touched_months_are_written(self):
+        self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000)))
+        july = self.store.objects["users/mrbean/2023-07.json.gz"]
+        self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120, nonce_suffix="2")
+        self.assertIs(self.store.objects["users/mrbean/2023-07.json.gz"], july)
 
     def test_resent_run_is_reparsed(self):
         self.ingest(body_of(minimal_run(1700000001)))
@@ -358,22 +383,44 @@ class ProcessTests(Uploads, unittest.TestCase):
 
     def test_nothing_new_does_not_write_profile(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        before = self.store.objects["users/mrbean.json.gz"]
+        before = dict(self.store.objects)
         res = self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120, nonce_suffix="again")
-        self.assertEqual((res["added"], res["duplicates"], res["slug"]), (0, 1, "mrbean"))
-        self.assertIs(self.store.objects["users/mrbean.json.gz"], before)
+        self.assertEqual((res["added"], res["duplicates"], res["slug"], res["total"]), (0, 1, "mrbean", 1))
+        for key in ("users/mrbean.json.gz", "users/mrbean/2023-11.json.gz", handler.INDEX_KEY):
+            self.assertIs(self.store.objects[key], before[key])
+
+    def put_v1_profile(self, *ts, **extra):
+        """A profile from before month files: every run in the one file."""
+        runs = [handler.run.parse_run_data(minimal_run(t), steam_id=STEAM_ID) for t in ts]
+        self.store.put(handler.blob_key("mrbean"),
+                       handler._pack({"v": 1, "name": "Mr. Bean!", "runs": runs, **extra}), {}, None)
+        self.store.put(handler.id_key(STEAM_ID), handler._pack({"slug": "mrbean"}), {}, None)
 
     def test_legacy_profile_catch_up(self):
         # A profile from before raw uploads: no noRaw key, so none of its runs
         # have a raw copy until they're sent again.
-        runs = [handler.run.parse_run_data(minimal_run(ts), steam_id=STEAM_ID) for ts in (1700000001, 1700000002)]
-        handler.save_profile(self.store, STEAM_ID, None, None, "Mr. Bean!", runs, {}, NOW)
-        self.assertNotIn("noRaw", self.store.profile())
+        self.put_v1_profile(1700000001, 1700000002)
         self.ingest(body_of(minimal_run(1700000003)))
         self.assertEqual(self.store.profile()["noRaw"], [1700000001, 1700000002])
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2")
         self.assertEqual(self.store.profile()["noRaw"], [])
         self.assertEqual(len(self.store.runs()), 3)
+
+    def test_v1_profile_is_migrated_on_upload(self):
+        self.put_v1_profile(1690000000, 1700000001, noRaw=[], parser=0)
+        res = self.ingest(body_of(minimal_run(1710000000)))
+        self.assertEqual((res["added"], res["total"]), (1, 3))
+        doc = self.store.profile()
+        self.assertEqual((doc["v"], doc["parser"], doc["noRaw"]), (2, 0, []))  # parser kept: not reparsed
+        self.assertEqual(self.store.months(), ["2023-07", "2023-11", "2024-03"])
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1690000000, 1700000001, 1710000000])
+
+    def test_migrate_profile_tool(self):
+        self.put_v1_profile(1690000000, 1700000001, noRaw=[1690000000])
+        self.assertTrue(handler.migrate_profile(self.store, "mrbean"))
+        self.assertFalse(handler.migrate_profile(self.store, "mrbean"))  # already done
+        self.assertEqual(self.store.profile()["noRaw"], [1690000000])
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1690000000, 1700000001])
 
     def test_rejected_runs_keep_the_upload(self):
         res = self.ingest(body_of(
@@ -482,17 +529,21 @@ class ProcessTests(Uploads, unittest.TestCase):
         state = {"raced": False}
 
         def put(key, data, metadata, if_match):
-            if key == "users/mrbean.json.gz" and not state["raced"]:
+            if key == "users/mrbean/2023-11.json.gz" and not state["raced"]:
+                # The other upload writes the same month, a new one, and the
+                # summary, all before ours does.
                 state["raced"] = True
-                other = [handler.run.parse_run_data(minimal_run(ts), steam_id=STEAM_ID)
-                         for ts in (1700000001, 1700000009)]
-                handler.save_profile(racy, STEAM_ID, "mrbean", racy.objects[key][2], "Mr. Bean!", other, {}, NOW,
-                                     no_raw=[])
+                handler._merge_upload(racy, STEAM_ID, body_of(minimal_run(1700000009), minimal_run(1702000000)),
+                                      NOW, named("Mr. Bean!"))
             orig_put(key, data, metadata, if_match)
         racy.put = put
         self.store = racy
-        self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2")
-        self.assertEqual([r["ts"] for r in racy.runs()], [1700000001, 1700000002, 1700000009])
+        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2")
+        self.assertEqual(res["total"], 4)
+        self.assertEqual([r["ts"] for r in racy.runs()], [1700000001, 1700000002, 1700000009, 1702000000])
+        self.assertEqual(racy.profile()["months"], {"2023-11": [1700000001, 1700000002, 1700000009],
+                                                    "2023-12": [1702000000]})
+        self.assertEqual(self.stats()["allRuns"], 4)
 
     def test_racing_first_uploads_leave_no_orphan(self):
         class Racy(MemStore):
@@ -504,19 +555,25 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.store = Racy()
         self.ingest(body_of(minimal_run(1700000001)))
         self.assertNotIn("users/mrbean.json.gz", self.store.objects)
-        self.assertIn("users/elsewhere.json.gz", self.store.objects)
+        self.assertEqual(self.store.profile()["months"], {"2023-11": [1700000001]})
+        self.assertEqual(self.store.months("elsewhere"), ["2023-11"])
 
-    def test_profile_cap(self):
-        old = handler.MAX_RUNS_TOTAL
-        handler.MAX_RUNS_TOTAL = 2
-        try:
-            res = self.ingest(body_of(*(minimal_run(1700000000 + i) for i in range(2))))
-            self.assertEqual(res["added"], 2)
-            res = self.ingest(body_of(minimal_run(1700000009)), now=NOW + 120, nonce_suffix="2")
-            self.assertEqual((res["status"], res["error"]), ("failed", "too_many_runs"))
+    def test_upload_caps(self):
+        for cap, value, body, error in [
+            ("MAX_RUNS_PER_UPLOAD", 2, body_of(*(minimal_run(1700000000 + i) for i in range(3))), "too_many_runs"),
+            ("MAX_MONTHS_PER_UPLOAD", 1, body_of(minimal_run(1690000000), minimal_run(1700000000)),
+             "too_many_months"),
+        ]:
+            self.setUp()
+            old = getattr(handler, cap)
+            setattr(handler, cap, value)
+            try:
+                res = self.ingest(body)
+            finally:
+                setattr(handler, cap, old)
+            self.assertEqual((res["status"], res["error"]), ("failed", error))
             self.assertIn(self.last_key, self.store.objects)  # real runs: kept
-        finally:
-            handler.MAX_RUNS_TOTAL = old
+            self.assertNotIn(handler.id_key(STEAM_ID), self.store.objects)  # nothing saved
 
     def test_stats_count_each_run_once(self):
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002, win=False)))
@@ -569,9 +626,10 @@ class RebuildTests(Uploads, unittest.TestCase):
 
         # Simulate an old parser's output on the profile.
         slug, etag, doc = handler._read_profile(self.store, STEAM_ID)
-        for r in doc["runs"]:
+        runs = self.store.runs()
+        for r in runs:
             r["asc"] = -1
-        handler.save_profile(self.store, STEAM_ID, slug, etag, doc["name"], doc["runs"], {}, NOW,
+        handler.save_profile(self.store, STEAM_ID, slug, etag, doc["name"], runs, {}, NOW,
                              no_raw=doc["noRaw"])
 
         dry = handler.rebuild_profile(self.store, STEAM_ID, dry_run=True)
@@ -582,6 +640,31 @@ class RebuildTests(Uploads, unittest.TestCase):
         runs = self.store.runs()
         self.assertEqual([r["asc"] for r in runs], [-1, 3, 3, 3])  # the legacy run can't be rebuilt
         self.assertEqual(self.store.profile()["noRaw"], [1600000000])
+
+    def test_rebuild_drops_months_left_empty(self):
+        # A run whose raw copy is gone (say, stripped) leaves the profile, and
+        # so does its month file when it was the only run in it.
+        self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000)))
+        self.store.delete(self.last_key)
+        self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120, nonce_suffix="2")
+        summary = handler.rebuild_profile(self.store, STEAM_ID)
+        self.assertEqual((summary["runs"], summary["dropped"]), (1, 1))
+        self.assertEqual(self.store.months(), ["2023-11"])
+        self.assertEqual(self.store.profile()["months"], {"2023-11": [1700000000]})
+
+    def test_remove_profile(self):
+        self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000)))
+        self.ingest(body_of(minimal_run(1700000001)), steam_id="76561198000000002", name="Other")
+        dry = handler.remove_profile(self.store, "mrbean", raw=True, dry_run=True)
+        self.assertIn("users/mrbean.json.gz", self.store.objects)
+        self.assertEqual(handler.remove_profile(self.store, "mrbean", raw=True), dry)
+        self.assertEqual(dry["steamIds"], [STEAM_ID])
+        self.assertEqual([k for k in self.store.objects if "mrbean" in k or STEAM_ID in k and "limits" not in k], [])
+        self.assertEqual([p["slug"] for p in self.store.index()], ["other"])
+        self.assertEqual(len(self.store.runs("76561198000000002")), 1)  # someone else's: untouched
+        # Their next upload starts over, under the same slug.
+        res = self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120, nonce_suffix="2")
+        self.assertEqual((res["slug"], res["added"], res["total"]), ("mrbean", 1, 1))
 
     def test_rebuild_needs_a_profile(self):
         with self.assertRaises(handler.IngestError):
@@ -645,6 +728,22 @@ class LambdaHandlerTests(unittest.TestCase):
 
         event["requestContext"]["http"]["method"] = "GET"
         self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
+
+    def test_failure_handler_tells_the_page(self):
+        key = handler.raw_key("76561197960287930", "abcDEF123456abcd", 1700000000)
+        s3_event = {"Records": [{"s3": {"object": {"key": urllib.parse.quote_plus(key)}}}]}
+        alerts = []
+        orig_alert, handler._alert = handler._alert, lambda subject, message: alerts.append(message)
+        try:
+            handler.failure_handler({"requestPayload": s3_event,
+                                     "responsePayload": {"errorMessage": "Task timed out"}}, None)
+        finally:
+            handler._alert = orig_alert
+        result = self.store.json(handler.result_key("abcDEF123456abcd"))
+        self.assertEqual((result["status"], result["error"]), ("failed", "process_failed"))
+        self.assertEqual(len(alerts), 1)
+        self.assertIn(key, alerts[0])
+        self.assertIn("Task timed out", alerts[0])
 
 
 class RealHistoryTests(unittest.TestCase):
