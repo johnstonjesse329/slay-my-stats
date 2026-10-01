@@ -8,10 +8,11 @@ root-absolute paths mirroring this repo's folders (/card_final/..,
 /card_portraits/.., /node_icons/.., /relic_images/.., /potion_images/..,
 /ui_icons/..),
 reference data (card/relic/potion metadata, encounter groupings, ...) is
-published once as /catalog.json, and per-run data comes from a per-player
-blob at /users/<slug>.json.gz (see tools/build_user_blob.py). On /u/<slug>,
-site/boot.js fetches /catalog.json + that blob, builds window.DATA from
-them, then loads /app.js — the same js/*.js bundle run.py inlines, just
+published once as /catalog.json, and per-run data comes from each player's
+profile: a summary at /users/<slug>.json.gz and their runs by month at
+/users/<slug>/<YYYY-MM>.json.gz (see tools/build_user_blob.py). On
+/u/<slug>, site/boot.js fetches /catalog.json, the summary and every month,
+builds window.DATA from them, then loads /app.js — the same js/*.js bundle run.py inlines, just
 fetched instead of embedded. On / it shows a player finder over
 /users/_index.json.gz instead.
 
@@ -187,7 +188,7 @@ def main():
     for name, f, _ in site_pages():
         write(f"page-{name}.html", f.read_text(encoding="utf-8"))
 
-    # Where site/upload.js POSTs runs: the ingest Lambda's Function URL, which
+    # Where site/upload.js asks for an upload URL: the ingest Lambda's Function URL, which
     # only exists once the stack is deployed (tools/deploy.py passes it in).
     # Without it, the upload button still works up to the POST and then says
     # uploads aren't available. tools/serve_site.py answers this path itself.

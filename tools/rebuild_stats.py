@@ -38,9 +38,11 @@ def main():
         if got is None:
             print(f"  {p['slug']}: listed but missing, skipped")
             continue
-        runs = handler._unpack(got[0]).get("runs", [])
-        handler.merge_stats(total, handler.tally(runs, p["slug"]))
-        print(f"  {p['slug']}: {len(runs)} runs")
+        count = 0
+        for _, runs in handler.stored_months(store, p["slug"], handler._unpack(got[0])):
+            handler.merge_stats(total, handler.tally(runs, p["slug"]))
+            count += len(runs)
+        print(f"  {p['slug']}: {count} runs")
 
     # Overwrites whatever is there. An upload landing mid-recount makes this
     # write fail rather than lose its tally; run it again.

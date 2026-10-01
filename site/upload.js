@@ -9,16 +9,17 @@
 //      address bar (so they don't linger in history or get shared) into
 //      sessionStorage, and the upload panel takes over the page.
 //   3. The player picks their history folder. Each .run file is re-serialized
-//      onto one line (NDJSON), runs their profile already has are dropped, and
-//      the rest are gzip'd with CompressionStream and POSTed along with the
-//      OpenID params to the ingest endpoint, which re-verifies them with
-//      Steam and merges the runs into the player's profile (skipping any it
-//      already has, too).
+//      onto one line (NDJSON). The OpenID params go to the ingest endpoint,
+//      which re-verifies them with Steam and hands back a one-time upload
+//      URL (a presigned S3 POST) plus the player's profile slug, if any.
+//   4. Runs the profile already has are dropped, the rest are gzip'd with
+//      CompressionStream and POSTed straight to S3 as one file. Its arrival
+//      there triggers the processing, which merges the runs into the profile
+//      and writes a small result file the page polls for.
 //
 // Profiles live at /u/<slug>, a slug the server picks from the Steam name on
-// the first upload. The page can't work that out from a sign-in, so each
-// upload's answer ({slug, name}) is remembered in localStorage for next
-// time; until then nothing is filtered here and the server does it alone.
+// the first upload. Each upload's answer ({slug, name}) is also remembered in
+// localStorage, so a later visit can check for new runs before signing in.
 //
 // The ingest endpoint's URL comes from /site-config.json (the Lambda's
 // Function URL, written at deploy time; tools/serve_site.py answers it with
@@ -35,9 +36,14 @@
   // The ingest endpoint refuses sign-ins older than 30 minutes; stop offering
   // an upload a bit before that so it doesn't fail at the last step.
   const SIGNIN_MAX_AGE_MS = 25 * 60 * 1000;
-  // Function URL requests cap at 6 MB, and a binary body is base64'd inside
-  // that (x4/3). ~1,700 typical runs fit; bigger histories go in parts.
-  const MAX_BODY_BYTES = 4 * 1024 * 1024;
+  // How often and how long to wait for an upload's result. Processing a big
+  // first upload takes a while; past this the page stops waiting, but the
+  // upload still lands.
+  const POLL_MS = 2000;
+  const POLL_GIVE_UP_MS = 6 * 60 * 1000;  // the process Lambda's timeout, plus a minute
+  // An upload URL is good for 10 minutes; reuse one after a failed send
+  // only while it has a bit of that left.
+  const UPLOAD_URL_MAX_AGE_MS = 8 * 60 * 1000;
 
   function el(tag, props, children) {
     const node = document.createElement(tag);
@@ -123,14 +129,19 @@
     return { runs, unreadable };
   }
 
-  // ts values already on the player's profile, so they aren't re-sent.
-  async function existingTimestamps(profile) {
-    if (!profile) return new Set();
+  // ts values already on the player's profile, so they aren't re-sent; the
+  // profile's summary lists them by month. Runs the server has no raw copy
+  // of (noRaw; every run, on a profile from before raw copies were kept) are
+  // sent again so it gets one.
+  async function existingTimestamps(slug) {
+    if (!slug) return new Set();
     try {
-      const resp = await fetch(`/users/${profile.slug}.json.gz`, { cache: "no-store" });
+      const resp = await fetch(`/users/${slug}.json.gz`, { cache: "no-store" });
       if (!resp.ok) return new Set();
       const doc = await resp.json();
-      return new Set((doc.runs || []).map(r => r.ts));
+      const all = doc.months ? Object.values(doc.months).flat() : (doc.runs || []).map(r => r.ts);
+      const noRaw = new Set(doc.noRaw || all);
+      return new Set(all.filter(ts => !noRaw.has(ts)));
     } catch (e) {
       return new Set();
     }
@@ -141,16 +152,18 @@
     return new Uint8Array(await new Response(stream).arrayBuffer());
   }
 
-  // The largest oldest-first prefix of `lines` whose gzip fits the limit.
-  // Compression ratio is steady across runs, so one estimate then shrinking
-  // by the overshoot converges in a pass or two.
-  async function fitBatch(lines) {
-    let n = lines.length;
-    for (;;) {
-      const body = await gzip(lines.slice(0, n).join("\n"));
-      if (body.length <= MAX_BODY_BYTES || n === 1) return { body, count: n };
-      n = Math.max(1, Math.floor(n * (MAX_BODY_BYTES / body.length) * 0.95));
+  // Polls for the result the processing writes once an upload is in.
+  // Resolves to the result, or null if it didn't show up in time.
+  async function waitForResult(uploadId) {
+    const giveUp = Date.now() + POLL_GIVE_UP_MS;
+    while (Date.now() < giveUp) {
+      await new Promise(r => setTimeout(r, POLL_MS));
+      try {
+        const resp = await fetch(`/users/_uploads/${uploadId}.json.gz`, { cache: "no-store" });
+        if (resp.ok) return await resp.json();
+      } catch (e) { /* not there yet, or a blip: keep waiting */ }
     }
+    return null;
   }
 
   async function ingestUrl() {
@@ -265,12 +278,53 @@
     if (link) status.append(" ", el("a", { href: link.href, textContent: link.text }));
   }
 
+  // An upload URL handed out for this sign-in and not yet used: a send that
+  // failed on the way to S3 can try again with it, without a new sign-in.
+  let pending = null;  // {auth, at}
+
+  function signInAgain(status, text) {
+    forgetSignIn();
+    setStatus(status, text);
+    status.append(" ", el("button", { type: "button", className: "upload-link", textContent: "Sign in again",
+                                      onclick: startSignIn }));
+  }
+
+  // The sign-in's params go to the ingest endpoint, which answers with a
+  // one-time upload URL. Resolves to that answer, or null (status says why).
+  async function authorize(signIn, status) {
+    let url;
+    try {
+      url = await ingestUrl();
+    } catch (e) {
+      setStatus(status, "Uploads aren't available right now.");
+      return null;
+    }
+    let resp, result;
+    try {
+      resp = await fetch(`${url}?${new URLSearchParams(signIn.params)}`, { method: "POST" });
+      result = await resp.json();
+    } catch (e) {
+      setStatus(status, "Upload failed — couldn't reach the server. Try again in a moment.");
+      return null;
+    }
+    if (!resp.ok) {
+      // A rejected or expired sign-in can't be retried; a cooldown or conflict
+      // can. Steam may also refuse a sign-in it already confirmed once.
+      if (["signin_expired", "bad_openid"].includes(result.error)) {
+        signInAgain(status, result.message || "Sign in again to upload.");
+      } else {
+        setStatus(status, result.message || `Upload failed (${resp.status}).`);
+      }
+      return null;
+    }
+    // The sign-in is kept: it works again (after the cooldown) until it expires.
+    return result;
+  }
+
   async function upload(signIn, files, status) {
-    if (Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) {
-      forgetSignIn();
-      setStatus(status, "Your Steam sign-in has expired.");
-      status.append(" ", el("button", { type: "button", className: "upload-link", textContent: "Sign in again",
-                                        onclick: startSignIn }));
+    if (pending && Date.now() - pending.at >= UPLOAD_URL_MAX_AGE_MS) pending = null;
+    if (!pending && Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) {
+      signInAgain(status, "Your Steam sign-in has expired.");
       return;
     }
 
@@ -281,56 +335,74 @@
       return;
     }
 
+    // With a remembered profile, check for new runs before asking for an
+    // upload URL: if there are none, there is nothing to send.
     setStatus(status, `Found ${runs.length} runs. Checking which are new…`);
-    const profile = knownProfile(signIn.steamId);
-    const have = await existingTimestamps(profile);
-    const fresh = runs.filter(r => !have.has(r.start)).map(r => r.line);
-    if (!fresh.length) {
-      setStatus(status, `All ${runs.length} runs are already on your profile.`,
-                { href: `/u/${profile.slug}`, text: "View profile" });
+    const known = knownProfile(signIn.steamId);
+    let slug = known && known.slug;
+    let have = await existingTimestamps(slug);
+    const allThere = () => runs.every(r => have.has(r.start));
+    if (allThere()) {
+      setStatus(status, `All ${runs.length} runs are already on your profile.`, { href: `/u/${slug}`, text: "View profile" });
       return;
     }
+
+    if (!pending) {
+      const auth = await authorize(signIn, status);
+      if (!auth) return;
+      pending = { auth, at: Date.now() };
+    }
+    const auth = pending.auth;
+    // The server knows the profile even when this browser doesn't (another
+    // device, cleared storage).
+    if (auth.slug && auth.slug !== slug) {
+      slug = auth.slug;
+      have = await existingTimestamps(slug);
+      if (allThere()) {
+        pending = null;
+        setStatus(status, `All ${runs.length} runs are already on your profile.`, { href: `/u/${slug}`, text: "View profile" });
+        return;
+      }
+    }
+    const fresh = runs.filter(r => !have.has(r.start)).map(r => r.line);
 
     setStatus(status, `Compressing ${fresh.length} new runs…`);
-    const { body, count } = await fitBatch(fresh);
+    const body = await gzip(fresh.join("\n"));
+    if (body.length > auth.maxBytes) {
+      pending = null;
+      setStatus(status, `That's ${(body.length / 1048576).toFixed(0)} MB compressed, over the `
+        + `${(auth.maxBytes / 1048576).toFixed(0)} MB upload limit.`);
+      return;
+    }
 
-    let url;
+    setStatus(status, `Uploading ${fresh.length} runs (${(body.length / 1048576).toFixed(1)} MB)…`);
+    const form = new FormData();
+    for (const [k, v] of Object.entries(auth.fields)) form.append(k, v);
+    form.append("file", new Blob([body], { type: "application/gzip" }), "runs.ndjson.gz");  // must come last
+    let resp;
     try {
-      url = await ingestUrl();
+      resp = await fetch(auth.url, { method: "POST", body: form });
     } catch (e) {
-      setStatus(status, "Uploads aren't available right now.");
+      resp = null;
+    }
+    if (!resp || !resp.ok) {
+      setStatus(status, "Upload failed — couldn't send the file. Pick the folder again to retry.");
       return;
     }
+    pending = null;
 
-    setStatus(status, `Uploading ${count} runs (${(body.length / 1048576).toFixed(1)} MB)…`);
-    let resp, result;
-    try {
-      const q = new URLSearchParams(signIn.params);
-      resp = await fetch(`${url}?${q}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
-        body,
-      });
-      result = await resp.json();
-    } catch (e) {
-      setStatus(status, "Upload failed — couldn't reach the server. Try again in a moment.");
+    setStatus(status, `Sent. Adding ${fresh.length} runs to your profile…`);
+    const result = await waitForResult(auth.uploadId);
+    const profileLink = (result && result.slug) || slug
+      ? { href: `/u/${(result && result.slug) || slug}`, text: "View profile" } : null;
+    if (!result) {
+      setStatus(status, "Your runs are uploaded but still being added. Check your profile in a few minutes.", profileLink);
       return;
     }
-
-    if (!resp.ok) {
-      // A used or expired sign-in can't be retried; a cooldown or conflict can.
-      if (["signin_used", "signin_expired", "bad_openid"].includes(result.error)) {
-        forgetSignIn();
-        setStatus(status, result.message || "Sign in again to upload.");
-        status.append(" ", el("button", { type: "button", className: "upload-link", textContent: "Sign in again",
-                                          onclick: startSignIn }));
-      } else {
-        setStatus(status, result.message || `Upload failed (${resp.status}).`);
-      }
+    if (result.status !== "done") {
+      setStatus(status, result.message || "That upload couldn't be added.", profileLink);
       return;
     }
-
-    const profileLink = result.slug ? { href: `/u/${result.slug}`, text: "View profile" } : null;
     if (result.slug) rememberProfile(signIn.steamId, result.slug, result.name);
     if (!result.added) {
       setStatus(status, result.duplicates
@@ -338,12 +410,8 @@
         : "None of those files could be read as runs.", profileLink);
       return;
     }
-    // One sign-in, one write: the server refuses the same sign-in twice.
-    forgetSignIn();
     const parts = [`Added ${result.added} run${result.added === 1 ? "" : "s"}; your profile now has ${result.total}.`];
     if (result.rejected + unreadable) parts.push(`${result.rejected + unreadable} file(s) couldn't be read as runs and were skipped.`);
-    const left = fresh.length - count;
-    if (left > 0) parts.push(`${left} more runs didn't fit in one upload — sign in again in a minute to send the rest.`);
     setStatus(status, parts.join(" "), profileLink);
   }
 

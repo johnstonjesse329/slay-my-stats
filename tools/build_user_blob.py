@@ -3,9 +3,10 @@ tools/build_user_blob.py — Build a per-user data blob for the static site.
 
 Parses a local STS2 history folder the same way run.py does, then saves it
 into local_data/ exactly as an upload would (the ingest Lambda's storage
-code, so the layout can't drift): the profile at users/<slug>.json.gz, the
-private ids/<steamid>.json.gz record, and the users/_index.json.gz list.
-boot.js fetches the profile at /users/<slug>.json.gz; see build_site.py's
+code, so the layout can't drift): the profile's summary at
+users/<slug>.json.gz and its runs by month at users/<slug>/<YYYY-MM>.json.gz,
+the private ids/<steamid>.json.gz record, and the users/_index.json.gz list.
+boot.js fetches the summary, then the month files; see build_site.py's
 docstring for how the whole static site fits together. Rebuilding replaces
 the profile's runs but keeps its slug.
 
@@ -127,11 +128,14 @@ def main():
     slug = handler.save_profile(store, steam_id, slug, existing[2] if existing else None,
                                 name, runs, {}, time.time())
     out_path = _DATA_DIR / handler.blob_key(slug)
+    month_dir = _DATA_DIR / "users" / slug
+    month_files = sorted(month_dir.glob("*.json.gz"))
 
     print(f"Name:          {name}")
-    print(f"Runs:          {len(runs)}")
-    print(f"Gzipped size:  {out_path.stat().st_size:,} bytes")
-    print(f"Wrote {out_path}  (site URL /u/{slug})")
+    print(f"Runs:          {len(runs)} in {len(month_files)} month(s)")
+    print(f"Gzipped size:  {out_path.stat().st_size:,} bytes summary + "
+          f"{sum(p.stat().st_size for p in month_files):,} bytes of months")
+    print(f"Wrote {out_path} and {month_dir}/  (site URL /u/{slug})")
 
 
 if __name__ == "__main__":

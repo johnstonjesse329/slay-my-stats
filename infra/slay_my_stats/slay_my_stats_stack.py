@@ -8,13 +8,16 @@ from aws_cdk import (
     aws_cloudfront_origins as origins,
     aws_iam as iam,
     aws_lambda as lambda_,
+    aws_lambda_destinations as lambda_destinations,
     aws_logs as logs,
     aws_route53 as route53,
     aws_route53_targets as route53_targets,
     aws_budgets as budgets,
     aws_lambda_event_sources as lambda_event_sources,
     aws_s3 as s3,
+    aws_s3_notifications as s3n,
     aws_sns as sns,
+    aws_sns_subscriptions as subscriptions,
     aws_ssm as ssm,
 )
 import shutil
@@ -77,11 +80,9 @@ _lambda = boto3.client("lambda")
 
 def lambda_handler(event, context):
     # Any message on the topic is a budget breach; there is nothing to parse.
-    _lambda.put_function_concurrency(
-        FunctionName=os.environ["TARGET_FUNCTION_NAME"],
-        ReservedConcurrentExecutions=0,
-    )
-    print("Throttled", os.environ["TARGET_FUNCTION_NAME"], "to 0 concurrency")
+    for name in os.environ["TARGET_FUNCTION_NAMES"].split(","):
+        _lambda.put_function_concurrency(FunctionName=name, ReservedConcurrentExecutions=0)
+        print("Throttled", name, "to 0 concurrency")
 """
 
 # The site bucket only has /index.html at the root -- page URLs like
@@ -121,10 +122,16 @@ class SlayMyStatsStack(Stack):
 
         certificate_arn = required_context("gammaCertificateArn" if gamma else "certificateArn")
         hosted_zone_id = required_context("gammaHostedZoneId" if gamma else "hostedZoneId")
+        # Where failed uploads are emailed. Kept out of the repo with the rest.
+        alert_email = required_context("alertEmail")
 
-        # users/<slug>.json.gz: one gzip JSON blob per player, plus the public
-        # users/_index.json.gz list; ids/<steamid>.json.gz maps Steam IDs to
-        # slugs and stays private (CloudFront only serves users/*).
+        # users/<slug>.json.gz and users/<slug>/<YYYY-MM>.json.gz: each
+        # player's profile summary and runs by month, plus the public
+        # users/_index.json.gz list and users/_uploads/<id>.json.gz, each
+        # upload's result for the page to poll. Private (CloudFront only
+        # serves users/*): ids/<steamid>.json.gz maps Steam IDs to slugs,
+        # limits/ holds the upload rate limits, and raw/<steamid>/ keeps every
+        # upload as sent, so profiles can be rebuilt after a parser fix.
         # RETAIN: players' uploads live only here, so tearing the stack down
         # leaves the bucket behind. Standing the stack up again then needs it
         # imported or emptied and deleted by hand first.
@@ -134,6 +141,16 @@ class SlayMyStatsStack(Stack):
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY if gamma else RemovalPolicy.RETAIN,
             auto_delete_objects=gamma,
+            # The upload page POSTs each upload straight here, with a
+            # presigned form the ingest function hands out.
+            cors=[s3.CorsRule(
+                allowed_origins=[f"https://{domain_name}"],
+                allowed_methods=[s3.HttpMethods.POST],
+                allowed_headers=["*"],
+            )],
+            # Upload results are only read while the page waits for them.
+            # Nothing else here expires: raw/ is kept for good.
+            lifecycle_rules=[s3.LifecycleRule(prefix="users/_uploads/", expiration=Duration.days(7))],
         )
 
         # Built static site (index.html, js/*.js, dashboard.css, game art).
@@ -211,33 +228,33 @@ class SlayMyStatsStack(Stack):
             target=route53.RecordTarget.from_alias(route53_targets.CloudFrontTarget(distribution)),
         )
 
+        ingest_code = lambda_.Code.from_asset(
+            str(INGEST_DIR),
+            # Local-only bundling; the image is never pulled because
+            # try_bundle always succeeds.
+            bundling=BundlingOptions(
+                image=DockerImage.from_registry("unused"),
+                local=_CopyIngestSources(),
+            ),
+            # Hash the sources that end up in the bundle, including
+            # run.py, so a parser change alone still redeploys.
+            asset_hash=_ingest_asset_hash(),
+        )
+
+        # Checks the Steam sign-in and the rate limits, then hands out a
+        # presigned POST for one new raw/ object. Never sees the upload.
         ingest_log_group = logs.LogGroup(
             self, "IngestLogGroup",
             retention=logs.RetentionDays.ONE_WEEK,
             removal_policy=RemovalPolicy.DESTROY,
         )
-
         ingest_fn = lambda_.Function(
             self, "IngestFunction",
             runtime=lambda_.Runtime.PYTHON_3_12,
             handler="handler.lambda_handler",
-            code=lambda_.Code.from_asset(
-                str(INGEST_DIR),
-                # Local-only bundling; the image is never pulled because
-                # try_bundle always succeeds.
-                bundling=BundlingOptions(
-                    image=DockerImage.from_registry("unused"),
-                    local=_CopyIngestSources(),
-                ),
-                # Hash the sources that end up in the bundle, including
-                # run.py, so a parser change alone still redeploys.
-                asset_hash=_ingest_asset_hash(),
-            ),
-            # A whole history (hundreds of runs) arrives in one upload: the
-            # parse is ~0.4 s at full CPU, but the merged blob is ~18 MB of
-            # JSON in memory before gzip. Lambda CPU scales with memory.
-            timeout=Duration.seconds(30),
-            memory_size=1024,
+            code=ingest_code,
+            timeout=Duration.seconds(15),
+            memory_size=256,
             log_group=ingest_log_group,
             environment={
                 "DATA_BUCKET": data_bucket.bucket_name,
@@ -246,27 +263,91 @@ class SlayMyStatsStack(Stack):
                 "ALLOWED_RETURN_TO": f"https://{domain_name}/",
             },
         )
+        # Read/write covers the limits, the slug lookup, and signing the
+        # upload form (a presigned POST acts with this role's permissions).
         data_bucket.grant_read_write(ingest_fn)
+
+        # Merges each upload into its player's profile, run by S3 as the
+        # upload lands. It goes a month at a time, so only the months an
+        # upload touches are ever in memory: 667 runs took 7.8 s and 155 MB
+        # live, and the profile's size doesn't matter.
+        process_log_group = logs.LogGroup(
+            self, "ProcessLogGroup",
+            retention=logs.RetentionDays.ONE_WEEK,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+        # Lambda calls this directly (no queue, so nothing costs anything
+        # while uploads work) once an upload has failed every retry, by error
+        # or timeout: it tells the uploader's page, logs it, and emails you. The raw/
+        # object is kept, so the upload can be processed again once whatever
+        # broke is fixed.
+        failure_log_group = logs.LogGroup(
+            self, "ProcessFailureLogGroup",
+            retention=logs.RetentionDays.ONE_MONTH,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+        failure_fn = lambda_.Function(
+            self, "ProcessFailureFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="handler.failure_handler",
+            code=ingest_code,
+            timeout=Duration.seconds(15),
+            log_group=failure_log_group,
+            environment={"DATA_BUCKET": data_bucket.bucket_name},
+        )
+        data_bucket.grant_read_write(failure_fn, "users/_uploads/*")
+        # Emails you about each one. AWS sends a confirmation email first:
+        # nothing arrives until the link in it is clicked.
+        alert_topic = sns.Topic(self, "AlertTopic")
+        alert_topic.add_subscription(subscriptions.EmailSubscription(alert_email))
+        alert_topic.grant_publish(failure_fn)
+        failure_fn.add_environment("ALERT_TOPIC_ARN", alert_topic.topic_arn)
+        # S3 invokes this directly. No queue in between: Lambda polling one
+        # costs SQS requests even while nothing is uploaded. How many copies
+        # run at once is capped only by the account's concurrency limit (10);
+        # the sign-in and per-IP limits in authorize() gate every upload, and
+        # the kill switch below is the backstop.
+        process_fn = lambda_.Function(
+            self, "ProcessFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="handler.process_handler",
+            code=ingest_code,
+            # A 20,000-run upload took ~50 s on a desktop; Lambda's CPU at this
+            # size is slower. Only an upload that big ever runs this long.
+            timeout=Duration.minutes(5),
+            memory_size=1024,
+            log_group=process_log_group,
+            environment={"DATA_BUCKET": data_bucket.bucket_name},
+            retry_attempts=2,
+            on_failure=lambda_destinations.LambdaDestination(failure_fn),
+        )
+        data_bucket.grant_read_write(process_fn)  # and delete: junk uploads aren't kept
+        data_bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED,
+            s3n.LambdaDestination(process_fn),
+            s3.NotificationKeyFilter(prefix="raw/"),
+        )
 
         # CloudFormation can't create a SecureString with a real value baked
         # into the template, so the parameter itself is created out-of-band
         # via the AWS CLI -- CDK only imports it by name to grant read access.
+        # Only the process function asks Steam for names.
         steam_api_key_param = ssm.StringParameter.from_secure_string_parameter_attributes(
             self, "SteamApiKeyParam",
             parameter_name=STEAM_API_KEY_PARAM_NAME,
         )
-        steam_api_key_param.grant_read(ingest_fn)
+        steam_api_key_param.grant_read(process_fn)
         # kms.Alias.from_alias_name(...).grant_decrypt() is a documented CDK
         # no-op -- it can't resolve the alias to a real key ARN without a live
         # account lookup, so no grant is ever emitted. Build the alias ARN
         # from stack tokens instead (no lookup needed) and grant explicitly.
-        ingest_fn.add_to_role_policy(
+        process_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["kms:Decrypt"],
                 resources=[self.format_arn(service="kms", resource="alias", resource_name="aws/ssm")],
             )
         )
-        ingest_fn.add_environment("STEAM_API_KEY_PARAM_NAME", STEAM_API_KEY_PARAM_NAME)
+        process_fn.add_environment("STEAM_API_KEY_PARAM_NAME", STEAM_API_KEY_PARAM_NAME)
 
         # No API Gateway: OpenID verification happens inside the handler, so
         # a bare public Function URL is enough and one less moving part.
@@ -280,8 +361,8 @@ class SlayMyStatsStack(Stack):
         )
 
         # Kill switch: budget breach -> SNS -> small Lambda that sets the ingest
-        # function's reserved concurrency to 0, so every further request is
-        # throttled before it runs. Budgets only evaluate a few times a day, so
+        # and process functions' reserved concurrency to 0, so every further
+        # request or upload is throttled before it runs. Budgets only evaluate a few times a day, so
         # this bounds a sustained attack rather than stopping it instantly.
         # Undo manually: aws lambda delete-function-concurrency.
         kill_switch_topic = sns.Topic(self, "KillSwitchTopic")
@@ -307,12 +388,12 @@ class SlayMyStatsStack(Stack):
             timeout=Duration.seconds(10),
             memory_size=128,
             log_group=kill_switch_log_group,
-            environment={"TARGET_FUNCTION_NAME": ingest_fn.function_name},
+            environment={"TARGET_FUNCTION_NAMES": f"{ingest_fn.function_name},{process_fn.function_name}"},
         )
         kill_switch_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["lambda:PutFunctionConcurrency"],
-                resources=[ingest_fn.function_arn],
+                resources=[ingest_fn.function_arn, process_fn.function_arn],
             )
         )
         kill_switch_fn.add_event_source(lambda_event_sources.SnsEventSource(kill_switch_topic))

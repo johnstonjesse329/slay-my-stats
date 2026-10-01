@@ -7,9 +7,11 @@ when there are any, and is skipped otherwise.
 """
 import gzip
 import json
+import os
 import sys
 import tempfile
 import unittest
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -76,6 +78,9 @@ class MemStore:
     def delete(self, key):
         self.objects.pop(key, None)
 
+    def list(self, prefix):
+        return [k for k in self.objects if k.startswith(prefix)]
+
     def json(self, key):
         return json.loads(gzip.decompress(self.objects[key][0]))
 
@@ -86,7 +91,13 @@ class MemStore:
         return self.json(handler.blob_key(self.slug(steam_id)))
 
     def runs(self, steam_id=STEAM_ID):
-        return self.profile(steam_id)["runs"]
+        slug = self.slug(steam_id)
+        return [r for _, runs in handler.stored_months(self, slug, self.profile(steam_id)) for r in runs]
+
+    def months(self, slug="mrbean"):
+        """The month files stored for a profile."""
+        prefix = f"users/{slug}/"
+        return sorted(k[len(prefix):-len(".json.gz")] for k in self.objects if k.startswith(prefix))
 
     def index(self):
         return self.json(handler.INDEX_KEY)["players"]
@@ -194,11 +205,17 @@ class BodyTests(unittest.TestCase):
         self.assertEqual(lines, [b'{"a":1}', b'{"b":2}'])
 
     def test_decompression_bomb(self):
-        # ~200 KB compressed that inflates to 300 MB: must be cut off, not inflated.
-        bomb = gzip.compress(b"\n" * (300 * 1024 * 1024), compresslevel=9)
-        with self.assertRaises(handler.IngestError) as cm:
-            for _ in handler.iter_upload_lines(bomb):
-                pass
+        # A small body that inflates past the cap: must be cut off, not inflated.
+        # (The cap is lowered here so the test doesn't inflate gigabytes.)
+        bomb = gzip.compress(b"\n" * (30 * 1024 * 1024), compresslevel=9)
+        old = handler.MAX_DECOMPRESSED_BYTES
+        handler.MAX_DECOMPRESSED_BYTES = 10 * 1024 * 1024
+        try:
+            with self.assertRaises(handler.IngestError) as cm:
+                for _ in handler.iter_upload_lines(bomb):
+                    pass
+        finally:
+            handler.MAX_DECOMPRESSED_BYTES = old
         self.assertEqual(cm.exception.code, "too_large")
 
     def test_huge_line(self):
@@ -227,46 +244,215 @@ class SafetyTests(unittest.TestCase):
         self.assertFalse(handler.check_safe(v))
 
 
-class IngestTests(unittest.TestCase):
+def fake_presign(key, max_bytes, expires):
+    return {"url": "https://s3.example/", "fields": {"key": key, "Content-Type": "application/gzip"}}
+
+
+class Uploads:
+    """Drives an upload end to end: authorize, the browser's POST to S3 (a
+    plain put here), then the S3 event's processing."""
     def setUp(self):
         self.store = MemStore()
 
-    def ingest(self, body, now=NOW, name="Mr. Bean!", **param_kw):
-        return handler.ingest(openid_params(issued=now - 60, **param_kw), body, self.store, ALLOWED,
-                              now=now, post=steam_says(), lookup_name=named(name))
+    def authorize(self, now=NOW, ip="203.0.113.7", issued=None, **param_kw):
+        issued = now - 60 if issued is None else issued
+        return handler.authorize(openid_params(issued=issued, **param_kw), ip, self.store, ALLOWED,
+                                 fake_presign, now=now, post=steam_says())
+
+    def process(self, key, now=NOW, name="Mr. Bean!"):
+        return handler.process_upload(key, self.store, now=now, lookup_name=named(name))
+
+    def ingest(self, body, now=NOW, name="Mr. Bean!", ip="203.0.113.7", **param_kw):
+        auth = self.authorize(now=now, ip=ip, **param_kw)
+        key = auth["fields"]["key"]
+        self.store.put(key, body, {}, None)
+        self.last_key = key
+        return self.process(key, now=now, name=name)
+
+    def stats(self):
+        return self.store.json(handler.STATS_KEY)
+
+
+class AuthorizeTests(Uploads, unittest.TestCase):
+    def assertRefused(self, code, **kw):
+        with self.assertRaises(handler.IngestError) as cm:
+            self.authorize(**kw)
+        self.assertEqual(cm.exception.code, code)
+
+    def test_hands_out_one_raw_key(self):
+        auth = self.authorize()
+        self.assertRegex(auth["fields"]["key"], rf"^raw/{STEAM_ID}/\d{{8}}T\d{{6}}Z-[A-Za-z0-9_-]{{16}}\.ndjson\.gz$")
+        self.assertEqual(auth["fields"]["key"], handler.raw_key(STEAM_ID, auth["uploadId"], NOW))
+        self.assertEqual((auth["maxBytes"], auth["slug"]), (handler.UPLOAD_MAX_BYTES, None))
+        self.assertNotEqual(auth["uploadId"], self.authorize(now=NOW + 120, nonce_suffix="2")["uploadId"])
+
+    def test_returns_known_slug(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        self.assertEqual(self.authorize(now=NOW + 120, nonce_suffix="2")["slug"], "mrbean")
+
+    def test_bad_signin(self):
+        with self.assertRaises(handler.IngestError):
+            handler.authorize(openid_params(), "1.2.3.4", self.store, ALLOWED, fake_presign, now=NOW,
+                              post=steam_says(False))
+
+    def test_cooldown(self):
+        self.authorize()
+        self.assertRefused("cooldown", now=NOW + 10, nonce_suffix="soon")
+        self.authorize(now=NOW + 61, nonce_suffix="later")
+
+    def test_signin_reused_after_cooldown(self):
+        self.authorize()
+        self.authorize(now=NOW + 120, issued=NOW - 60)
+
+    def test_ip_limit(self):
+        for i in range(handler.IP_UPLOADS_PER_HOUR):
+            self.authorize(steam_id=f"7656119800000001{i}", now=NOW + i)
+        self.assertRefused("rate_limited", steam_id="76561198000000020", now=NOW + 10)
+        # Another address is unaffected, and the window slides.
+        self.authorize(steam_id="76561198000000021", ip="198.51.100.1", now=NOW + 10)
+        self.authorize(steam_id="76561198000000022", now=NOW + handler.IP_WINDOW_SECONDS + 1)
+
+    def test_ip_limit_is_per_ipv6_block(self):
+        self.assertEqual(handler.ip_limit_key("2001:db8:1:2::1"), handler.ip_limit_key("2001:db8:1:2:ffff::9"))
+        self.assertNotEqual(handler.ip_limit_key("2001:db8:1:2::1"), handler.ip_limit_key("2001:db8:1:3::1"))
+        self.assertNotIn("203.0.113.7", handler.ip_limit_key("203.0.113.7"))
+
+    def test_ip_limit_checked_before_steam(self):
+        for i in range(handler.IP_UPLOADS_PER_HOUR):
+            self.authorize(steam_id=f"7656119800000001{i}", now=NOW + i)
+        post = steam_says()
+        with self.assertRaises(handler.IngestError):
+            handler.authorize(openid_params(steam_id="76561198000000020"), "203.0.113.7", self.store,
+                              ALLOWED, fake_presign, now=NOW + 10, post=post)
+        self.assertEqual(post.calls, [])
+
+
+class ProcessTests(Uploads, unittest.TestCase):
+    def result(self, key=None):
+        m = handler.RAW_KEY_RE.match(key or self.last_key)
+        return self.store.json(handler.result_key(m.group(3)))
 
     def test_first_upload_then_dedupe(self):
         res = self.ingest(body_of(minimal_run(1700000002), minimal_run(1700000001), minimal_run(1700000001)))
-        self.assertEqual((res["added"], res["duplicates"], res["rejected"], res["total"]), (2, 1, 0, 2))
+        self.assertEqual((res["added"], res["duplicates"], res["rejected"], res["total"]), (2, 0, 0, 2))
         self.assertEqual([r["ts"] for r in self.store.runs()], [1700000001, 1700000002])
-        # steam_id comes from the verified sign-in, never from the upload.
-        self.assertTrue(all(r.get("steam_id", STEAM_ID) == STEAM_ID for r in self.store.runs()))
+        self.assertEqual(self.result(), res)
+        self.assertEqual(res["status"], "done")
 
-        self.store.clock = NOW
         res = self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000003)),
                           now=NOW + 120, nonce_suffix="second")
         self.assertEqual((res["added"], res["duplicates"], res["total"]), (1, 1, 3))
         self.assertEqual([r["ts"] for r in self.store.runs()], [1700000001, 1700000002, 1700000003])
 
+    def test_raw_upload_is_kept(self):
+        body = body_of(minimal_run(1700000001))
+        self.ingest(body)
+        self.assertEqual(self.store.objects[self.last_key][0], body)
+
     def test_stored_blob_is_gzip_json(self):
         self.ingest(body_of(minimal_run(1700000001)))
         blob = json.loads(gzip.decompress(self.store.objects["users/mrbean.json.gz"][0]))
-        self.assertEqual((blob["v"], blob["name"]), (1, "Mr. Bean!"))
+        self.assertEqual(blob, {"v": 2, "name": "Mr. Bean!", "parser": run.PARSER_VERSION,
+                                "months": {"2023-11": [1700000001]}, "noRaw": []})
+        month = json.loads(gzip.decompress(self.store.objects["users/mrbean/2023-11.json.gz"][0]))
+        self.assertEqual((month["v"], [r["ts"] for r in month["runs"]]), (2, [1700000001]))
 
-    def test_nothing_new_does_not_write(self):
+    def test_uploads_in_any_order_land_in_month_files(self):
+        # 2024-03, 2023-07, then 2023-11 between them and a resend of 2023-07.
+        self.ingest(body_of(minimal_run(1710000000), minimal_run(1690000000)))
+        res = self.ingest(body_of(minimal_run(1700000000), minimal_run(1690000000)),
+                          now=NOW + 120, nonce_suffix="2")
+        self.assertEqual((res["added"], res["duplicates"], res["total"]), (1, 1, 3))
+        self.assertEqual(self.store.months(), ["2023-07", "2023-11", "2024-03"])
+        self.assertEqual(self.store.profile()["months"],
+                         {"2023-07": [1690000000], "2023-11": [1700000000], "2024-03": [1710000000]})
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1690000000, 1700000000, 1710000000])
+
+    def test_only_touched_months_are_written(self):
+        self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000)))
+        july = self.store.objects["users/mrbean/2023-07.json.gz"]
+        self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120, nonce_suffix="2")
+        self.assertIs(self.store.objects["users/mrbean/2023-07.json.gz"], july)
+
+    def test_resent_run_is_reparsed(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        puts = self.store.puts
-        self.store.clock = NOW
-        res = self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120, nonce_suffix="again")
-        self.assertEqual((res["added"], res["duplicates"], res["slug"]), (0, 1, "mrbean"))
-        self.assertEqual(self.store.puts, puts)
+        res = self.ingest(body_of(minimal_run(1700000001, ascension=9)), now=NOW + 120, nonce_suffix="2")
+        self.assertEqual((res["added"], res["duplicates"]), (0, 1))
+        self.assertEqual(self.store.runs()[0]["asc"], 9)
+        self.assertEqual(self.stats()["allRuns"], 1)  # counted once
 
-    def test_slugify(self):
-        for name, slug in [("Mr. Bean!", "mrbean"), ("Zoë-99", "zoe99"), ("日本語", "player"),
-                           ("a" * 80, "a" * 32), ("ＦＵＬＬ", "full")]:
-            self.assertEqual(handler.slugify(name), slug, name)
-        self.assertEqual(handler.clean_name("  x​\n y "), "x y")
-        self.assertIsNone(handler.clean_name(" \t"))
+    def test_nothing_new_does_not_write_profile(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        before = dict(self.store.objects)
+        res = self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120, nonce_suffix="again")
+        self.assertEqual((res["added"], res["duplicates"], res["slug"], res["total"]), (0, 1, "mrbean", 1))
+        for key in ("users/mrbean.json.gz", "users/mrbean/2023-11.json.gz", handler.INDEX_KEY):
+            self.assertIs(self.store.objects[key], before[key])
+
+    def put_v1_profile(self, *ts, **extra):
+        """A profile from before month files: every run in the one file."""
+        runs = [handler.run.parse_run_data(minimal_run(t), steam_id=STEAM_ID) for t in ts]
+        self.store.put(handler.blob_key("mrbean"),
+                       handler._pack({"v": 1, "name": "Mr. Bean!", "runs": runs, **extra}), {}, None)
+        self.store.put(handler.id_key(STEAM_ID), handler._pack({"slug": "mrbean"}), {}, None)
+
+    def test_legacy_profile_catch_up(self):
+        # A profile from before raw uploads: no noRaw key, so none of its runs
+        # have a raw copy until they're sent again.
+        self.put_v1_profile(1700000001, 1700000002)
+        self.ingest(body_of(minimal_run(1700000003)))
+        self.assertEqual(self.store.profile()["noRaw"], [1700000001, 1700000002])
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2")
+        self.assertEqual(self.store.profile()["noRaw"], [])
+        self.assertEqual(len(self.store.runs()), 3)
+
+    def test_v1_profile_is_migrated_on_upload(self):
+        self.put_v1_profile(1690000000, 1700000001, noRaw=[], parser=0)
+        res = self.ingest(body_of(minimal_run(1710000000)))
+        self.assertEqual((res["added"], res["total"]), (1, 3))
+        doc = self.store.profile()
+        self.assertEqual((doc["v"], doc["parser"], doc["noRaw"]), (2, 0, []))  # parser kept: not reparsed
+        self.assertEqual(self.store.months(), ["2023-07", "2023-11", "2024-03"])
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1690000000, 1700000001, 1710000000])
+
+    def test_migrate_profile_tool(self):
+        self.put_v1_profile(1690000000, 1700000001, noRaw=[1690000000])
+        self.assertTrue(handler.migrate_profile(self.store, "mrbean"))
+        self.assertFalse(handler.migrate_profile(self.store, "mrbean"))  # already done
+        self.assertEqual(self.store.profile()["noRaw"], [1690000000])
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1690000000, 1700000001])
+
+    def test_rejected_runs_keep_the_upload(self):
+        res = self.ingest(body_of(
+            minimal_run(1700000001),
+            minimal_run(1700000002, seed="<script>alert(1)</script>"),
+            minimal_run(12),  # implausible start time
+            [1, 2, 3],
+            {"no": "fields"},
+        ) + gzip.compress(b"\n{not json"))
+        self.assertEqual((res["added"], res["rejected"]), (1, 5))
+        self.assertIn(self.last_key, self.store.objects)
+
+    def test_unparseable_run_shaped_upload_is_kept(self):
+        # Looks like runs, but the parser can't take them: maybe the parser's
+        # fault, so the upload stays for a rebuild after a fix.
+        res = self.ingest(body_of(minimal_run(12), minimal_run(13)))
+        self.assertEqual((res["status"], res["added"], res["rejected"]), ("done", 0, 2))
+        self.assertIn(self.last_key, self.store.objects)
+        self.assertNotIn(handler.id_key(STEAM_ID), self.store.objects)  # no empty profile
+
+    def test_junk_is_deleted(self):
+        for i, body in enumerate([b"not gzip", body_of({"no": "fields"}, [1]), body_of()]):
+            res = self.ingest(body, now=NOW + 120 * i, nonce_suffix=str(i))
+            self.assertEqual(res["status"], "failed", body)
+            self.assertNotIn(self.last_key, self.store.objects)
+            self.assertEqual(self.result()["status"], "failed")
+        self.assertEqual(self.result()["error"], "no_runs")
+
+    def test_other_keys_ignored(self):
+        self.store.put("raw/not-a-steam-id/x.ndjson.gz", b"x", {}, None)
+        self.assertIsNone(self.process("raw/not-a-steam-id/x.ndjson.gz"))
+        self.assertIsNone(self.process(handler.raw_key(STEAM_ID, "A" * 16, NOW)))  # already gone
 
     def test_first_upload_creates_profile_record_and_index(self):
         res = self.ingest(body_of(minimal_run(1700000001)))
@@ -277,67 +463,120 @@ class IngestTests(unittest.TestCase):
 
     def test_steam_id_never_public(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        self.assertNotIn("steamId", self.ingest(body_of(), nonce_suffix="x", now=NOW + 120))
+        self.assertNotIn(STEAM_ID, json.dumps(self.authorize(now=NOW + 120, nonce_suffix="x")["slug"]))
         for key, (data, *_rest) in self.store.objects.items():
             if key.startswith("users/"):
                 self.assertNotIn(STEAM_ID, key)
                 self.assertNotIn(STEAM_ID.encode(), gzip.decompress(data))
 
+    def test_slugify(self):
+        for name, slug in [("Mr. Bean!", "mrbean"), ("Zoë-99", "zoe99"), ("日本語", "player"),
+                           ("a" * 80, "a" * 32), ("ＦＵＬＬ", "full")]:
+            self.assertEqual(handler.slugify(name), slug, name)
+        self.assertEqual(handler.clean_name("  x​\n y "), "x y")
+        self.assertIsNone(handler.clean_name(" \t"))
+
     def test_same_name_gets_numbered_slug(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        other = "76561198000000002"
-        res = self.ingest(body_of(minimal_run(1700000001)), steam_id=other, name="mr bean")
+        res = self.ingest(body_of(minimal_run(1700000001)), steam_id="76561198000000002", name="mr bean")
         self.assertEqual(res["slug"], "mrbean-2")
         res = self.ingest(body_of(minimal_run(1700000001)), steam_id="76561198000000003", name="MRBEAN")
         self.assertEqual(res["slug"], "mrbean-3")
         self.assertEqual([p["slug"] for p in self.store.index()], ["mrbean", "mrbean-2", "mrbean-3"])
 
     def test_slug_taken_but_not_yet_indexed(self):
-        # Another new player created "mrbean" but hasn't updated the index yet.
         self.store.put("users/mrbean.json.gz", b"x", {}, None)
         self.assertEqual(self.ingest(body_of(minimal_run(1700000001)))["slug"], "mrbean-2")
         self.assertEqual(self.store.objects["users/mrbean.json.gz"][0], b"x")
 
     def test_rename_keeps_slug(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        self.store.clock = NOW
         res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2", name="Sir Bean")
         self.assertEqual((res["slug"], res["name"]), ("mrbean", "Sir Bean"))
-        self.assertEqual(self.store.profile()["name"], "Sir Bean")
         self.assertEqual([(p["slug"], p["name"], p["runs"]) for p in self.store.index()], [("mrbean", "Sir Bean", 2)])
 
-    def test_new_player_needs_a_name(self):
+    def test_new_player_without_name_is_retried(self):
         with self.assertRaises(handler.IngestError) as cm:
             self.ingest(body_of(minimal_run(1700000001)), name=None)
-        self.assertEqual(cm.exception.code, "steam_unreachable")
-        self.assertEqual(self.store.objects, {})
+        self.assertEqual(cm.exception.status, 502)  # the Lambda retries it
+        self.assertIn(self.last_key, self.store.objects)
+        self.assertNotIn(handler.id_key(STEAM_ID), self.store.objects)
+        res = self.process(self.last_key)
+        self.assertEqual((res["added"], res["slug"]), (1, "mrbean"))
 
     def test_returning_player_keeps_name_if_steam_is_down(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        self.store.clock = NOW
         res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2", name=None)
         self.assertEqual((res["added"], res["name"]), (1, "Mr. Bean!"))
 
+    def test_redelivered_event_counts_once(self):
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002)))
+        again = self.process(self.last_key)
+        self.assertEqual((again["added"], again["duplicates"]), (0, 2))
+        self.assertEqual(self.stats()["allRuns"], 2)
+
+    def test_racing_upload_is_merged_not_lost(self):
+        # Another upload's write lands between our read and our put; the
+        # merge is redone on top of it.
+        self.ingest(body_of(minimal_run(1700000001)))
+        store = self.store
+
+        class Racy(MemStore):
+            pass
+        racy = Racy()
+        racy.objects, racy.puts = store.objects, store.puts
+        orig_put = racy.put
+        state = {"raced": False}
+
+        def put(key, data, metadata, if_match):
+            if key == "users/mrbean/2023-11.json.gz" and not state["raced"]:
+                # The other upload writes the same month, a new one, and the
+                # summary, all before ours does.
+                state["raced"] = True
+                handler._merge_upload(racy, STEAM_ID, body_of(minimal_run(1700000009), minimal_run(1702000000)),
+                                      NOW, named("Mr. Bean!"))
+            orig_put(key, data, metadata, if_match)
+        racy.put = put
+        self.store = racy
+        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2")
+        self.assertEqual(res["total"], 4)
+        self.assertEqual([r["ts"] for r in racy.runs()], [1700000001, 1700000002, 1700000009, 1702000000])
+        self.assertEqual(racy.profile()["months"], {"2023-11": [1700000001, 1700000002, 1700000009],
+                                                    "2023-12": [1702000000]})
+        self.assertEqual(self.stats()["allRuns"], 4)
+
     def test_racing_first_uploads_leave_no_orphan(self):
-        # Between our read of ids/<steamid> and our write, another tab's first
-        # upload for the same player recorded a different slug.
         class Racy(MemStore):
             def put(self, key, data, metadata, if_match):
-                if key == handler.id_key(STEAM_ID) and key not in self.objects:
+                if key == handler.id_key(STEAM_ID) and key not in self.objects and not getattr(self, "done", 0):
+                    self.done = 1
                     super().put(key, handler._pack({"slug": "elsewhere"}), {}, None)
                 super().put(key, data, metadata, if_match)
         self.store = Racy()
-        with self.assertRaises(handler.IngestError) as cm:
-            self.ingest(body_of(minimal_run(1700000001)))
-        self.assertEqual(cm.exception.code, "conflict")
+        self.ingest(body_of(minimal_run(1700000001)))
         self.assertNotIn("users/mrbean.json.gz", self.store.objects)
+        self.assertEqual(self.store.profile()["months"], {"2023-11": [1700000001]})
+        self.assertEqual(self.store.months("elsewhere"), ["2023-11"])
 
-    def stats(self):
-        return self.store.json(handler.STATS_KEY)
+    def test_upload_caps(self):
+        for cap, value, body, error in [
+            ("MAX_RUNS_PER_UPLOAD", 2, body_of(*(minimal_run(1700000000 + i) for i in range(3))), "too_many_runs"),
+            ("MAX_MONTHS_PER_UPLOAD", 1, body_of(minimal_run(1690000000), minimal_run(1700000000)),
+             "too_many_months"),
+        ]:
+            self.setUp()
+            old = getattr(handler, cap)
+            setattr(handler, cap, value)
+            try:
+                res = self.ingest(body)
+            finally:
+                setattr(handler, cap, old)
+            self.assertEqual((res["status"], res["error"]), ("failed", error))
+            self.assertIn(self.last_key, self.store.objects)  # real runs: kept
+            self.assertNotIn(handler.id_key(STEAM_ID), self.store.objects)  # nothing saved
 
     def test_stats_count_each_run_once(self):
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002, win=False)))
-        self.store.clock = NOW
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000003, run_time=900)),
                     now=NOW + 120, nonce_suffix="second")
         s = self.stats()
@@ -368,64 +607,68 @@ class IngestTests(unittest.TestCase):
         self.assertEqual(self.stats()["solo"]["runs"], 1)
 
     def test_tallies_add_up_to_a_recount(self):
-        run = lambda ts, **kw: handler.run.parse_run_data(minimal_run(ts, **kw))
-        a = [run(1700000001), run(1700000002, win=False)]
-        b = [run(1700000003, run_time=900), run(1700000004, run_time=3000)]
+        parse = lambda ts, **kw: handler.run.parse_run_data(minimal_run(ts, **kw))
+        a = [parse(1700000001), parse(1700000002, win=False)]
+        b = [parse(1700000003, run_time=900), parse(1700000004, run_time=3000)]
         merged = handler.merge_stats(handler.merge_stats(handler.empty_stats(), handler.tally(a, "x")),
                                      handler.tally(b, "y"))
         whole = handler.merge_stats(handler.empty_stats(), handler.tally(a + b, "y"))
         self.assertEqual(merged, whole)
-        self.assertEqual(merged["solo"]["records"]["fastestWin"], whole["solo"]["records"]["fastestWin"])
         self.assertEqual(merged["solo"]["records"]["fastestWin"]["mins"], 15)
 
-    def test_cooldown(self):
-        self.store.clock = NOW
-        self.ingest(body_of(minimal_run(1700000001)))
-        with self.assertRaises(handler.IngestError) as cm:
-            self.ingest(body_of(minimal_run(1700000002)), now=NOW + 10, nonce_suffix="soon")
-        self.assertEqual(cm.exception.status, 429)
 
-    def test_replayed_signin(self):
-        self.store.clock = NOW - 1000
-        self.ingest(body_of(minimal_run(1700000001)))
-        with self.assertRaises(handler.IngestError) as cm:
-            self.ingest(body_of(minimal_run(1700000002)))
-        self.assertEqual(cm.exception.code, "signin_used")
+class RebuildTests(Uploads, unittest.TestCase):
+    def test_rebuild_reparses_raw_and_keeps_legacy_runs(self):
+        legacy = handler.run.parse_run_data(minimal_run(1600000000), steam_id=STEAM_ID)
+        handler.save_profile(self.store, STEAM_ID, None, None, "Mr. Bean!", [legacy], {}, NOW)
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002)))
+        self.ingest(body_of(minimal_run(1700000003)), now=NOW + 120, nonce_suffix="2")
 
-    def test_bad_runs_rejected_not_fatal(self):
-        res = self.ingest(body_of(
-            minimal_run(1700000001),
-            minimal_run(1700000002, seed="<script>alert(1)</script>"),
-            minimal_run(12),  # implausible start time
-            [1, 2, 3],
-            {"no": "fields"},
-        ) + gzip.compress(b"\n{not json"))
-        self.assertEqual((res["added"], res["rejected"]), (1, 5))
+        # Simulate an old parser's output on the profile.
+        slug, etag, doc = handler._read_profile(self.store, STEAM_ID)
+        runs = self.store.runs()
+        for r in runs:
+            r["asc"] = -1
+        handler.save_profile(self.store, STEAM_ID, slug, etag, doc["name"], runs, {}, NOW,
+                             no_raw=doc["noRaw"])
 
-    def test_conflict(self):
-        # Another write to this profile lands between our read and our put.
-        class Racy(MemStore):
-            racing = False
-            def put(self, key, *a):
-                if self.racing:
-                    raise handler.StoreConflict()
-                super().put(key, *a)
-        self.store = Racy()
-        self.ingest(body_of(minimal_run(1700000001)))
-        self.store.clock, self.store.racing = NOW, True
-        with self.assertRaises(handler.IngestError) as cm:
-            self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2")
-        self.assertEqual(cm.exception.status, 409)
+        dry = handler.rebuild_profile(self.store, STEAM_ID, dry_run=True)
+        self.assertEqual(self.store.runs()[1]["asc"], -1)
+        summary = handler.rebuild_profile(self.store, STEAM_ID)
+        self.assertEqual(dry, summary)
+        self.assertEqual((summary["runs"], summary["fromRaw"], summary["noRaw"], summary["dropped"]), (4, 3, 1, 0))
+        runs = self.store.runs()
+        self.assertEqual([r["asc"] for r in runs], [-1, 3, 3, 3])  # the legacy run can't be rebuilt
+        self.assertEqual(self.store.profile()["noRaw"], [1600000000])
 
-    def test_too_many_runs(self):
-        old = handler.MAX_RUNS_PER_UPLOAD
-        handler.MAX_RUNS_PER_UPLOAD = 2
-        try:
-            with self.assertRaises(handler.IngestError) as cm:
-                self.ingest(body_of(*(minimal_run(1700000000 + i) for i in range(3))))
-            self.assertEqual(cm.exception.status, 413)
-        finally:
-            handler.MAX_RUNS_PER_UPLOAD = old
+    def test_rebuild_drops_months_left_empty(self):
+        # A run whose raw copy is gone (say, stripped) leaves the profile, and
+        # so does its month file when it was the only run in it.
+        self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000)))
+        self.store.delete(self.last_key)
+        self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120, nonce_suffix="2")
+        summary = handler.rebuild_profile(self.store, STEAM_ID)
+        self.assertEqual((summary["runs"], summary["dropped"]), (1, 1))
+        self.assertEqual(self.store.months(), ["2023-11"])
+        self.assertEqual(self.store.profile()["months"], {"2023-11": [1700000000]})
+
+    def test_remove_profile(self):
+        self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000)))
+        self.ingest(body_of(minimal_run(1700000001)), steam_id="76561198000000002", name="Other")
+        dry = handler.remove_profile(self.store, "mrbean", raw=True, dry_run=True)
+        self.assertIn("users/mrbean.json.gz", self.store.objects)
+        self.assertEqual(handler.remove_profile(self.store, "mrbean", raw=True), dry)
+        self.assertEqual(dry["steamIds"], [STEAM_ID])
+        self.assertEqual([k for k in self.store.objects if "mrbean" in k or STEAM_ID in k and "limits" not in k], [])
+        self.assertEqual([p["slug"] for p in self.store.index()], ["other"])
+        self.assertEqual(len(self.store.runs("76561198000000002")), 1)  # someone else's: untouched
+        # Their next upload starts over, under the same slug.
+        res = self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120, nonce_suffix="2")
+        self.assertEqual((res["slug"], res["added"], res["total"]), ("mrbean", 1, 1))
+
+    def test_rebuild_needs_a_profile(self):
+        with self.assertRaises(handler.IngestError):
+            handler.rebuild_profile(self.store, STEAM_ID)
 
 
 class DirStoreTests(unittest.TestCase):
@@ -444,40 +687,63 @@ class DirStoreTests(unittest.TestCase):
 
 
 class LambdaHandlerTests(unittest.TestCase):
-    def test_event_plumbing(self):
-        import base64
-        import urllib.parse
-        store = MemStore()
-        handler._store = store
-        orig_post = handler._post_to_steam
+    def setUp(self):
+        self.store = MemStore()
+        self.store.presign_post = fake_presign
+        handler._store = self.store
+        self.saved = (handler.verify_openid, handler.time.time, handler.lookup_steam_name,
+                      os.environ.get("ALLOWED_RETURN_TO"))
         orig_verify = handler.verify_openid
         handler.verify_openid = lambda p, a, now=None, post=None: orig_verify(p, a, now=NOW, post=steam_says())
-        orig_time = handler.time.time
         handler.time.time = lambda: NOW
-        orig_lookup = handler.lookup_steam_name
         handler.lookup_steam_name = named("Mr. Bean!")
-        try:
-            import os
-            os.environ["ALLOWED_RETURN_TO"] = ",".join(ALLOWED)
-            event = {
-                "requestContext": {"http": {"method": "POST"}},
-                "rawQueryString": urllib.parse.urlencode(openid_params()),
-                "body": base64.b64encode(body_of(minimal_run(1700000001))).decode(),
-                "isBase64Encoded": True,
-            }
-            resp = handler.lambda_handler(event, None)
-            self.assertEqual(resp["statusCode"], 200, resp["body"])
-            self.assertEqual(json.loads(resp["body"])["added"], 1)
-            self.assertEqual(json.loads(resp["body"])["slug"], "mrbean")
+        os.environ["ALLOWED_RETURN_TO"] = ",".join(ALLOWED)
 
-            event["requestContext"]["http"]["method"] = "GET"
-            self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
+    def tearDown(self):
+        handler._store = None
+        handler.verify_openid, handler.time.time, handler.lookup_steam_name, allowed = self.saved
+        if allowed is None:
+            os.environ.pop("ALLOWED_RETURN_TO", None)
+        else:
+            os.environ["ALLOWED_RETURN_TO"] = allowed
+
+    def test_event_plumbing(self):
+        event = {
+            "requestContext": {"http": {"method": "POST", "sourceIp": "203.0.113.7"}},
+            "rawQueryString": urllib.parse.urlencode(openid_params()),
+        }
+        resp = handler.lambda_handler(event, None)
+        self.assertEqual(resp["statusCode"], 200, resp["body"])
+        auth = json.loads(resp["body"])
+        key = auth["fields"]["key"]
+        self.assertEqual((auth["url"], auth["slug"]), ("https://s3.example/", None))
+        self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 429)  # same sign-in again: cooldown
+
+        # S3 URL-encodes keys in events.
+        self.store.put(key, body_of(minimal_run(1700000001)), {}, None)
+        handler.process_handler({"Records": [{"s3": {"object": {"key": urllib.parse.quote_plus(key)}}}]}, None)
+        upload_id = handler.RAW_KEY_RE.match(key).group(3)
+        result = self.store.json(handler.result_key(upload_id))
+        self.assertEqual((result["added"], result["slug"]), (1, "mrbean"))
+
+        event["requestContext"]["http"]["method"] = "GET"
+        self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
+
+    def test_failure_handler_tells_the_page(self):
+        key = handler.raw_key("76561197960287930", "abcDEF123456abcd", 1700000000)
+        s3_event = {"Records": [{"s3": {"object": {"key": urllib.parse.quote_plus(key)}}}]}
+        alerts = []
+        orig_alert, handler._alert = handler._alert, lambda subject, message: alerts.append(message)
+        try:
+            handler.failure_handler({"requestPayload": s3_event,
+                                     "responsePayload": {"errorMessage": "Task timed out"}}, None)
         finally:
-            handler._store = None
-            handler._post_to_steam = orig_post
-            handler.verify_openid = orig_verify
-            handler.time.time = orig_time
-            handler.lookup_steam_name = orig_lookup
+            handler._alert = orig_alert
+        result = self.store.json(handler.result_key("abcDEF123456abcd"))
+        self.assertEqual((result["status"], result["error"]), ("failed", "process_failed"))
+        self.assertEqual(len(alerts), 1)
+        self.assertIn(key, alerts[0])
+        self.assertIn("Task timed out", alerts[0])
 
 
 class RealHistoryTests(unittest.TestCase):
@@ -492,8 +758,9 @@ class RealHistoryTests(unittest.TestCase):
         body = gzip.compress("\n".join(json.dumps(json.loads(f.read_text(encoding="utf-8"))) for f in files).encode())
 
         store = MemStore()
-        res = handler.ingest(openid_params(steam_id=steam_id), body, store, ALLOWED, now=NOW, post=steam_says(),
-                             lookup_name=named("Me"))
+        key = handler.raw_key(steam_id, "A" * 16, NOW)
+        store.put(key, body, {}, None)
+        res = handler.process_upload(key, store, now=NOW, lookup_name=named("Me"))
         self.assertEqual(res["rejected"], 0, res)
         expected = sorted((run.parse_run(f) for f in files), key=lambda r: r["ts"])
         self.assertEqual(store.runs(steam_id), json.loads(json.dumps(expected)))

@@ -68,14 +68,16 @@ slay-my-stats/
 ├── infra/                   CDK app
 │   ├── app.py
 │   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
-│   ├── lambda/ingest/handler.py               the ingest Lambda
+│   ├── lambda/ingest/handler.py               the upload Lambdas (ingest, process, failure)
 │   ├── tests/test_ingest.py
 │   └── requirements.txt     CDK, boto3
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
 │   ├── deploy.py            pre-push deploy (see "Deploying")
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
+│   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
 │   ├── rebuild_stats.py     recount users/_stats.json.gz from every profile
+│   ├── remove_profile.py    take a profile off the site
 │   ├── refresh_game_data.py game-data pipeline driver (see "Refreshing game data")
 │   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
 │   └── requirements.txt     pipeline requirements
@@ -135,19 +137,20 @@ the site always show the same numbers.
 styles inlined. The game art stays in the repo and the page links to it.
 
 **The site is static.** Every page is the same `index.html` and `app.js`, stored in S3 and served by CloudFront
-from its edge locations worldwide. No server builds pages: visiting `/u/<name>` loads that player's runs file
-(`users/<slug>.json.gz`), and the dashboard code computes every stat in the browser, exactly as it does in the
+from its edge locations worldwide. No server builds pages: visiting `/u/<name>` loads that player's runs (a small summary,
+`users/<slug>.json.gz`, then a file per month of runs), and the dashboard code computes every stat in the browser, exactly as it does in the
 local file.
 
-**Uploads appear on the next page load.** The upload Lambda parses new runs with `run.py` and writes the updated
-runs file straight to S3; there's no build step. Runs files are never cached by CloudFront, and the browser checks
-for a newer copy on every visit, so a new upload shows up right away. If nothing changed, that check returns a few
+**Uploads appear on the next page load.** The browser sends new runs straight to S3, and a Lambda parses them with
+`run.py` and writes them into the player's month files; there's no build step. Profile files are never cached by
+CloudFront, and the browser checks for a newer copy on every visit, so a new upload shows up right away. If nothing changed, that check returns a few
 hundred bytes.
 
 **The home page** reads two small files the Lambda also updates on each upload: the player list for search, and
 the site-wide running totals (see [Site-wide stats](#site-wide-stats)).
 
-**Server-side code** is just the upload Lambda, plus the budget kill switch. Viewing a page runs no Lambda at all;
+**Server-side code** is just the upload Lambdas (one checks the Steam sign-in and hands out an upload URL, one
+adds each upload to its profile), plus the budget kill switch. Viewing a page runs no Lambda at all;
 the only code involved is a small CloudFront Function that sends every `/u/<name>` address to `index.html`.
 
 ## Local use
@@ -180,13 +183,13 @@ flowchart LR
 
 ## The website
 
-The site is static: an S3 bucket behind CloudFront. The only server-side code is one Lambda, which handles
-uploads. For each player it stores one gzip'd JSON file, their Steam name and parsed runs, which the browser
-downloads and renders. There are no accounts, sessions, cookies or database.
+The site is static: an S3 bucket behind CloudFront. The only server-side code is the Lambdas that handle
+uploads. For each player they store gzip'd JSON, a summary with their Steam name and their parsed runs a month per
+file, which the browser downloads and renders. There are no accounts, sessions, cookies or database.
 
 ### Architecture
 
-![AWS architecture: Route 53 and CloudFront in front of two S3 buckets, an ingest Lambda that verifies Steam sign-in, and a budget kill switch](images/aws-architecture.png)
+![AWS architecture: Route 53 and CloudFront in front of two S3 buckets; an ingest Lambda that verifies the Steam sign-in and hands out upload URLs; a process Lambda that merges uploads, with a failure Lambda behind it; and a budget kill switch](images/aws-architecture.png)
 
 The diagram's source is [docs/slay-my-stats-architecture.drawio](docs/slay-my-stats-architecture.drawio); open it in
 [draw.io](https://app.diagrams.net/) to edit, then re-export the PNG.
@@ -199,15 +202,17 @@ the CLI's default account and region (us-west-2 today).
 | Resource | Configuration | Why |
 |----------|---------------|-----|
 | **Site bucket** `slay-my-stats-site` | Private (CloudFront OAC only). Destroyed with the stack. | The built `dist/` plus game art. Rebuildable from the repo at any time. |
-| **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` only). **Retained** if the stack is deleted. | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
+| **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` only). **Retained** if the stack is deleted. CORS for `https://slay-my-stats.com` POSTs, since uploads go straight here. Upload results expire after 7 days. | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
 | **CloudFront distribution** | `slay-my-stats.com`, HTTP redirects to HTTPS, default root `index.html`. Behaviors below. | One domain for the site and the profile data, so the browser needs no CORS for reads. |
 | **CloudFront Function** (`ProfileUrlRewriteFunction`) | Viewer request, JS 2.0. Sets the URI to `/index.html`. | Page URLs like `/u/<slug>` have no S3 object. Rewriting at the edge keeps the shareable URL in the address bar. Attached only to page behaviors, so asset requests never pay for it. |
 | **Route 53 A record** | Alias to the distribution, in an existing hosted zone. | The domain. The hosted zone is created outside CDK. |
 | **ACM certificate** | Imported by ARN, us-east-1. | CloudFront only reads certificates from us-east-1. Created outside CDK. |
-| **Ingest Lambda** | Python 3.12, 1024 MB, 30 s timeout, one-week log retention. Public Function URL, CORS for `https://slay-my-stats.com` POSTs only. | Verifies the Steam sign-in itself, so no API Gateway. Memory buys CPU: a whole history parses in one call, and the merged blob is ~18 MB of JSON before gzip. |
-| **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the Lambda gets read and `kms:Decrypt`. | Steam Web API key for display names. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
+| **Ingest Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Public Function URL, CORS for `https://slay-my-stats.com` POSTs only. | Checks the Steam sign-in and the rate limits, then hands out a presigned POST for one upload. It verifies the sign-in itself, so no API Gateway, and never sees the upload, so it stays small. |
+| **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
+| **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
+| **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process Lambda gets read and `kms:Decrypt`. | Steam Web API key for display names. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
 | **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
-| **SNS topic + kill-switch Lambda** | Python 3.12, 128 MB. Only permission: `lambda:PutFunctionConcurrency` on the ingest function. | Sets the ingest function's reserved concurrency to 0. Budgets evaluate a few times a day, so this bounds a sustained attack rather than stopping it instantly. Undo with `aws lambda delete-function-concurrency`. |
+| **SNS topic + kill-switch Lambda** | Python 3.12, 128 MB. Only permission: `lambda:PutFunctionConcurrency` on the ingest and process functions. | Sets their reserved concurrency to 0. Budgets evaluate a few times a day, so this bounds a sustained attack rather than stopping it instantly. Undo with `aws lambda delete-function-concurrency`. |
 
 Stack outputs: `SiteBucketName`, `DataBucketName`, `DistributionDomainName` and `IngestFunctionUrl` (which
 `tools/deploy.py` reads when building the site).
@@ -225,17 +230,26 @@ Stack outputs: `SiteBucketName`, `DataBucketName`, `DistributionDomainName` and 
 
 Inside the page, `site/boot.js` decides what to draw from `location.pathname`: the player finder and
 site-wide stats on `/`, a hand-written page on `/<page>` (fetched from `/page-<page>.html`), or a
-profile on `/u/<slug>`, which it loads by fetching `/catalog.json` and
-`/users/<slug>.json.gz`, building `window.DATA` and then loading `/app.js`.
+profile on `/u/<slug>`, which it loads by fetching `/catalog.json`, the profile summary
+`/users/<slug>.json.gz` and then all its month files at once, joining them into `window.DATA` and then loading
+`/app.js`.
 
 ### Stored data
 
 | Key | Served | Contents |
 |-----|--------|----------|
-| `users/<slug>.json.gz` | yes | `{"v":1, "name", "runs"}` |
+| `users/<slug>.json.gz` | yes | profile summary: `{"v":2, "name", "parser", "months": {"YYYY-MM": [start times]}, "noRaw"}` |
+| `users/<slug>/<YYYY-MM>.json.gz` | yes | that month's parsed runs: `{"v":2, "runs"}` |
 | `users/_index.json.gz` | yes | every player's slug, name, run count and last upload, for the home page's search |
 | `users/_stats.json.gz` | yes | site-wide running totals for the home page (see below) |
+| `users/_uploads/<id>.json.gz` | yes | one upload's result (counts, or why it failed), which the page that sent it polls. The id is random; expires after 7 days. |
 | `ids/<steamid>.json.gz` | no | `{"slug"}`, so an upload finds its profile |
+| `raw/<steamid>/<time>-<id>.ndjson.gz` | no | every upload exactly as sent, so profiles can be rebuilt after a parser fix |
+| `limits/` | no | when upload URLs were last handed out, per Steam account and per IP address |
+
+A profile is split by month so an upload only reads and writes the months it adds to, and costs the same however
+big the profile gets. The page fetches every month and joins them, so it still reads as one history. `noRaw`
+lists runs uploaded before raw uploads were kept; the page sends those again so they get a raw copy.
 
 Steam IDs are never public. The Lambda gets the display name from Steam's `GetPlayerSummaries` API using the
 key in SSM, and falls back to the public profile XML if the API call fails.
@@ -256,6 +270,7 @@ sequenceDiagram
     participant S as Steam
     participant L as Ingest Lambda
     participant D as Data bucket
+    participant R as Process Lambda
 
     P->>B: Upload runs
     B->>S: OpenID checkid_setup (return_to = site root)
@@ -263,49 +278,62 @@ sequenceDiagram
     Note over B: params moved from the URL<br/>into sessionStorage
     P->>B: picks the history folder
     Note over B: reads .run files locally, drops runs<br/>the profile already has, gzips NDJSON
-    B->>L: POST body + openid.* params
+    B->>L: POST openid.* params
     L->>S: check_authentication
     S-->>L: is_valid
-    L->>D: read ids/<steamid>, users/<slug>
-    Note over L: parse with run.py, validate,<br/>dedupe by start time
-    L->>S: display name (Web API, else profile XML)
-    L->>D: conditional writes: profile, index, stats
-    L-->>B: {slug, name, added, duplicates, total}
+    Note over L: per-IP limit, cooldown
+    L-->>B: presigned POST for one raw/ object, upload id
+    B->>D: POST the gzip'd runs
+    D->>R: object created (raw/)
+    Note over R: parse with run.py, validate,<br/>sort by month, dedupe by start time
+    R->>S: display name (Web API, else profile XML)
+    R->>D: conditional writes: month files, summary, index, stats
+    R->>D: users/_uploads/<id> (the result)
+    B->>D: polls users/_uploads/<id>
     B-->>P: result + link to /u/<slug>
 ```
 
 1. **Sign in.** "Upload runs" in the site bar sends you to Steam's OpenID login. Steam redirects back to the
    site with signed `openid.*` parameters, which prove your Steam ID. Every upload carries that proof, and the
-   Lambda re-checks it with Steam.
-2. **Pick the folder.** The browser reads the `.run` files locally. It drops runs your profile already has
-   (once this browser has seen your profile's address from an earlier upload; otherwise it sends them all and
-   the Lambda skips them), gzips the rest as NDJSON (one run per line) and POSTs them. A body over 4 MB is
-   split: the rest goes in the next upload.
-3. **Ingest.** The Lambda (`infra/lambda/ingest/handler.py`) then:
-   - verifies the sign-in: Steam confirms the signature, `return_to` is this site, the sign-in is under
-     30 minutes old, and it isn't the one that made the last write;
-   - enforces a 60-second cooldown between writes;
-   - parses each run with the same `run.py` the local tool uses;
+   ingest Lambda re-checks it with Steam. The same sign-in works for more uploads until it's 30 minutes old.
+2. **Pick the folder.** The browser reads the `.run` files locally and drops runs your profile already has. It
+   knows your profile from an earlier upload in this browser, or else from the ingest Lambda's answer. It gzips
+   the rest as NDJSON (one run per line).
+3. **Get an upload URL.** The ingest Lambda checks the per-IP limit, verifies the sign-in (Steam confirms the
+   signature, `return_to` is this site, and it's under 30 minutes old) and enforces a 60-second cooldown per
+   Steam account. It answers with a presigned POST, good for 10 minutes, for one new `raw/` object of up to
+   100 MB, plus the upload's id. It never sees your runs.
+4. **Send.** The browser POSTs the file straight to S3.
+5. **Process.** S3 invokes the process Lambda, which:
+   - stream-decompresses the upload and parses each run with the same `run.py` the local tool uses;
    - rejects any run containing a string outside `[A-Za-z0-9_.-]`, because profiles are rendered in other
      people's browsers;
-   - dedupes by start time, then merges with a conditional S3 write, so two simultaneous uploads can't lose
-     each other's runs;
+   - sorts the runs by month on local disk, then merges each month into its file by start time with a
+     conditional S3 write, so two simultaneous uploads can't lose each other's runs. Only the months the upload
+     touches are read or written;
    - looks up your current Steam name; on a first upload, it claims your address with a must-not-exist write,
      so two new players with the same name can't both get it;
-   - updates the home page's player list;
-   - adds the new runs, and only those, to the site-wide stats.
+   - writes the profile summary, updates the home page's player list, and adds the new runs, and only those,
+     to the site-wide stats;
+   - writes the upload's result.
 
-   It responds with your address, name and counts. The browser remembers the address for next time.
+   An upload with no runs in it at all is deleted. Every other upload is kept, so profiles can be rebuilt after
+   a parser fix.
+6. **Result.** The page polls for the result and shows the counts and a link to your profile. If processing
+   fails, Lambda retries it twice; after that the failure Lambda writes a failed result, so the page says so.
+   The browser remembers your address for next time.
 
 Upload limits, from the top of `handler.py`:
 
 | Limit | Value |
 |-------|-------|
 | Sign-in age | 30 minutes (±5 minutes clock skew) |
-| Cooldown between writes | 60 seconds |
-| Request body | 6 MB (the Function URL's cap; the browser sends at most 4 MB) |
-| Decompressed body | 200 MB, 4 MB per line |
-| Runs per upload / per profile | 3,000 / 20,000 |
+| Upload URLs | 5 per IP address (per /64 for IPv6) per hour, and 60 seconds apart per Steam account |
+| Upload URL lifetime | 10 minutes |
+| Upload size | 100 MB gzip'd (~35,000 runs) |
+| Decompressed upload | 2 GB, 4 MB per line |
+| Runs / months per upload | 20,000 / 240 |
+| Runs per profile | no cap (stored a month at a time) |
 | Parsed run size | 1 MB |
 | Strings in a run | `[A-Za-z0-9_.-]`, up to 80 characters |
 
@@ -316,15 +344,26 @@ daily runs, matching the dashboard's Solo filter): win rate for each and by char
 rarer cards and the relics with the best win rates (at least 10 runs each); the fights that end the most
 runs; and the fastest solo win.
 
-Every figure is a running total: `[runs, wins]` pairs, counts, minutes, and best-so-far records. The upload
+Every figure is a running total: `[runs, wins]` pairs, counts, minutes, and best-so-far records. The process
 Lambda tallies just the runs an upload added and adds that onto `users/_stats.json.gz` with a conditional
 write. No one's history is ever reread, and a duplicate run is never counted twice. The file holds raw
 counts for every card and relic, around 11 KB for 660 runs, so the page does the ranking and its thresholds
 can change without recounting.
 
 The update is best effort, like the player list. `tools/rebuild_stats.py` recounts everything from the
-profiles: run it by hand after adding a new figure, removing a profile, or if an update was missed
-(`--bucket slay-my-stats-data` for the live site).
+profiles: run it by hand after adding a new figure, removing or rebuilding a profile, or if an update was
+missed.
+
+### Maintenance tools
+
+These work on `local_data/` (the dev server's store), or on the live bucket with `--bucket slay-my-stats-data`
+(needs AWS credentials). Each has `--dry-run`.
+
+- `tools/rebuild_profiles.py` re-parses players' kept uploads after a fix to `run.py`'s parser. Bump
+  `run.PARSER_VERSION` with the fix, then `--stale` rebuilds the profiles an older parser built.
+- `tools/remove_profile.py --slug <slug>` takes a profile off the site. The player's next upload starts a fresh
+  one. Add `--raw` to delete their kept uploads too.
+- `tools/rebuild_stats.py` recounts the site-wide stats. Run it after either of the above.
 
 ## Development
 
@@ -337,22 +376,27 @@ infra\.venv\Scripts\python.exe tools/build_user_blob.py        # your runs -> lo
 infra\.venv\Scripts\python.exe tools/serve_site.py --port 8123 # http://127.0.0.1:8123/
 ```
 
-`tools/serve_site.py` emulates the CloudFront routing. It also serves `POST /api/ingest` by running the real
-Lambda handler against `local_data/` (the same `users/` and `ids/` layout as the bucket), so the upload flow,
-including a real Steam sign-in, works locally. Locally the Steam name comes from the public profile XML, unless
+`tools/serve_site.py` emulates the CloudFront routing. It also stands in for the upload path, running the real
+Lambda code against `local_data/` (the same layout as the bucket): `POST /api/ingest` is the ingest Lambda, and the
+upload URL it hands out is the server's own `/api/raw-upload`, which stores the file under `local_data/raw/` and
+processes it on the spot, in place of S3 and its event. So the upload flow, including a real Steam sign-in, works
+locally. Locally the Steam name comes from the public profile XML, unless
 you set `STEAM_API_KEY`.
 
 ```mermaid
 flowchart LR
     subgraph local["tools/serve_site.py (127.0.0.1)"]
         dist["dist/<br/>(build_site.py)"]
-        users[("local_data/<br/>users/, ids/")]
-        ingest["/api/ingest<br/>= infra/lambda/ingest/handler.py"]
+        users[("local_data/<br/>users/, ids/, raw/")]
+        ingest["/api/ingest<br/>handler.authorize()"]
+        rawup["/api/raw-upload<br/>handler.process_upload()"]
     end
     b["Browser"] --> dist
     b -- "/users/* only" --> users
-    b -- "POST runs" --> ingest
+    b -- "sign-in" --> ingest
+    b -- "POST runs" --> rawup
     ingest --> users
+    rawup --> users
     ingest -- "check_authentication" --> steam["Steam OpenID"]
 ```
 
@@ -384,13 +428,15 @@ flowchart TB
     inval --> done["push goes through"]
 ```
 
-Any change to `run.py` or the handler shows up in `cdk diff` as a new `IngestFunction` code key, since the
-Lambda bundles both. To skip deploying for one push, use `SKIP_DEPLOY=1 git push`.
+Any change to `run.py` or the handler shows up in `cdk diff` as new code for the Lambdas, since they bundle
+both. To skip deploying for one push, use `SKIP_DEPLOY=1 git push`.
 
 Set up once, outside CDK:
 
 - the Route 53 hosted zone and the ACM certificate in us-east-1, with their IDs in `infra/cdk.context.json`
-  (ignored by git): `{"certificateArn": "arn:aws:acm:us-east-1:…", "hostedZoneId": "Z…"}`;
+  (ignored by git), next to the address failed uploads are emailed to:
+  `{"certificateArn": "arn:aws:acm:us-east-1:…", "hostedZoneId": "Z…", "alertEmail": "you@example.com"}`.
+  After the first deploy with it, click the confirmation link AWS emails there;
 - the Steam Web API key: `aws ssm put-parameter --name /slay-my-stats/steam-api-key --type SecureString`;
 - `cdk bootstrap` for the account and region.
 
