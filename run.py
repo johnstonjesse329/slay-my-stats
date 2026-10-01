@@ -266,7 +266,66 @@ def fmt_encounter(enc_id: str) -> str:
     return strip_prefix(enc_id, "ENCOUNTER.").replace("_", " ").title()
 
 
-def extract_fights(data: dict, char: str, asc: int, won: bool) -> list[dict]:
+def local_player_index(data: dict, steam_id: str | None) -> int:
+    """
+    Index of the uploading player within a run's `players` list.
+
+    A multiplayer run lists every participant in `players`, and every map node
+    carries a parallel `player_stats` list whose entries sit at those same
+    indexes. The local player is not necessarily index 0 -- the game orders the
+    players as it likes (the uploader can be any slot) -- so anything that
+    reads per-player state (player_stats, or the local player's deck/relics)
+    must find the entry whose `id` matches the uploader's verified Steam ID.
+
+    IDs are compared exactly first, then numerically: some game builds
+    serialize the Steam ID as a float64, which rounds the last digit or two
+    (76561198012345678 -> 76561198012345680), so a string compare alone would
+    miss the uploader in their own multiplayer runs.
+
+    Falls back to 0 for solo runs, runs with no Steam IDs, or an uploader who
+    isn't in the run (which keeps single-player output unchanged).
+    """
+    players = data.get("players") or []
+    if not steam_id:
+        return 0
+    want = str(steam_id)
+
+    # Exact match first: most saves store the Steam ID as an exact integer.
+    for i, p in enumerate(players):
+        if str(p.get("id", "")) == want:
+            return i
+
+    # Some game builds serialize the ID as a float64, which rounds off the last
+    # digit or two (76561198012345678 -> 76561198012345680). Match numerically
+    # so the uploader is still found in those runs instead of falling back to
+    # index 0 and reading a different player's stats.
+    try:
+        want_num = float(want)
+    except (TypeError, ValueError):
+        return 0
+    for i, p in enumerate(players):
+        pid = p.get("id")
+        if pid is None or pid == "":
+            continue
+        try:
+            if float(pid) == want_num:
+                return i
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
+def player_stats_at(node: dict, idx: int) -> dict:
+    """The local player's entry in a map node's `player_stats`, by index.
+
+    Falls back to the first entry when the list is shorter than the players
+    list (older saves without per-player IDs), so a run always yields stats.
+    """
+    stats = node.get("player_stats") or [{}]
+    return stats[idx] if 0 <= idx < len(stats) else stats[0]
+
+
+def extract_fights(data: dict, char: str, asc: int, won: bool, local_idx: int = 0) -> list[dict]:
     """
     Walk map_point_history and emit one record per elite or boss node.
 
@@ -286,8 +345,10 @@ def extract_fights(data: dict, char: str, asc: int, won: bool) -> list[dict]:
     encounter in the same run.
     """
     mph      = data.get("map_point_history", [])
-    deck     = data.get("players", [{}])[0].get("deck",   [])
-    relics   = data.get("players", [{}])[0].get("relics", [])
+    players  = data.get("players") or [{}]
+    player   = players[local_idx] if 0 <= local_idx < len(players) else players[0]
+    deck     = player.get("deck",   [])
+    relics   = player.get("relics", [])
     killed   = data.get("killed_by_encounter", "")
 
     # Build a timeline of (floor_index, potion_delta) so we can count
@@ -299,7 +360,7 @@ def extract_fights(data: dict, char: str, asc: int, won: bool) -> list[dict]:
         if not isinstance(act, list):
             continue
         for node in act:
-            ps = node.get("player_stats", [{}])[0]
+            ps = player_stats_at(node, local_idx)
             gained = sum(1 for pc in ps.get("potion_choices", []) if pc.get("was_picked"))
             used   = len(ps.get("potion_used", []))
             timeline_potions.append(gained - used)
@@ -324,7 +385,7 @@ def extract_fights(data: dict, char: str, asc: int, won: bool) -> list[dict]:
 
             rooms = node.get("rooms", [])
             enc_id = rooms[0].get("model_id", "") if rooms else ""
-            ps     = node.get("player_stats", [{}])[0]
+            ps     = player_stats_at(node, local_idx)
 
             hp_after  = ps.get("current_hp",    0)
             dmg       = ps.get("damage_taken",  0)
@@ -368,10 +429,11 @@ def extract_fights(data: dict, char: str, asc: int, won: bool) -> list[dict]:
     return fights
 
 
-def extract_timeline(data: dict) -> list[dict]:
+def extract_timeline(data: dict, local_idx: int = 0) -> list[dict]:
     """
     Walk map_point_history and emit one record per node visited.
     Used by the Run Detail page to show a per-floor event timeline.
+    `local_idx` selects the uploading player's stats in a multiplayer run.
     """
     mph = data.get("map_point_history", [])
     nodes = []
@@ -385,7 +447,7 @@ def extract_timeline(data: dict) -> list[dict]:
             rooms = node.get("rooms", [])
             enc_id = rooms[0].get("model_id", "") if rooms else ""
             turns  = rooms[0].get("turns_taken", 0) if rooms else 0
-            ps = node.get("player_stats", [{}])[0]
+            ps = player_stats_at(node, local_idx)
 
             hp_after = ps.get("current_hp",   0)
             dmg      = ps.get("damage_taken", 0)
@@ -395,21 +457,40 @@ def extract_timeline(data: dict) -> list[dict]:
 
             gold = ps.get("current_gold", None)
 
-            # card_choices/relic_choices.was_picked can fire multiple times in a single
-            # shop visit (buying 2+ items) — keep every pick, not just the last one.
-            # Also split shop purchases from fight/treasure/event reward pickups, same
-            # reasoning as potions below.
+            # At a shop the cards actually bought are in cards_gained; the shelf
+            # in card_choices is listed with was_picked false, so relying on
+            # was_picked alone reports almost no buys. Rewards (fight/treasure/
+            # event) still come from card_choices.was_picked, and keep every
+            # pick -- a shop visit or a reward can yield more than one card.
             cards_bought   = []
             cards_rewarded = []
             cards_skipped  = []
-            for cc in ps.get("card_choices", []):
-                cid = cc.get("card", {}).get("id", "")
-                if not cid:
-                    continue
-                if cc.get("was_picked"):
-                    (cards_bought if ntype == "shop" else cards_rewarded).append(cid)
+            bought = {}
+            if ntype == "shop":
+                for c in ps.get("cards_gained", []):
+                    cid = c.get("id", "")
+                    if cid:
+                        cards_bought.append(cid)
+                        bought[cid] = bought.get(cid, 0) + 1
+            entries = [[cid, bool(cc.get("was_picked"))]
+                       for cc in ps.get("card_choices", [])
+                       for cid in [cc.get("card", {}).get("id", "")] if cid]
+            claimed = [False] * len(entries)
+            for k, e in enumerate(entries):         # flagged picks claim first
+                if e[1] and bought.get(e[0]):
+                    bought[e[0]] -= 1
+                    claimed[k] = True
+            for k, e in enumerate(entries):
+                if e[1]:
+                    if ntype == "shop":
+                        if not claimed[k]:          # flagged but not in cards_gained
+                            cards_bought.append(e[0])
+                    else:
+                        cards_rewarded.append(e[0])
+                elif ntype == "shop" and bought.get(e[0]):
+                    bought[e[0]] -= 1               # unmarked shelf entry that was bought
                 else:
-                    cards_skipped.append(cid)
+                    cards_skipped.append(e[0])
             card_picked = cards_rewarded[0] if cards_rewarded else (cards_bought[0] if cards_bought else None)
 
             relics_bought   = []
@@ -515,7 +596,14 @@ def parse_run(path: Path) -> dict:
 # uploaded. Profiles record the version that built them, so the ones built by
 # an older parser can be found and rebuilt from their raw uploads
 # (tools/rebuild_profiles.py).
-PARSER_VERSION = 1
+#
+# v2: multiplayer runs read the uploading player's own player_stats (matched by
+# Steam ID) instead of always index 0, which misattributed another player's
+# card/relic picks, shop purchases, HP, gold, rest choices and fight stats.
+# v3: shop card purchases come from cards_gained (cards the deck actually
+# gained at that node); card_choices.was_picked stays false for the shop shelf,
+# so buys were nearly all missing from cardsOffered and the Run Detail timeline.
+PARSER_VERSION = 3
 
 
 def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | None = None) -> dict:
@@ -526,15 +614,14 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     calls this directly with the Steam ID it verified, since uploads arrive
     as JSON, not files at a save-folder path.
     """
-    # In multiplayer, every player has their own entry. Find the local player by
-    # matching their Steam ID. Fall back to index 0 for solo runs or no Steam ID.
-    players = data.get("players", [{}])
-    player = players[0]
-    if steam_id and len(players) > 1:
-        for p in players:
-            if str(p.get("id", "")) == steam_id:
-                player = p
-                break
+    # In multiplayer, every player has their own entry and their own
+    # player_stats at the matching index in each map node. Find the local
+    # player by their Steam ID -- they are not necessarily index 0 -- and use
+    # that same index for every per-player read below. Fall back to index 0 for
+    # solo runs or when no Steam ID is available.
+    players   = data.get("players") or [{}]
+    local_idx = local_player_index(data, steam_id)
+    player    = players[local_idx] if 0 <= local_idx < len(players) else players[0]
 
     # Use start_time if present; fall back to the filename (they should match).
     ts = data.get("start_time", fallback_ts)
@@ -581,11 +668,35 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
             rooms = node.get("rooms", [])
             enc   = rooms[0].get("model_id", "") if rooms else ""
             loc   = {"floor": floor_idx, "type": ntype, "enc": enc}
-            ps    = node.get("player_stats", [{}])[0]  # local player only
-            for cc in ps.get("card_choices", []):
-                cid = cc.get("card", {}).get("id", "")
-                if cid:
-                    cards_offered.setdefault(cid, []).append({**loc, "picked": bool(cc.get("was_picked"))})
+            ps    = player_stats_at(node, local_idx)  # local player only
+            # At a shop the shelf is listed in card_choices with was_picked
+            # false for the card; the ones actually bought are in cards_gained.
+            # Fold the bought cards into the same tally as picks: an entry the
+            # game already flagged as picked claims its copy of the buy first,
+            # then a leftover unmarked shelf entry (a bought card the shelf
+            # didn't flag) is flipped to picked, and any buy that never
+            # appeared on the shelf becomes its own picked entry.
+            bought = {}
+            if ntype == "shop":
+                for card in ps.get("cards_gained", []):
+                    cid = card.get("id", "")
+                    if cid:
+                        bought[cid] = bought.get(cid, 0) + 1
+            entries = [[cid, bool(cc.get("was_picked"))]
+                       for cc in ps.get("card_choices", [])
+                       for cid in [cc.get("card", {}).get("id", "")] if cid]
+            for e in entries:                       # flagged picks claim first
+                if e[1] and bought.get(e[0]):
+                    bought[e[0]] -= 1
+            for e in entries:                       # then leftover unmarked shelf entries
+                if not e[1] and bought.get(e[0]):
+                    bought[e[0]] -= 1
+                    e[1] = True
+            for cid, picked in entries:
+                cards_offered.setdefault(cid, []).append({**loc, "picked": picked})
+            for cid, count in bought.items():       # buys with no shelf entry
+                for _ in range(count):
+                    cards_offered.setdefault(cid, []).append({**loc, "picked": True})
             for rc in ps.get("relic_choices", []):
                 rid = rc.get("choice", "")
                 if rid:
@@ -612,7 +723,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     # Total gold earned over the run (shop/event/reward pickups), not the final
     # gold balance — summed from the same per-floor goldGained the timeline
     # already carries, so this doesn't walk map_point_history a second time.
-    timeline = extract_timeline(data)
+    timeline = extract_timeline(data, local_idx)
     gold_gained_total = sum(t["goldGained"] for t in timeline)
 
     return {
@@ -636,7 +747,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         "restChoices":   rest_choices,
         "finalDeck":     final_deck,
         "finalRelics":   final_relics,
-        "fights":        extract_fights(data, char, asc, run_won),
+        "fights":        extract_fights(data, char, asc, run_won, local_idx),
         "timeline":      timeline,
     }
 

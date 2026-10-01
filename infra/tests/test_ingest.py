@@ -16,10 +16,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(REPO), str(REPO / "infra" / "lambda" / "ingest")]
+sys.path[:0] = [str(REPO), str(REPO / "infra" / "lambda" / "ingest"), str(REPO / "tools")]
 
 import handler  # noqa: E402
 import run  # noqa: E402
+import validate_parser  # noqa: E402
 
 STEAM_ID = "76561198000000001"
 NOW = 1_800_000_000.0
@@ -118,6 +119,64 @@ def minimal_run(start_time, **extra):
     }
     r.update(extra)
     return r
+
+
+def multiplayer_run(start_time, round_ids=False):
+    """A two-player run where the uploader (STEAM_ID) is *not* index 0.
+
+    Each player buys a different card at one shop node, so a parser that reads
+    player_stats[0] attributes the other player's card (ANGER) to the uploader
+    instead of the uploader's own (SNAKEBITE). The other per-player fields
+    (HP, gold) differ too, so they can be checked the same way.
+
+    round_ids=True writes the IDs the way some game builds do -- as float64,
+    which rounds the last digits -- to exercise the numeric ID match.
+    """
+    # Far enough from STEAM_ID that float64 rounding can't merge the two IDs.
+    other_id = "76561198099999999"
+
+    def ident(steam_id):
+        return int(float(steam_id)) if round_ids else steam_id
+
+    def player(pid, char):
+        return {"id": pid, "character": char, "deck": [], "relics": []}
+
+    def stats(pid, card, hp, gold):
+        return {
+            "player_id": pid, "current_hp": hp, "max_hp": 80, "damage_taken": 10,
+            "hp_healed": 0, "gold_gained": gold, "gold_spent": 0, "current_gold": gold,
+            "card_choices": [{"card": {"id": card}, "was_picked": True}],
+            "cards_gained": [{"id": card}],
+        }
+
+    node = {
+        "map_point_type": "shop",
+        "rooms": [{"model_id": "ENCOUNTER.SHOP", "turns_taken": 0}],
+        "player_stats": [stats(ident(other_id), "CARD.ANGER", 55, 999),
+                         stats(ident(STEAM_ID), "CARD.SNAKEBITE", 70, 100)],
+    }
+    players = [player(ident(other_id), "CHARACTER.IRONCLAD"),
+               player(ident(STEAM_ID), "CHARACTER.SILENT")]
+    return minimal_run(start_time, players=players, map_point_history=[[node]])
+
+
+def shop_run(start_time, bought=("CARD.SNAKEBITE",), shelf=("CARD.ANGER",)):
+    """A solo run with one shop node.
+
+    The shop's shelf is listed in card_choices with was_picked false; the card
+    actually bought is in cards_gained. A parser reading only card_choices
+    reports no buys.
+    """
+    node = {
+        "map_point_type": "shop",
+        "rooms": [{"model_id": "ENCOUNTER.SHOP", "turns_taken": 0}],
+        "player_stats": [{
+            "player_id": 1, "current_hp": 70, "max_hp": 80, "gold_spent": 100,
+            "card_choices": [{"card": {"id": cid}, "was_picked": False} for cid in shelf],
+            "cards_gained": [{"id": cid} for cid in bought],
+        }],
+    }
+    return minimal_run(start_time, map_point_history=[[node]])
 
 
 class VerifyOpenIdTests(unittest.TestCase):
@@ -594,6 +653,40 @@ class ProcessTests(Uploads, unittest.TestCase):
         s = self.stats()
         self.assertEqual((s["allRuns"], s["solo"]["runs"], s["multi"]["runs"], s["multi"]["wins"]), (3, 1, 1, 0))
 
+    def test_multiplayer_reads_only_the_local_players_stats(self):
+        # The uploader is index 1 in this run, so every per-player field must
+        # come from their own player_stats entry, never index 0's.
+        self.ingest(body_of(multiplayer_run(1700000001)))
+        run_doc = self.store.runs()[0]
+        self.assertTrue(run_doc["mp"])
+        self.assertEqual(run_doc["char"], "SILENT")
+        self.assertEqual(list(run_doc["cardsOffered"]), ["CARD.SNAKEBITE"])
+        self.assertEqual([n["cardPicked"] for n in run_doc["timeline"]], ["CARD.SNAKEBITE"])
+        self.assertEqual(run_doc["timeline"][0]["hpAfter"], 70)
+        self.assertEqual(run_doc["timeline"][0]["goldGained"], 100)
+
+    def test_shop_card_buys_come_from_cards_gained(self):
+        # The shelf (card_choices) is all was_picked false; the bought card is
+        # in cards_gained -- both cardsOffered (Most bought) and the Run Detail
+        # timeline must see it as a buy, and the shelf card as skipped.
+        self.ingest(body_of(shop_run(1700000001)))
+        run_doc = self.store.runs()[0]
+        loc = run_doc["cardsOffered"]["CARD.SNAKEBITE"][0]
+        self.assertEqual((loc["type"], loc["picked"]), ("shop", True))
+        node = run_doc["timeline"][0]
+        self.assertEqual(node["cardsBought"], ["CARD.SNAKEBITE"])
+        self.assertEqual(node["cardPicked"], "CARD.SNAKEBITE")
+        self.assertEqual(node["cardsSkipped"], ["CARD.ANGER"])
+
+    def test_multiplayer_matches_float_rounded_steam_ids(self):
+        # Some game builds write the Steam ID as a float64, which rounds the
+        # last digits (76561198012345678 -> 76561198012345680). The uploader
+        # must still be found in their own run, not fall back to index 0.
+        self.ingest(body_of(multiplayer_run(1700000001, round_ids=True)))
+        run_doc = self.store.runs()[0]
+        self.assertEqual(run_doc["char"], "SILENT")
+        self.assertEqual(list(run_doc["cardsOffered"]), ["CARD.SNAKEBITE"])
+
     def test_stats_retry_on_conflict(self):
         class Busy(MemStore):
             clashes = 2
@@ -759,9 +852,34 @@ class LambdaHandlerTests(unittest.TestCase):
         self.assertIn(key, alerts[0])
         self.assertIn("Task timed out", alerts[0])
 
+class ValidatorTests(unittest.TestCase):
+    """The parser validator must reject a parse that picked the wrong player.
+
+    tools/validate_parser.py is only useful if it can fail; without this guard
+    it could quietly accept everything and prove nothing.
+    """
+
+    def test_rejects_a_parse_of_the_wrong_player(self):
+        data = multiplayer_run(1700000001)
+        self.assertEqual(validate_parser.validate_run(data, STEAM_ID), [])
+        original = run.local_player_index
+        run.local_player_index = lambda _data, _sid: 0   # the old multiplayer bug
+        try:
+            problems = validate_parser.validate_run(data, STEAM_ID)
+        finally:
+            run.local_player_index = original
+        self.assertTrue(problems, "validator accepted a parse of the wrong player")
+
 
 class RealHistoryTests(unittest.TestCase):
-    """Uploading real .run files must store exactly what run.py computes locally."""
+    """Uploading real .run files must store everything the ingest path computes.
+
+    NOTE: this compares the Lambda's output against run.parse_run() -- the same
+    parse_run_data on both sides -- so it proves the plumbing is faithful, NOT
+    that the parse is right. tools/validate_parser.py checks the parse against
+    the game's own labels (players[].id, player_stats[].player_id).
+    
+    """
 
     def test_matches_local_parse(self):
         dirs = run.find_history_dirs()
