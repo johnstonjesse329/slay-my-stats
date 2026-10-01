@@ -394,6 +394,15 @@ Set up once, outside CDK:
 - the Steam Web API key: `aws ssm put-parameter --name /slay-my-stats/steam-api-key --type SecureString`;
 - `cdk bootstrap` for the account and region.
 
+### Gamma
+
+`tools/deploy.py --stage gamma` deploys the same checkout to gamma.slay-my-stats.com: a second copy of the
+stack, with its own buckets and upload function, for checking a change against real CloudFront before
+production gets it. It only runs by hand; pushing `main` always deploys production. It needs its own
+certificate (for `gamma.slay-my-stats.com`, in us-east-1) and the hosted zone that subdomain is delegated to,
+as `"gammaCertificateArn"` and `"gammaHostedZoneId"` in `infra/cdk.context.json`. Without those two the gamma
+stack isn't built at all.
+
 ## Refreshing game data
 
 After a game update, run `python tools/refresh_game_data.py`. Its requirements are in
