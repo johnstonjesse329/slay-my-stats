@@ -26,9 +26,11 @@ from pathlib import Path
 
 from PIL import Image
 
+from pck_root import find_pck_root
+
 HERE = Path(__file__).parent
 ROOT = HERE.parent
-PCK  = ROOT / "pck_recover_full"
+PCK  = find_pck_root()
 
 RELIC_SRC  = PCK / "images" / "relics"
 # The game keeps a small and a large potion sprite; "large" is the one used on

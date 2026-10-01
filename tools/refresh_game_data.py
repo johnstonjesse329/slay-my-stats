@@ -32,6 +32,8 @@ import sys
 import time
 from pathlib import Path
 
+from pck_root import find_pck_root
+
 HERE = Path(__file__).parent
 ROOT = HERE.parent
 
@@ -45,7 +47,7 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-PCK_DIR       = ROOT / "pck_recover_full"
+PCK_DIR       = find_pck_root()
 PROVENANCE    = ROOT / "data_provenance.json"
 CARD_DATA     = ROOT / "card_data.json"
 RELIC_DATA    = ROOT / "relic_data.json"
@@ -360,7 +362,7 @@ def main():
                 "GDRE Tools not found. Download a release and either pass --gdre <path>,\n"
                 "set GDRE_TOOLS, or unpack it as ~/tools/GDRE_tools-<version>/gdre_tools.exe\n"
                 "  https://github.com/GDRETools/gdsdecomp/releases")
-        staging = ROOT / "pck_recover_new"
+        staging = PCK_DIR.parent / "pck_recover_new"
         shutil.rmtree(staging, ignore_errors=True)
         print(f"\n=== GDRE recovery ({gdre.name}) ===", flush=True)
         t0 = time.time()
@@ -369,7 +371,7 @@ def main():
             raise SystemExit(f"Recovery failed (exit {r.returncode}); left {staging} in place.")
         # Swap only once the new extraction looks sane, so a failed run never
         # destroys a working one.
-        old = ROOT / "pck_recover_old"
+        old = PCK_DIR.parent / "pck_recover_old"
         shutil.rmtree(old, ignore_errors=True)
         if PCK_DIR.exists():
             PCK_DIR.rename(old)

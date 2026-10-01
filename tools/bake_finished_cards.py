@@ -32,37 +32,19 @@ Requires: pip install Pillow
 """
 import argparse
 import json
-import os
 import re
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from desc_tokens import clean_desc
+from pck_root import find_pck_root
+
 HERE = Path(__file__).parent
 ROOT = HERE.parent
 
 
-def _default_pck_root():
-    """This repo doesn't carry the full PCK extraction (it's huge and lives in
-    the sibling sts2-history-dashboard repo instead, which this repo's tools
-    were split off from). Look for a `sts2-history-dashboard/pck_recover_full`
-    next to ROOT or one of its ancestors, so this works whether the two repos
-    are checked out as true siblings or a couple of directories apart (e.g.
-    inside a worktree under one of them). STS2_PCK_ROOT overrides outright.
-    """
-    env = os.environ.get("STS2_PCK_ROOT")
-    if env:
-        return Path(env)
-    for ancestor in (ROOT, *ROOT.parents):
-        candidate = ancestor.parent / "sts2-history-dashboard" / "pck_recover_full"
-        if candidate.exists():
-            return candidate
-    # Fall back to the sibling-of-ROOT guess even if it doesn't exist yet, so
-    # the startup check below can print a path instead of nothing.
-    return ROOT.parent / "sts2-history-dashboard" / "pck_recover_full"
-
-
-PCK_ROOT     = _default_pck_root()
+PCK_ROOT     = find_pck_root()
 CHROME_DIR   = ROOT / "card_chrome"
 CARD_DATA    = ROOT / "card_data.json"
 PORTRAIT_SRC = PCK_ROOT / "images" / "packed" / "card_portraits"
@@ -169,169 +151,152 @@ def _split_by_color(desc):
     return out
 
 
+def _token_end(text, start):
+    """Index just past the }} closing the {{ at `start` (tokens nest)."""
+    depth = 0
+    i = start
+    while i < len(text) - 1:
+        pair = text[i:i + 2]
+        if pair == "{{":
+            depth += 1
+            i += 2
+        elif pair == "}}":
+            depth -= 1
+            i += 2
+            if depth == 0:
+                return i
+        else:
+            i += 1
+    return -1
+
+
+def _split_branches(arg):
+    """Splits "one|many" at the first | outside a nested {{token}}."""
+    depth = 0
+    for i, ch in enumerate(arg):
+        pair = arg[i:i + 2]
+        if pair == "{{":
+            depth += 1
+        elif pair == "}}":
+            depth -= 1
+        elif ch == "|" and depth == 0:
+            return arg[:i], arg[i + 1:]
+    return arg, ""
+
+
+ORB_CHAR = "\x05"   # one per energy pip; draw_wrapped_desc pastes an orb sprite
+STAR_CHAR = "✦"
+
+
+def expand_desc(desc, variables):
+    """Port of substituteDescVars (js/run-detail.js): resolves every {{token}}
+    to plain text, recursing into the branch a plural/show token picks. Energy
+    and star tokens come out as runs of ORB_CHAR / STAR_CHAR.
+    """
+    out = []
+    pos = 0
+    while True:
+        start = desc.find("{{", pos)
+        end = _token_end(desc, start) if start >= 0 else -1
+        if end < 0:
+            out.append(desc[pos:])
+            return "".join(out)
+        out.append(desc[pos:start])
+        pos = end
+        name, _, rest = desc[start + 2:end - 2].partition(":")
+        kind, _, arg = rest.partition(":")
+        value = variables.get(name)
+        # Matches JS's `v[name] ?? 1`: repeat count defaults to 1 when the
+        # var is absent (relic placeholders lean on this), an explicit 0
+        # means 0.
+        count = 1 if value is None else int(value)
+        if kind == "energy":
+            out.append(ORB_CHAR * count)
+        elif kind == "stars":
+            out.append(STAR_CHAR * count)
+        elif kind == "plural":
+            one, many = _split_branches(arg)
+            out.append(expand_desc(one if value == 1 else many, variables))
+        elif kind == "show":
+            yes, no = _split_branches(arg)
+            out.append(expand_desc(yes if value else no, variables))
+        else:
+            # HighlightDifferencesFormatter (Var:diff()) only wraps this in
+            # [green]/[red] BBCode when it differs from a combat baseline;
+            # in the static base/upgraded views baseComparison is always 0,
+            # so the game renders these numbers in the plain description
+            # color, never bold/gold — confirmed via StsTextUtilities.
+            # HighlightChangeText in the decompiled source, not guessed.
+            out.append(str(value if value is not None else ""))
+
+
 def substitute_desc_vars_runs(desc, variables):
-    """Port of substituteDescVars(desc, vars, {html:true}) that returns a list
-    of (text, color, kind) runs instead of an HTML string, so the baker can
-    draw mixed-style text without a browser. `kind` is None for plain text,
+    """`desc` as a list of (text, color, kind) runs, so the baker can draw
+    mixed-style text without a browser. `kind` is None for plain text,
     "symbol" for the Segoe UI Symbol :stars glyph, or "orb" for a run of
     energy-icon placeholder chars (one per pip) that draw_wrapped_desc pastes
     as the real per-pool orb image instead of a font glyph. `desc` may contain
-    the color sentinel chars from clean_desc_with_color; segments inside a
-    [gold]/[blue]/[purple] span get that color unless a run sets its own
-    (only the :stars token does, and the game never wraps a :stars token in a
-    color tag).
+    the color sentinel chars from clean_desc_with_color; text inside a
+    [gold]/[blue]/[purple] span gets that color, except the :stars glyphs,
+    which keep their own.
+
+    Tokens are expanded before the text is split by color: a branch can open
+    or close a color span of its own (Charge's "[gold]{Cards:plural:...[/gold]|
+    ...[/gold]}"), so the spans only pair up once the branch is chosen.
     """
     runs = []
-    pattern = re.compile(r"\{\{(\w+)(?::(\w+)(?::([^}]*))?)?\}\}")
-
-    for segment, seg_color in _split_by_color(desc):
-        def emit(text, color=None, kind=None, _seg_color=seg_color):
-            if text:
-                runs.append((text, color if color is not None else _seg_color, kind))
-
-        pos = 0
-        for m in pattern.finditer(segment):
-            emit(segment[pos:m.start()])
-            pos = m.end()
-            name, kind, arg = m.group(1), m.group(2), m.group(3)
-            value = variables.get(name)
-            # Matches JS's `v[name] ?? 1`: repeat count defaults to 1 when the
-            # var is absent (relic placeholders lean on this), an explicit 0
-            # means 0.
-            count = 1 if value is None else int(value)
-            if kind == "energy":
-                # One placeholder char per pip; draw_wrapped_desc pastes the
-                # same energy_<pool>.png chrome sprite used for the cost
-                # badge in place of each one, instead of drawing a glyph.
-                emit("\x05" * count, kind="orb")
-            elif kind == "stars":
-                emit("✦" * count, color=STARS_BOLD_COLOR, kind="symbol")
-            elif kind == "plural":
-                one, many = (arg.split("|", 1) + [""])[:2]
-                emit(one if value == 1 else many)
-            elif kind == "show":
-                yes, no = (arg.split("|", 1) + [""])[:2]
-                emit(yes if value else no)
+    for segment, color in _split_by_color(expand_desc(desc, variables)):
+        for part in re.split(f"({ORB_CHAR}+|{STAR_CHAR}+)", segment):
+            if not part:
+                continue
+            if part[0] == ORB_CHAR:
+                runs.append((part, color, "orb"))
+            elif part[0] == STAR_CHAR:
+                runs.append((part, STARS_BOLD_COLOR, "symbol"))
             else:
-                # HighlightDifferencesFormatter (Var:diff()) only wraps this in
-                # [green]/[red] BBCode when it differs from a combat baseline;
-                # in the static base/upgraded views baseComparison is always 0,
-                # so the game renders these numbers in the plain description
-                # color, never bold/gold — confirmed via StsTextUtilities.
-                # HighlightChangeText in the decompiled source, not guessed.
-                emit(str(value if value is not None else ""))
-        emit(segment[pos:])
+                runs.append((part, color, None))
     return runs
 
 
-# ---------------------------------------------------------------------------
 # Keyword color — the raw localization strings in cards.json wrap keywords
-# like [gold]Vulnerable[/gold] in BBCode that tools/extract_card_data.py's
-# clean_desc() strips out entirely (card_data.json's desc field has no color
-# info left). Re-derive color-aware desc text straight from the same raw
-# cards.json this repo's card_data.json was originally extracted from, using
-# a color-preserving variant of clean_desc()'s brace-substitution pipeline
-# (ported here rather than imported: extract_card_data.py needs pythonnet/a
-# game DLL for its other responsibilities, which are out of scope and not
-# installable in this environment).
+# like [gold]Vulnerable[/gold] in BBCode that clean_desc() strips out entirely
+# (card_data.json's desc field has no color info left). Re-derive color-aware
+# desc text straight from the same raw cards.json card_data.json was extracted
+# from.
 # ---------------------------------------------------------------------------
-_PH = "\x00"
-
-
-def _strip_braces(text):
-    """Exact port of extract_card_data.py's _strip_braces: removes every
-    {...} template block wholesale, including its contents, handling
-    nesting via depth-counting. Anything still meant to survive (the value
-    tokens the baker needs) must already have been pulled out into a
-    _PH...payload..._PH run *before* this runs, same ordering as clean_desc().
-    """
-    result = []
-    depth = 0
-    for ch in text:
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-        elif depth == 0:
-            result.append(ch)
-    return "".join(result)
-
-
-def _extract_incombat(text):
-    """Exact port of extract_card_data.py's _extract_incombat: replaces
-    {InCombat:\\n(content)|} with just `content` (the static/library view
-    always shows the in-combat variant, same as the live site).
-    """
-    out = []
-    i = 0
-    while i < len(text):
-        if text[i:].startswith("{InCombat:"):
-            depth = 0
-            j = i
-            while j < len(text):
-                if text[j] == "{":
-                    depth += 1
-                elif text[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        break
-                j += 1
-            block = text[i + 1:j]
-            inner = block[len("InCombat:"):]
-            if inner.endswith("|"):
-                inner = inner[:-1]
-            inner = inner.strip()
-            if inner.startswith("(") and inner.endswith(")"):
-                inner = inner[1:-1]
-            inner = re.sub(r"\{[A-Za-z_]+:plural:([^|{]+)\|[^}]+\}", r"\1", inner)
-            out.append("\n(" + inner + ")")
-            i = j + 1
-        else:
-            out.append(text[i])
-            i += 1
-    return "".join(out)
-
-
 def clean_desc_with_color(text):
-    """Color-preserving sibling of extract_card_data.py's clean_desc() — same
-    brace-substitution pipeline in the same order (protect the template
-    tokens the baker still needs -> strip_braces -> restore as {{token}}),
-    but instead of discarding [gold]/[blue]/[purple] BBCode it swaps each
-    open/close tag for one of the sentinel control chars in _COLOR_OPEN/
-    _COLOR_CLOSE *before* anything else runs, so they ride through untouched
-    (every later pass here only ever looks at '{'/'}'/'['/']') and
+    """clean_desc() (tools/desc_tokens.py), but instead of discarding
+    [gold]/[blue]/[purple] BBCode it first swaps each open/close tag for one
+    of the sentinel control chars in _COLOR_OPEN/_COLOR_CLOSE, so they ride
+    through untouched (clean_desc only ever looks at '{'/'}'/'['/']') and
     _split_by_color can recover them afterward. Any other (non-color) [tag]
-    is stripped, matching clean_desc().
+    is stripped as usual.
     """
     if not text:
         return ""
     for name, sentinel in _COLOR_TAG_TO_SENTINEL.items():
         text = text.replace(f"[{name}]", sentinel).replace(f"[/{name}]", _COLOR_CLOSE)
+    return clean_desc(text)
 
-    text = _extract_incombat(text)
-    # {VarName:diff()} / {VarName:inverseDiff()} -> {{VarName}}. The ":diff"/
-    # ":inverseDiff" distinction carries no info the baker needs: a diff and
-    # a plain value render identically in the static base/upgraded view
-    # (see substitute_desc_vars_runs), so both collapse to a bare {{VarName}}.
-    text = re.sub(r"\{([A-Za-z_]+):diff\(\)\}", lambda m: f"{_PH}{m.group(1)}{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+):inverseDiff\(\)\}", lambda m: f"{_PH}{m.group(1)}{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+):energyIcons\(\d*\)\}", lambda m: f"{_PH}{m.group(1)}:energy{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+):starIcons\(\)\}", lambda m: f"{_PH}{m.group(1)}:stars{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+):plural:([^{}|]*)\|([^{}]*)\}",
-                  lambda m: f"{_PH}{m.group(1)}:plural:{m.group(2)}|{m.group(3)}{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+):show:([^{}|]*)(?:\|([^{}]*))?\}",
-                  lambda m: f"{_PH}{m.group(1)}:show:{m.group(2)}|{m.group(3) or ''}{_PH}", text)
-    text = re.sub(r"\{singleStarIcon\}", f"{_PH}singleStarIcon:stars{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+)\}", lambda m: f"{_PH}{m.group(1)}{_PH}", text)
-    text = _strip_braces(text)
-    text = re.sub(re.escape(_PH) + r"([^" + re.escape(_PH) + r"]+)" + re.escape(_PH), r"{{\1}}", text)
 
-    # Strip any remaining (non-color) BBCode tag — the color ones are now
-    # sentinel chars, not "[gold]"-shaped text, so this regex can't touch them.
-    text = re.sub(r"\[/?[a-zA-Z_]+\]", "", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    text = re.sub(r"[ \t]{2,}", " ", text)
-    return text.strip()
+# CardKeywordOrder.cs: keywords printed below the description; every other
+# keyword goes above it. card_data.json lists a card's keywords already in
+# print order (tools/extract_card_data.py).
+KEYWORDS_AFTER = {"Exhaust", "Eternal"}
+
+
+def with_keyword_lines(desc, info, upgraded):
+    """The card text as the game prints it: CardModel wraps the localized
+    description in one "[gold]Keyword[/gold]." line per keyword, and a card
+    like Ascender's Bane has no description at all beyond those lines.
+    """
+    keywords = info.get("keywordsUpgraded") if (upgraded and "keywordsUpgraded" in info) else info.get("keywords")
+    if not keywords:
+        return desc
+    line = lambda k: f"{_COLOR_TAG_TO_SENTINEL['gold']}{k}{_COLOR_CLOSE}."
+    before = [line(k) for k in keywords if k not in KEYWORDS_AFTER]
+    after = [line(k) for k in keywords if k in KEYWORDS_AFTER]
+    return "\n".join(before + ([desc] if desc else []) + after)
 
 
 def load_raw_card_descriptions():
@@ -679,6 +644,7 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
     stem = card_id.split(".", 1)[1]
     raw_desc = raw_descs.get(stem)
     desc = clean_desc_with_color(raw_desc) if raw_desc else info.get("desc")
+    desc = with_keyword_lines(desc, info, upgraded)
     if desc:
         runs = substitute_desc_vars_runs(desc, variables)
         orb_size = round(desc_font.size * 0.9)  # matches dashboard.css's .desc-energy-icon (0.9em)
@@ -695,7 +661,7 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
 def main():
     ap = argparse.ArgumentParser()
     # 236 -> a 260x345 canvas. The biggest a card face is ever drawn is 210px
-    # (the hover tooltip; deck tiles are 152px and node tiles 128px), so this
+    # (deck tiles and the hover tooltip; node tiles are 128px), so this
     # is still over 1.2x the largest on-screen use. Baking at the target size
     # keeps the card text crisp -- it's drawn at final scale rather than
     # resampled -- and halves the bytes: ~19 KB a face against ~39 KB at 400,

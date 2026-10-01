@@ -41,9 +41,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from pck_root import find_pck_root
+
 HERE = Path(__file__).parent
 ROOT = HERE.parent
-PCK  = ROOT / "pck_recover_full"
+PCK  = find_pck_root()
 
 SPRITE_DIR   = PCK / "images/atlases/ui_atlas.sprites/card"
 FRAME_MAT_D  = PCK / "materials/cards/frames"
