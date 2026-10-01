@@ -777,17 +777,26 @@ function buildPotionTooltip(id) {
   </div>`;
 }
 
-function buildRelicTooltip(id) {
+// Name, rarity label and description of a relic, as HTML — shared by the hover
+// tooltip and the deck's relic tiles (card-face.js).
+function relicTextParts(id) {
   const info = relicInfo(id);
-  if (!info) return "";
-  const name = info.title || fmtRelicLabel(id);
-  const src  = relicImgSrc(id);
+  if (!info) return null;
   const rarColor = { Common: "#ccc", Uncommon: "#aad4ff", Rare: "#ffd700", Boss: "#e88", Starter: "#bcbcd0" }[info.rarity] || "#bcbcd0";
-  const rawDesc = info.desc || "";
-  const desc = substituteDescVars(rawDesc, info.vars);
+  return {
+    name: info.title || fmtRelicLabel(id),
+    rarHtml: info.rarity ? `<div class="rt-rarity" style="color:${rarColor}">${info.rarity}</div>` : "",
+    desc: substituteDescVars(info.desc || "", info.vars).replace(/\n/g, "<br>"),
+  };
+}
+
+function buildRelicTooltip(id) {
+  const parts = relicTextParts(id);
+  if (!parts) return "";
+  const { name, rarHtml, desc } = parts;
+  const src  = relicImgSrc(id);
   const artHtml = src ? `<img loading="lazy" class="rt-art" ${imgSrcAttr(src, true)} alt="${name}">` : "";
-  const rarHtml = info.rarity ? `<div class="rt-rarity" style="color:${rarColor}">${info.rarity}</div>` : "";
-  const descHtml = desc ? `<div class="rt-desc">${desc.replace(/\n/g, "<br>")}</div>` : "";
+  const descHtml = desc ? `<div class="rt-desc">${desc}</div>` : "";
   return `<div class="relic-tooltip">
     ${artHtml}
     <div class="rt-header">${name}${rarHtml}</div>
@@ -815,7 +824,7 @@ function substituteDescVars(desc, vars, { html = true, pool = "colorless" } = {}
   const b = (inner, style) => html
     ? `<b${style ? ` style="${style}"` : ""}>${inner}</b>`
     : inner;
-  // Token grammar, as emitted by tools/extract_card_data.py:
+  // Token grammar, as emitted by tools/desc_tokens.py:
   //   {{Var}}                      the value
   //   {{Var:energy}} {{Var:stars}} that many glyphs
   //   {{Var:plural:one|many}}      word form chosen by the value
@@ -823,8 +832,29 @@ function substituteDescVars(desc, vars, { html = true, pool = "colorless" } = {}
   //
   // plural/show can't be resolved at extract time: a card's base and upgraded
   // forms share one desc string with different vars, so "{{Combats:plural:
-  // combat|combats}}" is "combat" at 1 and "combats" at 5.
-  return desc.replace(/\{\{([^}]+)\}\}/g, (_, raw) => {
+  // combat|combats}}" is "combat" at 1 and "combats" at 5. A branch can hold
+  // tokens of its own ("{{Combats:plural:combat|{{Combats}} combats}}"), so
+  // tokens are matched by depth and the chosen branch is rendered in turn.
+  const tokenEnd = (text, start) => {
+    for (let i = start, depth = 0; i < text.length - 1;) {
+      const pair = text.substr(i, 2);
+      if (pair === "{{") { depth++; i += 2; }
+      else if (pair === "}}") { depth--; i += 2; if (depth === 0) return i; }
+      else i++;
+    }
+    return -1;
+  };
+  // "one|many", split at the first | outside a nested token.
+  const branches = arg => {
+    for (let i = 0, depth = 0; i < arg.length; i++) {
+      const pair = arg.substr(i, 2);
+      if (pair === "{{") depth++;
+      else if (pair === "}}") depth--;
+      else if (arg[i] === "|" && depth === 0) return [arg.slice(0, i), arg.slice(i + 1)];
+    }
+    return [arg];
+  };
+  const token = raw => {
     // Branch text may itself contain ':', so peel off only the first two
     // segments and keep the remainder of the payload intact.
     const c1 = raw.indexOf(":");
@@ -846,15 +876,26 @@ function substituteDescVars(desc, vars, { html = true, pool = "colorless" } = {}
     if (kind === "stars")  return b("✦".repeat(v[name] ?? 1), "color:#5b9bd5");
     // Word forms and conditional branches are prose, not values — no <b>.
     if (kind === "plural") {
-      const [one, many] = arg.split("|");
-      return v[name] === 1 ? one : (many ?? one);
+      const [one, many] = branches(arg);
+      return render(v[name] === 1 ? one : (many ?? one));
     }
     if (kind === "show") {
-      const [yes, no] = arg.split("|");
-      return v[name] ? yes : (no ?? "");
+      const [yes, no] = branches(arg);
+      return render(v[name] ? yes : (no ?? ""));
     }
     const val = v[name];
     return b(val !== undefined ? String(val) : "?");
-  });
+  };
+  const render = text => {
+    let out = "";
+    for (let pos = 0;;) {
+      const start = text.indexOf("{{", pos);
+      const end = start < 0 ? -1 : tokenEnd(text, start);
+      if (end < 0) return out + text.slice(pos);
+      out += text.slice(pos, start) + token(text.slice(start + 2, end - 2));
+      pos = end;
+    }
+  };
+  return render(desc);
 }
 

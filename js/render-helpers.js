@@ -612,30 +612,17 @@ function valCell(bucket, valueKey, color, isAll) {
   </td>`;
 }
 
-function rangeCell(bucket, minKey, maxKey, color) {
-  if (!bucket || bucket[minKey] == null) return `<td class="cell all-col empty">—</td>`;
-  const same  = bucket[minKey] === bucket[maxKey];
-  const range = same ? bucket[minKey] : `${bucket[minKey]}–${bucket[maxKey]}`;
-  return `<td class="cell all-col">
-    <div style="font-size:0.82rem;font-weight:600;color:${color}">${range}</div>
-  </td>`;
-}
-
-// One Won / Lost median pair for Cards/Relics/Elites at Run End. The Won
-// cell carries the fewest–most in a win underneath (the ranges only cover
-// wins, so they sit under the column that says so).
-function winLossPairCells(bucket, winKey, lossKey, minKey, maxKey, border, isAll) {
+// One Won / Lost median pair for Cards/Relics/Elites at Run End.
+function winLossPairCells(bucket, winKey, lossKey, border, isAll) {
   const cls = "cell" + (isAll ? " all-col" : "");
   const first = `border-left:${border} solid #3f4147;`;
-  const cell = (v, isLoss, style, meta = "") => v == null
+  const cell = (v, isLoss, style) => v == null
     ? `<td class="${cls} empty" style="${style}">—</td>`
-    : `<td class="${cls}" style="${style}font-size:0.88rem;color:${isLoss ? "#e05c5c" : "#5cba7d"};${isLoss ? "" : "font-weight:600"}">${v}${meta}</td>`;
-  const lo = minKey ? bucket?.[minKey] : null, hi = maxKey ? bucket?.[maxKey] : null;
-  const range = lo != null && lo !== hi ? `<div class="meta">${lo}–${hi}</div>` : "";
-  return cell(bucket?.[winKey], false, first, range) + cell(bucket?.[lossKey], true, "");
+    : `<td class="${cls}" style="${style}font-size:0.88rem;color:${isLoss ? "#e05c5c" : "#5cba7d"};${isLoss ? "" : "font-weight:600"}">${v}</td>`;
+  return cell(bucket?.[winKey], false, first) + cell(bucket?.[lossKey], true, "");
 }
 
-function renderDeckPivot(tableId, pivotData, valueKey, winKey, lossKey, minKey, maxKey, color, showRange = true) {
+function renderDeckPivot(tableId, pivotData, winKey, lossKey) {
   const chars = DATA.characters;
   const ascs  = ascColumns();
 
@@ -651,7 +638,7 @@ function renderDeckPivot(tableId, pivotData, valueKey, winKey, lossKey, minKey, 
   </tr></thead><tbody>`;
 
   const rowCells = (byCol) => groups.map(g =>
-    winLossPairCells(byCol?.[g.key], winKey, lossKey, showRange ? minKey : null, maxKey, g.border, g.all)).join("");
+    winLossPairCells(byCol?.[g.key], winKey, lossKey, g.border, g.all)).join("");
 
   chars.forEach(char => {
     html += `<tr>${charNameCell(char)}${rowCells(pivotData[char])}</tr>`;

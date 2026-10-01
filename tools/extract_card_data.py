@@ -1,7 +1,7 @@
 """
 Extracts card, relic and potion metadata from the STS2 C# assembly and
 localization files. Writes:
-  card_data.json   — card type/rarity/energy/vars/varsUpgraded/title/desc
+  card_data.json   — card type/rarity/energy/vars/varsUpgraded/keywords/title/desc
   relic_data.json  — relic rarity/title/desc/vars/imagePath
   potion_data.json — potion rarity/title/desc/vars/imagePath
 
@@ -9,22 +9,26 @@ Run once after a game update to refresh data.
 Requires clr (pythonnet): pip install pythonnet
 Requires .NET 9 runtime (ships with game or install from microsoft.com).
 """
-import json, re, sys
+import json, sys
 from pathlib import Path
+
+from desc_tokens import clean_desc
+from pck_root import find_pck_root
 
 HERE = Path(__file__).parent
 
 ROOT           = HERE.parent
 DLL            = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(r"C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64\sts2.dll")
-LOC_CARDS      = ROOT / "pck_recover_full" / "localization" / "eng" / "cards.json"
-LOC_RELICS     = ROOT / "pck_recover_full" / "localization" / "eng" / "relics.json"
-LOC_POTIONS    = ROOT / "pck_recover_full" / "localization" / "eng" / "potions.json"
-# Point at the committed, downscaled copies produced by tools/downscale_art.py,
+PCK_ROOT       = find_pck_root()
+LOC_CARDS      = PCK_ROOT / "localization" / "eng" / "cards.json"
+LOC_RELICS     = PCK_ROOT / "localization" / "eng" / "relics.json"
+LOC_POTIONS    = PCK_ROOT / "localization" / "eng" / "potions.json"
+# Point at the downscaled WebP copies produced by tools/downscale_art.py,
 # NOT at pck_recover_full/ — that directory is gitignored (3 GB), so recording
 # paths into it left relic art broken for everyone who cloned the repo.
 # Run downscale_art.py before this script.
 RELIC_IMG_DIR  = ROOT / "relic_images"
-PORTRAIT_DIR   = ROOT / "pck_recover_full" / "images" / "packed" / "card_portraits"
+PORTRAIT_DIR   = PCK_ROOT / "images" / "packed" / "card_portraits"
 CARD_OUT       = ROOT / "card_data.json"
 RELIC_OUT      = ROOT / "relic_data.json"
 POTION_OUT     = ROOT / "potion_data.json"
@@ -61,117 +65,25 @@ loc_cards  = load_loc(LOC_CARDS)
 loc_relics = load_loc(LOC_RELICS)
 loc_potions = load_loc(LOC_POTIONS)
 
-def _strip_braces(text: str) -> str:
-    """Remove all {...} template blocks, handling nesting."""
-    result = []
-    depth = 0
-    for ch in text:
-        if ch == '{':
-            depth += 1
-        elif ch == '}':
-            depth -= 1
-        elif depth == 0:
-            result.append(ch)
-    return "".join(result)
-
-_PH = "\x00"  # placeholder char that survives brace-stripping
-
-def _extract_incombat(text: str) -> str:
-    """Replace {InCombat:\n(content)|} with just the content (always show it in our UI)."""
-    # Match the whole outer block manually since content has nested braces
-    out = []
-    i = 0
-    while i < len(text):
-        if text[i:].startswith("{InCombat:"):
-            # find matching closing }
-            depth = 0
-            j = i
-            while j < len(text):
-                if text[j] == '{': depth += 1
-                elif text[j] == '}':
-                    depth -= 1
-                    if depth == 0:
-                        break
-                j += 1
-            block = text[i+1:j]  # contents between outer { }
-            # block looks like: InCombat:\n(Hits {Var:diff()} text|)
-            # strip "InCombat:" prefix and extract content before the trailing "|"
-            inner = block[len("InCombat:"):]
-            # drop trailing "|" (the else-branch is always empty)
-            if inner.endswith("|"):
-                inner = inner[:-1]
-            # strip wrapping \n( ... ) if present
-            inner = inner.strip()
-            if inner.startswith("(") and inner.endswith(")"):
-                inner = inner[1:-1]
-            # Replace {Var:plural:singular|plural} → just the singular word (drop the var wrapper)
-            inner = re.sub(r"\{[A-Za-z_]+:plural:([^|{]+)\|[^}]+\}", r"\1", inner)
-            out.append("\n(" + inner + ")")
-            i = j + 1
-        else:
-            out.append(text[i])
-            i += 1
-    return "".join(out)
-
-def clean_desc(text: str) -> str:
-    """Strip Godot BBCode/template tags; replace {VarName:diff()} with {{VarName}} tokens."""
-    if not text:
-        return ""
-    # Expand {InCombat:...|} — keep the "in combat" content since we always want it shown
-    text = _extract_incombat(text)
-    # Protect value tokens before brace-stripping:
-    #   {VarName:diff()}       → {{VarName}}    (numeric value)
-    #   {VarName:energyIcons()} → {{VarName:energy}}  (render as N energy icons)
-    #   {VarName:starIcons()}  → {{VarName:stars}}   (render as N star icons)
-    text = re.sub(r"\{([A-Za-z_]+):diff\(\)\}", lambda m: f"{_PH}{m.group(1)}{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+):inverseDiff\(\)\}", lambda m: f"{_PH}{m.group(1)}{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+):energyIcons\(\d*\)\}", lambda m: f"{_PH}{m.group(1)}:energy{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+):starIcons\(\)\}", lambda m: f"{_PH}{m.group(1)}:stars{_PH}", text)
-    # Word-form and conditional tokens. These MUST survive to render time rather
-    # than being resolved here: which branch applies depends on the variable's
-    # value, and a card's base and upgraded forms share one desc string with
-    # different vars ({Combats:plural:combat|combats} is "combat" at 1 and
-    # "combats" at 5). Dropping them is what left descriptions reading
-    # "Removed from your Deck after 5 ." — 55 cards had visible artifacts.
-    text = re.sub(r"\{([A-Za-z_]+):plural:([^{}|]*)\|([^{}]*)\}",
-                  lambda m: f"{_PH}{m.group(1)}:plural:{m.group(2)}|{m.group(3)}{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+):show:([^{}|]*)(?:\|([^{}]*))?\}",
-                  lambda m: f"{_PH}{m.group(1)}:show:{m.group(2)}|{m.group(3) or ''}{_PH}", text)
-    # Bare {VarName} — a plain value, or a standalone icon like {singleStarIcon}.
-    text = re.sub(r"\{singleStarIcon\}", f"{_PH}singleStarIcon:stars{_PH}", text)
-    text = re.sub(r"\{([A-Za-z_]+)\}", lambda m: f"{_PH}{m.group(1)}{_PH}", text)
-    # Strip all remaining {...} blocks (choose(), nested conditionals)
-    text = _strip_braces(text)
-    # Restore placeholders. The payload can now carry ':' and '|' and arbitrary
-    # branch text, so match "anything between two placeholder chars" rather than
-    # enumerating the token shapes.
-    text = re.sub(re.escape(_PH) + r"([^" + re.escape(_PH) + r"]+)" + re.escape(_PH), r"{{\1}}", text)
-    # Strip [gold]...[/gold] BBCode tags — keep inner text
-    text = re.sub(r"\[/?[a-zA-Z_]+\]", "", text)
-    # Collapse whitespace artifacts
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    text = re.sub(r"[ \t]{2,}", " ", text)
-    return text.strip()
-
 def potion_img_path(stem: str) -> str:
     """Repo-relative path to a potion's art, or "" if absent."""
-    p = POTION_IMG_DIR / f"{stem}.png"
+    p = POTION_IMG_DIR / f"{stem}.webp"
     return p.relative_to(ROOT).as_posix() if p.exists() else ""
 
 
 def relic_img_path(stem: str) -> str:
     """
-    Returns a path relative to ROOT (e.g. "pck_recover_full/images/relics/akabeko.png")
-    rather than an absolute file:// URI, so relic_data.json isn't tied to one machine's
-    layout — run.py resolves this to a file:// URI at build time.
+    Returns a path relative to ROOT (e.g. "relic_images/akabeko.webp") rather than
+    an absolute file:// URI, so relic_data.json isn't tied to one machine's layout
+    — run.py resolves this to a file:// URI at build time.
     """
     for base in [RELIC_IMG_DIR, RELIC_IMG_DIR / "beta"]:
-        p = base / f"{stem}.png"
+        p = base / f"{stem}.webp"
         if p.exists():
             return p.relative_to(ROOT).as_posix()
-        # Character-variant fallback (e.g. yummy_cookie_ironclad.png)
+        # Character-variant fallback (e.g. yummy_cookie_ironclad.webp)
         for suffix in ["ironclad", "silent", "defect", "necro", "regent"]:
-            p2 = base / f"{stem}_{suffix}.png"
+            p2 = base / f"{stem}_{suffix}.webp"
             if p2.exists():
                 return p2.relative_to(ROOT).as_posix()
     return ""
@@ -239,6 +151,17 @@ try:
                 pass
         return result
 
+    # CardKeywordOrder.cs: the keywords the game prints on a card, in the
+    # order they are stored here -- KEYWORDS_BEFORE above the description
+    # (top line first), KEYWORDS_AFTER below it. The localized description
+    # never contains them; CardModel builds the card text from both.
+    KEYWORDS_BEFORE = ["Unplayable", "Innate", "Retain", "Sly", "Ethereal"]
+    KEYWORDS_AFTER  = ["Exhaust", "Eternal"]
+
+    def read_keywords(inst) -> list[str]:
+        have = {str(k) for k in inst.Keywords}
+        return [k for k in KEYWORDS_BEFORE + KEYWORDS_AFTER if k in have]
+
     def get_upgraded(inst):
         """Force-upgrade a fresh canonical instance; return (vars, energy) or (None, None)."""
         if not upgrade_m or not is_mutable_field:
@@ -272,13 +195,18 @@ try:
                 base_vars = read_vars(inst)
                 upgraded_vars, energy_u = get_upgraded(inst)
 
-                # Get upgraded star cost
+                keywords = read_keywords(inst)
+
+                # Get upgraded star cost and keywords (an upgrade can add or
+                # drop one, e.g. Innate on Afterimage+)
                 stars_u = -1
+                keywords_u = None
                 try:
                     fresh2 = System.Activator.CreateInstance(t)
                     is_mutable_field.SetValue(fresh2, True)
                     upgrade_m.Invoke(fresh2, None)
                     stars_u = int(fresh2.CanonicalStarCost) if fresh2.CanonicalStarCost >= 0 else -1
+                    keywords_u = read_keywords(fresh2)
                 except Exception:
                     pass
 
@@ -298,6 +226,10 @@ try:
                     "desc":   clean_desc(loc_cards.get(stem, {}).get("description", "")),
                     "vars":   base_vars,
                 }
+                if keywords:
+                    entry["keywords"] = keywords
+                if keywords_u is not None and keywords_u != keywords:
+                    entry["keywordsUpgraded"] = keywords_u
                 if vars_changed:
                     entry["varsUpgraded"] = upgraded_vars
                 if energy_changed:

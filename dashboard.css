@@ -1095,9 +1095,9 @@ h1 {
   display: inline-block;
 }
 .run-boon-wrap .relic-tooltip-wrap {
-  /* Anchored to the right edge instead of .relic-tile's centered popup --
-     these icons sit at the header's right edge, where a centered 180px
-     tooltip would run off the viewport. */
+  /* Anchored to the right edge rather than centered -- these icons sit at
+     the header's right edge, where a centered 180px tooltip would run off
+     the viewport. */
   visibility: hidden;
   position: absolute;
   bottom: calc(100% + 6px);
@@ -1202,7 +1202,7 @@ h1 {
 }
 /* 96px tile width (minus padding) comfortably fits "Metamorphosis" (81.6px
    at this font, the longest single word across card_data.json, measured via
-   Playwright) with a margin — mirrors the relic-tile sizing rationale below. */
+   Playwright) with a margin. */
 .tile-name-text {
   font-size: 0.74rem;
   color: #e8e0cc;
@@ -1369,58 +1369,50 @@ h1 {
 /* ---- Final deck + relics ---- */
 
 .deck-relic-list {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 0.35rem;
   margin-bottom: 0.5rem;
 }
 
-/* Relic image tiles in the final deck. Width stays 88px (not 52px) so every
-   relic name in the game fits its longest single word on one line with no
-   mid-word break — "Tri-Boomerang" is the actual worst case in
-   relic_data.json at 78px wide in this font, so 88px covers it with a small
-   margin. Widening further than the 64px compromise costs real density in
-   the relic grid, but this is an explicit "always fit the biggest word"
-   choice, not an accident. The art height (below), unlike the width, isn't
-   pinned by text — it's cut to 68px (~77% of the old 88px square) since the
-   square icon padded inside a full 88px box was the actual source of the
-   tiles reading as oversized next to the card tiles. */
+/* Relic tiles in the final deck: icon beside name, rarity and description, so
+   a relic reads in place with no hover preview. */
 .relic-tile {
-  position: relative;
-  width: 88px;
-  z-index: 1;
-  flex-shrink: 0;
-}
-.relic-tile:hover,
-.relic-tile:focus-within {
-  z-index: 100;
-}
-.relic-tile-art {
-  width: 88px;
-  height: 68px;
-  object-fit: contain;
-  background: #1e1630;
-  border: 1px solid #3a2a4a;
-  border-radius: 6px 6px 0 0;
-  padding: 2px;
-  display: block;
-}
-.relic-tile-name {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px 6px 6px;
   background: #1a1520;
   border: 1px solid #3a2a4a;
-  border-top: 2px solid #6a4a9a;
-  border-radius: 0 0 4px 4px;
-  padding: 2px 3px;
-  font-size: 0.74rem;
-  color: #e8e0cc;
-  text-align: center;
-  line-height: 1.3;
-  overflow-wrap: break-word;
-  hyphens: auto;
+  border-left: 2px solid #6a4a9a;
+  border-radius: 6px;
+  min-width: 0;
 }
-.relic-tile-no-img {
-  width: 88px;
+.relic-tile-art {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.relic-tile-text {
+  flex: 1;
+  min-width: 0;
+}
+.relic-tile-name {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: #e0d0f8;
+  line-height: 1.3;
+}
+.relic-tile-desc {
+  margin-top: 2px;
+  font-size: 0.74rem;
+  color: #bbb;
+  line-height: 1.4;
 }
 .relic-tooltip-wrap {
   visibility: hidden;
@@ -1429,11 +1421,6 @@ h1 {
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;
-}
-/* Same touch/keyboard parity as .card-tile above. */
-.relic-tile:hover .relic-tooltip-wrap,
-.relic-tile:focus-within .relic-tooltip-wrap {
-  visibility: visible;
 }
 
 /* While scrolling, :hover can point at a stale element (Chrome doesn't

@@ -19,7 +19,8 @@ function cardFaceKey(id, upgrade) {
 }
 
 // A card face renders in three different contexts (deck tile, node-tooltip
-// card, hover preview), each its own max size. Picking each one's clamp()
+// card, hover preview), each with its own size (the deck tile and the hover
+// preview share one). Picking each one's clamp()
 // independently -- as the first pass at this did -- gives each context its
 // own vw-breakpoint, so resizing the window shrinks them at different rates
 // and points: exactly the "inconsistent sizing" this produces. Deriving every
@@ -132,10 +133,11 @@ function buildCardTooltip(id, upgrade) {
   </div>`;
 }
 
-// Width of a deck tile's card face. Big enough for the title and cost to read
-// at a glance; the description is illegible mush at this scale, but that's
-// what the hover tooltip is for.
-const TILE_FACE_W = cardFaceWidth(104, 152);
+// Width of a deck tile's card face: the same size the hover preview draws at,
+// so the description reads right on the tile and a face tile needs no preview
+// of its own. Smaller than this and the browser's downscale of the baked image
+// turns the card text soft.
+const TILE_FACE_W = cardFaceWidth(150, 210);
 
 function renderCardTile(c) {
   const info  = cardInfo(c.id);
@@ -146,12 +148,9 @@ function renderCardTile(c) {
   const countLabel = c.count > 1 ? `<span class="tile-count">×${c.count}</span>` : "";
 
   if (cardFaceAvailable()) {
-    // tabindex: the tooltip below is a :hover/:focus-within reveal, which a
-    // touch tap can't trigger on a plain, non-focusable div.
-    return `<div class="card-tile card-tile-face" tabindex="0">
+    return `<div class="card-tile card-tile-face">
       ${renderCardFace(c.id, c.upgrade, TILE_FACE_W)}
       ${countLabel ? `<div class="tile-badges">${countLabel}</div>` : ""}
-      <div class="card-tooltip-wrap">${buildCardTooltip(c.id, c.upgrade)}</div>
     </div>`;
   }
 
@@ -214,22 +213,19 @@ function renderCardGroupsHtml(cardList) {
     }).join("");
 }
 
+// A relic tile carries its own rarity and description, so it has no hover
+// preview.
 function renderRelicTiles(relics) {
   return relics.map(r => {
     const src   = relicImgSrc(r.id);
-    const label = fmtRelicLabel(r.id);
-    const tip   = buildRelicTooltip(r.id);
-    // tabindex: same touch/keyboard tooltip-reveal parity as .card-tile.
-    if (src) {
-      return `<div class="relic-tile" tabindex="0">
-        <img loading="lazy" class="relic-tile-art" src="${src}" alt="${label}">
-        <div class="relic-tile-name">${label}</div>
-        ${tip ? `<div class="relic-tooltip-wrap">${tip}</div>` : ""}
-      </div>`;
-    }
-    return `<div class="relic-tile relic-tile-no-img" tabindex="0">
-      <div class="relic-tile-name">${label}</div>
-      ${tip ? `<div class="relic-tooltip-wrap">${tip}</div>` : ""}
+    const parts = relicTextParts(r.id);
+    const label = parts ? parts.name : fmtRelicLabel(r.id);
+    return `<div class="relic-tile">
+      ${src ? `<img loading="lazy" class="relic-tile-art" src="${src}" alt="">` : ""}
+      <div class="relic-tile-text">
+        <div class="relic-tile-name">${label}${parts ? parts.rarHtml : ""}</div>
+        ${parts && parts.desc ? `<div class="relic-tile-desc">${parts.desc}</div>` : ""}
+      </div>
     </div>`;
   }).join("");
 }

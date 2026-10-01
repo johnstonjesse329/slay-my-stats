@@ -13,9 +13,11 @@ import shutil
 from pathlib import Path
 from PIL import Image
 
+from pck_root import find_pck_root
+
 HERE    = Path(__file__).parent
 ROOT    = HERE.parent          # this script lives in tools/; assets live at the repo root
-SRC     = ROOT / "pck_recover_full" / "images" / "packed" / "card_portraits"
+SRC     = find_pck_root() / "images" / "packed" / "card_portraits"
 DST     = ROOT / "card_portraits"
 TARGET_W = 144
 

@@ -820,7 +820,7 @@ def build_card_char(card_data: dict) -> dict[str, str]:
 def resolve_image_paths(data: dict, url_for=Path.as_uri) -> dict:
     """
     relic_data.json and potion_data.json store imagePath as a path relative to
-    this script (e.g. "relic_images/akabeko.png") so the repo isn't tied to one
+    this script (e.g. "relic_images/akabeko.webp") so the repo isn't tied to one
     machine's absolute layout. Resolve to a URL here, same as
     build_card_images()/build_node_icons() — file:// URIs by default, or
     root-absolute site paths when build_site.py passes its own url_for.
@@ -1066,12 +1066,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="grid-2">
   <div class="chart-box">
     <h2>Cards at Run End</h2>
-    <p class="chart-caption">Median deck size when the run ended, in runs you won vs. lost. The small range under Won is the fewest–most in a win.</p>
+    <p class="chart-caption">Median deck size when the run ended, in runs you won vs. lost.</p>
     <div class="pivot-wrap"><table class="pivot" id="cards-table"></table></div>
   </div>
   <div class="chart-box">
     <h2>Relics at Run End</h2>
-    <p class="chart-caption">Median relics held when the run ended, in runs you won vs. lost. The small range under Won is the fewest–most in a win.</p>
+    <p class="chart-caption">Median relics held when the run ended, in runs you won vs. lost.</p>
     <div class="pivot-wrap"><table class="pivot" id="relics-table"></table></div>
   </div>
 </div>
@@ -1089,7 +1089,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="grid-2">
   <div class="chart-box">
     <h2>Elites Defeated</h2>
-    <p class="chart-caption">Median elite fights won per run (all acts), in runs you won vs. lost. The small range under Won is the fewest–most in a win.</p>
+    <p class="chart-caption">Median elite fights won per run (all acts), in runs you won vs. lost.</p>
     <div class="pivot-wrap"><table class="pivot" id="elites-table"></table></div>
   </div>
   <div class="chart-box">
@@ -1114,6 +1114,14 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div id="page-character" style="display:none">
 
 <div id="detail-char-fallback-note" class="char-fallback-note" style="display:none;margin-bottom:0.75rem"></div>
+
+<div class="grid-1">
+  <div class="chart-box">
+    <h2>Deck Size Entering Boss</h2>
+    <p class="chart-caption">Median cards in your deck at each act's boss; green for runs you won, red for runs you lost.</p>
+    <div class="pivot-wrap"><table class="pivot" id="deck-act-table"></table></div>
+  </div>
+</div>
 
 <div class="grid-2">
   <div class="chart-box">
@@ -1149,14 +1157,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <h2>Damage Taken</h2>
     <p class="chart-caption">Median damage taken per elite and boss fight; green for runs you won, red for runs you lost.</p>
     <div class="pivot-wrap"><table class="pivot" id="dmg-table"></table></div>
-  </div>
-</div>
-
-<div class="grid-1">
-  <div class="chart-box">
-    <h2>Deck Size Entering Boss</h2>
-    <p class="chart-caption">Median cards in your deck at each act's boss; green for runs you won, red for runs you lost.</p>
-    <div class="pivot-wrap"><table class="pivot" id="deck-act-table"></table></div>
   </div>
 </div>
 
