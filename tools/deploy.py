@@ -80,6 +80,14 @@ ART_CACHE_CONTROL = "public, max-age=2592000"
 DIST_CACHE_CONTROL = "public, max-age=300, s-maxage=86400"
 HTML_CACHE_CONTROL = "public, max-age=0, must-revalidate, s-maxage=86400"
 
+# What reheader() stamps back on, by extension: everything build_site.py writes
+# to dist/, and the two image types the art folders hold.
+CONTENT_TYPES = {
+    ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
+    ".png": "image/png", ".webp": "image/webp",
+}
+ART_EXTENSIONS = [".png", ".webp"]
+
 
 def dist_cache_control(key: str) -> str:
     return HTML_CACHE_CONTROL if key.endswith(".html") else DIST_CACHE_CONTROL
@@ -235,8 +243,13 @@ def reheader() -> None:
     changed, so anything uploaded before these headers existed -- and any art
     folder the game didn't change this round -- would keep serving no
     Cache-Control forever. This rewrites each object's metadata in place (an
-    S3-to-S3 copy, so no bytes leave this machine) and re-guesses Content-Type
-    from the extension, which is what the original upload did too.
+    S3-to-S3 copy, so no bytes leave this machine).
+
+    Replacing metadata replaces all of it, Content-Type included, and for a
+    copy within S3 the CLI doesn't guess one from the extension the way an
+    upload does: left alone, every file comes back as binary/octet-stream and
+    the browser downloads index.html instead of showing it. So the type is
+    passed explicitly, from CONTENT_TYPES.
 
     The invalidation is the point, not an afterthought: CloudFront stores a
     response's headers alongside its body, so every edge keeps handing out the
@@ -250,16 +263,24 @@ def reheader() -> None:
         "aws", "s3api", "list-objects-v2", "--bucket", SITE_BUCKET, "--output", "json",
         "--query", "Contents[?!contains(Key, '/')].Key",
     ], capture=True).stdout
-    for key in json.loads(listing) or []:
+    keys = json.loads(listing) or []
+    unknown = [key for key in keys if Path(key).suffix not in CONTENT_TYPES]
+    if unknown:
+        raise DeployError(f"no Content-Type known for {', '.join(unknown)} -- add it to CONTENT_TYPES")
+    for key in keys:
         run(["aws", "s3", "cp", f"s3://{SITE_BUCKET}/{key}", f"s3://{SITE_BUCKET}/{key}",
              "--no-progress", "--metadata-directive", "REPLACE",
+             "--content-type", CONTENT_TYPES[Path(key).suffix],
              "--cache-control", dist_cache_control(key)])
     for d in ART_DIRS:
-        print(f"Site: re-heading {d}/...", flush=True)
-        run(["aws", "s3", "cp", f"s3://{SITE_BUCKET}/{d}/", f"s3://{SITE_BUCKET}/{d}/",
-             "--recursive", "--no-progress",
-             "--metadata-directive", "REPLACE",
-             "--cache-control", ART_CACHE_CONTROL], stream=True)
+        # One pass per image type, since a folder can hold both.
+        for ext in ART_EXTENSIONS:
+            print(f"Site: re-heading {d}/*{ext}...", flush=True)
+            run(["aws", "s3", "cp", f"s3://{SITE_BUCKET}/{d}/", f"s3://{SITE_BUCKET}/{d}/",
+                 "--recursive", "--no-progress", "--exclude", "*", "--include", f"*{ext}",
+                 "--metadata-directive", "REPLACE",
+                 "--content-type", CONTENT_TYPES[ext],
+                 "--cache-control", ART_CACHE_CONTROL], stream=True)
     invalidate(["/*"])
 
 
