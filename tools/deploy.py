@@ -11,13 +11,17 @@ Steps:
   1. `cdk diff`. If the stack changed, print the diff and ask y/N before
      `cdk deploy`. No changes -> skip straight to the site.
   2. `build_site.py` (given the stack's ingest Function URL for the upload
-     page), then upload only the dist/ files whose content changed,
-     and `aws s3 sync` the game-art folders (never --delete; art uses
-     --size-only so an unchanged checkout doesn't re-upload thousands of
-     images just because mtimes moved).
+     page), then upload only the dist/ files whose content changed (with
+     dist_cache_control()), and `aws s3 sync` the game-art folders with ART_CACHE_CONTROL (never
+     --delete; art uses --size-only so an unchanged checkout doesn't
+     re-upload thousands of images just because mtimes moved).
   3. CloudFront invalidation of just the uploaded paths (or /* past ten of
      them), so index.html/app.js don't serve stale. Nothing uploaded, no
      invalidation. The first 1,000 paths a month are free.
+
+Neither upload re-sends a file whose bytes didn't change, so a new
+Cache-Control value won't reach what's already up there. Push it to the whole
+bucket by hand, once, with `tools/deploy.py --reheader`.
 
 Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 `git push --no-verify`.
@@ -39,6 +43,32 @@ STACK_NAME = "SlayMyStatsStack"
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
 ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons", "thumbs"]
 ZERO_SHA = "0" * 40
+
+# Art is the bulk of what the site serves -- one Run Detail session pulls a few
+# hundred card faces and relic images -- and it changes only when the game does.
+# Without a Cache-Control header the browser just guesses, and re-asks
+# CloudFront for art it already has, which is the site's largest source of
+# requests. 30 days takes almost all of those repeat requests away while
+# keeping the blast radius small: art filenames aren't content-hashed, so a
+# re-baked card is stale for returning visitors until their copy expires, and a
+# month is short enough to ride out after a patch without renaming every file.
+# A CloudFront invalidation clears the edge but never a browser's own cache.
+ART_CACHE_CONTROL = "public, max-age=2592000"
+
+# The dist/ files (app.js, catalog.json, the CSS) aren't content-hashed either,
+# and they change with every deploy, so browsers get five minutes: enough that
+# moving around the site doesn't re-ask for 600 KB of script and catalog, short
+# enough that a deploy reaches someone already on the site almost at once.
+# HTML is the entry point, so browsers always check it (a 304 when unchanged).
+# s-maxage is for CloudFront alone: every deploy invalidates what it uploads,
+# so the edge can hold a file for a day rather than going back to S3 every
+# five minutes -- or on every single request, for the HTML.
+DIST_CACHE_CONTROL = "public, max-age=300, s-maxage=86400"
+HTML_CACHE_CONTROL = "public, max-age=0, must-revalidate, s-maxage=86400"
+
+
+def dist_cache_control(key: str) -> str:
+    return HTML_CACHE_CONTROL if key.endswith(".html") else DIST_CACHE_CONTROL
 
 
 class DeployError(Exception):
@@ -166,9 +196,59 @@ def upload_changed_dist() -> list[str]:
         key = f.relative_to(dist).as_posix()
         if remote.get(key) == hashlib.md5(f.read_bytes()).hexdigest():
             continue
-        run(["aws", "s3", "cp", str(f), f"s3://{SITE_BUCKET}/{key}", "--no-progress"])
+        run(["aws", "s3", "cp", str(f), f"s3://{SITE_BUCKET}/{key}", "--no-progress",
+             "--cache-control", dist_cache_control(key)])
         uploaded.append(key)
     return uploaded
+
+
+def reheader() -> None:
+    """
+    Set the Cache-Control values above on everything already in the bucket,
+    then invalidate it.
+
+    A normal deploy only sends files whose content (dist/) or size (art)
+    changed, so anything uploaded before these headers existed -- and any art
+    folder the game didn't change this round -- would keep serving no
+    Cache-Control forever. This rewrites each object's metadata in place (an
+    S3-to-S3 copy, so no bytes leave this machine) and re-guesses Content-Type
+    from the extension, which is what the original upload did too.
+
+    The invalidation is the point, not an afterthought: CloudFront stores a
+    response's headers alongside its body, so every edge keeps handing out the
+    old header-less response until its own copy expires.
+
+    Run by hand after changing any of the *_CACHE_CONTROL values:
+        python tools/deploy.py --reheader
+    """
+    # The same top-level keys upload_changed_dist() compares against.
+    listing = run([
+        "aws", "s3api", "list-objects-v2", "--bucket", SITE_BUCKET, "--output", "json",
+        "--query", "Contents[?!contains(Key, '/')].Key",
+    ], capture=True).stdout
+    for key in json.loads(listing) or []:
+        run(["aws", "s3", "cp", f"s3://{SITE_BUCKET}/{key}", f"s3://{SITE_BUCKET}/{key}",
+             "--no-progress", "--metadata-directive", "REPLACE",
+             "--cache-control", dist_cache_control(key)])
+    for d in ART_DIRS:
+        print(f"Site: re-heading {d}/...", flush=True)
+        run(["aws", "s3", "cp", f"s3://{SITE_BUCKET}/{d}/", f"s3://{SITE_BUCKET}/{d}/",
+             "--recursive", "--no-progress",
+             "--metadata-directive", "REPLACE",
+             "--cache-control", ART_CACHE_CONTROL], stream=True)
+    invalidate(["/*"])
+
+
+def invalidate(paths: list[str]) -> None:
+    """Drop these paths from every CloudFront edge. Each counts against the 1,000 free a month."""
+    dist_id = run([
+        "aws", "cloudfront", "list-distributions", "--output", "text",
+        "--query", f"DistributionList.Items[?contains(Aliases.Items, '{DOMAIN_NAME}')].Id",
+    ], capture=True).stdout.strip()
+    if not dist_id:
+        raise DeployError(f"no CloudFront distribution found for {DOMAIN_NAME}")
+    run(["aws", "cloudfront", "create-invalidation", "--distribution-id", dist_id,
+         "--paths", *paths, "--output", "text", "--query", "Invalidation.Id"])
 
 
 def ingest_function_url() -> str:
@@ -190,7 +270,8 @@ def deploy_site() -> None:
     for d in ART_DIRS:
         print(f"Site: syncing {d}/ (each uploaded file is listed)...", flush=True)
         out = run(["aws", "s3", "sync", str(_HERE / d), f"s3://{SITE_BUCKET}/{d}",
-                   "--size-only", "--no-progress"], stream=True).stdout
+                   "--size-only", "--no-progress",
+                   "--cache-control", ART_CACHE_CONTROL], stream=True).stdout
         # "upload: <local path> to s3://<bucket>/<key>"
         changed += [line.split(f"s3://{SITE_BUCKET}/", 1)[1]
                     for line in out.splitlines() if line.startswith("upload:")]
@@ -202,16 +283,7 @@ def deploy_site() -> None:
     # handful one wildcard is cheaper. /u/* profile URLs are cached under
     # /index.html (the viewer-request rewrite runs before the cache lookup),
     # so invalidating /index.html covers them.
-    paths = ["/*"] if len(changed) > 10 else ["/" + key for key in changed]
-
-    dist_id = run([
-        "aws", "cloudfront", "list-distributions", "--output", "text",
-        "--query", f"DistributionList.Items[?contains(Aliases.Items, '{DOMAIN_NAME}')].Id",
-    ], capture=True).stdout.strip()
-    if not dist_id:
-        raise DeployError(f"no CloudFront distribution found for {DOMAIN_NAME}")
-    run(["aws", "cloudfront", "create-invalidation", "--distribution-id", dist_id,
-         "--paths", *paths, "--output", "text", "--query", "Invalidation.Id"])
+    invalidate(["/*"] if len(changed) > 10 else ["/" + key for key in changed])
 
 
 def check_site_pages() -> None:
@@ -229,6 +301,11 @@ def main() -> int:
     sys.stdout.reconfigure(errors="replace")
     pre_push = "--pre-push" in sys.argv
     try:
+        if "--reheader" in sys.argv:
+            reheader()
+            print("Re-headed and invalidated. Browsers that already hold a copy "
+                  "keep it until they next ask.")
+            return 0
         if pre_push and not check_pre_push(sys.stdin.read().splitlines()):
             return 0
         if not pre_push and git("status", "--porcelain", "--untracked-files=no"):
