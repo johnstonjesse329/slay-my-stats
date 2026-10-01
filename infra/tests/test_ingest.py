@@ -472,6 +472,20 @@ class LambdaHandlerTests(unittest.TestCase):
 
             event["requestContext"]["http"]["method"] = "GET"
             self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
+
+            # A stage with ALLOWED_IPS (gamma) refuses every other address.
+            os.environ["ALLOWED_IPS"] = "203.0.113.7,2001:db8:1:2:"
+            try:
+                event["requestContext"]["http"]["sourceIp"] = "198.51.100.1"
+                self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 403)
+                event["requestContext"]["http"]["sourceIp"] = "203.0.113.70"
+                self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 403)
+                event["requestContext"]["http"]["sourceIp"] = "203.0.113.7"
+                self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
+                event["requestContext"]["http"]["sourceIp"] = "2001:db8:1:2::9"
+                self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
+            finally:
+                del os.environ["ALLOWED_IPS"]
         finally:
             handler._store = None
             handler._post_to_steam = orig_post

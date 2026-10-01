@@ -672,8 +672,19 @@ def _response(status: int, body: dict) -> dict:
             "body": json.dumps(body)}
 
 
+def _ip_allowed(ip: str, allowed: list[str]) -> bool:
+    """An entry ending in "." or ":" is a prefix; anything else is exact.
+    Mirrors IP_ALLOWLIST_CODE in the stack."""
+    return any(ip.startswith(a) if a[-1] in ".:" else ip == a for a in allowed)
+
+
 def lambda_handler(event, context):
     global _store
+    # Set only on a stage that isn't public (gamma).
+    allowed_ips = [p for p in os.environ.get("ALLOWED_IPS", "").split(",") if p]
+    source_ip = event.get("requestContext", {}).get("http", {}).get("sourceIp", "")
+    if allowed_ips and not _ip_allowed(source_ip, allowed_ips):
+        return _response(403, {"error": "forbidden", "message": "Not available from this address."})
     if event.get("requestContext", {}).get("http", {}).get("method") != "POST":
         return _response(405, {"error": "method_not_allowed", "message": "POST only."})
     params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", ""), keep_blank_values=True))
