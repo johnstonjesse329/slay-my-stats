@@ -20,6 +20,7 @@ from aws_cdk import (
     aws_sns_subscriptions as subscriptions,
     aws_ssm as ssm,
 )
+import json
 import shutil
 from pathlib import Path
 
@@ -97,6 +98,31 @@ function handler(event) {
 }
 """
 
+# Gamma only: a test copy has no reason to be public, so every request to its
+# distribution is checked against the addresses in "gammaAllowedIps" before
+# the cache is consulted. An entry ending in "." or ":" matches as a prefix
+# (an IPv6 /64, say); anything else must match exactly.
+IP_ALLOWLIST_CODE = """
+var ALLOWED_IPS = %s;
+
+function allowed(ip) {
+    for (var i = 0; i < ALLOWED_IPS.length; i++) {
+        var entry = ALLOWED_IPS[i];
+        var prefix = entry.endsWith(".") || entry.endsWith(":");
+        if (prefix ? ip.startsWith(entry) : ip === entry) return true;
+    }
+    return false;
+}
+
+function handler(event) {
+    if (!allowed(event.viewer.ip)) {
+        return { statusCode: 403, statusDescription: "Forbidden" };
+    }
+    var request = event.request;
+%s    return request;
+}
+"""
+
 
 class SlayMyStatsStack(Stack):
     """
@@ -105,6 +131,7 @@ class SlayMyStatsStack(Stack):
     against real CloudFront before production sees it. Gamma has its own
     buckets, upload function and kill switch, and shares only the Steam API
     key. Its data bucket is deleted with the stack: nothing in it is real.
+    Gamma answers only the addresses in the "gammaAllowedIps" context list.
     """
 
     def __init__(self, scope: Construct, construct_id: str, *, stage: str = "prod", **kwargs) -> None:
@@ -124,6 +151,10 @@ class SlayMyStatsStack(Stack):
         hosted_zone_id = required_context("gammaHostedZoneId" if gamma else "hostedZoneId")
         # Where failed uploads are emailed. Kept out of the repo with the rest.
         alert_email = required_context("alertEmail")
+        # Required, not optional: a gamma deploy without it would be public.
+        allowed_ips = required_context("gammaAllowedIps") if gamma else []
+        if gamma and not (isinstance(allowed_ips, list) and all(isinstance(ip, str) and ip for ip in allowed_ips)):
+            raise ValueError('"gammaAllowedIps" in infra/cdk.context.json must be a list of IP addresses.')
 
         # users/<slug>.json.gz and users/<slug>/<YYYY-MM>.json.gz: each
         # player's profile summary and runs by month, plus the public
@@ -178,8 +209,21 @@ class SlayMyStatsStack(Stack):
         page_url_rewrite_fn = cloudfront.Function(
             self, "ProfileUrlRewriteFunction",
             runtime=cloudfront.FunctionRuntime.JS_2_0,
-            code=cloudfront.FunctionCode.from_inline(PAGE_URL_REWRITE_CODE),
+            code=cloudfront.FunctionCode.from_inline(
+                IP_ALLOWLIST_CODE % (json.dumps(allowed_ips), '    request.uri = "/index.html";\n')
+                if gamma else PAGE_URL_REWRITE_CODE),
         )
+        # Everything that isn't a page: assets, art and users/* data.
+        gate_associations = [
+            cloudfront.FunctionAssociation(
+                function=cloudfront.Function(
+                    self, "IpAllowlistFunction",
+                    runtime=cloudfront.FunctionRuntime.JS_2_0,
+                    code=cloudfront.FunctionCode.from_inline(IP_ALLOWLIST_CODE % (json.dumps(allowed_ips), "")),
+                ),
+                event_type=cloudfront.FunctionEventType.VIEWER_REQUEST,
+            ),
+        ] if gamma else None
         page_behavior = cloudfront.BehaviorOptions(
             origin=site_origin,
             viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -201,6 +245,7 @@ class SlayMyStatsStack(Stack):
                 origin=site_origin,
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
+                function_associations=gate_associations,
             ),
             additional_behaviors={
                 "users/*": cloudfront.BehaviorOptions(
@@ -209,6 +254,7 @@ class SlayMyStatsStack(Stack):
                     # Disabled outright, not just short-TTL: a viewer landing right
                     # after an upload must see that upload, not a cached miss.
                     cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
+                    function_associations=gate_associations,
                 ),
                 "u/*": page_behavior,
                 # Exact paths, not "<name>*", so a page can't catch an asset
@@ -261,6 +307,9 @@ class SlayMyStatsStack(Stack):
                 # The OpenID return_to origins sign-ins are accepted from; an
                 # assertion Steam issued for any other site is refused.
                 "ALLOWED_RETURN_TO": f"https://{domain_name}/",
+                # The Function URL is reachable directly, past CloudFront's
+                # allowlist, so the handler checks the caller itself.
+                **({"ALLOWED_IPS": ",".join(allowed_ips)} if gamma else {}),
             },
         )
         # Read/write covers the limits, the slug lookup, and signing the

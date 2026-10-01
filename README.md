@@ -449,6 +449,10 @@ certificate (for `gamma.slay-my-stats.com`, in us-east-1) and the hosted zone th
 as `"gammaCertificateArn"` and `"gammaHostedZoneId"` in `infra/cdk.context.json`. Without those two the gamma
 stack isn't built at all.
 
+Gamma isn't public. It answers only the addresses listed as `"gammaAllowedIps"` in `infra/cdk.context.json`
+(e.g. `["203.0.113.7"]`) and returns 403 to everyone else, pages and uploads both. If your address changes,
+update the list and deploy gamma again.
+
 ## Refreshing game data
 
 After a game update, run `python tools/refresh_game_data.py`. Its requirements are in
