@@ -1,10 +1,21 @@
 #!/bin/sh
-# Deploys infra + site to AWS when main is pushed (see tools/deploy.py).
+# Deploys infra + site to AWS when main is pushed (see tools/deploy.py), after
+# refusing to publish anything private (see tools/check_secrets.py).
 # Enable once per clone:  git config core.hooksPath githooks
-# Skip for one push:      SKIP_DEPLOY=1 git push   (or git push --no-verify)
-[ -n "$SKIP_DEPLOY" ] && exit 0
+# Skip the deploy for one push:  SKIP_DEPLOY=1 git push   (or git push --no-verify)
+# SKIP_DEPLOY still runs the secrets check: the point is not to publish a leak.
 
 root=$(git rev-parse --show-toplevel)
 py="$root/infra/.venv/Scripts/python.exe"
 [ -x "$py" ] || py="$root/infra/.venv/bin/python"
+if [ ! -x "$py" ]; then
+    py=$(command -v python3 || command -v python || echo "")
+fi
+if [ -n "$py" ]; then
+    "$py" "$root/tools/check_secrets.py" || exit 1
+else
+    echo "check_secrets: no python found, skipping the secrets check." >&2
+fi
+
+[ -n "$SKIP_DEPLOY" ] && exit 0
 exec "$py" "$root/tools/deploy.py" --pre-push "$@"
