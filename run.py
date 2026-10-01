@@ -820,7 +820,7 @@ def build_card_char(card_data: dict) -> dict[str, str]:
 def resolve_image_paths(data: dict, url_for=Path.as_uri) -> dict:
     """
     relic_data.json and potion_data.json store imagePath as a path relative to
-    this script (e.g. "relic_images/akabeko.png") so the repo isn't tied to one
+    this script (e.g. "relic_images/akabeko.webp") so the repo isn't tied to one
     machine's absolute layout. Resolve to a URL here, same as
     build_card_images()/build_node_icons() — file:// URIs by default, or
     root-absolute site paths when build_site.py passes its own url_for.

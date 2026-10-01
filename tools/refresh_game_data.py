@@ -293,8 +293,8 @@ def completeness_report():
          if "DEPRECATED" not in k
          and aliases.get(k.split(".", 1)[1].lower(), k.split(".", 1)[1].lower()) not in portraits])
 
-    stats["relic_images"] = len(list(RELIC_IMG_DIR.rglob("*.png"))) if RELIC_IMG_DIR.exists() else 0
-    stats["potion_images"] = len(list(POTION_IMG_DIR.glob("*.png"))) if POTION_IMG_DIR.exists() else 0
+    stats["relic_images"] = len(list(RELIC_IMG_DIR.rglob("*.webp"))) if RELIC_IMG_DIR.exists() else 0
+    stats["potion_images"] = len(list(POTION_IMG_DIR.glob("*.webp"))) if POTION_IMG_DIR.exists() else 0
     stats["chrome"] = len(list(CHROME_DIR.glob("*.png"))) if CHROME_DIR.exists() else 0
 
     final_files = {p.stem for p in CARD_FINAL_DIR.glob("*.webp")} if CARD_FINAL_DIR.exists() else set()

@@ -19,7 +19,7 @@ DLL            = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(r"C:\Program F
 LOC_CARDS      = ROOT / "pck_recover_full" / "localization" / "eng" / "cards.json"
 LOC_RELICS     = ROOT / "pck_recover_full" / "localization" / "eng" / "relics.json"
 LOC_POTIONS    = ROOT / "pck_recover_full" / "localization" / "eng" / "potions.json"
-# Point at the committed, downscaled copies produced by tools/downscale_art.py,
+# Point at the downscaled WebP copies produced by tools/downscale_art.py,
 # NOT at pck_recover_full/ — that directory is gitignored (3 GB), so recording
 # paths into it left relic art broken for everyone who cloned the repo.
 # Run downscale_art.py before this script.
@@ -155,23 +155,23 @@ def clean_desc(text: str) -> str:
 
 def potion_img_path(stem: str) -> str:
     """Repo-relative path to a potion's art, or "" if absent."""
-    p = POTION_IMG_DIR / f"{stem}.png"
+    p = POTION_IMG_DIR / f"{stem}.webp"
     return p.relative_to(ROOT).as_posix() if p.exists() else ""
 
 
 def relic_img_path(stem: str) -> str:
     """
-    Returns a path relative to ROOT (e.g. "pck_recover_full/images/relics/akabeko.png")
-    rather than an absolute file:// URI, so relic_data.json isn't tied to one machine's
-    layout — run.py resolves this to a file:// URI at build time.
+    Returns a path relative to ROOT (e.g. "relic_images/akabeko.webp") rather than
+    an absolute file:// URI, so relic_data.json isn't tied to one machine's layout
+    — run.py resolves this to a file:// URI at build time.
     """
     for base in [RELIC_IMG_DIR, RELIC_IMG_DIR / "beta"]:
-        p = base / f"{stem}.png"
+        p = base / f"{stem}.webp"
         if p.exists():
             return p.relative_to(ROOT).as_posix()
-        # Character-variant fallback (e.g. yummy_cookie_ironclad.png)
+        # Character-variant fallback (e.g. yummy_cookie_ironclad.webp)
         for suffix in ["ironclad", "silent", "defect", "necro", "regent"]:
-            p2 = base / f"{stem}_{suffix}.png"
+            p2 = base / f"{stem}_{suffix}.webp"
             if p2.exists():
                 return p2.relative_to(ROOT).as_posix()
     return ""

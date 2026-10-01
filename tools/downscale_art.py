@@ -1,6 +1,6 @@
 """
 Downscales relic and potion art and copies the floor-node icons out of the PCK
-extraction into committed repo directories.
+extraction into the repo's own art directories.
 
 Why this exists
 ---------------
@@ -10,9 +10,9 @@ anyone who cloned the repo — only the machine that had run the GDRE recovery
 could render them. Card art already had this solved (downscale_portraits.py ->
 card_portraits/); this does the same for the other two asset families.
 
-Output (all committed):
-    relic_images/   relic art, downscaled to RELIC_W
-    potion_images/  potion art, downscaled to POTION_W
+Output (gitignored, built here and uploaded by tools/deploy.py):
+    relic_images/   relic art, downscaled to RELIC_W, as WebP
+    potion_images/  potion art, downscaled to POTION_W, as WebP
     node_icons/     the handful of floor-node icons run.py actually uses
 
 Run after a PCK recovery, before extract_card_data.py (which records the
@@ -48,6 +48,15 @@ RELIC_W = 176
 # reasoning as relics.
 POTION_W = 176
 
+# WebP instead of PNG: 29% of the bytes at the same 176px, with alpha kept
+# exactly (Pillow encodes it losslessly) and a mean error of 4/255 on the
+# visible pixels -- invisible once the sprite is drawn at half this size.
+# Lossless WebP was only 72%, which isn't worth it for art nobody inspects at
+# 1:1. A single Run Detail session pulls a couple of hundred relic images, so
+# this is second only to card_final/ in bytes served. Keep the two in step:
+# tools/bake_finished_cards.py uses the same quality.
+QUALITY = 85
+
 # run.py only maps these node types, plus the thirteen per-boss portraits
 # (<name>_boss.png) it uses for boss timeline nodes, the eight per-Ancient
 # portraits (darv/neow/nonupeipe/orobas/pael/tanx/tezcatara/vakuu.png) it
@@ -76,13 +85,13 @@ def downscale_relics():
     RELIC_DST.mkdir()
     total = 0
     for src in srcs:
-        dst = RELIC_DST / src.relative_to(RELIC_SRC)
+        dst = (RELIC_DST / src.relative_to(RELIC_SRC)).with_suffix(".webp")
         dst.parent.mkdir(parents=True, exist_ok=True)
         img = Image.open(src).convert("RGBA")
         if img.width > RELIC_W:
             h = max(1, round(img.height * RELIC_W / img.width))
             img = img.resize((RELIC_W, h), Image.LANCZOS)
-        img.save(dst, optimize=True, compress_level=9)
+        img.save(dst, "WEBP", quality=QUALITY, method=6)
         total += dst.stat().st_size
     return len(srcs), total
 
@@ -99,8 +108,8 @@ def downscale_potions():
         if img.width > POTION_W:
             h = max(1, round(img.height * POTION_W / img.width))
             img = img.resize((POTION_W, h), Image.LANCZOS)
-        dst = POTION_DST / src.name
-        img.save(dst, optimize=True, compress_level=9)
+        dst = (POTION_DST / src.name).with_suffix(".webp")
+        img.save(dst, "WEBP", quality=QUALITY, method=6)
         total += dst.stat().st_size
     return len(srcs), total
 

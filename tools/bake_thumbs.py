@@ -1,17 +1,17 @@
 """
-Bakes small WebP thumbnails of the committed art folders into thumbs/.
+Bakes small WebP thumbnails of the repo's art folders into thumbs/.
 
 Why this exists
 ---------------
 The dashboard draws a lot of art at icon size: the Overview's most-picked
 cards and relics (22-26px), Card Stats' row portraits (22px), Run Detail's
-boon icons (16px). Those used to load the full-size files -- a 440x584 card
-face (~40 KB) or a 176x176 relic PNG (~30 KB) for a 26px box -- so a single
-Overview or Card Stats view downloaded 1-1.5 MB of images it showed as
-specks. A thumbnail at twice the largest icon size covers high-DPI screens at
-a few KB each.
+boon icons (16px). Those used to load the full-size files -- a 260x345 card
+face (~19 KB) or a 176x176 relic (~9 KB) for a 26px box -- so a single
+Overview or Card Stats view downloaded close to a megabyte of images it showed
+as specks. A thumbnail at twice the largest icon size covers high-DPI screens
+at a few KB each.
 
-Output (committed), mirroring each source folder's layout:
+Output (gitignored, uploaded by tools/deploy.py), mirroring each source folder:
     thumbs/card_final/...      thumbs/card_portraits/...
     thumbs/relic_images/...    thumbs/potion_images/...
 Every file becomes <same relative path>.webp, fitted inside THUMB_BOX.

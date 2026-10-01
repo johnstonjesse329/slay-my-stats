@@ -20,13 +20,13 @@ no per-level scaling data, and the live JS doesn't compute one either —
 varsUpgraded is a single fixed value applied whenever upgrade > 0. So exactly
 two baked variants per card (base, upgraded) matches current behavior.
 
-Output: card_final/ (committed to the repo, like card_chrome/)
+Output: card_final/ (gitignored, like card_chrome/; uploaded by tools/deploy.py)
     <CARD.ID>.webp        base
     <CARD.ID>_UP.webp     upgraded (title in green, varsUpgraded/energyUpgraded applied)
 
 Run after both tools/extract_card_data.py and tools/bake_card_chrome.py (it
 needs card_data.json for text and card_chrome/ for the pre-shaded pieces):
-    python tools/bake_finished_cards.py [--width 400]
+    python tools/bake_finished_cards.py [--width 236]
 
 Requires: pip install Pillow
 """
@@ -694,9 +694,16 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--width", type=int, default=400,
+    # 236 -> a 260x345 canvas. The biggest a card face is ever drawn is 210px
+    # (the hover tooltip; deck tiles are 152px and node tiles 128px), so this
+    # is still over 1.2x the largest on-screen use. Baking at the target size
+    # keeps the card text crisp -- it's drawn at final scale rather than
+    # resampled -- and halves the bytes: ~19 KB a face against ~39 KB at 400,
+    # which took card_final/ from 50 MB to 24 MB. A single Run Detail session
+    # pulls hundreds of these, so it's the site's heaviest download by far.
+    ap.add_argument("--width", type=int, default=236,
                     help="frame width in px, same convention as bake_card_chrome.py "
-                         "(default 400 -> ~440x533 canvas including chrome overhang)")
+                         "(default 236 -> ~260x345 canvas including chrome overhang)")
     ap.add_argument("--only", nargs="+", metavar="CARD_ID",
                     help="re-bake just these cards (e.g. CARD.HEADBUTT), leaving the rest of "
                          "card_final/ untouched — for quick layout iteration")
