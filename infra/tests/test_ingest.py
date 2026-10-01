@@ -179,6 +179,36 @@ def shop_run(start_time, bought=("CARD.SNAKEBITE",), shelf=("CARD.ANGER",)):
     return minimal_run(start_time, map_point_history=[[node]])
 
 
+def nonoffer_run(start_time):
+    """A run whose nodes hand over cards without ever offering a choice.
+
+    An event option that grants a card, and a rest-site CLONE that duplicates
+    one already in the deck. Both land in cards_gained; neither records a card
+    offer, so neither may count as a pick. This is the shape a future game
+    version could add more of -- things that look like picks but aren't.
+    """
+    event = {
+        "map_point_type": "unknown",
+        "rooms": [{"model_id": "EVENT.BYRDONIS_NEST", "turns_taken": 0}],
+        "player_stats": [{
+            "player_id": 1, "current_hp": 70, "max_hp": 80,
+            "event_choices": [{"title": {"key": "BYRDONIS_NEST.pages.INITIAL.options.TAKE.title",
+                                         "table": "events"}, "variables": {}}],
+            "cards_gained": [{"id": "CARD.BYRDONIS_EGG"}],
+        }],
+    }
+    rest = {
+        "map_point_type": "rest_site",
+        "rooms": [],
+        "player_stats": [{
+            "player_id": 1, "current_hp": 40, "max_hp": 80,
+            "rest_site_choices": ["CLONE"],
+            "cards_gained": [{"id": "CARD.POMMEL_STRIKE"}, {"id": "CARD.POMMEL_STRIKE"}],
+        }],
+    }
+    return minimal_run(start_time, map_point_history=[[event, rest]])
+
+
 class VerifyOpenIdTests(unittest.TestCase):
     def verify(self, params, post=None):
         return handler.verify_openid(params, ALLOWED, now=NOW, post=post or steam_says())
@@ -677,6 +707,20 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.assertEqual(node["cardsBought"], ["CARD.SNAKEBITE"])
         self.assertEqual(node["cardPicked"], "CARD.SNAKEBITE")
         self.assertEqual(node["cardsSkipped"], ["CARD.ANGER"])
+
+    def test_cards_gained_without_an_offer_are_not_picks(self):
+        # An event handing over a card, and a rest-site CLONE duplicating one,
+        # are not choices -- they must not show up as picked. This is the guard
+        # for the whole class of "looks like a pick but isn't": only a shop
+        # (a real offer you pay for) may turn cards_gained into picks.
+        self.ingest(body_of(nonoffer_run(1700000001)))
+        run_doc = self.store.runs()[0]
+        self.assertEqual(run_doc["cardsOffered"], {})
+        event_node, rest_node = run_doc["timeline"]
+        for node in (event_node, rest_node):
+            self.assertEqual((node["cardPicked"], node["cardsBought"], node["cardsRewarded"]),
+                             (None, [], []))
+        self.assertEqual(rest_node["restChoice"], "CLONE")
 
     def test_multiplayer_matches_float_rounded_steam_ids(self):
         # Some game builds write the Steam ID as a float64, which rounds the
