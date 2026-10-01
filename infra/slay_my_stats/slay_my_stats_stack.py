@@ -56,6 +56,9 @@ DOMAIN_NAME = "slay-my-stats.com"
 # The ACM certificate and Route 53 hosted zone are created outside CDK and
 # passed in as context ("certificateArn", "hostedZoneId"), which lives in the
 # untracked infra/cdk.context.json so account-specific IDs stay out of the repo.
+# The gamma stage has its own pair ("gammaCertificateArn", "gammaHostedZoneId"):
+# a certificate for gamma.<domain> and the hosted zone that subdomain is
+# delegated to.
 # The certificate must be in us-east-1 -- CloudFront's control plane only looks
 # there for certificates, regardless of what region the rest of this stack
 # deploys to.
@@ -95,8 +98,20 @@ function handler(event) {
 
 
 class SlayMyStatsStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    """
+    The whole site. stage="prod" is slay-my-stats.com; stage="gamma" is a
+    second, separate copy at gamma.slay-my-stats.com for trying a deploy
+    against real CloudFront before production sees it. Gamma has its own
+    buckets, upload function and kill switch, and shares only the Steam API
+    key. Its data bucket is deleted with the stack: nothing in it is real.
+    """
+
+    def __init__(self, scope: Construct, construct_id: str, *, stage: str = "prod", **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        gamma = stage == "gamma"
+        domain_name = f"gamma.{DOMAIN_NAME}" if gamma else DOMAIN_NAME
+        # Bucket and budget names: slay-my-stats-data, slay-my-stats-gamma-data.
+        name_prefix = "slay-my-stats-gamma" if gamma else "slay-my-stats"
 
         def required_context(key: str) -> str:
             value = self.node.try_get_context(key)
@@ -104,8 +119,8 @@ class SlayMyStatsStack(Stack):
                 raise ValueError(f'Set "{key}" in infra/cdk.context.json (see README "Deploying").')
             return value
 
-        certificate_arn = required_context("certificateArn")
-        hosted_zone_id = required_context("hostedZoneId")
+        certificate_arn = required_context("gammaCertificateArn" if gamma else "certificateArn")
+        hosted_zone_id = required_context("gammaHostedZoneId" if gamma else "hostedZoneId")
 
         # users/<slug>.json.gz: one gzip JSON blob per player, plus the public
         # users/_index.json.gz list; ids/<steamid>.json.gz maps Steam IDs to
@@ -115,15 +130,16 @@ class SlayMyStatsStack(Stack):
         # imported or emptied and deleted by hand first.
         data_bucket = s3.Bucket(
             self, "DataBucket",
-            bucket_name="slay-my-stats-data",
+            bucket_name=f"{name_prefix}-data",
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.RETAIN,
+            removal_policy=RemovalPolicy.DESTROY if gamma else RemovalPolicy.RETAIN,
+            auto_delete_objects=gamma,
         )
 
         # Built static site (index.html, js/*.js, dashboard.css, game art).
         site_bucket = s3.Bucket(
             self, "SiteBucket",
-            bucket_name="slay-my-stats-site",
+            bucket_name=f"{name_prefix}-site",
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
@@ -161,7 +177,7 @@ class SlayMyStatsStack(Stack):
 
         distribution = cloudfront.Distribution(
             self, "Distribution",
-            domain_names=[DOMAIN_NAME],
+            domain_names=[domain_name],
             certificate=certificate,
             default_root_object="index.html",
             default_behavior=cloudfront.BehaviorOptions(
@@ -187,7 +203,7 @@ class SlayMyStatsStack(Stack):
         hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
             self, "HostedZone",
             hosted_zone_id=hosted_zone_id,
-            zone_name=DOMAIN_NAME,
+            zone_name=domain_name,
         )
         route53.ARecord(
             self, "SiteAliasRecord",
@@ -227,7 +243,7 @@ class SlayMyStatsStack(Stack):
                 "DATA_BUCKET": data_bucket.bucket_name,
                 # The OpenID return_to origins sign-ins are accepted from; an
                 # assertion Steam issued for any other site is refused.
-                "ALLOWED_RETURN_TO": f"https://{DOMAIN_NAME}/",
+                "ALLOWED_RETURN_TO": f"https://{domain_name}/",
             },
         )
         data_bucket.grant_read_write(ingest_fn)
@@ -257,7 +273,7 @@ class SlayMyStatsStack(Stack):
         fn_url = ingest_fn.add_function_url(
             auth_type=lambda_.FunctionUrlAuthType.NONE,
             cors=lambda_.FunctionUrlCorsOptions(
-                allowed_origins=["https://slay-my-stats.com"],
+                allowed_origins=[f"https://{domain_name}"],
                 allowed_methods=[lambda_.HttpMethod.POST],
                 allowed_headers=["content-type"],
             ),
@@ -302,12 +318,14 @@ class SlayMyStatsStack(Stack):
         kill_switch_fn.add_event_source(lambda_event_sources.SnsEventSource(kill_switch_topic))
 
         # Separate from the account-wide budget so Route53's fixed zone fees
-        # can't trip it. No budget "actions" are used (just SNS notifications),
+        # can't trip it. The filter is by service across the whole account, so
+        # each stage's budget sees the same spend and they trip together, each
+        # shutting off its own ingest function. No budget "actions" are used (just SNS notifications),
         # so this doesn't count toward the paid action-enabled budget tier.
         budgets.CfnBudget(
             self, "KillSwitchBudget",
             budget=budgets.CfnBudget.BudgetDataProperty(
-                budget_name="slay-my-stats-kill-switch",
+                budget_name=f"{name_prefix}-kill-switch",
                 budget_type="COST",
                 time_unit="MONTHLY",
                 budget_limit=budgets.CfnBudget.SpendProperty(

@@ -23,6 +23,14 @@ Neither upload re-sends a file whose bytes didn't change, so a new
 Cache-Control value won't reach what's already up there. Push it to the whole
 bucket by hand, once, with `tools/deploy.py --reheader`.
 
+`--stage gamma` deploys the same checkout to gamma.slay-my-stats.com instead: a
+separate copy of the stack for trying a change against real CloudFront first.
+Only by hand; pushing main always deploys production.
+
+    infra\\.venv\\Scripts\\python.exe tools/deploy.py --stage gamma
+
+`--reheader` takes `--stage` too.
+
 Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 `git push --no-verify`.
 """
@@ -37,9 +45,15 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent.parent
 _INFRA = _HERE / "infra"
+# Production's names; use_stage() swaps in another stage's. They mirror what
+# infra/slay_my_stats/slay_my_stats_stack.py names things per stage.
 SITE_BUCKET = "slay-my-stats-site"
 DOMAIN_NAME = "slay-my-stats.com"
 STACK_NAME = "SlayMyStatsStack"
+STAGES = {
+    "prod": (SITE_BUCKET, DOMAIN_NAME, STACK_NAME),
+    "gamma": ("slay-my-stats-gamma-site", "gamma.slay-my-stats.com", "SlayMyStatsGammaStack"),
+}
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
 ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons", "thumbs"]
 ZERO_SHA = "0" * 40
@@ -73,6 +87,16 @@ def dist_cache_control(key: str) -> str:
 
 class DeployError(Exception):
     pass
+
+
+def use_stage(argv) -> str:
+    """Point the deploy at the stage named by `--stage <name>` (default prod)."""
+    global SITE_BUCKET, DOMAIN_NAME, STACK_NAME
+    stage = argv[argv.index("--stage") + 1] if "--stage" in argv[:-1] else "prod"
+    if "--stage" in argv[-1:] or stage not in STAGES:
+        raise DeployError(f"--stage takes one of: {', '.join(STAGES)}")
+    SITE_BUCKET, DOMAIN_NAME, STACK_NAME = STAGES[stage]
+    return stage
 
 
 def run(args, *, cwd=_HERE, env=None, capture=False, stream=False) -> subprocess.CompletedProcess:
@@ -167,13 +191,13 @@ def deploy_infra() -> None:
     env = {**os.environ, "PATH": f"{venv_bin}{os.pathsep}{os.environ['PATH']}"}
 
     print("Infra: comparing the stack with AWS (cdk diff, usually a minute or two)...", flush=True)
-    output = run(["cdk", "diff"], cwd=_INFRA, env=env, stream=True).stdout
+    output = run(["cdk", "diff", STACK_NAME], cwd=_INFRA, env=env, stream=True).stdout
     if "There were no differences" in output:
         print("Infra: no changes.")
         return
     if not ask("Deploy these infra changes?"):
         raise DeployError("infra deploy declined")
-    run(["cdk", "deploy", "--require-approval", "never"], cwd=_INFRA, env=env)
+    run(["cdk", "deploy", STACK_NAME, "--require-approval", "never"], cwd=_INFRA, env=env)
 
 
 def upload_changed_dist() -> list[str]:
@@ -301,6 +325,9 @@ def main() -> int:
     sys.stdout.reconfigure(errors="replace")
     pre_push = "--pre-push" in sys.argv
     try:
+        stage = "prod" if pre_push else use_stage(sys.argv)
+        if stage != "prod":
+            print(f"Deploying to {stage}: {DOMAIN_NAME}")
         if "--reheader" in sys.argv:
             reheader()
             print("Re-headed and invalidated. Browsers that already hold a copy "
