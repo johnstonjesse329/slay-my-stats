@@ -19,9 +19,9 @@ function updateAll() {
 
   renderCards(grand, charStats, avgRestOnWins(filteredRuns));
   renderWinPivot(pivot);
-  renderDeckPivot("cards-table",  pivot, "median_win_cards",  "median_win_cards",  "median_loss_cards",  "min_win_cards",  "max_win_cards",  "#9ecfff");
-  renderDeckPivot("relics-table", pivot, "median_win_relics", "median_win_relics", "median_loss_relics", "min_win_relics", "max_win_relics", "#c49fe8");
-  renderDeckPivot("elites-table", pivot, "median_win_elites", "median_win_elites", "median_loss_elites", "min_win_elites", "max_win_elites", "#e0c468");
+  renderDeckPivot("cards-table", pivot, "median_win_cards", "median_loss_cards");
+  renderDeckPivot("relics-table", pivot, "median_win_relics", "median_loss_relics");
+  renderDeckPivot("elites-table", pivot, "median_win_elites", "median_loss_elites");
   renderStarterCardsTable(aggregateStarterCards(filteredRuns));
   renderFinalBossWinPivot(filteredRuns);
   renderRestChoicesTable(aggregateRestChoices(filteredRuns), filteredRuns);

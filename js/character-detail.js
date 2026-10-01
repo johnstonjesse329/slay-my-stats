@@ -231,29 +231,26 @@ function aggregateDeckByAct(fights) {
   return result;
 }
 
-function deckActCell(s, isAll) {
-  const cls = "cell" + (isAll ? " all-col" : "");
-  if (!s) return `<td class="${cls} empty">—</td>`;
-  const w = s.avg_cards      != null ? `<span style="color:#5cba7d;font-weight:600"><span class="vh">W </span>${s.avg_cards}</span>`      : `<span style="color:#8a8aa0">—</span>`;
-  const l = s.loss_avg_cards != null ? `<span style="color:#e05c5c"><span class="vh">L </span>${s.loss_avg_cards}</span>` : `<span style="color:#8a8aa0">—</span>`;
-  const rangeMeta = s.min_win != null ? `<div class="meta">${s.min_win}–${s.max_win} range</div>` : "";
-  return `<td class="${cls}" style="font-size:0.88rem">${w} / ${l}${rangeMeta}</td>`;
-}
-
 function renderDeckActTable(tableId, deckData) {
   const visAscs = ascColumns();
-  const subStyle = `font-size:0.72rem;color:#8a8aa0;letter-spacing:0;text-transform:none;font-weight:400`;
+  const thSub = `font-size:0.72rem;color:#8a8aa0;font-weight:400;text-align:center`;
+  const subHead = (cls, border) =>
+    `<th class="${cls}" style="${thSub};border-left:${border} solid #3f4147">Won</th><th class="${cls}" style="${thSub};border-left:0">Lost</th>`;
+  const cells = (s, isAll) => wonLostCells(s, isAll, s && s.avg_cards != null,
+    s && s.avg_cards, s && s.loss_avg_cards);
   let html = `<thead><tr>
-    <th class="char-head">Act</th>
-    ${visAscs.map(col => `<th>${col.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">All columns<br><span style="${subStyle}">W / L median</span></th>
+    <th class="char-head" rowspan="2">Act</th>
+    ${visAscs.map(col => `<th colspan="2" style="border-left:1px solid #3f4147;text-align:center">${col.label}</th>`).join("")}
+    <th colspan="2" class="all-col" style="border-left:2px solid #3f4147;text-align:center">All<br>columns</th>
+  </tr><tr>
+    ${visAscs.map(() => subHead("", "1px")).join("")}${subHead("all-col", "2px")}
   </tr></thead><tbody>`;
   [1, 2, 3].forEach(act => {
     const s = deckData[act];
     if (!s?.["ALL"]) return;
     html += `<tr><td class="char-name">Act ${act}</td>`;
-    visAscs.forEach(col => { html += deckActCell(s[col.key], false); });
-    html += deckActCell(s["ALL"], true);
+    visAscs.forEach(col => { html += cells(s[col.key], false); });
+    html += cells(s["ALL"], true);
     html += `</tr>`;
   });
   html += `</tbody>`;
@@ -290,71 +287,66 @@ function fightWinCell(s, isAll) {
   </td>`;
 }
 
-function rng(min, max) {
-  return min === max ? min : `${min}–${max}`;
+// Won / Lost sub-columns (see renderFightTable's `split`): the header says
+// which number is which, so each cell holds one value instead of a
+// "win / loss" pair run together.
+function wonLostCells(s, isAll, has, won, lost) {
+  const cls = "cell" + (isAll ? " all-col" : "");
+  const border = `border-left:${isAll ? "2px" : "1px"} solid #3f4147;`;
+  // The Lost cell of the All pair must not repeat .all-col's divider.
+  const emptyLost = `<td class="${cls} empty" style="border-left:0">—</td>`;
+  if (!s || !has) return `<td class="${cls} empty" style="${border}">—</td>${emptyLost}`;
+  const lostCell = lost == null
+    ? emptyLost
+    : `<td class="${cls}" style="border-left:0;font-size:0.88rem;color:#e05c5c">${lost}</td>`;
+  return `<td class="${cls}" style="${border}font-size:0.88rem;color:#5cba7d;font-weight:600">${won}</td>${lostCell}`;
 }
 
-// Win/loss median is already shown in the cell itself — the win range is
-// the only other fact, so it's inlined as a sub-line rather than hidden
-// behind a hover (same rule applied throughout: a single extra fact
-// belongs in the cell, not a tooltip). This makes the separate Range
-// column redundant, so hpCell now covers what hpRangeCell used to.
 function hpCell(s, isAll) {
-  const cls = "cell" + (isAll ? " all-col" : "");
-  if (!s || s.avg_hp_pct === null) return `<td class="${cls} empty">—</td>`;
-  const rangeMeta = s.min_win_hp != null ? `<div class="meta">${rng(s.min_win_hp, s.max_win_hp)} HP range</div>` : "";
-  return `<td class="${cls}" style="font-size:0.88rem">
-    <span style="color:#5cba7d;font-weight:600">${s.avg_hp} HP (${s.avg_hp_pct}%)</span>${s.loss_avg_hp_pct !== null ? ` / <span style="color:#e05c5c">${s.loss_avg_hp} HP (${s.loss_avg_hp_pct}%)</span>` : ""}${rangeMeta}
-  </td>`;
+  return wonLostCells(s, isAll, s && s.avg_hp_pct !== null,
+    s && `${s.avg_hp} HP (${s.avg_hp_pct}%)`,
+    s && s.loss_avg_hp_pct !== null ? `${s.loss_avg_hp} HP (${s.loss_avg_hp_pct}%)` : null);
 }
 
-// Same reasoning as hpCell above.
 function dmgCell(s, isAll) {
-  const cls = "cell" + (isAll ? " all-col" : "");
-  if (!s || s.avg_dmg === null) return `<td class="${cls} empty">—</td>`;
-  const rangeMeta = s.min_win_dmg != null ? `<div class="meta">${rng(s.min_win_dmg, s.max_win_dmg)} dmg range</div>` : "";
-  return `<td class="${cls}" style="font-size:0.88rem">
-    <span style="color:#5cba7d;font-weight:600">${s.avg_dmg}</span>${s.loss_avg_dmg !== null ? ` / <span style="color:#e05c5c">${s.loss_avg_dmg}</span>` : ""}${rangeMeta}
-  </td>`;
+  return wonLostCells(s, isAll, s && s.avg_dmg !== null,
+    s && s.avg_dmg,
+    s && s.loss_avg_dmg !== null ? s.loss_avg_dmg : null);
 }
 
-// Win/loss median is already shown per-row in the cell itself (cards,
-// relics, potions each get their own "win / loss" line), so no tooltip is
-// needed here — unlike hpCell/dmgCell, which fold win range into a tip
-// because there's no room to show it inline.
+// Cards, relics and potions each get a line in the Won cell and the matching
+// line in the Lost cell.
 function loadoutCell(s, isAll) {
-  const cls = "cell" + (isAll ? " all-col" : "");
-  if (!s || s.avg_cards === null) return `<td class="${cls} empty">—</td>`;
-  return `<td class="${cls}" style="font-size:0.82rem">
-    <div><span style="color:#5cba7d;font-weight:600"><span class="vh">W </span>${s.avg_cards}</span>${s.loss_avg_cards !== null ? ` / <span style="color:#e05c5c"><span class="vh">L </span>${s.loss_avg_cards}</span>` : ""} <span style="color:#8a8aa0;font-size:0.72rem">cards</span></div>
-    <div style="margin-top:2px"><span style="color:#5cba7d;font-weight:600"><span class="vh">W </span>${s.avg_relics}</span>${s.loss_avg_relics !== null ? ` / <span style="color:#e05c5c"><span class="vh">L </span>${s.loss_avg_relics}</span>` : ""} <span style="color:#8a8aa0;font-size:0.72rem">relics</span></div>
-    <div style="margin-top:2px"><span style="color:#5cba7d;font-weight:600"><span class="vh">W </span>${s.avg_potions}</span>${s.loss_avg_potions !== null ? ` / <span style="color:#e05c5c"><span class="vh">L </span>${s.loss_avg_potions}</span>` : ""} <span style="color:#8a8aa0;font-size:0.72rem">potions</span></div>
-  </td>`;
-}
-
-function loadoutRangeCell(s) {
-  if (!s || s.min_win_cards === null) return `<td class="cell all-col empty">—</td>`;
-  return `<td class="cell all-col" style="min-width:110px">
-    <div style="font-size:0.78rem;color:#9ecfff">${rng(s.min_win_cards, s.max_win_cards)} cards</div>
-    <div style="font-size:0.78rem;color:#c49fe8;margin-top:2px">${rng(s.min_win_relics, s.max_win_relics)} relics</div>
-    <div style="font-size:0.78rem;color:#e0c468;margin-top:2px">${rng(s.min_win_potions, s.max_win_potions)} potions</div>
-  </td>`;
+  const unit = `<span style="color:#8a8aa0;font-size:0.72rem;font-weight:400">`;
+  const lines = (cards, relics, potions) =>
+    `<div>${cards} ${unit}${cards === 1 ? "card" : "cards"}</span></div>
+    <div style="margin-top:2px">${relics} ${unit}${relics === 1 ? "relic" : "relics"}</span></div>
+    <div style="margin-top:2px">${potions} ${unit}${potions === 1 ? "potion" : "potions"}</span></div>`;
+  return wonLostCells(s, isAll, s && s.avg_cards !== null,
+    s && lines(s.avg_cards, s.avg_relics, s.avg_potions),
+    s && s.loss_avg_cards !== null ? lines(s.loss_avg_cards, s.loss_avg_relics, s.loss_avg_potions) : null);
 }
 
 // encGroups: array of {label, ids} for section headers, or a flat array of IDs.
-function renderFightTable(tableId, encGroups, fightData, cellFn, rangeFn) {
+// split: cellFn returns a Won and a Lost <td> per column (wonLostCells).
+function renderFightTable(tableId, encGroups, fightData, cellFn, split) {
   const visAscs = ascColumns();
-  const colSpan = visAscs.length + 1 + (rangeFn ? 1 : 0) + 1; // ascs + ALL + range + name
-  const rangeHeader = rangeFn
-    ? `<th style="border-left:2px solid #3f4147;text-align:center;padding:0.5rem 0.9rem;
-                  color:#bcbcd0;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em">Range</th>`
-    : "";
-
-  let html = `<thead><tr>
+  const colSpan = (visAscs.length + 1) * (split ? 2 : 1) + 1; // ascs + ALL + name
+  const thSub = `font-size:0.72rem;color:#8a8aa0;font-weight:400;text-align:center`;
+  const subHead = (cls, border) =>
+    `<th class="${cls}" style="${thSub};border-left:${border} solid #3f4147">Won</th><th class="${cls}" style="${thSub};border-left:0">Lost</th>`;
+  let html = split
+    ? `<thead><tr>
+    <th class="char-head" rowspan="2">Encounter</th>
+    ${visAscs.map(col => `<th colspan="2" style="border-left:1px solid #3f4147;text-align:center">${col.label}</th>`).join("")}
+    <th colspan="2" class="all-col" style="border-left:2px solid #3f4147;text-align:center">All<br>columns</th>
+  </tr><tr>
+    ${visAscs.map(() => subHead("", "1px")).join("")}${subHead("all-col", "2px")}
+  </tr></thead><tbody>`
+    : `<thead><tr>
     <th class="char-head">Encounter</th>
     ${visAscs.map(col => `<th>${col.label}</th>`).join("")}
     <th class="all-col" style="border-left:2px solid #3f4147">All<br>columns</th>
-    ${rangeHeader}
   </tr></thead><tbody>`;
 
   // Normalise: flat array → single unlabelled group
@@ -374,7 +366,6 @@ function renderFightTable(tableId, encGroups, fightData, cellFn, rangeFn) {
       html += `<tr>${encNameCell(enc)}`;
       visAscs.forEach(col => { html += cellFn(fightData[enc][col.key], false); });
       html += cellFn(fightData[enc]["ALL"], true);
-      if (rangeFn) html += rangeFn(fightData[enc]["ALL"]);
       html += `</tr>`;
     });
   });
@@ -403,9 +394,9 @@ function updateDetail() {
 
   renderFightTable("boss-win-table",  bossGroups,  fightData, fightWinCell);
   renderFightTable("elite-win-table", eliteGroups, fightData, fightWinCell);
-  renderFightTable("hp-table",      groups, fightData, hpCell);
-  renderFightTable("loadout-table", groups, fightData, loadoutCell, loadoutRangeCell);
-  renderFightTable("dmg-table",     groups, fightData, dmgCell);
+  renderFightTable("hp-table",      groups, fightData, hpCell, true);
+  renderFightTable("loadout-table", groups, fightData, loadoutCell, true);
+  renderFightTable("dmg-table",     groups, fightData, dmgCell, true);
   renderDeckActTable("deck-act-table", deckData);
 }
 
