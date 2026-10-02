@@ -26,7 +26,7 @@ Output: card_final/ (gitignored, like card_chrome/; uploaded by tools/deploy.py)
 
 Run after both tools/extract_card_data.py and tools/bake_card_chrome.py (it
 needs card_data.json for text and card_chrome/ for the pre-shaded pieces):
-    python tools/bake_finished_cards.py [--width 236]
+    python tools/bake_finished_cards.py [--width 300]
 
 Requires: pip install Pillow
 """
@@ -660,16 +660,23 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
 
 def main():
     ap = argparse.ArgumentParser()
-    # 236 -> a 260x345 canvas. The biggest a card face is ever drawn is 210px
-    # (deck tiles and the hover tooltip; node tiles are 128px), so this
-    # is still over 1.2x the largest on-screen use. Baking at the target size
-    # keeps the card text crisp -- it's drawn at final scale rather than
-    # resampled -- and halves the bytes: ~19 KB a face against ~39 KB at 400,
-    # which took card_final/ from 50 MB to 24 MB. A single Run Detail session
-    # pulls hundreds of these, so it's the site's heaviest download by far.
-    ap.add_argument("--width", type=int, default=236,
+    # --width is the FRAME width; the canvas is the bounds of every rect, so it
+    # comes out wider than the frame (300 -> 330x438, 236 -> 260x345).
+    #
+    # A card face is drawn at 210px at most -- the hover tooltip and the deck
+    # tiles (node tiles are 128px). At 1x that made 236 plenty (1.24x the
+    # largest use), which is why it was cut from 400 on 2026-10-01 to halve the
+    # bytes. On a 2x display though the browser needs 420 device px for that
+    # 210px draw, so the 260px canvas was upscaled 1.6x and card text looked
+    # soft. 300 gives a 330px canvas: native at 2x up to 165 CSS px, covering
+    # the deck tiles outright and most tooltip widths, for ~30 KB a face and
+    # ~32 MB in card_final/ (against ~22 KB / ~23 MB at 236, ~39 KB / ~46 MB at
+    # 400). 381 is the exact "native at 2x everywhere" value if that is ever
+    # worth the bytes. A single Run Detail session pulls hundreds of these, so
+    # it is the site's heaviest download either way.
+    ap.add_argument("--width", type=int, default=300,
                     help="frame width in px, same convention as bake_card_chrome.py "
-                         "(default 236 -> ~260x345 canvas including chrome overhang)")
+                         "(default 300 -> ~330x438 canvas including chrome overhang)")
     ap.add_argument("--only", nargs="+", metavar="CARD_ID",
                     help="re-bake just these cards (e.g. CARD.HEADBUTT), leaving the rest of "
                          "card_final/ untouched — for quick layout iteration")
