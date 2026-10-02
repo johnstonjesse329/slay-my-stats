@@ -351,6 +351,8 @@
     main.append(intro);
     // The same list the bar's search just loaded.
     const players = await showNavSearch();
+    // A sign-in that arrived on /#upload has taken #main-content in the meantime.
+    if (window.uploadPanelActive) return;
     if (players && players.length) showSiteStats(main, players);
   }
 
@@ -568,8 +570,13 @@
   }
 
   async function showSitePage(name) {
+    // The upload panel claims #main-content on /upload when a sign-in arrives
+    // (site/upload.js), and it runs before this fetch resolves -- so a page it has
+    // claimed is left alone, checked once before the fetch and once after.
+    if (window.uploadPanelActive) return;
     showFallback("");
     const html = await fetchFragment(`/page-${name}.html`);
+    if (window.uploadPanelActive) return;
     if (html === null) {
       showFallback("There's no page at this address.");
       document.getElementById("main-content")?.append(el("p", {}, [el("a", { href: "/", textContent: "Find a player" })]));

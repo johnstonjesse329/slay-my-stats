@@ -44,6 +44,13 @@
   // An upload URL is good for 10 minutes; reuse one after a failed send
   // only while it has a bit of that left.
   const UPLOAD_URL_MAX_AGE_MS = 8 * 60 * 1000;
+  // Paths where the panel may take over #main-content: the root page and the
+  // Upload page. On a profile app.js owns #main-content, and the other
+  // hand-written pages have nothing to upload from. Trailing slashes normalize
+  // away, so /upload/ counts as /upload.
+  const PANEL_PATHS = new Set(["/", "/index.html", "/upload"]);
+  const HERE_PATH = location.pathname.replace(/\/+$/, "") || "/";
+  const onPanelPage = PANEL_PATHS.has(HERE_PATH);
 
   function el(tag, props, children) {
     const node = document.createElement(tag);
@@ -56,10 +63,15 @@
 
   function startSignIn() {
     const root = location.origin + "/";
+    // Come back to the page the sign-in started from, when the panel can take it
+    // over -- so an upload begun on /upload stays there instead of landing on the
+    // home page. The ingest Lambda checks only the origin of return_to, not the
+    // path. From anywhere else, the Upload page, which is where the panel lives.
+    const back = location.origin + (onPanelPage ? HERE_PATH : "/upload");
     const q = new URLSearchParams({
       "openid.ns": "http://specs.openid.net/auth/2.0",
       "openid.mode": "checkid_setup",
-      "openid.return_to": root,
+      "openid.return_to": back,
       "openid.realm": root,
       "openid.identity": "http://specs.openid.net/auth/2.0/identifier_select",
       "openid.claimed_id": "http://specs.openid.net/auth/2.0/identifier_select",
@@ -179,11 +191,11 @@
   // The site bar's "Upload runs" entry is an ordinary nav link, taken from the
   // `nav:` label on site/pages/upload.html, so there is nothing to inject here.
   // What this wires up is the call to action at the top of that page.
-  function wireUploadLinks(signIn, onRoot) {
+  function wireUploadLinks(signIn, canHostPanel) {
     const upload = () => {
       if (!signIn || Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) startSignIn();
-      else if (onRoot) showUploadPanel(signIn);
-      else location.assign("/#upload");
+      else if (canHostPanel) showUploadPanel(signIn);
+      else location.assign("/upload#upload");
     };
     // <a data-upload> in page text. Delegated, since boot.js fetches page bodies
     // in after this script has run.
@@ -198,6 +210,9 @@
   function showUploadPanel(signIn) {
     const main = document.getElementById("main-content");
     if (!main) return;
+    // boot.js's page renderer is mid-fetch for /upload and would paint the page
+    // body over this panel when it resolves, so claim #main-content first.
+    window.uploadPanelActive = true;
     const filterBar = document.getElementById("shared-filter-bar");
     if (filterBar) filterBar.style.display = "none";
     document.querySelectorAll(".page-tabs").forEach(n => { n.style.display = "none"; });
@@ -411,16 +426,18 @@
     const parts = [`Added ${result.added} run${result.added === 1 ? "" : "s"}; your profile now has ${result.total}.`];
     if (result.rejected + unreadable) parts.push(`${result.rejected + unreadable} file(s) couldn't be read as runs and were skipped.`);
     setStatus(status, parts.join(" "), profileLink);
+    // The runs are on the profile page now, so go there -- after a beat, so the
+    // line above can be read rather than flashing past.
+    if (profileLink) setTimeout(() => location.assign(profileLink.href), 1500);
   }
 
   // ---- Entry point -----------------------------------------------------------
 
-  // The panel only ever takes over the root page: on a profile, app.js owns
-  // #main-content. A sign-in that just arrived (Steam returns to the root)
-  // opens it straight away; a remembered one waits for the header button.
-  const onRoot = location.pathname === "/" || location.pathname === "/index.html";
+  // A sign-in that just arrived opens the panel straight away -- startSignIn sent
+  // Steam back to this page -- and the hash covers a remembered one arriving from
+  // another page's link. Otherwise it waits for the call to action.
   const { signIn, fresh } = takeSignIn();
-  wireUploadLinks(signIn, onRoot);
-  if (onRoot && signIn && (fresh || location.hash === "#upload")) showUploadPanel(signIn);
+  wireUploadLinks(signIn, onPanelPage);
+  if (onPanelPage && signIn && (fresh || location.hash === "#upload")) showUploadPanel(signIn);
 
 })();
