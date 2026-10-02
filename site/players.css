@@ -118,12 +118,11 @@
 .site-github { display: flex; color: var(--text-dim); }
 .site-github:hover { color: var(--text); }
 .site-brand:focus-visible, .site-link:focus-visible, .site-github:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
-.site-nav .upload-btn { padding: 0.35rem 0.8rem; }
-/* Run files live on the PC the game runs on, and phone browsers can't pick
-   a folder anyway: no upload button on touch screens. */
-@media (hover: none) and (pointer: coarse) {
-  .site-nav .upload-btn { display: none; }
-}
+/* No .upload-btn rule for the site bar: the Upload page's bar entry is an
+   ordinary nav link, taken from that page's `nav:` label, and is styled like
+   About. The rule that hid it on touch screens went with the button -- it is a
+   page of instructions, and the page itself says the upload has to happen on the
+   PC you play on. */
 @media (max-width: 700px), (orientation: landscape) and (max-height: 500px) {
   .site-nav { --gutter: 14px; margin-bottom: 1.25rem; flex-wrap: wrap; }
   .site-player { font-size: 0.85rem; max-width: 30vw; }
