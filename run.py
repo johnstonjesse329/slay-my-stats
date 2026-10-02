@@ -1393,13 +1393,13 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="detail-timeline"></div>
       <div class="chart-box" id="detail-hp-box" style="margin-top:16px">
         <div class="chart-vline-legend">
-          <span class="vline-legend-item"><span class="vline-legend-line" style="border-color:#e05c5c99"></span>Elite / Boss</span>
+          <span class="vline-legend-item"><span class="vline-legend-line" style="border-color:#e6e2f299"></span>Elite / Boss</span>
         </div>
         <div class="chart-wrap"><canvas id="detail-hp-chart"></canvas></div>
       </div>
       <div class="chart-box" id="detail-gold-box" style="margin-top:16px">
         <div class="chart-vline-legend">
-          <span class="vline-legend-item"><span class="vline-legend-line" style="border-color:#f0c06099"></span>Shop / Event</span>
+          <span class="vline-legend-item"><span class="vline-legend-line" style="border-color:#e6e2f299"></span>Shop / Event</span>
         </div>
         <div class="chart-wrap"><canvas id="detail-gold-chart"></canvas></div>
       </div>

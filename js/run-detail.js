@@ -49,6 +49,21 @@ function unknownNodeIconKey(node) {
 
 const ACT_LABELS = { 1: "Act 1", 2: "Act 2", 3: "Act 3" };
 
+// The floor-map icon for a node, as a key into DATA.nodeIcons. Boss nodes show
+// the specific boss's portrait (keyed by encounter id) when one exists, falling
+// back to the generic crown; Ancient nodes work the same way, falling back to
+// the generic Ancient icon; "?" rooms pick theirs from how they resolved (see
+// unknownNodeIconKey). Shared by the timeline cards and the chart markers, so
+// the two can't disagree about what a node was.
+function nodeIconKey(node) {
+  if (node.type === "boss" && node.enc) return node.enc;
+  if (node.type === "ancient") {
+    return (node.enc && DATA.nodeIcons && DATA.nodeIcons[node.enc]) ? node.enc : "ancient";
+  }
+  if (node.type === "unknown") return unknownNodeIconKey(node);
+  return node.type;
+}
+
 // ---- Filter state ----
 
 let detailSelectedTs  = null;
@@ -466,17 +481,7 @@ function renderDetailTimeline(run) {
   const html = legend + actNums.map(actNum => {
     const actNodes = acts[actNum];
     const nodeCards = actNodes.map(node => {
-      // Boss nodes show the specific boss's portrait (keyed by encounter id)
-      // when one exists, falling back to the generic crown emoji otherwise.
-      // Ancient nodes work the same way but fall back to the generic Ancient
-      // icon (not emoji) when a specific portrait isn't found. "?" rooms pick
-      // their icon from how they resolved (see unknownNodeIconKey).
-      const iconKey =
-        node.type === "boss" && node.enc ? node.enc :
-        node.type === "ancient" ? (node.enc && DATA.nodeIcons && DATA.nodeIcons[node.enc] ? node.enc : "ancient") :
-        node.type === "unknown" ? unknownNodeIconKey(node) :
-        node.type;
-      const icon    = nodeIconHtml(iconKey, 30, node.type);
+      const icon    = nodeIconHtml(nodeIconKey(node), 30, node.type);
       const hasDmg  = node.dmg > 0;
       const hpClass = hasDmg ? "node-hp damaged" : "node-hp";
       const hpText  = `${node.hpAfter} HP`;
@@ -511,22 +516,91 @@ function renderDetailTimeline(run) {
 
 // ---- Shared vertical-line plugin ----
 
-function makeVlinePlugin(nodes, matchFn, color) {
-  const indices = nodes.reduce((arr, n, i) => { if (matchFn(n)) arr.push(i); return arr; }, []);
+const MARKER_ICON = 18;
+// Room reserved above the plot for the marker icons. The Canvas legend would
+// otherwise fill the top of the canvas: chartArea.top comes out flush with the
+// legend's bottom, leaving nowhere to put them.
+const MARKER_BAND = 26;
+// One colour for every marker, rather than the node type's colour.
+//
+// The node-type colours (seeds.js NODE_COLORS) and the character colours
+// (js/data.js charColors) are the same six-colour palette: Ironclad's #e05c5c
+// is also NODE_COLORS.boss, Regent's #e8a930 is also NODE_COLORS.elite. So a
+// marker coloured by node type sits in the exact colour of the line it marks on
+// some character's runs, which is what read as "the shop matches the dotted
+// line". A marker is an annotation, not data: it gets one neutral colour, and
+// the floor map's icon says which node type it is.
+const MARKER_COLOUR = "#e6e2f2";
+
+// Boss/elite and shop/event markers. Each is a narrow band behind the data, a
+// stronger dashed line over it, and the floor map's own icon floated above the
+// plot -- so the chart says *what* each marker is, not just where, and the icon
+// is legible instead of sitting on the gridlines.
+function makeVlinePlugin(nodes, isMarked) {
+  const marks = [];
+  nodes.forEach((n, i) => { if (isMarked(n)) marks.push({ index: i, node: n }); });
+
+  // A canvas can only draw an image once it has decoded, so the map's icons
+  // arrive in the background and ask for a redraw when they do. Until then the
+  // node type's emoji stands in, which is also what a missing icon falls back
+  // to -- the same two-step the timeline cards do with their <img>.
+  const drawn = new Map();  // node index -> decoded Image
+  let chart = null;
+  marks.forEach(m => {
+    const src = (DATA.nodeIcons && DATA.nodeIcons[nodeIconKey(m.node)]) || null;
+    if (!src) return;
+    const img = new Image();
+    img.onload = () => { drawn.set(m.index, img); if (chart) chart.update("none"); };
+    img.src = src;
+  });
+
   return {
     id: "vlines",
-    afterDatasetsDraw(chart) {
-      const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+    beforeDatasetsDraw(c) {
+      if (!marks.length) return;
+      const { ctx, chartArea: { top, bottom }, scales: { x } } = c;
+      // Narrow: the band is a hint at which column this is, and a wide one
+      // swamps the data it is drawn behind.
+      const gap = nodes.length > 1 ? Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) : 0;
+      const half = Math.max(3, Math.min(6, gap / 2.5));
       ctx.save();
-      ctx.setLineDash([3, 4]);
-      ctx.lineWidth = 1;
-      indices.forEach(i => {
-        const px = x.getPixelForValue(i);
-        ctx.strokeStyle = color;
+      marks.forEach(m => {
+        const px = x.getPixelForValue(m.index);
+        ctx.fillStyle = MARKER_COLOUR + "1c";
+        ctx.fillRect(px - half, top, half * 2, bottom - top);
+      });
+      ctx.restore();
+    },
+    afterDraw(c) {
+      chart = c;
+      if (!marks.length) return;
+      const { ctx, chartArea: { top, bottom }, scales: { x } } = c;
+      // afterDraw, not afterDatasetsDraw: this has to draw above chartArea.top,
+      // and dataset hooks are clipped to the plot area.
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 2;
+      marks.forEach(m => {
+        const px = x.getPixelForValue(m.index);
+        ctx.strokeStyle = MARKER_COLOUR + "cc";
         ctx.beginPath();
+        // Stops at the plot's top edge rather than the canvas top: the icon sits
+        // in the band above it, and a dashed line running the full height reads
+        // as passing through the icon.
         ctx.moveTo(px, top);
         ctx.lineTo(px, bottom);
         ctx.stroke();
+      });
+      ctx.setLineDash([]);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "14px sans-serif";
+      const y = top / 2;         // centred in the reserved band
+      marks.forEach(m => {
+        const px = x.getPixelForValue(m.index);
+        const img = drawn.get(m.index);
+        if (img) ctx.drawImage(img, px - MARKER_ICON / 2, y - MARKER_ICON / 2, MARKER_ICON, MARKER_ICON);
+        else ctx.fillText(NODE_ICONS[m.node.type] || "❓", px, y);
       });
       ctx.restore();
     },
@@ -586,7 +660,13 @@ function renderDetailHpChart(run) {
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeVlinePlugin(nodes, n => n.type === "elite" || n.type === "boss", "#e05c5c66"), makeActBoundaryPlugin(nodes)],
+    // Elite and boss. The icon on each marker says which of the two it is; the
+    // colour can't, because the node palette and the character palette are the
+    // same six colours (see MARKER_COLOUR).
+    plugins: [
+      makeVlinePlugin(nodes, n => n.type === "elite" || n.type === "boss"),
+      makeActBoundaryPlugin(nodes),
+    ],
     data: {
       labels,
       datasets: [
@@ -615,9 +695,12 @@ function renderDetailHpChart(run) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: MARKER_BAND } },
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: "#ccc", boxWidth: 14 } },
+        // At the bottom, to leave the top band to the marker icons -- and it
+        // reads better there, since run.py's marker legend is above the canvas.
+        legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
         tooltip: {
           // The "Max HP" dataset only exists to draw the dashed reference
           // line — its value is already shown as the "/maxHp" half of the
@@ -670,7 +753,13 @@ function renderDetailGoldChart(run) {
   const ctx = document.getElementById("detail-gold-chart").getContext("2d");
   detailGoldChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeVlinePlugin(nodes, n => n.type === "shop" || (n.type === "unknown" && n.enc.startsWith("EVENT.")), "#e0c46855"), makeActBoundaryPlugin(nodes)],
+    // Shop and "?" event, marked as one "you stopped here for something other
+    // than a fight" group -- both used to be drawn in the gold of this chart's
+    // own line, so the marker read as part of the data.
+    plugins: [
+      makeVlinePlugin(nodes, n => n.type === "shop" || (n.type === "unknown" && n.enc.startsWith("EVENT."))),
+      makeActBoundaryPlugin(nodes),
+    ],
     data: {
       labels,
       datasets: [{
@@ -688,9 +777,11 @@ function renderDetailGoldChart(run) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: MARKER_BAND } },
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: "#ccc", boxWidth: 14 } },
+        // At the bottom, to leave the top band to the marker icons.
+        legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
         tooltip: {
           callbacks: {
             title: items => {
