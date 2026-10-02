@@ -225,7 +225,16 @@
     // A page can't open the picker at a path of its choosing (browsers only
     // offer Documents, Downloads and the like as starting points), so the
     // next best thing: copy the path, ready to paste into the picker.
+    //
+    // Only Windows and macOS are written for -- navigator.platform is "Mac..."
+    // there and "Win..." there, and something else on a phone, tablet or Linux
+    // box. Those get no path line, no Copy button and no "go to the folder"
+    // step: the fallback path is Windows, so showing it anywhere else would just
+    // be a wrong answer, and this is the one part of the panel that differs per
+    // platform. Matches what the Upload page tells the reader: "These steps are
+    // for Windows and macOS."
     const isMac = navigator.platform.startsWith("Mac");
+    const hasPath = isMac || navigator.platform.startsWith("Win");
     const historyPath = isMac
       ? "~/Library/Application Support/SlayTheSpire2/steam/" + signIn.steamId + "/profile1/saves/history"
       : "%APPDATA%\\SlayTheSpire2\\steam\\" + signIn.steamId + "\\profile1\\saves\\history";
@@ -247,7 +256,7 @@
     copyBtn.addEventListener("click", copyPath);
     const folderBtn = el("button", { type: "button", className: "upload-btn", textContent: "Choose history folder" });
     // Copies too, in case step 1 was skipped.
-    folderBtn.addEventListener("click", () => { copyPath(); folderInput.click(); });
+    folderBtn.addEventListener("click", () => { if (hasPath) copyPath(); folderInput.click(); });
 
     const step = (title, ...body) => el("li", {}, [el("strong", { textContent: title }), ...body]);
     const panel = el("section", { className: "upload-panel" }, [
@@ -256,13 +265,17 @@
         ? ["Signed in with Steam as ", el("a", { href: `/u/${profile.slug}`, textContent: profile.name }), "."]
         : ["Signed in with Steam. Your profile's address comes from your Steam name."]),
       el("ol", { className: "upload-steps" }, [
-        step("Copy your run history folder's location.",
-          el("div", { className: "upload-path" }, [pathCode, copyBtn])),
+        // The path, and getting the picker to it, are the only platform-specific
+        // steps; everything else applies wherever runs can be picked at all.
+        ...(hasPath ? [
+          step("Copy your run history folder's location.",
+            el("div", { className: "upload-path" }, [pathCode, copyBtn])),
+        ] : []),
         step("Click Choose history folder below.",
           el("div", { className: "upload-actions" }, [folderBtn, folderInput])),
-        isMac
+        ...(hasPath ? [isMac
           ? step("Go to the folder:", " press ⌘⇧G, paste (⌘V) and press Return.")
-          : step("Go to the folder:", " click the address bar at the top of the window that opens, paste (Ctrl+V) and press Enter."),
+          : step("Go to the folder:", " click the address bar at the top of the window that opens, paste (Ctrl+V) and press Enter.")] : []),
         step("Select it", " even though it looks empty (the picker only shows folders, not the run files inside)"
           + " and click Upload (or Select). If your browser asks whether to upload the files, say yes."),
       ]),

@@ -68,8 +68,8 @@ function renderCards(grand, charStats, restAvg) {
       tip: grand.median_win_min !== null ? `${grand.median_win_min}m in winning runs` : "No wins yet" },
     { label: "Total Gold Gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
       tip: grand.runs ? `median ${grand.median_gold.toLocaleString()} per run` : "" },
-    { label: "Elites/Bosses Defeated", value: grand.runs ? grand.total_elites_defeated + grand.total_bosses_defeated : "—",
-      tip: grand.runs ? `${grand.total_elites_defeated} elites · ${grand.total_bosses_defeated} bosses` : "" },
+    { label: "Elites/Bosses Defeated", value: grand.runs ? (grand.total_elites_defeated + grand.total_bosses_defeated).toLocaleString() : "—",
+      tip: grand.runs ? `${grand.total_elites_defeated.toLocaleString()} elites · ${grand.total_bosses_defeated.toLocaleString()} bosses` : "" },
   ];
 
   // The scope note is worth keeping — a filtered number must not read as a
