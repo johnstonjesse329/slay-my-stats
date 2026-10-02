@@ -231,6 +231,18 @@ class Handler(BaseHTTPRequestHandler):
     def _send_body(self, body: bytes, content_type: str, content_encoding: str | None = None):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        # Text assets are the ones edited and reloaded while working on the site.
+        # With no Cache-Control and no validator a browser falls back to
+        # heuristic caching, so an ordinary refresh can keep serving the
+        # previous dashboard.css or app.js however many times you rebuild --
+        # which reads as "my change didn't take".
+        #
+        # Images deliberately keep the default: there are hundreds of them, they
+        # change only when the art is re-baked, and re-fetching 200 thumbnails on
+        # every navigation is the one thing that would make this server
+        # noticeably slow to use.
+        if content_type.startswith("text/") or "json" in content_type:
+            self.send_header("Cache-Control", "no-store")
         if content_encoding:
             self.send_header("Content-Encoding", content_encoding)
         self.send_header("Content-Length", str(len(body)))
