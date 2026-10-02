@@ -334,6 +334,19 @@
     return result;
   }
 
+  // Every state where there is nothing left to do here ends on the profile page,
+  // so the runs just added -- or the ones that turned out to be there already --
+  // are what you see next. A beat first, so the line above can be read rather
+  // than flashing past, and it says so, so the pause doesn't look like a hang.
+  function finishAtProfile(status, text, slug) {
+    if (!slug) {
+      setStatus(status, text);
+      return;
+    }
+    setStatus(status, `${text} Taking you to your profile…`);
+    setTimeout(() => location.assign(`/u/${slug}`), 1800);
+  }
+
   async function upload(signIn, files, status) {
     if (pending && Date.now() - pending.at >= UPLOAD_URL_MAX_AGE_MS) pending = null;
     if (!pending && Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) {
@@ -356,7 +369,7 @@
     let have = await existingTimestamps(slug);
     const allThere = () => runs.every(r => have.has(r.start));
     if (allThere()) {
-      setStatus(status, `All ${runs.length} runs are already on your profile.`, { href: `/u/${slug}`, text: "View profile" });
+      finishAtProfile(status, `All ${runs.length} runs are already on your profile.`, slug);
       return;
     }
 
@@ -373,7 +386,7 @@
       have = await existingTimestamps(slug);
       if (allThere()) {
         pending = null;
-        setStatus(status, `All ${runs.length} runs are already on your profile.`, { href: `/u/${slug}`, text: "View profile" });
+        finishAtProfile(status, `All ${runs.length} runs are already on your profile.`, slug);
         return;
       }
     }
@@ -418,17 +431,16 @@
     }
     if (result.slug) rememberProfile(signIn.steamId, result.slug, result.name);
     if (!result.added) {
-      setStatus(status, result.duplicates
-        ? `All ${result.duplicates} runs are already on your profile.`
-        : "None of those files could be read as runs.", profileLink);
+      if (result.duplicates) {
+        finishAtProfile(status, `All ${result.duplicates} runs are already on your profile.`, result.slug || slug);
+      } else {
+        setStatus(status, "None of those files could be read as runs.", profileLink);
+      }
       return;
     }
     const parts = [`Added ${result.added} run${result.added === 1 ? "" : "s"}; your profile now has ${result.total}.`];
     if (result.rejected + unreadable) parts.push(`${result.rejected + unreadable} file(s) couldn't be read as runs and were skipped.`);
-    setStatus(status, parts.join(" "), profileLink);
-    // The runs are on the profile page now, so go there -- after a beat, so the
-    // line above can be read rather than flashing past.
-    if (profileLink) setTimeout(() => location.assign(profileLink.href), 1500);
+    finishAtProfile(status, parts.join(" "), result.slug || slug);
   }
 
   // ---- Entry point -----------------------------------------------------------
