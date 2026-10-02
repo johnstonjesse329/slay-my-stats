@@ -54,50 +54,50 @@ function renderCards(grand, charStats, restAvg) {
   const mostPlayedPct = grand.runs ? +((charStats[mostIdx].runs / grand.runs) * 100).toFixed(0) : 0;
   const winPct = grand.win_pct !== null ? grand.win_pct + "%" : "—";
   const items = [
-    { label: "Overall Win Rate", value: winPct,
-      // Win/run counts already sit on the Runs card — a blank sub keeps the
-      // card's line-height without repeating them here.
-      sub: "&nbsp;" },
+    { label: "Overall Win Rate", value: winPct },
     { label: "Best Win Rate", value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
-      sub: charStats[bestIdx].win_pct !== null ? `${fmtCharName(chars[bestIdx])} · ${charStats[bestIdx].wins}W / ${charStats[bestIdx].runs}L` : "No wins" },
+      tip: charStats[bestIdx].win_pct !== null ? `${fmtCharName(chars[bestIdx])} · ${charStats[bestIdx].wins}W / ${charStats[bestIdx].runs}L` : "No wins" },
     { label: "Most Played",    value: fmtCharName(chars[mostIdx]),
       // Run count is the Runs card's value — show only the share here.
-      sub: `${mostPlayedPct}% of all runs` },
+      tip: `${mostPlayedPct}% of all runs` },
     // Median floor and median win time used to be two cards. Both answer "what
     // does a typical run look like", so they share one now and the row is 8
     // cards, which divides evenly into 4 + 4 instead of leaving a ragged edge.
     // The per-run median already sits on the Total Time Played card.
     { label: "Median Floor", value: grand.median_floor !== null ? grand.median_floor : "—",
-      sub: grand.median_win_min !== null ? `${grand.median_win_min}m in winning runs` : "No wins yet" },
+      tip: grand.median_win_min !== null ? `${grand.median_win_min}m in winning runs` : "No wins yet" },
     { label: "Total Gold Gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
-      sub: grand.runs ? `median ${grand.median_gold.toLocaleString()} per run` : "" },
+      tip: grand.runs ? `median ${grand.median_gold.toLocaleString()} per run` : "" },
     { label: "Elites/Bosses Defeated", value: grand.runs ? grand.total_elites_defeated + grand.total_bosses_defeated : "—",
-      sub: grand.runs ? `${grand.total_elites_defeated} elites · ${grand.total_bosses_defeated} bosses` : "" },
+      tip: grand.runs ? `${grand.total_elites_defeated} elites · ${grand.total_bosses_defeated} bosses` : "" },
   ];
 
-  const modeTag = sharedActiveMode !== "all"
-    ? `<div class="card-scope-tag">${{ solo: "Solo", multi: "Multiplayer", daily: "Daily" }[sharedActiveMode] || sharedActiveMode} runs only</div>`
+  // The scope note is worth keeping — a filtered number must not read as a
+  // lifetime one — but it moves to the tooltip. The filter bar's summary line
+  // states the active mode in plain sight, so nothing is lost by not repeating
+  // it on the card.
+  const scopeNote = sharedActiveMode !== "all"
+    ? `${({ solo: "Solo", multi: "Multiplayer", daily: "Daily" }[sharedActiveMode] || sharedActiveMode)} runs only`
     : "";
-  const runsCard = `<div class="card">
+  const runsTip = [`${grand.wins} win${grand.wins === 1 ? "" : "s"}`, scopeNote].filter(Boolean).join(" · ");
+  const runsCard = `<div class="card" data-tip="${runsTip}" tabindex="0">
     <div class="label">Runs</div>
     <div class="value">${grand.runs}</div>
-    <div class="sub">${grand.wins} wins</div>
-    ${modeTag}
   </div>`;
 
   // Leads the row — total time invested is one of the most immediately
   // relevant stats, ahead of even the Runs count.
-  const timeCard = `<div class="card">
+  const timeCard = `<div class="card"${grand.runs ? ` data-tip="median ${grand.median_min}m per run" tabindex="0"` : ""}>
     <div class="label">Total Time Played</div>
     <div class="value">${grand.runs ? fmtHrsMin(grand.total_min) : "—"}</div>
-    <div class="sub">${grand.runs ? `median ${grand.median_min}m per run` : ""}</div>
   </div>`;
 
   document.getElementById("summary-cards").innerHTML = timeCard + runsCard + items.map(card =>
-    `<div class="card">
+    // tabindex so the data-tip is reachable by keyboard and by a phone tap, the
+    // same way the Personal Bests rows do it.
+    `<div class="card"${card.tip ? ` data-tip="${card.tip}" tabindex="0"` : ""}>
       <div class="label">${card.label}</div>
       <div class="value">${card.value}</div>
-      <div class="sub">${card.sub}</div>
     </div>`
   ).join("");
 }

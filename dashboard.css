@@ -126,6 +126,27 @@ h1 {
    their own counts. */
 #summary-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
+/* Each summary card is a bar: label left, value right, one line instead of the
+   stacked three. Eight short facts cost 187px of the fold stacked and 107px
+   like this, and the numbers line up into a readable column down the page.
+   The secondary detail that used to sit under the value is on data-tip now.
+
+   Only above 1250px. A bar needs room for its label and value on one line --
+   the longest label is "Elites/Bosses Defeated", ~165px -- and below that the
+   label wraps and drags its value out of line with the cards beside it. Narrower
+   screens keep the stacked card, which needs no such room. */
+@media (min-width: 1251px) {
+  #summary-cards .card {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.9rem;
+  }
+  #summary-cards .card .label { margin: 0; }
+  #summary-cards .card .value { line-height: 1; }
+}
+
 /* Personal bests: force 5 equal columns so tiles never leave an orphan.
    minmax(0, 1fr), not bare 1fr -- bare 1fr is minmax(auto, 1fr), so a
    column holding a wide character panel refuses to shrink below that
@@ -168,7 +189,6 @@ h1 {
 .card .label { font-size: 0.74rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
 .card .value { font-size: 1.6rem; font-weight: 700; color: var(--gold); line-height: 1.2; text-shadow: 0 0 10px var(--gold-glow); }
 .card .sub   { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.1rem; }
-.card .card-scope-tag { font-size: 0.66rem; color: #8a8aa0; font-style: italic; margin-top: 0.15rem; }
 
 /* Personal Bests stat values that link to the run behind them (see
    statLink() in dashboard.js) — gold on hover, matching every other
