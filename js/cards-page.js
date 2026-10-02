@@ -173,13 +173,12 @@ function renderCardsPage() {
     bindEnterSpace(th);
   });
 
-  // Body
-  // Win rates backed by fewer than 5 samples are rendered faded with a
-  // tooltip, so a lucky 1-pick 100% doesn't visually outrank a real signal
-  const pct = (v, color, n = null) => {
+  // Body. Win rates carry no low-sample marking: a thin rate is an outlier that
+  // resolves itself as more runs are uploaded, and flagging it made this page
+  // disagree with the rest of the app about what a sample size was worth
+  // warning about.
+  const pct = (v, color) => {
     if (v == null) return `<span style="color:#8a8aa0">—</span>`;
-    if (n != null && n < 5)
-      return `<span style="color:${color};opacity:0.45" data-tip="Small sample: ${n} ${n === 1 ? "run" : "runs"}">⚠ ${v}%</span>`;
     return `<span style="color:${color};font-weight:${v >= 50 ? "800" : "400"};${v >= 50 ? "font-size:0.88rem;" : ""}">${v}%</span>`;
   };
 
@@ -205,8 +204,8 @@ function renderCardsPage() {
     <td style="padding:0.18rem 0.5rem;font-size:0.75rem;color:${RARITY_COLOR[r.rarity] || "#bcbcd0"}">${r.rarity}</td>
     <td style="padding:0.18rem 0.5rem;text-align:center;font-size:0.83rem;color:#bcbcd0">${r.offered}</td>
     <td style="padding:0.18rem 0.5rem;text-align:center">${pct(r.pickRate, "#ccc")}</td>
-    <td style="padding:0.18rem 0.5rem;text-align:center">${pct(r.winPicked,  "#ccc", r.picked)}</td>
-    <td style="padding:0.18rem 0.5rem;text-align:center">${pct(r.winSkipped, "#ccc", r.skipped)}</td>
+    <td style="padding:0.18rem 0.5rem;text-align:center">${pct(r.winPicked,  "#ccc")}</td>
+    <td style="padding:0.18rem 0.5rem;text-align:center">${pct(r.winSkipped, "#ccc")}</td>
   </tr>`;
   }).join("");
 

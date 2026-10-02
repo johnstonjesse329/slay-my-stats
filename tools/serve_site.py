@@ -32,6 +32,9 @@ A missing /users/<name> answers 403, not 404 — that's what S3 (behind
 CloudFront with Origin Access Control) returns for a key that doesn't exist,
 and boot.js needs to tell "no data yet" apart from a real network failure.
 
+Only one dev server is ever needed, so starting this again on the same port
+replaces an earlier one -- see "One dev server per port" below.
+
 Usage:
     python tools/serve_site.py
     python tools/serve_site.py --port 8080
@@ -39,8 +42,11 @@ Usage:
 
 import email.parser
 import json
+import os
+import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlsplit
@@ -235,11 +241,122 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write(f"{self.address_string()} - {fmt % args}\n")
 
 
+# ---------------------------------------------------------------------------
+# One dev server per port
+# ---------------------------------------------------------------------------
+#
+# http.server sets allow_reuse_address, and on Windows SO_REUSEADDR lets a
+# second process bind an already-bound port instead of failing. So starting the
+# server again while an older one is still up can leave BOTH listening, with
+# requests going to whichever the OS happens to pick -- a "restart" that
+# silently changed nothing, which is how a stale process ends up serving
+# days-old responses (and a days-old build of /thumbs/).
+#
+# So a startup takes the port over. The target is whoever is LISTENING on the
+# port, never "whoever mentions this script on their command line": the shell
+# that ran the command and the venv's python.exe launcher both carry that same
+# text, so matching on it kills the terminal or this very process with it.
+
+
+class LocalHTTPServer(ThreadingHTTPServer):
+    # On Windows this is what stops two servers sharing the port. Elsewhere the
+    # flag is what lets a restart skip waiting out TIME_WAIT, and the silent
+    # sharing problem doesn't exist, so leave the default alone.
+    allow_reuse_address = sys.platform != "win32"
+
+
+def _listening_pids(port: int) -> list[int]:
+    """PIDs holding a listening socket on this port."""
+    if sys.platform == "win32":
+        cmd = ["netstat", "-ano", "-p", "TCP"]
+    else:
+        cmd = ["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    pids = []
+    for line in out.splitlines():
+        if sys.platform == "win32":
+            parts = line.split()
+            if (len(parts) >= 5 and parts[0] == "TCP" and parts[3] == "LISTENING"
+                    and parts[1].endswith(f":{port}")):
+                pids.append(int(parts[4]))
+        elif line.strip().isdigit():
+            pids.append(int(line.strip()))
+    return pids
+
+
+def _command_lines(pids: list[int]) -> dict[int, str]:
+    """pid -> command line, to check a port holder really is our server."""
+    if sys.platform != "win32":
+        lines = {}
+        for pid in pids:
+            try:
+                raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+            except OSError:
+                continue
+            lines[pid] = raw.decode(errors="replace").replace("\x00", " ").strip()
+        return lines
+    query = 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)|$($_.CommandLine)" }'
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", query],
+                             capture_output=True, text=True, timeout=25).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    lines = {}
+    for line in out.splitlines():
+        pid, sep, cmdline = line.partition("|")
+        if sep and pid.strip().isdigit():
+            lines[int(pid.strip())] = cmdline
+    return lines
+
+
+def _take_port_over(port: int) -> bool:
+    """Kill an earlier dev server listening on this port. True if one was."""
+    holders = [p for p in _listening_pids(port) if p != os.getpid()]
+    if not holders:
+        return False
+    command_lines = _command_lines(holders)
+    ours = [p for p in holders if "serve_site.py" in command_lines.get(p, "")]
+    if not ours:
+        # Someone else's server on this port: leave it alone and let the bind
+        # fail loudly rather than kill a process that isn't ours.
+        return False
+    shown = ", ".join(str(p) for p in ours)
+    print(f"Taking port {port} over from {len(ours)} earlier dev server(s): {shown}")
+    for pid in ours:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True)
+        else:
+            subprocess.run(["kill", "-9", str(pid)], capture_output=True)
+    return True
+
+
+def _bind(port: int, retry_seconds: float):
+    """Bind the port, giving a just-killed server a moment to let go of it."""
+    deadline = time.monotonic() + retry_seconds
+    while True:
+        try:
+            return LocalHTTPServer(("127.0.0.1", port), Handler)
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.15)
+
+
 def main():
     args = sys.argv[1:]
     port = int(args[args.index("--port") + 1]) if "--port" in args else 8000
 
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    killed = _take_port_over(port)
+    try:
+        server = _bind(port, 3.0 if killed else 0.0)
+    except OSError as exc:
+        print(f"Could not bind port {port}: {exc}\n"
+              f"Something else is holding it. Check with:\n"
+              f"  netstat -ano | findstr :{port}", file=sys.stderr)
+        raise SystemExit(1)
     print(f"Serving dist/ at http://127.0.0.1:{port}/  (Ctrl+C to stop)")
     try:
         server.serve_forever()

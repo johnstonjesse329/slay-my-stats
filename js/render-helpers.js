@@ -53,25 +53,22 @@ function renderCards(grand, charStats, restAvg) {
 
   const mostPlayedPct = grand.runs ? +((charStats[mostIdx].runs / grand.runs) * 100).toFixed(0) : 0;
   const winPct = grand.win_pct !== null ? grand.win_pct + "%" : "—";
-  // A high win % from a handful of runs shouldn't read with the same
-  // authority as one backed by hundreds — mute it and say why.
-  const bestRuns = charStats[bestIdx].runs;
-  const smallSample = bestRuns > 0 && bestRuns < 15;
   const items = [
     { label: "Overall Win Rate", value: winPct,
       // Win/run counts already sit on the Runs card — a blank sub keeps the
       // card's line-height without repeating them here.
       sub: "&nbsp;" },
     { label: "Best Win Rate", value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
-      sub: charStats[bestIdx].win_pct !== null ? `${fmtCharName(chars[bestIdx])} · ${charStats[bestIdx].wins}W / ${charStats[bestIdx].runs}L` : "No wins",
-      muted: smallSample,
-      tag: smallSample ? "small sample" : "",
-      title: smallSample ? `Based on only ${bestRuns} run${bestRuns !== 1 ? "s" : ""} — win rates under 15 runs are statistically noisy` : "" },
+      sub: charStats[bestIdx].win_pct !== null ? `${fmtCharName(chars[bestIdx])} · ${charStats[bestIdx].wins}W / ${charStats[bestIdx].runs}L` : "No wins" },
     { label: "Most Played",    value: fmtCharName(chars[mostIdx]),
       // Run count is the Runs card's value — show only the share here.
       sub: `${mostPlayedPct}% of all runs` },
-    { label: "Median Floor",   value: grand.median_floor !== null ? grand.median_floor : "—", sub: "All runs" },
-    { label: "Median Win Time", value: grand.median_win_min !== null ? grand.median_win_min + "m" : "—", sub: grand.median_min !== null ? `${grand.median_min}m across all runs` : "No wins" },
+    // Median floor and median win time used to be two cards. Both answer "what
+    // does a typical run look like", so they share one now and the row is 8
+    // cards, which divides evenly into 4 + 4 instead of leaving a ragged edge.
+    // The per-run median already sits on the Total Time Played card.
+    { label: "Median Floor", value: grand.median_floor !== null ? grand.median_floor : "—",
+      sub: grand.median_win_min !== null ? `${grand.median_win_min}m in winning runs` : "No wins yet" },
     { label: "Total Gold Gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
       sub: grand.runs ? `median ${grand.median_gold.toLocaleString()} per run` : "" },
     { label: "Elites/Bosses Defeated", value: grand.runs ? grand.total_elites_defeated + grand.total_bosses_defeated : "—",
@@ -97,11 +94,10 @@ function renderCards(grand, charStats, restAvg) {
   </div>`;
 
   document.getElementById("summary-cards").innerHTML = timeCard + runsCard + items.map(card =>
-    `<div class="card"${card.title ? ` data-tip="${card.title}"` : ""}>
+    `<div class="card">
       <div class="label">${card.label}</div>
-      <div class="value"${card.muted ? ` style="color:#8a8aa0"` : ""}>${card.value}</div>
+      <div class="value">${card.value}</div>
       <div class="sub">${card.sub}</div>
-      ${card.tag ? `<div class="card-scope-tag">⚠ ${card.tag}</div>` : ""}
     </div>`
   ).join("");
 }
@@ -269,9 +265,8 @@ function renderPersonalBests() {
 
 // Aggregates offer/pick/win data per character for cards and relics.
 // Respects shared filters. Returns, per character:
-// mostPicked (highest pick count) and bestWinRate (highest win % overall,
-// flagged lowSample if under MIN_PICKS so the UI can flag it with an "N"
-// badge) — both for cards and relics.
+// mostPicked (highest pick count) and bestWinRate (highest win % overall)
+// — both for cards and relics.
 function aggregateCharFavorites() {
   const MIN_PICKS = 5;
   const chars = DATA.characters;
@@ -326,9 +321,10 @@ function aggregateCharFavorites() {
     ["card", "relic", "rareCard", "shopCard", "shopRelic"].forEach(kind => {
       const entries = Object.entries(favorites[char][kind].byId);
       let mostPicked = null;
-      // Prefer items meeting MIN_PICKS; only fall back to a below-threshold
-      // item (flagged lowSample) if nothing clears the bar. Otherwise a
-      // single 100%-win pick would always beat a well-sampled 80%-win item.
+      // Prefer items meeting MIN_PICKS, falling back to a below-threshold item
+      // only if nothing clears the bar: otherwise a single 100%-win pick would
+      // always beat a well-sampled 80%-win item. This chooses which item to
+      // show — it flags nothing, and no low-sample marking is rendered.
       let bestQualified = null, bestAny = null;
       entries.forEach(([id, b]) => {
         const winPct = +(b.won / b.picked * 100).toFixed(0);
@@ -338,7 +334,6 @@ function aggregateCharFavorites() {
         if (b.picked >= MIN_PICKS && (!bestQualified || winPct > bestQualified.winPct)) bestQualified = candidate;
       });
       const bestWinRate = bestQualified || bestAny;
-      if (bestWinRate) bestWinRate.lowSample = bestWinRate.picked < MIN_PICKS;
       result[char][kind] = { mostPicked, bestWinRate };
     });
   });
@@ -365,17 +360,12 @@ function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column 
   const hi = (text, on) => on ? `<b style="color:#e8e6f0;font-weight:700">${text}</b>` : text;
   const countText = hi(`${item.picked} ${item.picked === 1 ? countLabel.replace(/s$/, "") : countLabel}`, emph === "count");
   const winText   = item.winPct != null ? hi(`${item.winPct}% win`, emph === "win") : null;
-  const pieces = (emph === "win" ? [winText, countText] : [countText, winText]).filter(Boolean);
+  // One field order in both columns. The pair is there to be read across, and
+  // swapping pick/win by column ("27 picks · 52% win" beside "86% win · 7
+  // picks") made the reader relearn the order every time.
+  const pieces = [countText, winText].filter(Boolean);
   const sub = pieces.join(" · ");
   const plainSub = sub.replace(/<[^>]+>/g, "");
-  // A below-threshold (lowSample) pick used to fade the whole row to 55%
-  // opacity, which read as disabled/broken next to fully-inked neighbors in
-  // the character panes. Drop the dim and keep the small "N" badge as the
-  // honest low-sample signal instead.
-  const lowSampleBadge = item.lowSample
-    ? `<span data-tip="Low sample size" style="flex:0 0 auto;font-size:0.68rem;font-weight:700;color:#a8a2c4;border:1px solid #4f5158;border-radius:3px;padding:0 3px;line-height:1.3">N</span>`
-    : "";
-
   // Same real card face / relic art used everywhere else, at icon size, with
   // the same rich hover tooltip -- this row used to show a bare cropped
   // portrait with no hover at all, which read as inconsistent next to every
@@ -405,13 +395,13 @@ function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column 
       ? `<div style="min-width:0">
       <div style="font-size:0.76rem;color:#ccc;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;hyphens:auto" lang="en">${label}</div>
       <div style="font-size:0.7rem;color:#a0a0b8;display:flex;flex-wrap:wrap;align-items:center;column-gap:0.3rem;line-height:1.35">
-        ${pieces.map(p => `<span style="white-space:nowrap">${p}</span>`).join("")}${lowSampleBadge}
+        ${pieces.map(p => `<span style="white-space:nowrap">${p}</span>`).join("")}
       </div>
     </div>`
       : `<div style="overflow:hidden;min-width:0">
       <div style="font-size:0.78rem;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
       <div style="font-size:0.72rem;color:#a0a0b8;display:flex;align-items:center;gap:0.25rem;min-width:0">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${sub}</span>${lowSampleBadge}
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${sub}</span>
       </div>
     </div>`}
     ${tooltipHtml ? `<div class="${tooltipClass}">${tooltipHtml}</div>` : ""}
@@ -427,17 +417,25 @@ function charNameCell(char) {
 }
 
 // Shared win-%-to-color mapping for every pivot-table cell in the dashboard.
-// bgTiers/colorTiers are each [highCutoff, midCutoff] (bg has an extra
-// [lowCutoff] step) — pass overrides for a cell whose scale reads
-// differently (e.g. fightWinCell's individual-fight thresholds).
-function winPctStyle(pct, bgTiers = [50, 30, 15], colorTiers = [40, 20]) {
-  const bg = pct >= bgTiers[0] ? "rgba(92,186,125,0.28)"
-           : pct >= bgTiers[1] ? "rgba(92,186,125,0.14)"
-           : pct >= bgTiers[2] ? "rgba(232,169,48,0.22)"
-           :                     "rgba(224,92,92,0.22)";
-  const color = pct >= colorTiers[0] ? "#5cba7d"
-              : pct >= colorTiers[1] ? "#e8a930"
-              :                        "#e05c5c";
+// tiers is [highCutoff, midCutoff, lowCutoff] -- pass an override for a cell
+// whose scale reads differently (e.g. fightWinCell's individual-fight
+// thresholds).
+//
+// The number is coloured from the SAME cutoffs as the cell's fill, so a cell
+// can't contradict itself. It used to colour the text from a second, narrower
+// pair ([40, 20]), which left two bands disagreeing: 30-39% painted an amber
+// number on a green cell, and 15-19% a red number on an amber one.
+function winPctStyle(pct, tiers = [50, 30, 15]) {
+  const high = pct >= tiers[0];
+  const mid  = pct >= tiers[1];
+  const low  = pct >= tiers[2];
+  const bg = high ? "rgba(92,186,125,0.28)"
+           : mid  ? "rgba(92,186,125,0.14)"
+           : low  ? "rgba(232,169,48,0.22)"
+           :        "rgba(224,92,92,0.22)";
+  const color = (high || mid) ? "#5cba7d"
+              : low           ? "#e8a930"
+              :                 "#e05c5c";
   return { bg, color };
 }
 

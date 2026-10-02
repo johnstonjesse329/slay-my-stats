@@ -35,8 +35,9 @@ function rerenderCurrentPage() {
   updateFilterSummary();
 }
 
-// The one-line summary the filter rows collapse behind at phone width
-// (.filter-summary in dashboard.css; hidden on desktop). Looks its elements
+// The one-line summary the filter rows collapse behind (.filter-summary in
+// dashboard.css; the bar starts collapsed at every width now, not just phone).
+// Looks its elements
 // up on each call because the filter bar's own setup rerenders before the
 // rest of this file has run.
 function updateFilterSummary() {

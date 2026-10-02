@@ -1030,6 +1030,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     top = (f"""
 <nav class="site-nav" aria-label="Site">
   <a class="site-brand" href="/">Slay My Stats</a>
+  <span class="site-player" id="site-player" hidden></span>
   <div class="site-links">{links}
   </div>
 </nav>

@@ -23,10 +23,14 @@ html {
   --panel:        #211e36;
   --panel-2:      #2a2545;
   --panel-border: #4a3f6e;
-  /* --panel/--panel-2 at 65% for the top-level panel surfaces, so the map
-     scroll behind the page (.map-bg) shows through them faintly. */
-  --panel-glass:   rgba(33, 30, 54, 0.65);
-  --panel-2-glass: rgba(42, 37, 69, 0.65);
+  /* --panel/--panel-2, barely transparent, for the top-level panel surfaces:
+     the map scroll behind the page (.map-bg) still tints them, but not enough
+     for the parchment's bright band to change a panel's own background part
+     way across it. At 65% the filter row straddled that band and read as two
+     different panels; the map is meant to be the page's field, not something
+     the reader has to look through to read a number. */
+  --panel-glass:   rgba(33, 30, 54, 0.94);
+  --panel-2-glass: rgba(42, 37, 69, 0.94);
   --hairline:     #3a3460;
   --gold:         #e0c468;
   --gold-bright:  #f3d98a;
@@ -115,6 +119,12 @@ h1 {
 @media (max-width: 1200px) {
   .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+/* The dashboard's summary row is 8 cards, not 9 -- the two medians merged --
+   so four across divides it into 4 + 4 with no ragged edge. Keyed off the id
+   rather than .cards because .cards is shared with the finder's 6-card grid
+   (players.css .site-cards) and the Personal Bests row, both of which need
+   their own counts. */
+#summary-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 /* Personal bests: force 5 equal columns so tiles never leave an orphan.
    minmax(0, 1fr), not bare 1fr -- bare 1fr is minmax(auto, 1fr), so a
@@ -304,8 +314,40 @@ h1 {
   gap: 0.75rem;
   flex-wrap: wrap;
 }
-/* Phone-width only: the one-line summary the filter rows collapse behind. */
-.filter-summary { display: none; }
+/* The one-line summary the filter rows collapse behind. This used to be
+   phone-only, but the rows cost the top third of every page at any width, and
+   the summary doubles as a readable statement of the current filter state.
+   Scoped to .filter-bar-2row, the only bar that has a summary button -- the
+   Card Stats bar is a plain .filter-bar and must keep its rows visible. */
+.filter-bar-2row .filter-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.filter-bar-2row .filter-summary:hover .filter-summary-caret { color: var(--text); }
+.filter-bar-2row .filter-summary-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-bar-2row .filter-summary-caret { color: var(--text-dim); transition: transform 0.15s; }
+.filter-bar-2row:not(.expanded) .filter-row { display: none; }
+.filter-bar-2row.expanded .filter-summary {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--hairline);
+}
+.filter-bar-2row.expanded .filter-summary-caret { transform: rotate(180deg); }
 .filter-bar-2row .filter-row + .filter-row {
   padding-top: 0.5rem;
   border-top: 1px solid var(--hairline);
@@ -466,9 +508,19 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  flex: 1;
+  /* Capped, so "Clear all" lands just after the two inputs instead of being
+     pushed to the far right of the row by two flex: 1 columns that grow. */
+  flex: 1 1 240px;
   min-width: 220px;
+  max-width: 380px;
 }
+
+/* Nothing has been searched for yet, so the matched-items column would be a
+   blank ~40% of the table, squeezing the four columns that do have data.
+   Keyed off a class seeds.js sets; only the header cell and the seed rows,
+   not the expanded detail rows (which span the whole table). */
+#seeds-table.no-search thead th:last-child,
+#seeds-table.no-search tr.seed-row > td:last-child { display: none; }
 
 .seeds-search-label {
   font-size: 0.72rem;
@@ -1655,37 +1707,6 @@ body.suppress-hover-tooltips .node-tooltip {
     flex-basis: 100%;
   }
 
-  /* Even wrapped, the filter rows fill most of a phone screen, so they
-     collapse behind a tappable one-line summary until expanded. */
-  .filter-summary {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0;
-    background: none;
-    border: 0;
-    color: var(--text);
-    font: inherit;
-    font-size: 0.8rem;
-    text-align: left;
-    cursor: pointer;
-  }
-  .filter-summary-text {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .filter-summary-caret { color: var(--text-dim); transition: transform 0.15s; }
-  .filter-bar:not(.expanded) .filter-row { display: none; }
-  .filter-bar.expanded .filter-summary {
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--hairline);
-  }
-  .filter-bar.expanded .filter-summary-caret { transform: rotate(180deg); }
-
   /* Grids that stay at desktop column counts squeeze their contents to a
      sliver (4-up charts at ~60px wide) instead of reflowing. Tracks use
      minmax(0, 1fr), not bare 1fr -- bare 1fr is minmax(auto, 1fr), so a
@@ -1707,6 +1728,7 @@ body.suppress-hover-tooltips .node-tooltip {
      enough that a single-column stack (from .cards' 220px auto-fit minimum)
      leaves half the card empty. Two narrower columns use that space instead. */
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #summary-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   /* Run Detail: the 230px run list + timeline side-by-side has no room.
      Stack them, and cap the run list's height (it's independently

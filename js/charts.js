@@ -541,18 +541,6 @@ function updateRestWinCharts(filteredRuns) {
 // -------------------------------------------------------------------------
 
 const ACT_COLORS = { 1: "#9ecfff", 2: "#e8a930", 3: "#e05c5c" };
-const ELITE_LOW_SAMPLE = 10; // bars built on fewer runs than this are faded
-
-// Fades a color toward neutral grey rather than lowering alpha — alpha
-// blending a warm color (e.g. the gold Act 2 uses) against this dashboard's
-// dark background shifts it toward a muddy brown instead of reading as
-// "the same color, faded."
-function fadeColor(hex, t = 0.5) {
-  const grey = [0xbc, 0xbc, 0xd0];
-  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
-  const mix = (c, gr) => Math.round(c * (1 - t) + gr * t);
-  return `#${[mix(r, grey[0]), mix(g, grey[1]), mix(b, grey[2])].map(v => v.toString(16).padStart(2, "0")).join("")}`;
-}
 
 // Upper bound derived from the actual data (not hardcoded) so a future run
 // that fights more elites than any run so far isn't silently folded into
@@ -722,10 +710,7 @@ function updateEliteActCharts(filteredRuns) {
       const b = actBucket[n];
       return b ? b.reachedThisElite - b.diedOnThisElite : 0;
     });
-    const baseColor = ACT_COLORS[act];
-    const lowSampleColor = fadeColor(baseColor, 0.5);
-    const isLowSample = n => (actBucket[n] || {}).reachedThisElite < ELITE_LOW_SAMPLE;
-    ds.backgroundColor = ELITE_TOTAL_X.map(n => isLowSample(n) ? lowSampleColor : baseColor);
+    ds.backgroundColor = ACT_COLORS[act];
   });
 
   // Combined trendline: same death-rate metric as the bars, pooled across
@@ -755,10 +740,7 @@ function updateEliteActCharts(filteredRuns) {
     ds.data = ds.trueData;
     ds.counts = ELITE_TOTAL_X.map(n => (winBucket[n] || {}).overallTotal || 0);
     ds.wins   = ELITE_TOTAL_X.map(n => (winBucket[n] || {}).overallWins || 0);
-    const baseColor = "#7ec8a0";
-    const lowSampleColor = fadeColor(baseColor, 0.5);
-    const isLowSample = n => (winBucket[n] || {}).overallTotal < ELITE_LOW_SAMPLE;
-    ds.backgroundColor = ELITE_TOTAL_X.map(n => isLowSample(n) ? lowSampleColor : baseColor);
+    ds.backgroundColor = "#7ec8a0";
   }
   eliteWinRateChart.update();
 }

@@ -267,7 +267,7 @@ function encNameCell(enc) {
 function fightWinCell(s, isAll) {
   const cls = "cell" + (isAll ? " all-col" : "");
   if (!s) return `<td class="${cls} empty">—</td>`;
-  const { bg, color } = winPctStyle(s.win_pct, [60, 40, 20], [50, 25]);
+  const { bg, color } = winPctStyle(s.win_pct, [60, 40, 20]);
   // Fights/turns/HP are three distinct stats, not fragments of one — each
   // gets its own line (via showTableTooltip's "\n" handling) rather than
   // being run together on one wrapped line, which read as a wall of text.

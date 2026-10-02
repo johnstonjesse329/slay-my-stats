@@ -222,15 +222,26 @@ function renderSeeds() {
   const sortFn = sortFns[seedSortCol] || sortFns.date;
   filtered.sort((a, b) => seedSortAsc ? sortFn(a, b) : sortFn(b, a));
 
+  const hasFilters = seedCardFilters.length > 0 || seedRelicFilters.length > 0;
+
+  // The "Matched Cards / Relics Offered" column can only say something once
+  // something has been searched for. Until then it was a blank ~40% of the
+  // table while the four columns with data were squeezed into the left half.
+  const seedsTable = document.getElementById("seeds-table");
+  if (seedsTable) seedsTable.classList.toggle("no-search", !hasFilters);
+
   // Live count moves off the heading into its hover tooltip so the h2 reads
   // as a clean noun phrase like every other page heading.
   const seedsCaption = document.getElementById("seeds-caption");
   if (seedsCaption) {
     const n = filtered.length;
-    seedsCaption.textContent = `${n} seed${n === 1 ? "" : "s"} whose run offered every card and relic you searched for.`;
+    const seeds = `${n} seed${n === 1 ? "" : "s"}`;
+    // With nothing searched for there is no match to describe, so say what the
+    // list actually is instead of describing a search that never happened.
+    seedsCaption.textContent = hasFilters
+      ? `${seeds} whose run offered every card and relic you searched for.`
+      : `All ${seeds} in the current date, build and ascension filters — search for a card or relic above to narrow them.`;
   }
-
-  const hasFilters = seedCardFilters.length > 0 || seedRelicFilters.length > 0;
 
   // Render sortable headers
   const arrow = col => col === seedSortCol ? (seedSortAsc ? " ▲" : " ▼") : "";

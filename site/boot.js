@@ -364,9 +364,15 @@
       el("div", { className: "value", textContent: value }),
       el("div", { className: "sub" }, sub ? [sub] : []),
     ]);
+    // Solo and multiplayer are counted apart and both leave out daily runs
+    // (handler.py's tally(), pinned by test_stats_split_multiplayer_and_leave_
+    // out_daily), so they deliberately don't sum to allRuns. Name the
+    // remainder or the breakdown reads as if the headline total is wrong.
+    const daily = Math.max(0, (stats.allRuns || 0) - (solo.runs || 0) - (multi.runs || 0));
     const cards = [
       card("Players", num(players.length)),
-      card("Runs uploaded", num(stats.allRuns), `${num(solo.runs)} solo · ${num(multi.runs)} multiplayer`),
+      card("Runs uploaded", num(stats.allRuns),
+        `${num(solo.runs)} solo · ${num(multi.runs)} multiplayer${daily ? ` · ${num(daily)} daily` : ""}`),
       card("Hours played", num(Math.round(((solo.minutes || 0) + (multi.minutes || 0)) / 60))),
       card("Solo win rate", pct(solo.wins, solo.runs), `${num(solo.wins)} of ${num(solo.runs)}`),
       card("Multiplayer win rate", pct(multi.wins, multi.runs), `${num(multi.wins)} of ${num(multi.runs)}`),
@@ -452,10 +458,31 @@
     showFallback("No runs have been uploaded for this profile yet.");
   }
 
-  // The tab title says whose runs these are.
-  function showPlayerName(name) {
+  // The tab title says whose runs these are, and so does the site bar: the
+  // name is the one piece of context every number on these pages depends on,
+  // and a shared link otherwise shows five dashboards with no owner on them.
+  // It can't be derived from the slug ("MiLwOrkZ"), so it always comes from
+  // the profile document.
+  //
+  // The bar also gets the run count and last upload, from the index entry the
+  // finder uses. Those are lifetime figures, matching the finder's rows, not
+  // the filter-scoped counts in the dashboard's own cards below.
+  function showPlayerName(name, entry) {
     if (!name) return;
     document.title = `${name} — Slay the Spire 2 Run History`;
+    const slot = document.getElementById("site-player");
+    if (!slot) return;
+    const bits = [name];
+    if (entry && entry.runs) {
+      bits.push(`${entry.runs} run${entry.runs === 1 ? "" : "s"}`);
+    }
+    if (entry && entry.updated) {
+      // updated is epoch seconds.
+      const when = new Date(entry.updated * 1000);
+      bits.push(`updated ${when.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`);
+    }
+    slot.textContent = bits.join(" · ");
+    slot.hidden = false;
   }
 
   function showError() {
@@ -532,11 +559,17 @@
     const slug = match[1].toLowerCase();
     if (match[1] !== slug) history.replaceState(null, "", `/u/${slug}` + location.search + location.hash);
 
-    let catalogResp, userResp;
+    let catalogResp, userResp, indexResp;
     try {
-      [catalogResp, userResp] = await Promise.all([
+      [catalogResp, userResp, indexResp] = await Promise.all([
         fetch("/catalog.json"),
         fetch(`/users/${slug}.json.gz`, { cache: "no-cache" }),
+        // For the header's run count and last upload. The profile document
+        // itself only carries {name, months, no_raw, parser}, and the finder's
+        // row for this player comes from here -- so taking both from one place
+        // keeps the two showing the same number. A failure just leaves the
+        // header with the name alone.
+        fetch("/users/_index.json.gz", { cache: "no-cache" }).catch(() => null),
       ]);
     } catch (e) {
       showError();
@@ -563,6 +596,15 @@
       return;
     }
 
+    let indexEntry = null;
+    if (indexResp && indexResp.ok) {
+      try {
+        indexEntry = ((await indexResp.json()).players || []).find(p => p.slug === slug) || null;
+      } catch (e) {
+        // The name on its own is still worth showing.
+      }
+    }
+
     let runs;
     try {
       runs = await loadRuns(slug, userDoc);
@@ -571,7 +613,7 @@
       return;
     }
 
-    showPlayerName(userDoc.name);
+    showPlayerName(userDoc.name, indexEntry);
     if (!runs.length) {
       showNoRuns();
       return;
