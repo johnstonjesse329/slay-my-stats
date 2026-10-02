@@ -4,12 +4,12 @@
 /* The field sits where the site's name leaves room, and its matches drop down
    under it, so the root page opens on the stats rather than on a panel of intro
    copy. The label stays in the markup for screen readers; the placeholder
-   carries it visually. */
+   carries it visually. It is on every page, so it must not be the thing that
+   pushes the links right -- .site-links does that with a margin-left. */
 .nav-search {
   position: relative;
   flex: 0 1 300px;
   margin-left: 1.5rem;
-  margin-right: auto;
 }
 .nav-search .finder-label {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -98,17 +98,16 @@
 .site-brand:hover { color: var(--gold-bright); }
 /* Whose page this is. The bar names the player because every number on these
    pages depends on that context, and a shared link otherwise carries none of
-   it. The auto margin keeps the name beside the brand while still pushing the
-   links right; boot.js's showPlayerName fills it, and it stays hidden on the
-   root page, where there is no profile to name. */
+   it. It sits between the search and the links: boot.js's showPlayerName fills
+   it, and it stays hidden on the root page, where there is no profile to name. */
 .site-player {
-  margin-right: auto; padding-left: 0.85rem;
+  padding-left: 0.85rem;
   border-left: 1px solid var(--panel-border);
   font-size: 0.92rem; font-weight: 600; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 42vw;
 }
-.site-links { display: flex; align-items: center; gap: 1.25rem; }
+.site-links { display: flex; align-items: center; gap: 1.25rem; margin-left: auto; }
 .site-link {
   font-size: 0.9rem; font-weight: 600; color: var(--text-dim); text-decoration: none;
   padding: 0.35rem 0; border-bottom: 2px solid transparent;

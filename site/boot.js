@@ -241,18 +241,39 @@
     return node;
   }
 
-  // ---- Player search (the root page's site bar) -----------------------------
+  // ---- Player search (in the site bar, on every page) -----------------------
   //
   // /users/_index.json.gz lists every profile as {slug, name, runs, updated}
-  // (no Steam IDs), small enough to search in the browser. The field lives in
-  // the site bar with its matches dropping down under it, so the root page
-  // opens on the stats instead of on a panel of intro copy.
+  // (no Steam IDs), small enough to search in the browser. The field sits in the
+  // site bar with its matches dropping down under it, so it is in the same place
+  // on every page, and the root page can open on the stats instead of on a panel
+  // of intro copy.
   const FINDER_LIMIT = 50;
 
-  async function showFinder() {
-    showFallback("");
-    const main = document.getElementById("main-content");
-    if (!main) return;
+  // One fetch per page load. The bar's search wants this list, the root page's
+  // "Players" card wants it, and a profile's run count comes from it -- sharing
+  // one request is what keeps their numbers from disagreeing.
+  let indexPromise = null;
+  function loadIndex() {
+    if (!indexPromise) {
+      indexPromise = fetch("/users/_index.json.gz", { cache: "no-cache" })
+        .then(resp => (resp.ok ? resp.json() : null))
+        .catch(() => null);
+    }
+    return indexPromise;
+  }
+
+  // Built once however many times it is asked for: main() wants it on every
+  // route, and the root page asks again for the list its stats need.
+  let navSearch = null;
+  function showNavSearch() {
+    if (!navSearch) navSearch = buildNavSearch();
+    return navSearch;  // the player list, or null when the index wouldn't load
+  }
+
+  async function buildNavSearch() {
+    const brand = document.querySelector(".site-nav .site-brand");
+    if (!brand) return null;
     const input = el("input", { type: "search", className: "finder-input", id: "finder-input",
                                placeholder: "Search players", autocomplete: "off", spellcheck: false });
     const list = el("ul", { className: "finder-list", id: "finder-list" });
@@ -262,32 +283,33 @@
       input,
       el("div", { className: "finder-drop" }, [count, list]),
     ]);
-    const brand = document.querySelector(".site-nav .site-brand");
-    if (brand) brand.after(search);
-    // The page's own one line, site/home-intro.html. It sits above the stats; if
-    // the fetch fails this stays an empty div, which costs nothing.
-    const intro = el("div", { className: "finder-intro" });
-    fetchFragment("/home-intro.html").then(html => { if (html !== null) intro.replaceWith(fragment(html, "finder-intro")); });
-    main.textContent = "";
-    main.append(intro);
+    brand.after(search);
 
-    let players;
-    try {
-      const resp = await fetch("/users/_index.json.gz", { cache: "no-cache" });
-      players = resp.ok ? (await resp.json()).players || [] : [];
-    } catch (e) {
+    // The matches are a dropdown, so they take up room only while they are being
+    // read. Closing on blur would race the click on a result -- the field loses
+    // focus before the link's click lands -- so close on a press outside the
+    // search, or on Escape. Wired before the fetch so the field answers at once.
+    const setOpen = open => search.classList.toggle("open", open);
+    input.addEventListener("focus", () => setOpen(true));
+    input.addEventListener("input", () => setOpen(true));
+    input.addEventListener("keydown", e => { if (e.key === "Escape") { setOpen(false); input.blur(); } });
+    document.addEventListener("pointerdown", e => { if (!search.contains(e.target)) setOpen(false); });
+
+    const index = await loadIndex();
+    if (index === null) {
       // The field is the only thing that can report this now -- the count line
       // is inside the dropdown, which never opens without a list to show.
       count.textContent = "Couldn't load the player list. Please try again later.";
       input.disabled = true;
       input.placeholder = "Player list unavailable";
-      return;
+      return null;
     }
+    const players = index.players || [];
     if (!players.length) {
       count.textContent = "No one has uploaded yet — be the first.";
       input.disabled = true;
       input.placeholder = "No players yet";
-      return;
+      return players;
     }
     // Most recently active first. Search ignores case and accents.
     players.sort((a, b) => (b.updated || 0) - (a.updated || 0));
@@ -313,18 +335,23 @@
     };
     input.addEventListener("input", render);
     render();
+    return players;
+  }
 
-    // The matches are a dropdown, so they take up room only while they are being
-    // read. Closing on blur would race the click on a result -- the field loses
-    // focus before the link's click lands -- so close on a press outside the
-    // search, or on Escape.
-    const setOpen = open => search.classList.toggle("open", open);
-    input.addEventListener("focus", () => setOpen(true));
-    input.addEventListener("input", () => setOpen(true));
-    input.addEventListener("keydown", e => { if (e.key === "Escape") { setOpen(false); input.blur(); } });
-    document.addEventListener("pointerdown", e => { if (!search.contains(e.target)) setOpen(false); });
-
-    showSiteStats(main, players);
+  // ---- The root page: one line of intro, then the stats ---------------------
+  async function showFinder() {
+    showFallback("");
+    const main = document.getElementById("main-content");
+    if (!main) return;
+    // site/home-intro.html. It sits above the stats; if the fetch fails this
+    // stays an empty div, which costs nothing.
+    const intro = el("div", { className: "finder-intro" });
+    fetchFragment("/home-intro.html").then(html => { if (html !== null) intro.replaceWith(fragment(html, "finder-intro")); });
+    main.textContent = "";
+    main.append(intro);
+    // The same list the bar's search just loaded.
+    const players = await showNavSearch();
+    if (players && players.length) showSiteStats(main, players);
   }
 
   // ---- Site-wide stats (the root page, below the finder) --------------------
@@ -564,6 +591,9 @@
   // ---- Entry point ---------------------------------------------------------
 
   async function main() {
+    // The bar's search is on every page, so it belongs to no one renderer in
+    // particular -- start it before the route picks one.
+    showNavSearch();
     if (location.pathname === "/" || location.pathname === "/index.html") {
       showFinder();
       return;
@@ -585,17 +615,11 @@
     const slug = match[1].toLowerCase();
     if (match[1] !== slug) history.replaceState(null, "", `/u/${slug}` + location.search + location.hash);
 
-    let catalogResp, userResp, indexResp;
+    let catalogResp, userResp;
     try {
-      [catalogResp, userResp, indexResp] = await Promise.all([
+      [catalogResp, userResp] = await Promise.all([
         fetch("/catalog.json"),
         fetch(`/users/${slug}.json.gz`, { cache: "no-cache" }),
-        // For the header's run count and last upload. The profile document
-        // itself only carries {name, months, no_raw, parser}, and the finder's
-        // row for this player comes from here -- so taking both from one place
-        // keeps the two showing the same number. A failure just leaves the
-        // header with the name alone.
-        fetch("/users/_index.json.gz", { cache: "no-cache" }).catch(() => null),
       ]);
     } catch (e) {
       showError();
@@ -622,14 +646,13 @@
       return;
     }
 
-    let indexEntry = null;
-    if (indexResp && indexResp.ok) {
-      try {
-        indexEntry = ((await indexResp.json()).players || []).find(p => p.slug === slug) || null;
-      } catch (e) {
-        // The name on its own is still worth showing.
-      }
-    }
+    // For the header's run count and last upload, from the same index the bar's
+    // search and the root page's "Players" card use -- so all three show the same
+    // number. The profile document itself carries only
+    // {name, months, no_raw, parser}. A failure leaves the header with the name
+    // alone.
+    const index = await loadIndex();
+    const indexEntry = index ? (index.players || []).find(p => p.slug === slug) || null : null;
 
     let runs;
     try {
