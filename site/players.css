@@ -98,8 +98,45 @@
    dashboard.css's .cards/.card; this grid just has 6 of them. */
 .site-stats { margin-top: 2.5rem; }
 .site-stats h2 { color: var(--gold); margin-bottom: 1rem; }
-.site-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+/* Six cards, so three across is two even rows. Six across made each card 243px
+   at 1600px -- cramped, and too narrow for the bar form below. The .site-stats
+   prefix is deliberate: it outranks dashboard.css's .cards and its breakpoints
+   regardless of which stylesheet is linked first. */
+.site-stats .site-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .site-cards .sub a { color: var(--text); }
+
+/* One-line bars, matching the player pages' summary cards: label left, value
+   right. The difference is that the sub stays visible, in the middle, because on
+   this page it is usually the content rather than a footnote -- the
+   solo / multiplayer / daily split, the win and loss counts -- and the
+   fastest-win card uses it to link to that player, which a tooltip cannot do.
+   The markup is label, value, sub; a bar reads label, sub, value, hence order.
+
+   1301px, measured: at 1200px the cards are 368px and "Runs uploaded" clips its
+   sub, which would hide the daily count. 1300px is the first width where every
+   sub fits on one line. Below it the stacked card keeps the sub on its own line
+   instead, which is what it did before. */
+@media (min-width: 1301px) {
+  .site-stats .site-cards .card {
+    display: flex;
+    align-items: baseline;
+    gap: 0.7rem;
+    padding: 0.55rem 0.9rem;
+  }
+  .site-stats .site-cards .card .label { order: 1; margin: 0; flex: 0 0 auto; }
+  .site-stats .site-cards .card .sub {
+    order: 2; margin: 0; flex: 1 1 auto; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .site-stats .site-cards .card .value { order: 3; margin-left: auto; line-height: 1; }
+}
+
+/* Two across on phones, back to the stacked card: the bar form needs room a
+   phone column does not have. This has to come after the rule above -- both
+   selectors weigh the same, so source order is what decides. */
+@media (max-width: 700px), (orientation: landscape) and (max-height: 500px) {
+  .site-stats .site-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .site-list {
   background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
