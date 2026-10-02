@@ -241,10 +241,12 @@
     return node;
   }
 
-  // ---- Player finder (the root page) ----------------------------------------
+  // ---- Player search (the root page's site bar) -----------------------------
   //
   // /users/_index.json.gz lists every profile as {slug, name, runs, updated}
-  // (no Steam IDs), small enough to search in the browser.
+  // (no Steam IDs), small enough to search in the browser. The field lives in
+  // the site bar with its matches dropping down under it, so the root page
+  // opens on the stats instead of on a panel of intro copy.
   const FINDER_LIMIT = 50;
 
   async function showFinder() {
@@ -252,32 +254,39 @@
     const main = document.getElementById("main-content");
     if (!main) return;
     const input = el("input", { type: "search", className: "finder-input", id: "finder-input",
-                               placeholder: "Steam name", autocomplete: "off", spellcheck: false });
-    const list = el("ul", { className: "finder-list" });
+                               placeholder: "Search players", autocomplete: "off", spellcheck: false });
+    const list = el("ul", { className: "finder-list", id: "finder-list" });
     const count = el("p", { className: "finder-count", role: "status" });
-    // site/home-intro.html; the search still works if it doesn't load.
+    const search = el("div", { className: "nav-search" }, [
+      el("label", { htmlFor: "finder-input", className: "finder-label", textContent: "Search players" }),
+      input,
+      el("div", { className: "finder-drop" }, [count, list]),
+    ]);
+    const brand = document.querySelector(".site-nav .site-brand");
+    if (brand) brand.after(search);
+    // The page's own one line, site/home-intro.html. It sits above the stats; if
+    // the fetch fails this stays an empty div, which costs nothing.
     const intro = el("div", { className: "finder-intro" });
     fetchFragment("/home-intro.html").then(html => { if (html !== null) intro.replaceWith(fragment(html, "finder-intro")); });
     main.textContent = "";
-    main.append(el("section", { className: "finder" }, [
-      intro,
-      el("label", { htmlFor: "finder-input", className: "finder-label", textContent: "Search players" }),
-      input,
-      count,
-      list,
-    ]));
+    main.append(intro);
 
     let players;
     try {
       const resp = await fetch("/users/_index.json.gz", { cache: "no-cache" });
       players = resp.ok ? (await resp.json()).players || [] : [];
     } catch (e) {
+      // The field is the only thing that can report this now -- the count line
+      // is inside the dropdown, which never opens without a list to show.
       count.textContent = "Couldn't load the player list. Please try again later.";
+      input.disabled = true;
+      input.placeholder = "Player list unavailable";
       return;
     }
     if (!players.length) {
       count.textContent = "No one has uploaded yet — be the first.";
       input.disabled = true;
+      input.placeholder = "No players yet";
       return;
     }
     // Most recently active first. Search ignores case and accents.
@@ -304,6 +313,17 @@
     };
     input.addEventListener("input", render);
     render();
+
+    // The matches are a dropdown, so they take up room only while they are being
+    // read. Closing on blur would race the click on a result -- the field loses
+    // focus before the link's click lands -- so close on a press outside the
+    // search, or on Escape.
+    const setOpen = open => search.classList.toggle("open", open);
+    input.addEventListener("focus", () => setOpen(true));
+    input.addEventListener("input", () => setOpen(true));
+    input.addEventListener("keydown", e => { if (e.key === "Escape") { setOpen(false); input.blur(); } });
+    document.addEventListener("pointerdown", e => { if (!search.contains(e.target)) setOpen(false); });
+
     showSiteStats(main, players);
   }
 
@@ -528,7 +548,10 @@
       document.getElementById("main-content")?.append(el("p", {}, [el("a", { href: "/", textContent: "Find a player" })]));
       return;
     }
-    document.querySelector(`.site-link[href='/${name}']`)?.setAttribute("aria-current", "page");
+    // Any bar entry pointing at this page, whether it is a plain .site-link
+    // (about) or the Upload page's button-shaped entry (site/upload.js).
+    document.querySelectorAll(`.site-links a[href='/${name}']`)
+      .forEach(a => a.setAttribute("aria-current", "page"));
     const main = document.getElementById("main-content");
     if (!main) return;
     const section = fragment(html, "site-page");

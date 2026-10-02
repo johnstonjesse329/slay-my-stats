@@ -1,7 +1,41 @@
-/* Player finder on the root page (site/boot.js). Live site only, like
-   upload.css. */
+/* The player search in the site bar, and the one-line intro above the stats
+   (site/boot.js showFinder). Live site only, like upload.css. */
 
-.finder, .site-page {
+/* The field sits where the site's name leaves room, and its matches drop down
+   under it, so the root page opens on the stats rather than on a panel of intro
+   copy. The label stays in the markup for screen readers; the placeholder
+   carries it visually. */
+.nav-search {
+  position: relative;
+  flex: 0 1 300px;
+  margin-left: 1.5rem;
+  margin-right: auto;
+}
+.nav-search .finder-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+.nav-search .finder-input { font-size: 0.9rem; padding: 0.35rem 0.7rem; }
+.finder-drop {
+  display: none;
+  position: absolute; top: calc(100% + 0.4rem); left: 0; right: 0;
+  max-height: 60vh; overflow-y: auto;
+  background: var(--panel-glass);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0.3rem 0.7rem;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  z-index: 60;
+}
+.nav-search.open .finder-drop { display: block; }
+
+/* The home page's intro: a title and one line. The copy that used to be a panel
+   here is on the Upload page now. */
+.finder-intro { margin-bottom: 1.25rem; }
+.finder-intro h1 { color: var(--gold); font-size: 1.15rem; margin: 0 0 0.3rem; }
+.finder-intro p { margin: 0; color: var(--text-dim); font-size: 0.9rem; line-height: 1.5; }
+
+.site-page {
   max-width: 44rem;
   background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
@@ -9,12 +43,13 @@
   border-radius: 10px;
   padding: 1.25rem 1.5rem;
 }
-.finder h1, .site-page h1 { color: var(--gold); font-size: 1.5rem; margin-bottom: 0.75rem; }
-.finder h2 { color: var(--gold); margin-bottom: 0.75rem; }
+.site-page h1 { color: var(--gold); font-size: 1.5rem; margin-bottom: 0.75rem; }
 .site-page h2 { color: var(--gold); font-size: 1.1rem; margin: 1.25rem 0 0.5rem; }
-.finder p, .site-page p { line-height: 1.5; margin-bottom: 0.75rem; }
+.site-page p { line-height: 1.5; margin-bottom: 0.75rem; }
 .site-page a { color: var(--gold); }
 .site-page ul, .site-page ol { line-height: 1.5; margin: 0 0 0.75rem 1.5rem; }
+/* The Upload page's own call to action (site/upload.js handles the click). */
+.site-page .upload-btn { text-decoration: none; }
 .finder-label { display: block; font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.35rem; }
 .finder-input {
   font: inherit;
@@ -26,7 +61,7 @@
   padding: 0.55rem 0.75rem;
 }
 .finder-input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-.finder-count { color: var(--text-dim); font-size: 0.85rem; margin-top: 0.6rem; }
+.finder-count { color: var(--text-dim); font-size: 0.8rem; margin: 0.15rem 0 0.1rem; }
 .finder-list { list-style: none; margin: 0; padding: 0; }
 .finder-list li + li { border-top: 1px solid var(--hairline); }
 .finder-list a {
@@ -34,7 +69,7 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 1rem;
-  padding: 0.55rem 0.4rem;
+  padding: 0.4rem 0.2rem;
   color: var(--text);
   text-decoration: none;
   border-radius: 4px;
@@ -42,7 +77,7 @@
 .finder-list a:hover, .finder-list a:focus-visible { background: rgba(224,196,104,0.08); color: var(--gold); }
 .finder-list a:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 .finder-name { font-weight: 600; overflow-wrap: anywhere; }
-.finder-runs { color: var(--text-dim); font-size: 0.85rem; white-space: nowrap; }
+.finder-runs { color: var(--text-dim); font-size: 0.8rem; white-space: nowrap; }
 
 /* The site nav (run.py's home_links): the site's name and its pages, full
    width across the top, above whatever page this is. The negative margins
@@ -90,8 +125,10 @@
   .site-nav .upload-btn { display: none; }
 }
 @media (max-width: 700px), (orientation: landscape) and (max-height: 500px) {
-  .site-nav { --gutter: 14px; margin-bottom: 1.25rem; }
+  .site-nav { --gutter: 14px; margin-bottom: 1.25rem; flex-wrap: wrap; }
   .site-player { font-size: 0.85rem; max-width: 30vw; }
+  /* No room beside the links on a phone: the search takes its own row. */
+  .nav-search { order: 3; flex: 1 1 100%; margin: 0.6rem 0 0; }
 }
 
 /* Site-wide stats under the finder (boot.js showSiteStats). The cards reuse

@@ -176,19 +176,22 @@
 
   // ---- UI -------------------------------------------------------------------
 
-  function addHeaderButton(signIn, onRoot) {
+  function addUploadEntries(signIn, onRoot) {
     const links = document.querySelector(".site-links");
     if (!links) return;
-    const btn = el("button", { type: "button", className: "upload-btn", textContent: "Upload runs" });
+    // A link to the Upload page, not a jump straight to Steam: that page says
+    // what signing in does and carries the button that starts it. An <a>, not a
+    // <button>, because it navigates.
+    const btn = el("a", { className: "upload-btn", href: "/upload", textContent: "Upload runs" });
+    links.insertBefore(btn, links.querySelector(".site-github"));  // null: at the end
     const upload = () => {
       if (!signIn || Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) startSignIn();
       else if (onRoot) showUploadPanel(signIn);
       else location.assign("/#upload");
     };
-    btn.addEventListener("click", upload);
-    links.insertBefore(btn, links.querySelector(".site-github"));  // null: at the end
-    // <a data-upload> in page text (e.g. the About page) does the same. Delegated,
-    // since boot.js fetches page bodies in after this script has run.
+    // The Upload page's own button, and any <a data-upload> in page text. Both
+    // start the sign-in and upload. Delegated, since boot.js fetches page bodies
+    // in after this script has run.
     document.addEventListener("click", e => {
       if (!e.target.closest("a[data-upload]")) return;
       e.preventDefault();
@@ -422,7 +425,7 @@
   // opens it straight away; a remembered one waits for the header button.
   const onRoot = location.pathname === "/" || location.pathname === "/index.html";
   const { signIn, fresh } = takeSignIn();
-  addHeaderButton(signIn, onRoot);
+  addUploadEntries(signIn, onRoot);
   if (onRoot && signIn && (fresh || location.hash === "#upload")) showUploadPanel(signIn);
 
 })();

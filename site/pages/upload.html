@@ -1,0 +1,28 @@
+<!-- No `nav:` label here on purpose: the site bar's "Upload runs" entry
+     (site/upload.js) already links to this page, and a second entry beside it
+     would be two links to one place. -->
+<h1>Upload your runs</h1>
+<p>Your run history lives in the game's saves folder on the PC you play on, so the site can't fetch it — you
+  hand it over. That's a Steam sign-in and one folder pick.</p>
+<p><a class="upload-btn" href="/#upload" data-upload>Sign in with Steam and upload</a></p>
+
+<h2>Why sign in?</h2>
+<p>To keep upload abuse out without running an account system, this bit is offloaded to Steam. The login does a
+  few things: it gates upload abuse a bit, and it makes sure your runs are properly associated with your Steam
+  username, which is also easy to search for. Your runs become a page at slay-my-stats.com/u/yourname you can
+  share.</p>
+
+<h2>What happens when you upload</h2>
+<ol>
+  <li>Click the button above and sign in with Steam. Your browser comes back to the site signed in.</li>
+  <li>Copy the path to your run history folder — the page you land on shows it, with a Copy button.</li>
+  <li>Click <strong>Choose history folder</strong>, paste that path, and pick the folder, even though it looks
+    empty (the picker shows folders, not the run files inside).</li>
+</ol>
+<p>Your browser reads the run files on your disk and sends them here; nothing leaves your PC until you pick
+  that folder. Upload again any time: runs your profile already has are skipped, so only new ones are added.</p>
+
+<h2>What's public</h2>
+<p>Your profile page, at slay-my-stats.com/u/yourname, is public: your Steam display name and your runs. It's
+  listed in the player search, and its runs count toward the stats across all players. Your Steam ID is only
+  used on the backend to match your uploads to your profile name.</p>

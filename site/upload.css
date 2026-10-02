@@ -12,6 +12,9 @@
   padding: 0.45rem 0.9rem;
   cursor: pointer;
   display: inline-block;
+  /* The bar's entry and the Upload page's call to action are links now, so they
+     must not pick up the underline. */
+  text-decoration: none;
 }
 .upload-btn:hover { background: rgba(224,196,104,0.16); box-shadow: 0 0 10px var(--gold-glow); }
 .upload-btn:focus-visible, .upload-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
