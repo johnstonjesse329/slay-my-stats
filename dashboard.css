@@ -9,6 +9,10 @@ html {
      doesn't affect any visible in-flow content, only clips this kind of
      off-screen invisible box. */
   overflow-x: hidden;
+  /* The app is dark everywhere, but a dark background doesn't tell the
+     browser that: without this the chrome it draws itself stays light
+     (scrollbars, the date picker's calendar, checkbox internals). */
+  color-scheme: dark;
   /* body's own background only ever covers body's box. When the viewport is
      briefly taller than that (address-bar collapse, phone rotation) html's
      background shows through at the edges -- give it the same slate as
@@ -447,7 +451,10 @@ h1 {
   font-family: inherit;
   cursor: pointer;
 }
-.filter-bar input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.85) sepia(0.4) saturate(2) hue-rotate(10deg); cursor: pointer; }
+/* The control is drawn by the browser in its dark scheme now (html's
+   color-scheme), so the indicator already comes out light; the invert that
+   used to brighten it would darken it straight back onto the dark input. */
+.filter-bar input[type=date]::-webkit-calendar-picker-indicator { cursor: pointer; }
 
 /* ---- Page tabs ---- */
 .page-tabs {

@@ -16,9 +16,18 @@
   const bg = document.querySelector(".map-bg");
   if (!bg) return;
 
+  // The pan is decoration and it is rewritten on every scroll frame, so honour
+  // the OS "reduce motion" setting: drop the inline transform and let
+  // .map-bg's own stylesheet transform (centred, unpanned) stand instead.
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
   let queued = false;
   function update() {
     queued = false;
+    if (reduceMotion.matches) {
+      bg.style.removeProperty("transform");
+      return;
+    }
     const root = document.documentElement;
     // clientHeight, not innerHeight: it holds still while a phone's address
     // bar slides in and out, so the image doesn't jump mid-scroll.
@@ -31,6 +40,8 @@
   function queue() {
     if (!queued) { queued = true; requestAnimationFrame(update); }
   }
+  // Re-read on change, so switching the setting takes effect without a reload.
+  reduceMotion.addEventListener("change", queue);
   addEventListener("scroll", queue, { passive: true });
   addEventListener("resize", queue);
   // Tab switches and filter changes change the page's height without scrolling.

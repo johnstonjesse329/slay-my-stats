@@ -2,6 +2,11 @@
 // Chart creation
 // -------------------------------------------------------------------------
 
+// Chart.js defaults its labels to Helvetica/Arial. Every chart on the page is
+// a label next to other labels, so inherit the page's own stack (body,
+// dashboard.css) instead of rendering the data in a second typeface.
+Chart.defaults.font.family = '"Segoe UI", system-ui, sans-serif';
+
 // Shared y-axis config for win-% charts: cap at 105 for headroom above 100,
 // hide the 105 tick label, and force a 100 tick to always exist
 const WIN_PCT_Y_AXIS = {
