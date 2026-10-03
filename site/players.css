@@ -215,6 +215,26 @@
 .site-bar-fill { display: block; height: 100%; border-radius: 4px; }
 .site-bar-cell .site-row-num { flex: 0 0 7.5rem; text-align: right; }
 .site-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+
+/* Recent uploads (boot.js showRecentUploads): the front door's list of who
+   uploaded last, so a recent uploader can reach their own page without opening
+   the search dropdown. Reuses .site-list's panel and .site-row-name. The rows
+   are links, so they carry more height than a stats row -- on a phone a row is
+   the tap target -- and no side padding, which keeps their names on the same
+   left edge as the panels above. */
+.recent-uploads { margin-top: 2rem; }
+.recent-uploads li { padding: 0; }
+.recent-uploads li a {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 0.15rem 0.75rem; flex: 1 1 auto; min-width: 0;
+  min-height: 2.75rem; padding: 0.3rem 0;
+  color: var(--text); text-decoration: none; border-radius: 4px;
+}
+.recent-uploads li a:hover,
+.recent-uploads li a:focus-visible { background: rgba(224,196,104,0.08); color: var(--gold); }
+.recent-uploads li a:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.recent-uploads .recent-meta { color: var(--text-dim); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
 @media (max-width: 1200px) {
   .site-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .site-lists { grid-template-columns: minmax(0, 1fr); }

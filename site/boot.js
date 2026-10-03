@@ -250,6 +250,14 @@
   // of intro copy.
   const FINDER_LIMIT = 50;
 
+  // "updated" is epoch seconds, stamped by the ingest Lambda when it takes an
+  // upload (infra/lambda/ingest/handler.py), so it dates the upload, not the
+  // run. The short form keeps a search row to one line on a phone, where it
+  // shares that line with the name and the run count.
+  const whenLabel = (ts, long) => !ts ? "" : new Date(ts * 1000).toLocaleDateString(undefined,
+    long ? { day: "numeric", month: "short", year: "numeric" }
+         : { day: "numeric", month: "short" });
+
   // One fetch per page load. The bar's search wants this list, the root page's
   // "Players" card wants it, and a profile's run count comes from it -- sharing
   // one request is what keeps their numbers from disagreeing.
@@ -321,10 +329,12 @@
       const hits = !q ? players : players.filter(p => fold(p.name).includes(q) || (qSlug && p.slug.includes(qSlug)));
       list.textContent = "";
       for (const p of hits.slice(0, FINDER_LIMIT)) {
+        const runs = `${p.runs} run${p.runs === 1 ? "" : "s"}`;
+        const updated = whenLabel(p.updated);
         list.append(el("li", {}, [
           el("a", { href: `/u/${p.slug}` }, [
             el("span", { className: "finder-name", textContent: p.name }),
-            el("span", { className: "finder-runs", textContent: `${p.runs} run${p.runs === 1 ? "" : "s"}` }),
+            el("span", { className: "finder-runs", textContent: updated ? `${runs} · ${updated}` : runs }),
           ]),
         ]));
       }
@@ -353,7 +363,38 @@
     const players = await showNavSearch();
     // A sign-in that arrived on /#upload has taken #main-content in the meantime.
     if (window.uploadPanelActive) return;
-    if (players && players.length) showSiteStats(main, players);
+    if (players && players.length) {
+      await showSiteStats(main, players);
+      // Below the stats, never above the intro: the render pass measured the
+      // root page's h1 at 18.4px against 25.6px stat values, so the heading is
+      // already the third-largest thing on the page.
+      showRecentUploads(main, players);
+    }
+  }
+
+  // ---- Recent uploads (the root page, under the stats) ----------------------
+  //
+  // The same list the bar's search sorts, shown without having to open its
+  // dropdown: the front door should send someone who just uploaded straight to
+  // their own page. Capped, because the block is read on a phone.
+  const RECENT_LIMIT = 5;
+
+  function showRecentUploads(main, players) {
+    const recent = [...players]
+      .sort((a, b) => (b.updated || 0) - (a.updated || 0))
+      .slice(0, RECENT_LIMIT);
+    if (!recent.length) return;
+    main.append(el("section", { className: "site-list recent-uploads" }, [
+      el("h3", { textContent: "Recent uploads" }),
+      el("p", { className: "site-note", textContent: "Most recent first." }),
+      el("ul", {}, recent.map(p => el("li", {}, [
+        el("a", { href: `/u/${p.slug}` }, [
+          el("span", { className: "site-row-name", textContent: p.name }),
+          el("span", { className: "recent-meta", textContent:
+            `${p.runs} run${p.runs === 1 ? "" : "s"} · updated ${whenLabel(p.updated, true)}` }),
+        ]),
+      ]))),
+    ]));
   }
 
   // ---- Site-wide stats (the root page, below the finder) --------------------
@@ -528,11 +569,7 @@
     if (entry && entry.runs) {
       bits.push(`${entry.runs} run${entry.runs === 1 ? "" : "s"}`);
     }
-    if (entry && entry.updated) {
-      // updated is epoch seconds.
-      const when = new Date(entry.updated * 1000);
-      bits.push(`updated ${when.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`);
-    }
+    if (entry && entry.updated) bits.push(`updated ${whenLabel(entry.updated, true)}`);
     slot.textContent = bits.join(" · ");
     slot.hidden = false;
   }
