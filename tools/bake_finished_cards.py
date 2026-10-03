@@ -33,6 +33,7 @@ Requires: pip install Pillow
 import argparse
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -67,6 +68,30 @@ PORTRAIT_OVERRIDES = {
     "stack": "smokestack",
     "mad_science": "mad_science_attack",
 }
+
+# A portrait is cropped to the Portrait rect's aspect (card_chrome/layout.json:
+# 250x190 logical = 1.316). Most sources are already that shape (1000x760 and
+# friends), so the crop is a no-op for them. Some are not: the Ancient set ships
+# 606x852 art, which is the *frame's* aspect (300x422), about 1.85x the window's
+# height. Those get an arbitrary band out of the middle and the rest is dropped,
+# so where the band lands decides whether the subject survives.
+#
+# Rather than a per-card table, the landing point is derived from the art: slide
+# the window down over the artwork's own empty top margin and no further. That
+# never cuts subject and never wastes margin, per card, with nothing to update
+# when a new style of oversized art turns up. See crop_portrait_to_box.
+#
+# Cards that need to be pinned somewhere else anyway can be listed here (0.0 is
+# the top of the art, 0.5 centred, 1.0 the bottom); anything listed wins over the
+# derived value. Empty by design -- prefer fixing the rule.
+PORTRAIT_ANCHOR: dict[str, float] = {}
+
+# A row counts as subject once this share of its pixels differs from that row's
+# own modal colour. The arts are gradient fields with faint petals, so a row is
+# judged against itself rather than one global background colour.
+CONTENT_ROW_THRESHOLD = 0.08
+CONTENT_SAMPLE_STEP = 3
+CONTENT_CHANNEL_DELTA = 60
 
 # card.tscn TitleLabel: font_color Color(1,0.964706,0.886275,1)
 TITLE_COLOR = (255, 246, 226, 255)
@@ -331,9 +356,14 @@ def index_portraits():
     return index
 
 
-def resolve_portrait(index, card_id):
+def portrait_key(card_id):
+    """The portrait stem a card id resolves to, after PORTRAIT_OVERRIDES."""
     stem = card_id.split(".", 1)[1].lower()
-    stem = PORTRAIT_OVERRIDES.get(stem, stem)
+    return PORTRAIT_OVERRIDES.get(stem, stem)
+
+
+def resolve_portrait(index, card_id):
+    stem = portrait_key(card_id)
     candidates = index.get(stem, [])
     if not candidates:
         return None
@@ -558,9 +588,51 @@ def draw_wrapped_desc(draw, image, runs, box, font_regular, font_symbol, line_pi
 
 
 # ---------------------------------------------------------------------------
-def crop_portrait_to_box(portrait_path, box):
+def content_top_row(img):
+    """The first row of a portrait that carries subject rather than field.
+
+    Each row is compared against its own modal colour and the pixels departing
+    from it are counted, which holds up on the gradient backgrounds and faint
+    particles these arts are built from -- a single sampled background colour
+    does not. Returns a row index in the source image's own coordinates.
+
+    Only ever runs for art taller than the window, so the per-pixel cost is paid
+    by the handful of oversized cards rather than every card in the bake.
+    """
+    rgb = img if img.mode == "RGB" else img.convert("RGB")
+    px = rgb.load()
+    for y in range(rgb.height):
+        row = [px[x, y] for x in range(0, rgb.width, CONTENT_SAMPLE_STEP)]
+        modal = Counter(row).most_common(1)[0][0]
+        busy = sum(1 for c in row
+                   if abs(c[0] - modal[0]) + abs(c[1] - modal[1]) + abs(c[2] - modal[2])
+                   > CONTENT_CHANNEL_DELTA)
+        if busy / len(row) > CONTENT_ROW_THRESHOLD:
+            return y
+    return 0
+
+
+def auto_anchor(img, band):
+    """Where the crop window should sit in art that is taller than the window.
+
+    Places it as far down as the artwork's own empty top margin allows: no
+    subject is cut, and no margin is wasted, for any style of oversized art.
+    Returns a fraction of the slack, so 0.0 is the top of the art.
+    """
+    slack = img.height - band
+    if slack <= 0:
+        return 0.5
+    return min(1.0, max(0.0, content_top_row(img) / slack))
+
+
+def crop_portrait_to_box(portrait_path, box, anchor=None):
     """Decodes + object-fit:cover-crops a portrait once; the result is reused
     for both the base and upgraded bake of a card since both use the same box.
+
+    When the source is taller than the box, the kept band's position comes from
+    auto_anchor unless an explicit fraction is passed. Art that is wider than the
+    box is cropped from the centre, which is what every card in the catalogue
+    needs today (their art is already the window's shape).
     """
     w, h = box[2] - box[0], box[3] - box[1]
     img = Image.open(portrait_path).convert("RGBA")
@@ -571,7 +643,9 @@ def crop_portrait_to_box(portrait_path, box):
         img = img.crop((x0, 0, x0 + new_w, img.height))
     else:
         new_h = round(img.width / dst_ratio)
-        y0 = (img.height - new_h) // 2
+        if anchor is None:
+            anchor = auto_anchor(img.convert("RGB"), new_h)
+        y0 = round((img.height - new_h) * anchor)
         img = img.crop((0, y0, img.width, y0 + new_h))
     return img
 
@@ -746,7 +820,13 @@ def main():
     for card_id, info in sorted(cards.items()):
         # Base and upgraded share the same portrait — decode+crop it once.
         portrait_path = resolve_portrait(portrait_index, card_id)
-        portrait = crop_portrait_to_box(portrait_path, portrait_box) if portrait_path else None
+        if portrait_path:
+            # None when unlisted, which lets crop_portrait_to_box derive the
+            # landing point from the art itself (see PORTRAIT_ANCHOR).
+            anchor = PORTRAIT_ANCHOR.get(portrait_key(card_id))
+            portrait = crop_portrait_to_box(portrait_path, portrait_box, anchor)
+        else:
+            portrait = None
         for upgraded, suffix in ((False, ""), (True, "_UP")):
             img = bake_one(card_id, upgraded, info, chrome, portrait, layout,
                            bounds, scale, fonts, canvas_size,
