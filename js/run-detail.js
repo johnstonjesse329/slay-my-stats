@@ -159,6 +159,10 @@ function renderDetailRun(run) {
   const totalDmg    = tl.reduce((s, n) => s + (n.dmg       || 0), 0);
   const totalHealed = tl.reduce((s, n) => s + (n.healed    || 0), 0);
   const totalGold   = tl.reduce((s, n) => s + (n.goldGained|| 0), 0);
+  // Cards passed up on a reward or shop shelf. The per-node "Skipped:" lists
+  // already show which ones (see nodeTooltipHtml); this is the count for the
+  // run, next to what was bought.
+  const totalCardsSkipped = tl.reduce((n, node) => n + (node.cardsSkipped || []).length, 0);
   const ancientRelics = tl.filter(n => n.type === "ancient" && n.relicPicked).map(n => n.relicPicked);
   const elitesKilled = (run.fights || []).filter(f => f.type === "elite" && f.won).length;
 
@@ -209,6 +213,7 @@ function renderDetailRun(run) {
   const purchaseItems = [
     totalColorlessBought  > 0 ? { label: "Colorless bought", value: totalColorlessBought }  : null,
     totalOtherCardsBought > 0 ? { label: "Cards bought",     value: totalOtherCardsBought } : null,
+    totalCardsSkipped     > 0 ? { label: "Cards skipped",    value: totalCardsSkipped }     : null,
     totalPotionsBought    > 0 ? { label: "Potions bought",   value: totalPotionsBought }    : null,
     totalRelicsBought     > 0 ? { label: "Relics bought",    value: totalRelicsBought }     : null,
     totalShopRemoves      > 0 ? { label: "Shop removes",     value: totalShopRemoves }      : null,

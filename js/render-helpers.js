@@ -108,7 +108,7 @@ function renderPersonalBests() {
 
   const bests = {};
   chars.forEach(char => {
-    bests[char] = { gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, mostElites: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, highestWinAsc: null };
+    bests[char] = { gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, highestWinAsc: null };
   });
 
   allRuns.forEach(run => {
@@ -120,6 +120,10 @@ function renderPersonalBests() {
     if (finalBoss && !finalBoss.won) {
       b.finalBossDeaths = (b.finalBossDeaths || 0) + 1;
     }
+    // The last fight in the list is the one the run ended on, so its type and
+    // won flag are what the player actually died to.
+    const lastFight = (run.fights || []).slice(-1)[0];
+    if (lastFight && lastFight.type === "elite" && !lastFight.won) b.eliteDeaths++;
     // Every "best" below is { value, ts } rather than a bare number, so the
     // card can link straight to the specific run that produced it — see
     // statLink below, which routes through jumpToRun().
@@ -149,7 +153,6 @@ function renderPersonalBests() {
       }
     }
     const elites = (run.fights || []).filter(f => f.type === "elite" && f.won).length;
-    if (b.mostElites === null || elites > b.mostElites.value) b.mostElites = { value: elites, ts: run.ts };
     if (run.won) {
       if (b.fewestElites === null || elites < b.fewestElites.value) b.fewestElites = { value: elites, ts: run.ts };
       if (b.mostElitesWin === null || elites > b.mostElitesWin.value) b.mostElitesWin = { value: elites, ts: run.ts };
@@ -213,6 +216,11 @@ function renderPersonalBests() {
     const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
     const label = fmtCharName(char);
     const noRuns = b.fastestWin === null;
+    // Deaths read as a count plus a share of every run this character has, so
+    // "died 3 times" has a scale next to it.
+    const deaths = n => b.gamesPlayed
+      ? `${n}<span style="color:#8a8aa0;font-weight:400"> · </span>${Math.round(n / b.gamesPlayed * 100)}%`
+      : "—";
     const fav = favorites[char];
 
     return `<div class="card" style="border-color:${color}55;box-sizing:border-box">
@@ -222,14 +230,14 @@ function renderPersonalBests() {
         ? `${b.totalWins}<span style="color:#8a8aa0;font-weight:400"> · </span>${Math.round(b.totalWins / b.gamesPlayed * 100)}%`
         : "—")}
       ${row("Highest Asc", link(b.highestWinAsc, v => `A${v}`))}
-      ${row("Final boss deaths", b.finalBossDeaths || "—")}
+      ${row("Final boss deaths", deaths(b.finalBossDeaths))}
+      ${row("Elite deaths", deaths(b.eliteDeaths))}
       ${noRuns
         ? `<div style="color:#8a8aa0;font-size:0.8rem;padding:0.25rem 0">No wins yet</div>`
         : `${row("Current win streak", b.currentStreak || 0)}
           ${row("Best win streak", b.longestStreak)}
           ${row("Fastest win", link(b.fastestWin, fmtHrsMinSec))}
-          ${row("Most elites", link(b.mostElites))}
-          ${heading("Winning runs", "fewest – most")}
+          ${heading("Winning runs", "lowest – highest")}
           ${row("Elites", range(b.fewestElites, b.mostElitesWin))}
           ${row("Cards", range(b.fewestCards, b.mostCards))}
           ${row("Relics", range(b.fewestRelics, b.mostRelics))}
