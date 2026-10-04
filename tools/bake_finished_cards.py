@@ -213,6 +213,23 @@ ORB_CHAR = "\x05"   # one per energy pip; draw_wrapped_desc pastes an orb sprite
 STAR_CHAR = "✦"
 
 
+def _passes_test(value, test):
+    """`test` as written in a cond: token (">1", ">=2", ""), against a value.
+
+    An empty test means the variable's own truthiness decides, so a bare
+    {Var:cond:yes|no} reads the flag directly.
+    """
+    for op in (">=", "<=", "==", "!=", ">", "<"):
+        if test.startswith(op):
+            try:
+                lhs, rhs = float(value), float(test[len(op):])
+            except (TypeError, ValueError):
+                return False
+            return {">=": lhs >= rhs, "<=": lhs <= rhs, "==": lhs == rhs,
+                    "!=": lhs != rhs, ">": lhs > rhs, "<": lhs < rhs}[op]
+    return bool(value)
+
+
 def expand_desc(desc, variables):
     """Port of substituteDescVars (js/run-detail.js): resolves every {{token}}
     to plain text, recursing into the branch a plural/show token picks. Energy
@@ -245,6 +262,20 @@ def expand_desc(desc, variables):
         elif kind == "show":
             yes, no = _split_branches(arg)
             out.append(expand_desc(yes if value else no, variables))
+        elif kind == "cond":
+            # {Var:cond:>1?one|many} / {Var:cond:one|many}. The variable has
+            # to be known to choose a branch; when it isn't (GainsBlock is
+            # runtime state the extractor never records) show nothing rather
+            # than guess, which would put invented text on the card. Matches
+            # substituteDescVars in js/run-detail.js.
+            test, has_test, branches = arg.partition("?")
+            if not has_test:
+                branches, test = test, ""
+            yes, no = _split_branches(branches)
+            chosen = ""
+            if value is not None:
+                chosen = yes if _passes_test(value, test) else no
+            out.append(expand_desc(chosen, variables))
         else:
             # HighlightDifferencesFormatter (Var:diff()) only wraps this in
             # [green]/[red] BBCode when it differs from a combat baseline;

@@ -950,6 +950,21 @@ function substituteDescVars(desc, vars, { html = true, pool = "colorless" } = {}
     }
     return [arg];
   };
+  // The comparison in a cond: token (">1", ">=2"), or "" for a bare truthiness
+  // test. Mirrors _passes_test in tools/bake_finished_cards.py.
+  const passesCond = (value, test) => {
+    const m = /^(>=|<=|==|!=|>|<)(-?\d+(?:\.\d+)?)$/.exec(test);
+    if (!m) return !!value;
+    const lhs = Number(value), rhs = Number(m[2]);
+    switch (m[1]) {
+      case ">=": return lhs >= rhs;
+      case "<=": return lhs <= rhs;
+      case "==": return lhs === rhs;
+      case "!=": return lhs !== rhs;
+      case ">":  return lhs > rhs;
+      default:   return lhs < rhs;
+    }
+  };
   const token = raw => {
     // Branch text may itself contain ':', so peel off only the first two
     // segments and keep the remainder of the payload intact.
@@ -978,6 +993,18 @@ function substituteDescVars(desc, vars, { html = true, pool = "colorless" } = {}
     if (kind === "show") {
       const [yes, no] = branches(arg);
       return render(v[name] ? yes : (no ?? ""));
+    }
+    if (kind === "cond") {
+      // {Var:cond:>1?one|many} / {Var:cond:one|many}. The variable's value picks
+      // the branch, so it survives to here like plural/show. When the variable
+      // isn't known at all the branch can't be determined -- show nothing rather
+      // than guess, which would put invented text on the card. Mirrors the cond
+      // case in tools/bake_finished_cards.py's expand_desc.
+      const q = arg.indexOf("?");
+      const test = q < 0 ? "" : arg.slice(0, q);
+      const [yes, no] = branches(q < 0 ? arg : arg.slice(q + 1));
+      if (v[name] === undefined) return "";
+      return render(passesCond(v[name], test) ? yes : (no ?? ""));
     }
     const val = v[name];
     return b(val !== undefined ? String(val) : "?");

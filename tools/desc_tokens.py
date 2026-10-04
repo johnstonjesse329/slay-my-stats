@@ -60,8 +60,21 @@ def _convert_token(payload: str, outer: str | None) -> str:
         return ""
     if not has_format:
         return "{{singleStarIcon:stars}}" if name == "singleStarIcon" else f"{{{{{name}}}}}"
-    if fmt in ("diff()", "inverseDiff()"):
+    if fmt in ("diff()", "inverseDiff()", "percentMore()", "percentLess()"):
         return f"{{{{{name}}}}}"
+    if fmt.startswith("cond:"):
+        # {Var:cond:>1?one|many}  /  {Var:cond:one|many}
+        # The comparison is optional; without one the variable's own truthiness
+        # decides. The branch survives to render time because the choice depends
+        # on the variable's value, exactly like plural/show.
+        body = fmt[len("cond:"):]
+        test, has_test, branches = body.partition("?")
+        if not has_test:
+            branches, test = test, ""
+        first, second = _split_branches(branches)
+        prefix = f"{test}?" if test else ""
+        return (f"{{{{{name}:cond:{prefix}"
+                f"{convert_tokens(first, name)}|{convert_tokens(second, name)}}}}}")
     if re.fullmatch(r"energyIcons\(\d*\)", fmt):
         return f"{{{{{name}:energy}}}}"
     if fmt == "starIcons()":
