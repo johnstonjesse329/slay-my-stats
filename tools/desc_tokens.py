@@ -132,3 +132,76 @@ def clean_desc(text: str) -> str:
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r"[ \t]{2,}", " ", text)
     return text.strip()
+
+
+def _top_blocks(text: str):
+    """The payload of each top-level {...}, in order."""
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == "{":
+            end = _closing_brace(text, i)
+            if end < 0:
+                break
+            out.append(text[i + 1:end])
+            i = end + 1
+        else:
+            i += 1
+    return out
+
+
+def _split_top(arg: str):
+    """Split on | at brace depth 0."""
+    parts, depth, last = [], 0, 0
+    for i, ch in enumerate(arg):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        elif ch == "|" and depth == 0:
+            parts.append(arg[last:i])
+            last = i + 1
+    parts.append(arg[last:])
+    return parts
+
+
+def unwrap_choices(text: str):
+    """Recover the branches of a description built only from dropped constructs.
+
+    Some cards carry no flat description at all: Mad Science's string is one
+    choose() over the rolled card type plus a HasRider block naming eight riders,
+    so convert_tokens() correctly returns "" for the whole thing. This walks that
+    structure instead and hands back each branch's own text, still in {{token}}
+    form so the renderers substitute the real numbers.
+
+    Returns (choose_branches, named_branches); each is a list of (name, text) with
+    empty branches dropped. Named blocks whose body is itself a construct (the
+    trailing "???" placeholders) are skipped rather than returned as riders.
+    """
+    chooses, named = [], []
+    if not text:
+        return chooses, named
+    for block in _top_blocks(text):
+        head, sep, rest = block.partition(":")
+        if not sep:
+            continue
+        # Test the prefix, not a substring: the template's trailing CardType
+        # choose() block is nested *inside* the HasRider block, so searching the
+        # whole payload for "choose(" would misread the rider list as a choose.
+        if rest.lstrip().startswith("choose("):
+            rest = rest.lstrip()
+            options = rest.split("choose(", 1)[1].split(")", 1)[0].split("|")
+            branches = rest.split("):", 1)[1] if "):" in rest else ""
+            for option, branch in zip(options, _split_top(branches)):
+                body = clean_desc(branch).strip()
+                if body:
+                    chooses.append((option, body))
+        elif head.isalpha():
+            for inner in _top_blocks(rest):
+                name, sep2, body_raw = inner.partition(":")
+                if not sep2 or not name.isalpha() or "choose(" in body_raw or "???" in body_raw:
+                    continue
+                body = clean_desc(_split_top(body_raw)[0]).strip()
+                if body:
+                    named.append((name, body))
+    return chooses, named
+

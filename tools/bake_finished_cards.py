@@ -38,7 +38,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from desc_tokens import clean_desc
+from desc_tokens import clean_desc, unwrap_choices
 from pck_root import find_pck_root
 
 HERE = Path(__file__).parent
@@ -322,6 +322,26 @@ def with_keyword_lines(desc, info, upgraded):
     before = [line(k) for k in keywords if k not in KEYWORDS_AFTER]
     after = [line(k) for k in keywords if k in KEYWORDS_AFTER]
     return "\n".join(before + ([desc] if desc else []) + after)
+
+
+def dynamic_desc_text(raw_desc):
+    """Face text for a card whose localization is entirely dropped constructs.
+
+    Only Mad Science matches today: its string is a choose() over the rolled card
+    type plus a HasRider block of eight named riders, and every token in it is one
+    the grammar drops, so the card baked with no description at all.
+
+    Composed only from the template's own branch text — nothing is worded here
+    beyond the "Riders:" label. Measured against the DescriptionLabel box, which
+    holds five lines: the eight rider names fit in both forms (the upgraded card
+    spends one line on its Innate. keyword), while naming the type branches too
+    needs a sixth line and spills onto the art, and the riders' full effect text
+    needs thirteen. So the names are what fits, and the effects are not shown.
+    """
+    _types, named = unwrap_choices(raw_desc)
+    if not named:
+        return ""
+    return "Riders: " + ", ".join(name for name, _ in named) + "."
 
 
 def load_raw_card_descriptions():
@@ -718,6 +738,11 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
     stem = card_id.split(".", 1)[1]
     raw_desc = raw_descs.get(stem)
     desc = clean_desc_with_color(raw_desc) if raw_desc else info.get("desc")
+    # Some cards have text that the grammar can't express at all (see
+    # dynamic_desc_text): the raw string is there but converts to nothing, so
+    # recover its branches rather than baking a card with no description.
+    if not (desc or "").strip() and raw_desc:
+        desc = dynamic_desc_text(raw_desc)
     desc = with_keyword_lines(desc, info, upgraded)
     if desc:
         runs = substitute_desc_vars_runs(desc, variables)
