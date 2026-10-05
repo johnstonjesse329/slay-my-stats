@@ -603,7 +603,13 @@ def parse_run(path: Path) -> dict:
 # v3: shop card purchases come from cards_gained (cards the deck actually
 # gained at that node); card_choices.was_picked stays false for the shop shelf,
 # so buys were nearly all missing from cardsOffered and the Run Detail timeline.
-PARSER_VERSION = 3
+# v4: deck entries carry what the save records about the individual card --
+# `props` (the Tinker Time roll Mad Science displays as its type, portrait and
+# whole description, plus the accumulated values TheScythe, GeneticAlgorithm,
+# Guilty, Dowsing and SpoilsMap show) and `enchantment` ({id, amount}, the tab
+# the game draws on an enchanted card). Without these a deck cannot say what its
+# Mad Science is, so it fell back to the canonical model: type None and "??????".
+PARSER_VERSION = 4
 
 
 def _card_props(card: dict) -> dict:

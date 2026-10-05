@@ -48,10 +48,26 @@ function cardFaceKey(id, upgrade, props) {
 // and points: exactly the "inconsistent sizing" this produces. Deriving every
 // clamp from the same breakpoint keeps them shrinking in lockstep (down to
 // wherever a given context hits its own min and clamps flat).
+// card_final/ ships each card with a transparent margin around it, because the
+// game draws the energy cost orb and the frame's own bevel outside the card's
+// 300x422 rect (the orb is half outside it; see tools/ExportCards.cs's Pad()).
+// A width asked for here is the *card body*, so it is scaled up to the image's
+// width -- otherwise every face would render ~10% smaller than before, and the
+// margin would eat into the space callers laid out for the card.
+//
+// The numbers are local to the function on purpose: files earlier in the bundle
+// call this while app.js is still executing, and reading a module-level `const`
+// that early is a temporal-dead-zone ReferenceError.
+function cardOuterWidth(px) {
+  const BODY_W = 300;
+  const MARGIN = 16;
+  return Math.round(px * (BODY_W + 2 * MARGIN) / BODY_W);
+}
+
 function cardFaceWidth(minPx, maxPx) {
   const BREAKPOINT = 600;
-  const vw = (maxPx / BREAKPOINT * 100).toFixed(3);
-  return `clamp(${minPx}px, ${vw}vw, ${maxPx}px)`;
+  const vw = (cardOuterWidth(maxPx) / BREAKPOINT * 100).toFixed(3);
+  return `clamp(${cardOuterWidth(minPx)}px, ${vw}vw, ${cardOuterWidth(maxPx)}px)`;
 }
 
 // ---- Download size: thumbnails and deferred tooltip art -----------------

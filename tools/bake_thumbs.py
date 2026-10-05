@@ -33,8 +33,10 @@ DST  = ROOT / "thumbs"
 
 SOURCES = ["card_final", "card_portraits", "relic_images", "potion_images", "enchantment_images"]
 # 2x the largest icon-size use (a 26px-wide card face), with a little room.
-# Tall enough that a card face (3:4) is limited by width, not height.
-THUMB_BOX = (56, 80)
+# Tall enough that a card face (3:4) is limited by width, not height. A face image
+# includes a 16px transparent margin around a 300px card, so the box is sized for
+# the image (332px) while keeping the card itself at the 56px it was.
+THUMB_BOX = (62, 88)
 QUALITY = 85
 
 

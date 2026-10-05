@@ -1610,8 +1610,11 @@ body.suppress-hover-tooltips .node-tooltip {
 }
 .card-tile-face .tile-badges {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
+  /* A face image carries a 16px transparent margin (332px wide for a 300px card),
+     so the badge has to clear it to land on the card's own corner: 16/332 = 4.8%
+     of the width, 16/454 = 3.5% of the height, plus the 4px inset it had. */
+  right: 6.5%;
+  bottom: 4.8%;
   z-index: 8;
 }
 .card-tile-face .tile-count {
