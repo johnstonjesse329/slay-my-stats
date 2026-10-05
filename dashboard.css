@@ -1427,6 +1427,39 @@ h1 {
   color: #f0b030;
   font-weight: 700;
 }
+/* The enchantment a card carries: the game draws it as a tab on the card face,
+   which the baked canonical face cannot show, so the site states it in words
+   under the face (js/card-face.js's buildEnchantmentStrip). */
+.ct-enchant {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 6px 10px;
+  border-top: 1px solid #6a5a3a;
+  background: #33291c;
+  font-size: 0.7rem;
+  color: #e8e0cc;
+  line-height: 1.45;
+  text-align: left;
+}
+.ct-enchant-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  image-rendering: auto;
+}
+.ct-enchant-rule b {
+  color: #b8e088;
+  font-weight: 700;
+}
+/* Hovering an enchanted deck tile explains the chip. The tile's own card face
+   needs no tooltip, so this one holds the enchantment strip alone. */
+.card-tooltip-wrap:has(> .ct-enchant) {
+  width: 220px;
+  border: 1px solid #6a5a3a;
+  border-radius: 6px;
+  overflow: hidden;
+}
 /* Inline "gain N Energy" glyph in a relic/potion/card description -- the
    actual in-game energy orb, colored per character pool (ui_icons/energy_
    <pool>.png, copies of the same chrome sprites baked onto a card's
@@ -1588,6 +1621,31 @@ body.suppress-hover-tooltips .node-tooltip {
   padding: 0 4px;
   font-size: 0.72rem;
   color: #fff;
+}
+/* The enchantment chip sits in the same badge row as the copy count. Rendered
+   over the card face, so it needs its own backing to stay legible. */
+.tile-enchant {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(0,0,0,0.78);
+  border: 1px solid #7a9a5a;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.7rem;
+  color: #d8f0c0;
+  white-space: nowrap;
+}
+.tile-enchant-icon {
+  width: 12px;
+  height: 12px;
+}
+/* The portrait-tile fallback draws a name bar instead of a face; the chip has
+   no dark face to sit on there, so it keeps a readable size but drops the
+   border weight. */
+.card-tile:not(.card-tile-face) .tile-enchant {
+  background: rgba(0,0,0,0.5);
+  font-size: 0.66rem;
 }
 
 /* ---- Node tooltip: real art beside each reward ---- */

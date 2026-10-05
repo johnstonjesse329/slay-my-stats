@@ -381,12 +381,12 @@ function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column 
   let thumbHtml, tooltipHtml, tooltipClass;
   if (kind === "card") {
     thumbHtml = cardFaceAvailable()
-      ? `<div class="fav-item-face">${renderCardFace(item.id, 0, 26, { thumb: true })}</div>`
+      ? `<div class="fav-item-face">${renderCardFace(item.id, 0, 26, { thumb: true, props: item.props })}</div>`
       : (() => {
           const src = cardImgSrc(item.id);
           return src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="${label}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;flex:0 0 auto">` : "";
         })();
-    tooltipHtml = buildCardTooltip(item.id, 0);
+    tooltipHtml = buildCardTooltip(item.id, 0, item.props, item.enchantment);
     tooltipClass = "card-tooltip-wrap";
   } else {
     const src = relicImgSrc(item.id);

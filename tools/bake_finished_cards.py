@@ -3,6 +3,15 @@ Bakes a fully finished card image — art AND text — for every card, in both i
 base and upgraded form, out of card_chrome/ + card_data.json + the full-res
 portraits.
 
+SUPERSEDED. card_final/ is now produced by driving the game's own card scene --
+run `python tools/export_game_data.py`, which builds and drives
+tools/ExportCards.cs in the recovery project and exports card data plus a render
+of every card (RENDER_ALL=1) and each per-instance variant. That path is exact by
+construction: the Ancient rarity's separate layout, aspect-preserving portraits,
+the auto-shrinking description label and every text grammar rule are the game's
+own rather than a re-derivation. This module is kept only as a fallback for when
+that exporter cannot be run; its output should not be preferred over the game's.
+
 Why this exists
 ----------------
 js/card-face.js used to composite a card at render time out of six chrome
@@ -262,6 +271,13 @@ def expand_desc(desc, variables):
         elif kind == "show":
             yes, no = _split_branches(arg)
             out.append(expand_desc(yes if value else no, variables))
+        elif kind == "percentMore":
+            # PercentMoreFormatter: the value is a multiplier, printed as the
+            # increase in whole percent.
+            out.append(str(int(round((float(value) - 1) * 100))) if value is not None else "")
+        elif kind == "percentLess":
+            # PercentLessFormatter: the mirror of the above.
+            out.append(str(int(round((1 - float(value)) * 100))) if value is not None else "")
         elif kind == "cond":
             # {Var:cond:>1?one|many} / {Var:cond:one|many}. The variable has
             # to be known to choose a branch; when it isn't (GainsBlock is
@@ -769,11 +785,14 @@ def bake_one(card_id, upgraded, info, chrome, portrait, layout, bounds, scale,
     stem = card_id.split(".", 1)[1]
     raw_desc = raw_descs.get(stem)
     desc = clean_desc_with_color(raw_desc) if raw_desc else info.get("desc")
-    # Some cards have text that the grammar can't express at all (see
-    # dynamic_desc_text): the raw string is there but converts to nothing, so
-    # recover its branches rather than baking a card with no description.
+    # A card whose whole description is a construct the grammar cannot express --
+    # only Mad Science, whose type and rider come from the Tinker Time event --
+    # converts to nothing. The game itself faces the same problem and shows the
+    # template's own "???" branch, so that is what goes on the card. Inventing
+    # prose from the branches (an earlier attempt) put text on a card that did not
+    # correspond to any single roll.
     if not (desc or "").strip() and raw_desc:
-        desc = dynamic_desc_text(raw_desc)
+        desc = "??????"
     desc = with_keyword_lines(desc, info, upgraded)
     if desc:
         runs = substitute_desc_vars_runs(desc, variables)

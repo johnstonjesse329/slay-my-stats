@@ -114,6 +114,12 @@ function renderCardsPage() {
       winSkipped: b.skippedRuns  ? +(b.wonWhenSkipped / b.skippedRuns  * 100).toFixed(1) : null,
     };
   }).filter(r => {
+    // The game hides a couple of cards from its own library because they have no
+    // canonical form before something else rolls them: Mad Science is type None
+    // with a ?????? description until the Tinker Time event assigns its type and
+    // rider, and DeprecatedCard is an internal placeholder. Both can still show up
+    // in a deck, so their metadata stays -- only this reference table skips them.
+    if (cardData[r.id]?.showInCardLibrary === false) return false;
     if (r.pool === "colorless" && !cardsIncludeColorless) return false;
     if (sharedActiveChar !== "ALL" && !cardsIncludeOtherChars) {
       if (r.pool !== sharedActiveChar && r.pool !== "colorless") return false;

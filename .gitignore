@@ -39,6 +39,8 @@ node_icons/
 ui_icons/
 thumbs/
 card_data.json
+card_game_data.json
+card_variants.json
 relic_data.json
 potion_data.json
 data_provenance.json
@@ -49,3 +51,5 @@ infra/cdk.context.json
 # Internal notes
 TODO.md
 ATTENTION.md
+enchantments_data.json
+enchantment_images/

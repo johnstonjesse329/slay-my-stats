@@ -606,6 +606,49 @@ def parse_run(path: Path) -> dict:
 PARSER_VERSION = 3
 
 
+def _card_props(card: dict) -> dict:
+    """
+    Flatten a saved card's per-instance props into {name: value}.
+
+    The run save records them as typed lists ({"ints": [{"name": X, "value": 3}],
+    "bools": [...], ...}) because some cards carry state that decides what they
+    display at all: Mad Science's type and rider are set by the Tinker Time event
+    and nothing else ever assigns them, so without these the frontend cannot tell
+    which of its nine forms a given run rolled. TheScythe and GeneticAlgorithm
+    likewise display a saved running value rather than their canonical one.
+    """
+    out = {}
+    props = card.get("props")
+    if not isinstance(props, dict):
+        return out
+    for group in props.values():
+        if not isinstance(group, list):
+            continue
+        for item in group:
+            if isinstance(item, dict) and "name" in item:
+                out[item["name"]] = item.get("value")
+    return out
+
+
+def _card_enchantment(card: dict) -> dict:
+    """
+    A saved card's enchantment, as {"id": ..., "amount": n}, or {} if it has none.
+
+    The game draws an enchantment on the card itself (a tab plus extra text), so a
+    deck entry that carries one is showing something the card's own data cannot
+    describe: "Nimble 2" is a different card from a plain Strike. ~5% of deck
+    entries in a sample of real saves had one.
+    """
+    ench = card.get("enchantment")
+    if not isinstance(ench, dict) or not ench.get("id"):
+        return {}
+    out = {"id": ench["id"]}
+    amount = ench.get("amount")
+    if isinstance(amount, int) and amount > 0:
+        out["amount"] = amount
+    return out
+
+
 def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | None = None) -> dict:
     """
     parse_run() minus the file: takes an already-loaded .run JSON object, the
@@ -708,13 +751,21 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
                         act_choices[choice] = act_choices.get(choice, 0) + 1
             floor_idx += 1
 
-    final_deck = [
-        {
+    final_deck = []
+    for c in player.get("deck", []):
+        if not c.get("id"):
+            continue
+        entry = {
             "id":      c["id"],
             "upgrade": c.get("current_upgrade_level", 0),
         }
-        for c in player.get("deck", []) if c.get("id")
-    ]
+        props = _card_props(c)
+        if props:
+            entry["props"] = props
+        enchantment = _card_enchantment(c)
+        if enchantment:
+            entry["enchantment"] = enchantment
+        final_deck.append(entry)
     final_relics = [
         {"id": r["id"]}
         for r in player.get("relics", []) if r.get("id")
@@ -839,6 +890,9 @@ _NODE_ICON_FILES = {
 _CARD_FINAL_DIR = _HERE / "card_final"
 
 
+_CARD_VARIANTS_FILE = _HERE / "card_variants.json"
+
+
 def build_card_final_images(url_for=Path.as_uri) -> dict[str, str]:
     """Fully baked card faces (art + text), keyed by CARD.ID / CARD.ID_UP.
 
@@ -924,6 +978,7 @@ def build_node_icons(url_for=Path.as_uri) -> dict[str, str]:
 _CARD_DATA_FILE   = _HERE / "card_data.json"
 _RELIC_DATA_FILE  = _HERE / "relic_data.json"
 _POTION_DATA_FILE = _HERE / "potion_data.json"
+_ENCHANT_DATA_FILE = _HERE / "enchantments_data.json"
 
 
 def build_card_char(card_data: dict) -> dict[str, str]:
@@ -1477,6 +1532,14 @@ def build_html(runs: list[dict]) -> str:
             relic_labels.setdefault(rid, meta["title"])
 
     card_char = build_card_char(card_data)
+    card_variants = (
+        json.loads(_CARD_VARIANTS_FILE.read_text(encoding="utf-8"))
+        if _CARD_VARIANTS_FILE.exists() else {}
+    )
+    enchantment_data = (
+        json.loads(_ENCHANT_DATA_FILE.read_text(encoding="utf-8"))
+        if _ENCHANT_DATA_FILE.exists() else {}
+    )
 
     chart_data = json.dumps({
         "characters":      characters,
@@ -1491,6 +1554,8 @@ def build_html(runs: list[dict]) -> str:
         "cardImageOverrides": _PORTRAIT_OVERRIDES,
         "cardData":           card_data,
         "cardChar":           card_char,
+        "cardVariants":       card_variants,
+    "enchantmentData":    enchantment_data,
         "relicData":          relic_data,
         "potionData":         potion_data,
         "nodeIcons":          node_icons,

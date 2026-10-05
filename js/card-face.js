@@ -14,8 +14,30 @@ function cardFaceAvailable() {
   return !!(DATA.cardFinal && Object.keys(DATA.cardFinal).length);
 }
 
-function cardFaceKey(id, upgrade) {
-  return upgrade > 0 ? `${id}_UP` : id;
+// A card's image is keyed by id and upgrade state, plus any per-instance variant.
+//
+// Most cards have exactly one form, but Mad Science cannot be drawn at all without
+// TinkerTimeType and TinkerTimeRider: the Tinker Time event is the only thing that
+// ever assigns them, so the unrolled card is type None with a ?????? description.
+// tools/ExportCards.cs emits one image per combination, named by the two saved
+// integers, and a variant is used only when that image exists -- so a card that
+// carries state without a variant bake still falls back to its single canonical
+// face rather than rendering a broken image.
+function cardVariantSuffix(props) {
+  if (!props) return "";
+  const { TinkerTimeType: t, TinkerTimeRider: r } = props;
+  if (t == null || r == null) return "";
+  return `.${t}.${r}`;
+}
+
+function cardFaceKey(id, upgrade, props) {
+  const upgradeSuffix = upgrade > 0 ? "_UP" : "";
+  const variant = cardVariantSuffix(props);
+  if (variant) {
+    const key = `${id}${variant}${upgradeSuffix}`;
+    if (DATA.cardFinal && DATA.cardFinal[key]) return key;
+  }
+  return `${id}${upgradeSuffix}`;
 }
 
 // A card face renders in three different contexts (deck tile, node-tooltip
@@ -82,7 +104,7 @@ document.addEventListener("focusin", e => loadTooltipArtNear(e.target));
 // opts.thumb: icon-size, use the thumbnail. opts.deferred: tooltip art, see
 // imgSrcAttr().
 function renderCardFace(id, upgrade = 0, width = 200, opts = {}) {
-  let src = DATA.cardFinal && DATA.cardFinal[cardFaceKey(id, upgrade)];
+  let src = DATA.cardFinal && DATA.cardFinal[cardFaceKey(id, upgrade, opts.props)];
   if (!src) return "";
   if (opts.thumb) src = thumbSrc(src);
   const w = typeof width === "number" ? `${width}px` : width;
@@ -90,13 +112,35 @@ function renderCardFace(id, upgrade = 0, width = 200, opts = {}) {
   return `<img loading="lazy" class="cardface" style="width:${w}" ${imgSrcAttr(src, opts.deferred)} alt="${name}">`;
 }
 
-function buildCardTooltip(id, upgrade) {
+// The enchantment a card carries, as a line under its face. The face image is a
+// baked canonical card, so without this the tooltip would silently drop the
+// enchantment that the tile chip promises.
+function buildEnchantmentStrip(enchantment) {
+  const meta = enchantmentOf({ enchantment });
+  if (!meta) return "";
+  const text = enchantmentText({ enchantment }, meta);
+  return `<div class="ct-enchant">
+    ${renderEnchantmentIcon(meta, "ct-enchant-icon", { thumb: true, deferred: true })}
+    <span class="ct-enchant-rule"><b>${enchantmentLabel({ enchantment }, meta)}</b>${
+      text ? ` ${text}` : ""}</span>
+  </div>`;
+}
+
+function buildCardTooltip(id, upgrade, props, enchantment) {
   // Prefer the real composited card when the chrome bake is present.
   if (cardFaceAvailable()) {
-    return `<div class="card-tooltip card-tooltip-face">${renderCardFace(id, upgrade, cardFaceWidth(150, 210), { deferred: true })}</div>`;
+    return `<div class="card-tooltip card-tooltip-face">${
+      renderCardFace(id, upgrade, cardFaceWidth(150, 210), { deferred: true, props })
+    }${buildEnchantmentStrip(enchantment)}</div>`;
   }
-  const info  = cardInfo(id);
-  const src   = cardImgSrc(id);
+  const info    = cardInfo(id);
+  const variant = cardVariant(id, props);
+  // A variant can have its own portrait: Mad Science's three Tinker Time groups
+  // each ship separate art, so the canonical card's portrait would show the wrong
+  // roll. Falls back to the canonical portrait when there is none.
+  const variantArt = (variant && variant.portrait && DATA.cardImages)
+    ? DATA.cardImages[variant.portrait] : null;
+  const src   = variantArt || cardImgSrc(id);
   const name  = (info && info.title) || fmtCardLabel(id);
   const nameLabel = upgrade > 0 ? `${name} <span class="ct-upgrade">+${upgrade}</span>` : name;
 
@@ -114,7 +158,7 @@ function buildCardTooltip(id, upgrade) {
     ? `<div class="ct-art-wrap">${costsHtml}<img loading="lazy" class="ct-art" src="${src}" alt="${name}"></div>`
     : `<div class="ct-art-wrap">${costsHtml}<div class="ct-art ct-art-missing"></div></div>`;
 
-  const type = info?.type || null;
+  const type = variant?.type || info?.type || null;
   const typePill = type ? `<span class="ct-type-pill">${type}</span>` : "";
 
   // IfUpgraded isn't a card stat, so it's not in vars — it's the flag behind
@@ -122,7 +166,12 @@ function buildCardTooltip(id, upgrade) {
   // the upgrade level is actually known.
   const baseVars = (upgrade > 0 && info?.varsUpgraded) ? info.varsUpgraded : info?.vars;
   const vars = { ...(baseVars || {}), IfUpgraded: upgrade > 0 ? 1 : 0 };
-  const rawDesc = (upgrade > 0 && info?.descUpgraded) ? info.descUpgraded : info?.desc;
+  // A variant's own text wins: it is the roll's real description, where the
+  // canonical one may be a placeholder. Variant text is already final (no
+  // placeholders left), so substituteDescVars passes it straight through.
+  const variantDesc   = (upgrade > 0 && variant?.descUpgraded) ? variant.descUpgraded : variant?.desc;
+  const canonicalDesc = (upgrade > 0 && info?.descUpgraded) ? info.descUpgraded : info?.desc;
+  const rawDesc = variantDesc || canonicalDesc;
   const desc = rawDesc ? substituteDescVars(rawDesc, vars, { pool: info?.pool }) : null;
   const descHtml = desc ? `<div class="ct-desc">${desc.replace(/\n/g, "<br>")}</div>` : "";
 
@@ -130,7 +179,42 @@ function buildCardTooltip(id, upgrade) {
     ${artHtml}
     <div class="ct-banner">${typePill}<span class="ct-name">${nameLabel}</span></div>
     ${descHtml}
+    ${buildEnchantmentStrip(enchantment)}
   </div>`;
+}
+
+// An enchantment is part of what a card *is* in a deck, not a decoration: the game
+// draws it on the card face and adds text of its own, so an enchanted Strike and a
+// plain one are different entries. DATA.enchantmentData (see
+// tools/import_game_data.py) carries the title and the text for the amount the save
+// recorded -- the text is per amount because the canonical enchantment has Amount 0.
+function enchantmentOf(card) {
+  const data = DATA.enchantmentData;
+  const id = card && card.enchantment && card.enchantment.id;
+  return (data && id && data[id]) || null;
+}
+
+// "Nimble 2". The game shows the amount only where the effect scales with it
+// (ShowAmount); the rest read as just their name.
+function enchantmentLabel(card, meta) {
+  const amount = card && card.enchantment && card.enchantment.amount;
+  return amount && meta.showAmount ? `${meta.title} ${amount}` : meta.title;
+}
+
+// What the enchantment does to this card, or "" for the few whose text reads a
+// value off the card it is attached to (Adroit's "Gain {Block} Block"). Those have
+// no honest number without a card, so their tooltip shows the name alone rather
+// than a number that came from nowhere.
+function enchantmentText(card, meta) {
+  if (meta.cardDependent) return "";
+  const amount = card && card.enchantment && card.enchantment.amount;
+  return (meta.descByAmount && amount && meta.descByAmount[String(amount)]) || meta.desc || "";
+}
+
+function renderEnchantmentIcon(meta, cls, opts = {}) {
+  const src = meta.imagePath ? (opts.thumb ? thumbSrc(meta.imagePath) : meta.imagePath) : "";
+  if (!src) return "";
+  return `<img class="${cls}" ${imgSrcAttr(src, opts.deferred)} alt="${meta.title}">`;
 }
 
 // Width of a deck tile's card face: the same size the hover preview draws at,
@@ -146,11 +230,27 @@ function renderCardTile(c) {
   // level does NOT — the card face renders it the way the game does, as a
   // green "Strike+" title, so a separate +1 chip would just repeat it.
   const countLabel = c.count > 1 ? `<span class="tile-count">×${c.count}</span>` : "";
+  // An enchantment is identity, so it gets the same treatment as the count: a chip
+  // on the tile rather than a second card face. The game draws it on the card
+  // itself, which the baked face cannot show.
+  const enchMeta = enchantmentOf(c);
+  const enchLabel = enchMeta
+    ? `<span class="tile-enchant" title="${enchantmentLabel(c, enchMeta)}">` +
+      `${renderEnchantmentIcon(enchMeta, "tile-enchant-icon", { thumb: true })}` +
+      `<span class="tile-enchant-name">${enchantmentLabel(c, enchMeta)}</span></span>`
+    : "";
 
   if (cardFaceAvailable()) {
+    // The face already carries the card's own text, so a face tile needs no
+    // tooltip -- except for an enchantment, which the baked canonical face cannot
+    // show. The chip names it; hovering is what says what it does.
+    const enchTip = enchLabel
+      ? `<div class="card-tooltip-wrap">${buildEnchantmentStrip(c.enchantment)}</div>`
+      : "";
     return `<div class="card-tile card-tile-face">
-      ${renderCardFace(c.id, c.upgrade, TILE_FACE_W)}
-      ${countLabel ? `<div class="tile-badges">${countLabel}</div>` : ""}
+      ${renderCardFace(c.id, c.upgrade, TILE_FACE_W, { props: c.props })}
+      ${(enchLabel || countLabel) ? `<div class="tile-badges">${enchLabel}${countLabel}</div>` : ""}
+      ${enchTip}
     </div>`;
   }
 
@@ -161,8 +261,8 @@ function renderCardTile(c) {
   const artHtml = src
     ? `<img loading="lazy" class="tile-art" src="${src}" alt="${name}">`
     : `<div class="tile-art tile-art-missing">${name.charAt(0)}</div>`;
-  const badgesHtml = (upgradeLabel || countLabel)
-    ? `<div class="tile-badges">${upgradeLabel}${countLabel}</div>`
+  const badgesHtml = (upgradeLabel || countLabel || enchLabel)
+    ? `<div class="tile-badges">${upgradeLabel}${enchLabel}${countLabel}</div>`
     : "";
 
   return `<div class="card-tile" style="--tile-color:${typeColor}" tabindex="0">
@@ -171,17 +271,27 @@ function renderCardTile(c) {
       <div class="tile-name-text">${name}</div>
       ${badgesHtml}
     </div>
-    <div class="card-tooltip-wrap">${buildCardTooltip(c.id, c.upgrade)}</div>
+    <div class="card-tooltip-wrap">${buildCardTooltip(c.id, c.upgrade, c.props, c.enchantment)}</div>
   </div>`;
 }
 
 // Deduplicates a deck array (entries with {id, upgrade}) into one row per
-// id+upgrade combo, with a .count of how many copies are in the deck.
+// id+upgrade combo, with a .count of how many copies are in the deck. Per-instance
+// props are part of a card's rendered identity -- two Mad Sciences with different
+// rolls are different cards, even though they share an id -- so they join the key
+// and are carried onto the row for the face lookup. An enchantment does too: a
+// Nimble Strike is a different card from a plain Strike, and merging them would
+// drop the enchantment from the tile entirely.
 function dedupeCardCounts(deck) {
   const cardMap = new Map();
   deck.forEach(c => {
-    const key = c.id + "|" + c.upgrade;
-    if (!cardMap.has(key)) cardMap.set(key, { id: c.id, upgrade: c.upgrade, count: 0 });
+    const ench = c.enchantment ? `${c.enchantment.id}:${c.enchantment.amount || 1}` : "";
+    const key = c.id + "|" + c.upgrade + "|" + (c.props ? JSON.stringify(c.props) : "") + "|" + ench;
+    if (!cardMap.has(key)) {
+      cardMap.set(key, {
+        id: c.id, upgrade: c.upgrade, count: 0, props: c.props, enchantment: c.enchantment,
+      });
+    }
     cardMap.get(key).count++;
   });
   return [...cardMap.values()].sort((a, b) => {
@@ -191,12 +301,39 @@ function dedupeCardCounts(deck) {
   });
 }
 
+// The per-instance variant record for a card, if it has one. Mad Science's type,
+// portrait and whole description come from the roll Tinker Time gave it, so both the
+// face lookup and the fallback tooltip read them from here rather than from the
+// canonical model -- which reports type None and a ?????? description because there is
+// nothing to report until something rolls the card.
+//
+// Deliberately independent of cardFaceKey: that only returns a variant key when the
+// variant *image* exists, and the tooltip's fallback path runs precisely when no
+// images are baked at all.
+function cardVariant(id, props) {
+  const variants = DATA.cardVariants;
+  const suffix = cardVariantSuffix(props);
+  if (!variants || !suffix) return null;
+  return variants[id + suffix] || null;
+}
+
+// A per-instance variant can differ from its canonical model's card type: Mad
+// Science's type is whatever the Tinker Time event rolled, while the unrolled model
+// reports "None" -- so a deck would otherwise file it under a "None" heading even
+// though the face it is showing says Power. DATA.cardVariants (see
+// tools/import_game_data.py) maps a variant key to what the game reports for that roll.
+function cardTypeOf(card) {
+  return cardVariant(card.id, card.props)?.type
+    || cardInfo(card.id)?.type
+    || "None";
+}
+
 // Renders a deduped card list (from dedupeCardCounts) as type-grouped tile rows,
 // with each group's header showing the total copy count, not the distinct-entry count.
 function renderCardGroupsHtml(cardList) {
   const groups = {};
   cardList.forEach(c => {
-    const type = cardInfo(c.id)?.type || "None";
+    const type = cardTypeOf(c);
     if (!groups[type]) groups[type] = [];
     groups[type].push(c);
   });

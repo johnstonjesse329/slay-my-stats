@@ -301,9 +301,14 @@ def completeness_report():
 
     final_files = {p.stem for p in CARD_FINAL_DIR.glob("*.webp")} if CARD_FINAL_DIR.exists() else set()
     stats["card_final"] = len(final_files)
+    # Only a card with an upgraded form has a *_UP face. card_data.json's
+    # maxUpgradeLevel is the game's own MaxUpgradeLevel, which is 0 for curses,
+    # statuses and anything else that cannot be upgraded -- requiring an _UP face
+    # for those reported 39 phantom gaps.
+    upgradable = {k for k, v in cards.items() if (v.get("maxUpgradeLevel") or 0) > 0}
     add("card(s) with no finished bake",
         [k for k in cards if "DEPRECATED" not in k
-         and not ({k, f"{k}_UP"} <= final_files)])
+         and (k not in final_files or (k in upgradable and f"{k}_UP" not in final_files))])
     return problems, stats
 
 
@@ -383,9 +388,19 @@ def main():
     # expects the files to already be there.
     run_step("portraits", ["tools/downscale_portraits.py"])
     run_step("relic/potion art + node icons", ["tools/downscale_art.py"])
+    # extract_card_data.py still builds the *structure* -- which relics and
+    # potions exist, and their imagePath into this repo's art folders. Its
+    # re-derived text and vars are then overwritten from the game below, because
+    # it reads DynamicVars as ints and ports the text grammar by hand, and both
+    # were measurably wrong (Tank said "Take 0% more damage" where the game says
+    # 50%).
     extract_out = run_step("card/relic data", ["tools/extract_card_data.py", str(dll)])
+    # The game's own answer: ExportCards.cs formats every description with the
+    # game's formatters and renders every card face through the game's card scene,
+    # so the faces and the text stop being re-derivations.
+    run_step("game data export", ["tools/export_game_data.py"])
+    run_step("game data import", ["tools/import_game_data.py"])
     run_step("card chrome", ["tools/bake_card_chrome.py"])
-    run_step("finished cards", ["tools/bake_finished_cards.py"])
     run_step("thumbnails", ["tools/bake_thumbs.py"])
 
     problems, stats = completeness_report()

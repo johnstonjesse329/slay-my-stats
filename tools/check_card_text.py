@@ -35,10 +35,34 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bake_finished_cards as bake  # noqa: E402
-from desc_tokens import _closing_brace, clean_desc  # noqa: E402
+from desc_tokens import (  # noqa: E402
+    GAME_ONLY, IMPLEMENTED as desc_IMPLEMENTED, _closing_brace, clean_desc,
+    formatters_used,
+)
 
-HANDLED = {"diff", "inverseDiff", "percentMore", "percentLess",
-           "energyIcons", "starIcons", "plural", "show", "cond"}
+HANDLED = desc_IMPLEMENTED
+GAME_FORMATTERS = {
+    "HighlightDifferencesFormatter": "diff",
+    "HighlightDifferencesInverseFormatter": "inverseDiff",
+    "PercentMoreFormatter": "percentMore",
+    "PercentLessFormatter": "percentLess",
+    "EnergyIconsFormatter": "energyIcons",
+    "StarIconsFormatter": "starIcons",
+    "PluralLocalizationFormatter": "plural",
+    "ShowIfUpgradedFormatter": "show",
+    "ConditionalFormatter": "cond",
+    "ChooseFormatter": None,        # decided by a runtime value
+    "IsMatchFormatter": None,       # decided by a runtime comparison
+    "LoadLocFormatter": None,       # pulls another localization string
+    "AbsoluteValueFormatter": "abs",
+    "ListFormatter": "list",
+    "SubStringFormatter": "substring",
+    "LocaleNumberFormatter": "localeNumber",
+    "DefaultFormatter": None,       # plain {Var}; handled by the base token
+}
+
+# Localization the site actually renders text from.
+CONSUMED = ["cards.json", "relics.json", "potions.json"]
 
 
 def blocks(text):
@@ -84,6 +108,45 @@ def main():
     args = ap.parse_args()
 
     raw = bake.load_raw_card_descriptions()
+
+    # --- formatter coverage -------------------------------------------------
+    # Every formatter the descriptions we render actually use, against the set
+    # the grammar implements. A formatter we don't cover means text is being
+    # dropped silently, which is how ONE_TWO_PUNCH and TANK shipped broken.
+    covered = HANDLED
+    used, unknown = {}, {}
+    loc_dir = bake.LOC_CARDS.parent
+    for fn in CONSUMED:
+        path = loc_dir / fn
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            continue
+        for key, value in data.items():
+            if not isinstance(value, str):
+                continue
+            for base in formatters_used(value):
+                used[base] = used.get(base, 0) + 1
+                if base not in covered:
+                    unknown.setdefault(base, []).append("%s: %s" % (key, value[:70]))
+    print("\nFORMATTERS used by the text we render (%d distinct)" % len(used))
+    for name, n in sorted(used.items(), key=lambda kv: -kv[1]):
+        print("  %-16s %4d uses  %s" % (name, n, "covered" if name in covered else "NOT COVERED"))
+    print("\nNOT COVERED — text is being dropped silently (%d)" % len(unknown))
+    for name, ex in sorted(unknown.items()):
+        print("  %s (%d uses)" % (name, len(ex)))
+        for e in ex[:3]:
+            print("      %s" % e)
+    print("\nGame formatters with no token of ours:")
+    for cls, tok in sorted(GAME_FORMATTERS.items()):
+        if tok is None:
+            print("  %-38s %s" % (cls, "declared runtime-only"))
+        elif tok not in HANDLED:
+            print("  %-38s %s" % (cls, "NOT IMPLEMENTED (unused by our files)"))
+        elif tok not in used:
+            print("  %-38s %s" % (cls, "implemented, not used here"))
+
     total, partial, clean = [], [], []
     for stem, text in sorted(raw.items()):
         if not text:
@@ -91,8 +154,12 @@ def main():
         converted = clean_desc(text)
         lost = [p for p in (dropped_prose(b) for b in blocks(text)) if p]
         if not converted.strip():
-            # The baker composes a face description for cards whose branches are
-            # recoverable (see dynamic_desc_text), so those are not a loss.
+            # The grammar cannot express the whole description -- only Mad Science,
+            # whose type and rider come from the Tinker Time event. The baker puts the
+            # template's own "???" branch on the face, which is exactly what the game
+            # shows for an unrolled one, so this is not a blank card. This check uses
+            # dynamic_desc_text() only to detect that shape, not to decide what is
+            # drawn.
             if bake.dynamic_desc_text(text):
                 clean.append(stem)
             else:

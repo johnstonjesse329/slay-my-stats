@@ -23,6 +23,71 @@ Anything else in braces (choose(), cond:, ...) is dropped.
 """
 import re
 
+# ---------------------------------------------------------------------------
+# The grammar's declared coverage of the game's formatters.
+#
+# Both the game and this module format the same SmartFormat templates: no
+# localization file ships pre-rendered card text (cards.json carries only
+# `description` and `title`, and even powers.json's `smartDescription` is still a
+# template), so substituting here is the same job the game does at runtime --
+# not a workaround. What makes it maintainable is that the formatter set is
+# finite and knowable: every string ending in "Formatter" in sts2.dll.
+#
+#   IMPLEMENTED   emitted as {{token}} text and resolved by the renderers
+#   RUNTIME_ONLY  decided by state the extractor never records -- the rolled card
+#                 type, whether a minion is alive, whether the card is targeting
+#                 -- so no static text exists to recover. These render as
+#                 nothing rather than a guess, which would be invented text.
+#
+# tools/check_card_text.py reports what the descriptions we render actually use;
+# tools/refresh_game_data.py fails a refresh when one uses a formatter in neither
+# set. That is the difference between covering the grammar and discovering it one
+# broken card at a time.
+IMPLEMENTED = frozenset({
+    "diff",           # HighlightDifferencesFormatter
+    "inverseDiff",    # HighlightDifferencesInverseFormatter
+    "percentMore",    # PercentMoreFormatter
+    "percentLess",    # PercentLessFormatter
+    "energyIcons",    # EnergyIconsFormatter
+    "starIcons",      # StarIconsFormatter
+    "plural",         # PluralLocalizationFormatter
+    "show",           # ShowIfUpgradedFormatter
+    "cond",           # ConditionalFormatter
+})
+RUNTIME_ONLY = frozenset({
+    "choose",         # ChooseFormatter    -- picked by a runtime value
+    "isMatch",        # IsMatchFormatter
+    "loadLoc",        # LoadLocFormatter   -- pulls another localization string
+    "default",        # plain {Var}
+})
+# Present in the game, unused by anything this site renders. Listed so the
+# coverage report can say "known, unused" rather than leaving them unknown.
+GAME_ONLY = frozenset({
+    "abs": "AbsoluteValueFormatter",
+    "list": "ListFormatter",
+    "substring": "SubStringFormatter",
+    "localeNumber": "LocaleNumberFormatter",
+})
+
+# A formatter's arguments start lowercase (diff, energyIcons, cond); named blocks
+# and prose start uppercase (Sapping:, At the end of...), so requiring a
+# lowercase first letter separates formatters from branch names without a list.
+_FORMATTER_TOKEN = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*:([a-z][A-Za-z0-9]*(?:\([^)]*\))?)")
+
+
+def formatters_used(text: str):
+    """The formatter names a localization string invokes."""
+    for m in _FORMATTER_TOKEN.finditer(text or ""):
+        yield m.group(1).split("(")[0]
+
+
+def undeclared_formatters(text: str):
+    """Formatters this string uses that the grammar neither implements nor
+    declares runtime-only -- i.e. text that would be dropped silently."""
+    declared = IMPLEMENTED | RUNTIME_ONLY | set(GAME_ONLY)
+    return sorted({f for f in formatters_used(text) if f not in declared})
+
+
 _NAME = re.compile(r"[A-Za-z_]+\Z")
 
 
@@ -60,8 +125,14 @@ def _convert_token(payload: str, outer: str | None) -> str:
         return ""
     if not has_format:
         return "{{singleStarIcon:stars}}" if name == "singleStarIcon" else f"{{{{{name}}}}}"
-    if fmt in ("diff()", "inverseDiff()", "percentMore()", "percentLess()"):
+    if fmt in ("diff()", "inverseDiff()"):
         return f"{{{{{name}}}}}"
+    if fmt in ("percentMore()", "percentLess()"):
+        # The var is a multiplier and the game prints the delta as a whole
+        # percent (src/Core/Localization/Formatters/Percent{More,Less}Formatter.cs):
+        # percentMore writes (value - 1) * 100, percentLess writes (1 - value) * 100.
+        # Resolved at render time, since it is arithmetic on the value.
+        return f"{{{{{name}:{fmt[:-2]}}}}}"
     if fmt.startswith("cond:"):
         # {Var:cond:>1?one|many}  /  {Var:cond:one|many}
         # The comparison is optional; without one the variable's own truthiness

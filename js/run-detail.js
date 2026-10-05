@@ -1006,6 +1006,16 @@ function substituteDescVars(desc, vars, { html = true, pool = "colorless" } = {}
       if (v[name] === undefined) return "";
       return render(passesCond(v[name], test) ? yes : (no ?? ""));
     }
+    if (kind === "percentMore" || kind === "percentLess") {
+      // The game's Percent{More,Less}Formatter takes a MULTIPLIER and writes the
+      // delta as a whole percent: percentMore is (value - 1) * 100, percentLess is
+      // (1 - value) * 100. See src/Core/Localization/Formatters/. The '%' lives in
+      // the template, outside this placeholder.
+      const n = Number(v[name]);
+      if (!Number.isFinite(n)) return "";
+      const pct = Math.round((kind === "percentMore" ? n - 1 : 1 - n) * 100);
+      return b(String(pct));
+    }
     const val = v[name];
     return b(val !== undefined ? String(val) : "?");
   };

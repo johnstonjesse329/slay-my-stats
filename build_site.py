@@ -47,7 +47,8 @@ HOME_INTRO = _HERE / "site" / "home-intro.html"
 _PAGE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # First-level paths the site already uses; a page there would shadow them.
 _RESERVED_PAGES = {"u", "users", "ids", "api", "index", "card_final", "card_portraits", "node_icons",
-                   "relic_images", "potion_images", "ui_icons", "thumbs", "card_chrome"}
+                   "relic_images", "potion_images", "enchantment_images", "ui_icons", "thumbs",
+                   "card_chrome"}
 _NAV_LABEL = re.compile(r"^\s*<!--\s*nav:\s*(.+?)\s*-->")
 
 
@@ -106,6 +107,23 @@ def build_catalog() -> dict:
     )
     potion_data = run.resolve_image_paths(potion_data, url_for=repo_url)
 
+    # Cards whose rendered form depends on state saved with the card (see
+    # tools/import_game_data.py). The frontend uses this to label a deck entry by
+    # what the card actually is, rather than by its canonical model.
+    card_variants = (
+        json.loads(run._CARD_VARIANTS_FILE.read_text(encoding="utf-8"))
+        if run._CARD_VARIANTS_FILE.exists() else {}
+    )
+
+    # Enchantments a card can carry (see tools/import_game_data.py). A deck entry
+    # records which one it has, so the frontend needs the title and the
+    # amount-appropriate text to say what that enchantment does.
+    enchantment_data = (
+        json.loads(run._ENCHANT_DATA_FILE.read_text(encoding="utf-8"))
+        if run._ENCHANT_DATA_FILE.exists() else {}
+    )
+    enchantment_data = run.resolve_image_paths(enchantment_data, url_for=repo_url)
+
     return {
         "charColorMap":       run.CHAR_COLORS,
         "encGroups":          run.ENCOUNTER_GROUPS,
@@ -113,8 +131,10 @@ def build_catalog() -> dict:
         "cardImageOverrides": run._PORTRAIT_OVERRIDES,
         "cardData":           card_data,
         "cardChar":           run.build_card_char(card_data),
+        "cardVariants":       card_variants,
         "relicData":          relic_data,
         "potionData":         potion_data,
+        "enchantmentData":    enchantment_data,
         "nodeIcons":          run.build_node_icons(url_for=repo_url),
         "cardFinal":          run.build_card_final_images(url_for=repo_url),
         "energyIcons":        run.build_energy_icons(url_for=repo_url),

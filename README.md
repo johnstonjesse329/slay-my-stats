@@ -13,7 +13,8 @@ dashboard code:
 
 ![Overview tab of a player profile](images/site-overview.png)
 
-**Run Detail:** every run in a list; pick one to see its path, fights and final deck.
+**Run Detail:** every run in a list; pick one to see its path, fights and final deck, including any
+enchantment a card is carrying.
 
 ![Run Detail tab showing a run's final deck](images/site-run-detail.png)
 
@@ -79,6 +80,8 @@ slay-my-stats/
 │   ├── rebuild_stats.py     recount users/_stats.json.gz from every profile
 │   ├── remove_profile.py    take a profile off the site
 │   ├── refresh_game_data.py game-data pipeline driver (see "Refreshing game data")
+│   ├── export_game_data.py  drives the game to export its data and render every card face
+│   ├── import_game_data.py  folds that export into the site's data files
 │   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
 │   └── requirements.txt     pipeline requirements
 ├── githooks/pre-push        runs tools/deploy.py when main is pushed
@@ -94,18 +97,21 @@ full-resolution `pck_recover*/` game extractions.
 paths:
 
 ```text
-├── card_data.json           card metadata extracted from the game
+├── card_data.json           card metadata, as the game reports it
 ├── relic_data.json          relic metadata
 ├── potion_data.json         potion metadata
+├── card_variants.json       what a card's saved per-instance state makes it (e.g. Mad Science's roll)
+├── enchantments_data.json   enchantment titles and per-amount text
 ├── data_provenance.json     which game build produced the data and art
 ├── card_final/              finished card images, base and upgraded (served)
 ├── card_portraits/          card art thumbnails (served)
+├── enchantment_images/      enchantment icons (served)
 ├── thumbs/                  icon-size copies of the art (served)
 ├── relic_images/            (served)
 ├── potion_images/           (served)
 ├── node_icons/              map node icons (served)
 ├── ui_icons/                energy icons, map_scroll.webp background (served)
-└── card_chrome/             card frames and banners (input to bake_finished_cards.py; not served)
+└── card_chrome/             card frames and banners (input to the superseded bake_finished_cards.py; not served)
 ```
 
 ## How it fits together
@@ -471,17 +477,30 @@ flowchart TB
     portraits --> cp["card_portraits/"]
     art --> ra["relic_images/<br/>potion_images/<br/>node_icons/"]
     chrome --> cc["card_chrome/"]
-    extract --> json["card_data.json<br/>relic_data.json<br/>potion_data.json"]
-    cc --> final["bake_finished_cards.py<br/>(also reads full-size art<br/>from pck_recover_full/)"]
-    json --> final
-    json -.-> prov["data_provenance.json"]
-    final --> cf["card_final/"]
+    extract --> json["card_data.json<br/>relic_data.json<br/>potion_data.json<br/>(structure + imagePath)"]
+    game2["Godot 4.5 .NET<br/>+ pck_recover_full/"] --> export["export_game_data.py"]
+    export --> gjson["card_game_data.json<br/>(all of it, as the game renders it)"]
+    gjson --> imp["import_game_data.py"]
+    json --> imp
+    imp --> json2["card_data.json<br/>relic_data.json<br/>potion_data.json<br/>card_variants.json<br/>enchantments_data.json"]
+    export --> cf["card_final/ (rendered by the game's own card scene)"]
+    json2 -.-> prov["data_provenance.json"]
 ```
 
 It recovers the game's `.pck` with [GDRE Tools](https://github.com/GDRETools/gdsdecomp/releases), then
 re-extracts card, relic and potion data from the game DLL. Next it re-bakes card art and chrome, and checks
 that everything came from the same build. The map background (`ui_icons/map_scroll.webp`) is baked
 separately by `tools/bake_map_background.py`.
+
+Text and images are not re-derived, though — that was measurably wrong. Earlier versions re-implemented the
+game's text grammar and composited each card in Pillow, which read Tank's 1.5x damage multiplier as an int
+(its card said "Take 0% more damage" where the game says 50%) and dropped grammar the game supports.
+`tools/export_game_data.py` asks the game instead: it builds and runs the exporter in `pck_recover_full/`
+(`tools/ExportCards.cs`, an autoload that is inert unless `EXPORT_CARDS=1`), which formats every description
+with the game's own formatters and renders each card through the game's own card scene, then
+`tools/import_game_data.py` folds the result into the data files above. It needs the **Godot 4.5 .NET** editor
+(the non-.NET build cannot run the game's C#) and refuses to copy an export that this run didn't write.
+`tools/bake_finished_cards.py` and the hand-ported grammar are kept only as a fallback.
 
 ## Contributing
 

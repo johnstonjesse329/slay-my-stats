@@ -31,7 +31,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 DST  = ROOT / "thumbs"
 
-SOURCES = ["card_final", "card_portraits", "relic_images", "potion_images"]
+SOURCES = ["card_final", "card_portraits", "relic_images", "potion_images", "enchantment_images"]
 # 2x the largest icon-size use (a 26px-wide card face), with a little room.
 # Tall enough that a card face (3:4) is limited by width, not height.
 THUMB_BOX = (56, 80)
