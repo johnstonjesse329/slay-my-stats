@@ -85,6 +85,26 @@ function moddedTagHtml(run, focusable = false) {
   return `<span class="run-modded-tag" data-tip="${["Mods loaded:", ...lines].join("\n")}"${focusable ? ` tabindex="0"` : ""}>Modded</span>`;
 }
 
+// Keeps the address bar on the run being shown (#detail/<ts>, see
+// parsePageHash), so it can be copied or reloaded. Only once the hash is
+// already Run Detail's: showPage() sets it on the way in, and replacing it
+// before then would overwrite the previous tab's history entry.
+function syncRunHash() {
+  if (parsePageHash().page !== "detail") return;
+  const hash = "#" + pageHash("detail");
+  if (location.hash !== hash) history.replaceState(null, "", hash);
+}
+
+// The header's "Copy link" button: this page's own address with the run in
+// the hash, which openRunLink() turns back into this run for whoever opens it.
+function copyRunLink(ts, btn) {
+  const url = location.href.split("#")[0] + `#detail/${ts}`;
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = "Copy link"; }, 1200);
+  });
+}
+
 // ---- Run list ----
 
 function renderDetailRunList() {
@@ -127,6 +147,7 @@ function renderDetailRunList() {
       const run = DATA.runsData.find(r => r.ts === ts);
       if (!run) return;
       detailSelectedTs = ts;
+      syncRunHash();
       container.querySelectorAll(".detail-run-item").forEach(r => r.classList.toggle("active", +r.dataset.ts === ts));
       renderDetailRun(run);
     });
@@ -141,6 +162,7 @@ function renderDetailRunList() {
   const selected = runs.find(r => r.ts === detailSelectedTs) || runs[0];
   detailSelectedTs = selected.ts;
   container.querySelector(`.detail-run-item[data-ts="${selected.ts}"]`).classList.add("active");
+  syncRunHash();
   renderDetailRun(selected);
 }
 
@@ -282,6 +304,7 @@ function renderDetailRun(run) {
       <span style="color:#8a8aa0;font-size:0.85rem">${fmtDate(run.ts)}</span>
       ${run.seed ? `<span style="color:#8a8aa0;font-size:0.82rem;font-family:monospace">Seed: ${run.seed}</span>` : ""}
       ${moddedTagHtml(run, true)}
+      ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
     </div>
     <div class="detail-run-headline-stats">
       ${headlineHtml}
@@ -289,6 +312,9 @@ function renderDetailRun(run) {
     <div class="detail-run-header-stats">
       ${summaryHtml}
     </div>`;
+
+  const copyBtn = document.querySelector("#detail-run-header .run-copy-link");
+  if (copyBtn) copyBtn.addEventListener("click", () => copyRunLink(run.ts, copyBtn));
 
   renderDetailTimeline(run);
   renderDetailHpChart(run);

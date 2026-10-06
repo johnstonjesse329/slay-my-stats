@@ -5,6 +5,17 @@
 const PAGES = ["overview", "character", "detail", "cards", "seeds"];
 let currentPage = "overview";
 
+// The URL hash names the tab, and on Run Detail the run as well:
+// #detail/<run ts>, so the address opens the same run for anyone.
+function parsePageHash() {
+  const [page, ts] = location.hash.replace("#", "").split("/");
+  return { page, runTs: page === "detail" && /^\d+$/.test(ts || "") ? +ts : null };
+}
+
+function pageHash(page) {
+  return page === "detail" && detailSelectedTs != null ? `detail/${detailSelectedTs}` : page;
+}
+
 const PAGE_RENDERERS = {
   overview:  updateAll,
   character: updateDetail,
@@ -129,7 +140,7 @@ function showPage(page) {
     (PAGE_RENDERERS[page] || updateAll)();
     pageDirty[page] = false;
   }
-  location.hash = page;
+  location.hash = pageHash(page);
 }
 
 // Jump to a specific run in Run Detail from anywhere else in the app
@@ -143,6 +154,32 @@ function jumpToRun(ts) {
   detailSelectedTs = ts;
   pageDirty.detail = true;
   showPage("detail");
+}
+
+// Open the run a #detail/<ts> link names. A link has to work for whoever
+// opens it, so any filter that would hide the run is widened first; the
+// viewer's other filters stay as they were. A ts this profile has no run
+// for lands on Run Detail's usual first run.
+function openRunLink(ts) {
+  const run = DATA.runsData.find(r => r.ts === ts);
+  if (run) {
+    const state = currentSharedFilterState();
+    const widen = {};
+    if (state.char !== "ALL" && state.char !== run.char) widen.char = "ALL";
+    if (!sharedActiveAscs.has(run.asc)) { widen.ascGranular = false; widen.ascs = undefined; }
+    if (!sharedActiveBuilds.has(run.build)) widen.builds = [...DATA.builds];
+    if (run.ts < state.tsFrom || run.ts > state.tsTo) { widen.tsFrom = 0; widen.tsTo = TS_NO_UPPER_BOUND; }
+    if (!modeShowsRun(state.mode, run)) widen.mode = run.mode === "daily" ? "daily" : run.mp ? "multi" : "solo";
+    if (Object.keys(widen).length > 0) {
+      applySharedFilterState({ ...state, ...widen }, "detail");
+      // applySharedFilterState() re-rendered the page behind this one partway
+      // through (setSharedMode), before the dates were in place.
+      PAGES.forEach(p => { pageDirty[p] = true; });
+      updateUnsavedIndicator();
+      updateFilterSummary();
+    }
+  }
+  jumpToRun(ts);
 }
 
 // ---- Shared character selector ----
@@ -587,8 +624,8 @@ function updateUnsavedIndicator() {
       // (e.g. a direct #cards link) instead of assuming "overview" and
       // wrongly skipping a perfectly valid saved character for an
       // unlocked page.
-      const hash = location.hash.replace("#", "");
-      const targetPage = PAGES.includes(hash) ? hash : "overview";
+      const { page } = parsePageHash();
+      const targetPage = PAGES.includes(page) ? page : "overview";
       applySharedFilterState(JSON.parse(raw), targetPage);
     } catch {
       localStorage.removeItem(SHARED_FILTER_STORAGE_KEY);

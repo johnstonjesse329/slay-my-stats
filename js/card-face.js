@@ -413,8 +413,9 @@ window.addEventListener("mousemove", () => document.body.classList.remove("suppr
 
 // Restore tab from URL hash — runs last so all init code has already executed
 (function() {
-  const hash = location.hash.replace("#", "");
-  if (PAGES.includes(hash)) showPage(hash);
+  const { page, runTs } = parsePageHash();
+  if (!PAGES.includes(page)) return;
+  if (runTs != null) openRunLink(runTs); else showPage(page);
 })();
 
 // Card Stats is the heaviest page to render on first visit — one row per

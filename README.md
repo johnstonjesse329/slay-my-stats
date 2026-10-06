@@ -14,7 +14,8 @@ dashboard code:
 ![Overview tab of a player profile](images/site-overview.png)
 
 **Run Detail:** every run in a list; pick one to see its path, fights and final deck, including any
-enchantment a card is carrying.
+enchantment a card is carrying. Each run has its own link (`/u/<name>#detail/<run timestamp>`, the address
+bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 
 ![Run Detail tab showing a run's final deck](images/site-run-detail.png)
 
@@ -497,7 +498,8 @@ as `"gammaCertificateArn"` and `"gammaHostedZoneId"` in `infra/cdk.context.json`
 stack isn't built at all.
 
 Gamma isn't public. It answers only the addresses listed as `"gammaAllowedIps"` in `infra/cdk.context.json`
-(e.g. `["203.0.113.7"]`) and returns 403 to everyone else, pages and uploads both. If your address changes,
+(e.g. `["203.0.113.7"]`) and returns 403 to everyone else, pages and uploads both (for the site, a short
+"403 Forbidden" page). If your address changes,
 update the list and deploy gamma again.
 
 ## Refreshing game data
