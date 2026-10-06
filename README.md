@@ -14,7 +14,8 @@ dashboard code:
 ![Overview tab of a player profile](images/site-overview.png)
 
 **Run Detail:** every run in a list; pick one to see its path, fights and final deck, including any
-enchantment a card is carrying.
+enchantment a card is carrying. Each run has its own link (`/u/<name>#detail/<run timestamp>`, the address
+bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 
 ![Run Detail tab showing a run's final deck](images/site-run-detail.png)
 

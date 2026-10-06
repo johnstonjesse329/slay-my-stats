@@ -116,16 +116,21 @@ const SHARED_FILTER_HARDCODED_DEFAULTS = {
   mode: "solo", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
 };
 
+// Whether the Solo / Multi / Daily / All filter lets a run through.
+function modeShowsRun(mode, run) {
+  if (mode === "solo")  return !(run.mp || run.mode === "daily");
+  if (mode === "multi") return !!run.mp;
+  if (mode === "daily") return run.mode === "daily";
+  return true;
+}
+
 function filterRuns() {
   return DATA.runsData.filter(run => {
     if (sharedActiveChar !== "ALL" && run.char !== sharedActiveChar) return false;
     if (!sharedActiveAscs.has(run.asc))     return false;
     if (!sharedActiveBuilds.has(run.build)) return false;
     if (run.ts < sharedTsFrom || run.ts > sharedTsTo) return false;
-    if (sharedActiveMode === "solo"  && (run.mp || run.mode === "daily")) return false;
-    if (sharedActiveMode === "multi" && !run.mp)                          return false;
-    if (sharedActiveMode === "daily" && run.mode !== "daily")             return false;
-    return true;
+    return modeShowsRun(sharedActiveMode, run);
   });
 }
 
