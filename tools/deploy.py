@@ -29,7 +29,8 @@ Pushing the gamma branch does the same; pushing main always deploys production.
 
     infra\\.venv\\Scripts\\python.exe tools/deploy.py --stage gamma
 
-`--reheader` takes `--stage` too.
+`--reheader` takes `--stage` too. For gamma only, `DEPLOY_YES=1` skips the y/N
+on stack changes, so it can run with nobody at the terminal.
 
 Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 `git push --no-verify`.
@@ -219,7 +220,11 @@ def deploy_infra() -> None:
     if "There were no differences" in output:
         print("Infra: no changes.")
         return
-    if not ask("Deploy these infra changes?"):
+    # DEPLOY_YES=1 answers the question up front, for a run with nobody at the
+    # terminal. Gamma only: production's stack changes always get a person.
+    if STACK_NAME == STAGES["gamma"][2] and os.environ.get("DEPLOY_YES"):
+        print("Infra: deploying these changes (DEPLOY_YES).")
+    elif not ask("Deploy these infra changes?"):
         raise DeployError("infra deploy declined")
     run(["cdk", "deploy", STACK_NAME, "--require-approval", "never"], cwd=_INFRA, env=env)
 

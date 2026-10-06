@@ -453,7 +453,8 @@ Set up once, outside CDK:
 stack, with its own buckets and upload function, for checking a change against real CloudFront before
 production gets it. Pushing the `gamma` branch runs the same thing (`git push origin gamma`, or
 `git push --force origin HEAD:gamma` from whichever branch you want there); pushing `main` always deploys
-production. It needs its own
+production. `DEPLOY_YES=1` in the environment answers gamma's "Deploy these infra changes?" up front;
+production always asks. It needs its own
 certificate (for `gamma.slay-my-stats.com`, in us-east-1) and the hosted zone that subdomain is delegated to,
 as `"gammaCertificateArn"` and `"gammaHostedZoneId"` in `infra/cdk.context.json`. Without those two the gamma
 stack isn't built at all.
