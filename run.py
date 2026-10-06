@@ -1269,9 +1269,9 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2>Elite Death Rate</h2>
-    <p class="chart-caption">How often a run died on its 1st, 2nd, 3rd… elite, or in the fight right after, by act.</p>
-    <div class="chart-wrap"><canvas id="eliteDeathRateChart"></canvas></div>
+    <h2>Run Won, by Elites Beaten at Each Act Boss</h2>
+    <p class="chart-caption">Of the runs that reached an act's boss, the share that went on to win, by how many elites they had beaten so far. A strong run takes more elites, so this isn't only the rewards.</p>
+    <div class="chart-wrap"><canvas id="eliteCheckpointChart"></canvas></div>
   </div>
   <div class="chart-box">
     <h2>Elite Win Rate</h2>

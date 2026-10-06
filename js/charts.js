@@ -502,29 +502,23 @@ function updateRestWinCharts(filteredRuns) {
 }
 
 // -------------------------------------------------------------------------
-// Elite death/survival rate by total elites fought so far in the run —
-// bar charts
+// Elites and how the run ended: two charts
 //
-// The x-axis is CUMULATIVE across the whole run, not reset to 1 at the
-// start of each act — Act 3's first elite isn't a fresh "1st elite," it
-// comes after surviving everything in Acts 1 and 2, so it belongs at
-// whatever total elite count the run has actually reached by then
-// (commonly 4-6, sometimes higher). Resetting per act made an Act 3 elite
-// look like the same kind of moment as an Act 1 elite, which understates
-// how far into the run — and how much risk has already compounded — that
-// fight actually represents.
+// Both count elites across the WHOLE run, not reset per act: an Act 3 elite
+// comes after everything in Acts 1 and 2, and what the earlier ones gave
+// (relics, cards, gold) is still with the run.
 //
-// The death-rate chart is per-fight risk: of runs that reached this total
-// elite count, what % died on that specific fight (not later). It trends
-// downward as the total climbs, because reaching a higher total always
-// implies surviving everything before it — that's real, not a bug.
+// "Run Won, by Elites Beaten at Each Act Boss" asks where a run has taken
+// enough elites to be safer. A run counts once per act boss it reached, at
+// the number of elites it had beaten by then, so along one line every run
+// is at the same point and only the elite total differs. Counting by "beat
+// its Nth elite" alone would mix that with simply being further into the
+// run. It is still correlational: a strong run is the one that can afford
+// another elite.
 //
 // The win-rate chart is a DIFFERENT question: of runs that fought exactly
-// N total elites (by the run's end), what % won the whole run? This is
-// correlational, not causal — strong runs naturally fight more elites, so
-// it will trend up regardless of whether taking more elites helps — but
-// it's the number the user actually wants here (wins vs. failures by
-// elites taken), not the per-fight rate above.
+// N total elites (by the run's end), what % won the whole run? Also
+// correlational, for the same reason.
 //
 // Ascension is a second, separate confound (A8 gives enemies more HP, A9
 // more damage) that used to be handled here with a hardcoded A0-7/A8+
@@ -539,38 +533,25 @@ const ACT_COLORS = { 1: "#9ecfff", 2: "#e8a930", 3: "#e05c5c" };
 // that fights more elites than any run so far isn't silently folded into
 // the top bucket. Recomputed against DATA.runsData (not the live filtered
 // set) purely to size the two charts' shared x-axis once at load; the
-// bars themselves are populated per the active filter in updateEliteActCharts.
+// charts themselves are populated per the active filter in updateEliteActCharts.
 const ELITE_TOTAL_X = Array.from(
   { length: Math.max(0, ...DATA.runsData.map(run => (run.timeline || []).filter(n => n.type === "elite").length)) },
   (_, i) => i + 1
 );
 
-const eliteOrdinalTooltipTitle = items =>
-  `${items[0].label}${{1:"st",2:"nd",3:"rd"}[items[0].label] || "th"} elite of the run`;
 const eliteTotalTooltipTitle = items => `${items[0].label} elites fought this run`;
 
-// Shared chart builder. `datasetSpecs` is an array of {label, color} — one
-// per act for the death-rate chart, or a single neutral series for the
-// win-rate chart (which is a whole-run outcome, not an act-specific one,
-// so per-act coloring wouldn't mean anything there).
+// Bar chart of a rate per total-elites bucket, one series per spec in
+// `datasetSpecs` ({label, color}).
 function makeEliteRateChart(id, xLabel, yLabel, xVals, datasetSpecs, tooltipTitleFn, labelFn) {
   return new Chart(document.getElementById(id), {
     type: "bar",
     data: {
       labels: xVals,
-      // A dataset spec can opt into `type: "line"` (with matching line
-      // styling) to overlay a trend on top of the bar series sharing the
-      // same chart — Chart.js supports mixed bar+line datasets natively.
-      datasets: datasetSpecs.map(spec => spec.type === "line" ? {
-        type: "line", label: spec.label, data: [],
-        borderColor: spec.color + "aa", backgroundColor: spec.color,
-        borderWidth: 2, borderDash: [5, 4],
-        pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: spec.color + "cc",
-        tension: 0.2, fill: false, order: 0,
-      } : {
+      datasets: datasetSpecs.map(spec => ({
         label: spec.label, data: [],
         backgroundColor: spec.color, borderRadius: 4, borderSkipped: false, order: 1,
-      }),
+      })),
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -611,15 +592,53 @@ function makeEliteRateChart(id, xLabel, yLabel, xVals, datasetSpecs, tooltipTitl
   });
 }
 
-const eliteDeathRateChart = makeEliteRateChart(
-  "eliteDeathRateChart", "Total elites fought so far this run", "Death Rate %", ELITE_TOTAL_X,
-  [
-    ...[1, 2, 3].map(act => ({ label: `Act ${act}`, color: ACT_COLORS[act] })),
-    { label: "Combined", color: "#e0e0e0", type: "line" },
-  ],
-  eliteOrdinalTooltipTitle,
-  (label, trueVal, n, w) => ` ${label}: ${trueVal.toFixed(0)}% died (${w}W / ${n - w}L)`
-);
+// A point is only drawn with at least this many runs behind it: one or two
+// runs would put a 0% or 100% dot on the line.
+const ELITE_CHECKPOINT_MIN_RUNS = 10;
+// A run can reach an act boss having beaten no elites at all.
+const ELITE_CHECKPOINT_X = [0, ...ELITE_TOTAL_X];
+
+const eliteCheckpointChart = new Chart(document.getElementById("eliteCheckpointChart"), {
+  type: "line",
+  data: {
+    labels: ELITE_CHECKPOINT_X,
+    datasets: Object.keys(ACT_COLORS).map(act => ({
+      label: `At the Act ${act} boss`, data: [],
+      borderColor: ACT_COLORS[act], backgroundColor: ACT_COLORS[act],
+      borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 6, tension: 0.25,
+    })),
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { labels: { color: "#ccc", boxWidth: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          title: items => `${items[0].label} elites beaten so far`,
+          label: ctx => {
+            if (ctx.parsed.y == null) return null;
+            const n = ctx.dataset.counts[ctx.dataIndex];
+            const w = ctx.dataset.wins[ctx.dataIndex];
+            return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)}% won the run (${w}W / ${n - w}L)`;
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: { display: false }, ticks: { color: "#bcbcd0" },
+        title: { display: true, text: "Elites beaten so far this run", color: "#999" },
+      },
+      y: {
+        grid: { color: "#3f4147" },
+        title: { display: true, text: "Run Won %", color: "#999" },
+        beginAtZero: true,
+        ...WIN_PCT_Y_AXIS,
+      },
+    },
+  },
+});
 
 const eliteWinRateChart = makeEliteRateChart(
   "eliteWinRateChart", "Total elites fought this run", "Overall Win %", ELITE_TOTAL_X,
@@ -628,42 +647,25 @@ const eliteWinRateChart = makeEliteRateChart(
   (label, trueVal, n, w) => ` ${trueVal.toFixed(0)}% won the run (${w}W / ${n - w}L)`
 );
 
-const FIGHT_TYPES = new Set(["monster", "elite", "boss"]);
-
-// "Died" from this elite means either dying on the elite itself, or
-// surviving it but dying on the very next fight afterward (skipping over
-// rest sites/shops/events/treasure in between) — overextension can show up
-// as HP too low to survive the fight right after, not just the elite
-// itself. Denominator is still every run that reached this elite.
-//
-// Bucketed by TOTAL elites fought so far in the run (not reset per act) —
-// Act 3's first elite isn't a fresh "1st elite," it comes after surviving
-// everything in Acts 1 and 2, so it belongs at whatever total elite count
-// the run has actually reached by then. Each bucket is also tagged with
-// which act that elite belonged to, so it can still be colored/split by
-// act for comparison, while the x-position itself already encodes how
-// many elites came before it — no separate low/high split needed.
-//
-// bucket[act][totalSoFar] = { reachedThisElite, diedOnThisElite }
-function aggregateEliteOrdinalDeaths(filteredRuns) {
+// bucket[act][elitesBeaten] = { runs, wins }: the runs that reached that
+// act's boss having beaten that many elites so far, and how many of them
+// went on to win. Only an act's first boss counts (Ascension 10 has two in
+// Act 3), so a run is in each act's line at most once.
+function aggregateEliteCheckpoints(filteredRuns) {
   const bucket = {};
   REST_ACTS.forEach(act => { bucket[act] = {}; });
 
   filteredRuns.forEach(run => {
-    const tl = run.timeline || [];
-    let totalSoFar = 0;
-    tl.forEach((node, idx) => {
-      if (node.type !== "elite") return;
-      totalSoFar += 1;
-      const actBucket = bucket[node.act];
-      const b = actBucket[totalSoFar] || (actBucket[totalSoFar] = { reachedThisElite: 0, diedOnThisElite: 0 });
-      b.reachedThisElite += 1;
-
-      if (node.hpAfter <= 0) {
-        b.diedOnThisElite += 1;
-      } else {
-        const nextFight = tl.slice(idx + 1).find(n => FIGHT_TYPES.has(n.type));
-        if (nextFight && nextFight.hpAfter <= 0) b.diedOnThisElite += 1;
+    let beaten = 0;
+    const actsSeen = new Set();
+    (run.timeline || []).forEach(node => {
+      if (node.type === "elite") {
+        if (node.hpAfter > 0) beaten += 1;
+      } else if (node.type === "boss" && bucket[node.act] && !actsSeen.has(node.act)) {
+        actsSeen.add(node.act);
+        const b = (bucket[node.act][beaten] ??= { runs: 0, wins: 0 });
+        b.runs += 1;
+        if (run.won) b.wins += 1;
       }
     });
   });
@@ -687,42 +689,17 @@ function aggregateElitesPerRun(filteredRuns) {
 }
 
 function updateEliteActCharts(filteredRuns) {
-  const deathBucket = aggregateEliteOrdinalDeaths(filteredRuns);
-  const winBucket    = aggregateElitesPerRun(filteredRuns);
+  const checkpoints = aggregateEliteCheckpoints(filteredRuns);
+  const winBucket   = aggregateElitesPerRun(filteredRuns);
 
-  [1, 2, 3].forEach((act, i) => {
-    const ds = eliteDeathRateChart.data.datasets[i];
-    const actBucket = deathBucket[act];
-    ds.trueData = ELITE_TOTAL_X.map(n => {
-      const b = actBucket[n];
-      return b && b.reachedThisElite >= 1 ? +(b.diedOnThisElite / b.reachedThisElite * 100).toFixed(1) : null;
-    });
-    ds.data = ds.trueData;
-    ds.counts = ELITE_TOTAL_X.map(n => (actBucket[n] || {}).reachedThisElite || 0);
-    ds.wins   = ELITE_TOTAL_X.map(n => {
-      const b = actBucket[n];
-      return b ? b.reachedThisElite - b.diedOnThisElite : 0;
-    });
-    ds.backgroundColor = ACT_COLORS[act];
+  REST_ACTS.forEach((act, i) => {
+    const ds = eliteCheckpointChart.data.datasets[i];
+    const cells = ELITE_CHECKPOINT_X.map(n => checkpoints[act][n] || { runs: 0, wins: 0 });
+    ds.data   = cells.map(b => b.runs >= ELITE_CHECKPOINT_MIN_RUNS ? +(b.wins / b.runs * 100).toFixed(1) : null);
+    ds.counts = cells.map(b => b.runs);
+    ds.wins   = cells.map(b => b.wins);
   });
-
-  // Combined trendline: same death-rate metric as the bars, pooled across
-  // all 3 acts at each x-position instead of split by act — overlaid on
-  // top so the overall shape (does risk climb or fall as elites taken
-  // increases) is visible at a glance instead of needing to eyeball 3
-  // separate bar heights per x-position.
-  {
-    const ds = eliteDeathRateChart.data.datasets[3];
-    const reachedByX = ELITE_TOTAL_X.map(n =>
-      [1, 2, 3].reduce((sum, act) => sum + ((deathBucket[act][n] || {}).reachedThisElite || 0), 0));
-    const diedByX = ELITE_TOTAL_X.map(n =>
-      [1, 2, 3].reduce((sum, act) => sum + ((deathBucket[act][n] || {}).diedOnThisElite || 0), 0));
-    ds.trueData = reachedByX.map((reached, i) => reached >= 1 ? +(diedByX[i] / reached * 100).toFixed(1) : null);
-    ds.data = ds.trueData;
-    ds.counts = reachedByX;
-    ds.wins   = reachedByX.map((reached, i) => reached - diedByX[i]);
-  }
-  eliteDeathRateChart.update();
+  eliteCheckpointChart.update();
 
   {
     const ds = eliteWinRateChart.data.datasets[0];
