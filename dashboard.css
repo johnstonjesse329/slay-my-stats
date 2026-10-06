@@ -812,19 +812,18 @@ h1 {
 
 /* ---- Run header ---- */
 
-/* Same look as the filter bar's small buttons (.filter-bar .toggle-btn). */
 .run-copy-link {
   font: inherit;
   font-size: 0.75rem;
-  color: var(--text-dim);
+  color: var(--gold);
   background: none;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--gold);
   border-radius: 4px;
   padding: 0.2rem 0.5rem;
   cursor: pointer;
-  transition: color .15s, border-color .15s;
+  transition: color .15s, border-color .15s, background .15s;
 }
-.run-copy-link:hover { color: var(--gold); border-color: var(--gold); }
+.run-copy-link:hover { color: var(--gold-bright); border-color: var(--gold-bright); background: var(--gold-glow); }
 
 .detail-run-header-bar {
   display: flex;

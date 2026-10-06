@@ -182,6 +182,16 @@ function openRunLink(ts) {
   jumpToRun(ts);
 }
 
+// A link pasted into the address bar of a page that is already open only
+// changes the hash, so nothing reloads. Follow it. The hash this page sets
+// itself (showPage) arrives here too, already matching, and does nothing.
+window.addEventListener("hashchange", () => {
+  const { page, runTs } = parsePageHash();
+  if (!PAGES.includes(page)) return;
+  if (runTs != null && runTs !== detailSelectedTs) openRunLink(runTs);
+  else if (page !== currentPage) showPage(page);
+});
+
 // ---- Shared character selector ----
 const sharedCharSel = document.getElementById("shared-char-selector");
 
