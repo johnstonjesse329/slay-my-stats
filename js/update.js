@@ -7,15 +7,14 @@ function updateAll() {
 
   const { pivot, grand, charStats } = aggregateRuns(filteredRuns);
 
-  winChart.data.datasets[0].data       = charStats.map(s => s.win_pct    ?? 0);
   floorChart.data.datasets[0].data     = charStats.map(s => s.median_floor ?? 0);
   timeChart.data.datasets[0].data      = charStats.map(s => s.median_min   ?? 0);
   totalTimeChart.data.datasets[0].data = charStats.map(s => s.total_hrs  ?? 0);
-  [winChart, floorChart, timeChart, totalTimeChart].forEach(chart => chart.data.datasets[0].meta = charStats);
+  [floorChart, timeChart, totalTimeChart].forEach(chart => chart.data.datasets[0].meta = charStats);
   const totalHrs = charStats.reduce((sum, s) => sum + (s.total_hrs ?? 0), 0);
   timeShareChart.data.datasets[0].data = charStats.map(s => totalHrs > 0 ? +((s.total_hrs ?? 0) / totalHrs * 100).toFixed(1) : 0);
   timeShareChart.data.datasets[0].meta  = charStats;
-  [winChart, floorChart, timeChart, totalTimeChart, timeShareChart].forEach(chart => chart.update());
+  [floorChart, timeChart, totalTimeChart, timeShareChart].forEach(chart => chart.update());
 
   renderCards(grand, charStats, avgRestOnWins(filteredRuns));
   renderWinPivot(pivot);
