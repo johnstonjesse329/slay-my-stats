@@ -111,9 +111,12 @@ const timeShareChart = new Chart(document.getElementById("charTimeShareChart"), 
   },
 });
 
+// Bars side by side: each character's own win % at each ascension. A character
+// with no runs at an ascension gets no bar there (null), not a 0% one.
 const ascWinChart = new Chart(document.getElementById("ascWinChart"), {
-  type: "scatter",
+  type: "bar",
   data: {
+    labels:   DATA.ascensions,
     datasets: [],
   },
   options: {
@@ -122,7 +125,7 @@ const ascWinChart = new Chart(document.getElementById("ascWinChart"), {
       legend: { labels: { color: "#ccc", boxWidth: 12 } },
       tooltip: {
         callbacks: {
-          title: ctx => `Ascension ${ctx[0].parsed.x}`,
+          title: ctx => `Ascension ${ctx[0].label}`,
           label: ctx => {
             const n = ctx.dataset.runCounts?.[ctx.dataIndex] ?? 0;
             const w = ctx.dataset.winCounts?.[ctx.dataIndex] ?? 0;
@@ -133,11 +136,8 @@ const ascWinChart = new Chart(document.getElementById("ascWinChart"), {
     },
     scales: {
       x: {
-        type:  "linear",
-        min:   Math.min(...DATA.ascensions),
-        max:   Math.max(...DATA.ascensions),
-        grid:  { color: "#3f4147" },
-        ticks: { color: "#bcbcd0", stepSize: 1 },
+        grid:  { display: false },
+        ticks: { color: "#bcbcd0" },
         title: { display: true, text: "Ascension", color: "#999" },
       },
       y: {
@@ -150,7 +150,7 @@ const ascWinChart = new Chart(document.getElementById("ascWinChart"), {
   },
 });
 
-function aggregateAscLineDatasets(filteredRuns) {
+function aggregateAscBarDatasets(filteredRuns) {
   const byCharAsc = {};
   filteredRuns.forEach(run => {
     const bucket = (byCharAsc[run.char] ??= {});
@@ -162,29 +162,19 @@ function aggregateAscLineDatasets(filteredRuns) {
   return DATA.characters.map((char, i) => {
     const color = DATA.charColors[i];
     const bucket = byCharAsc[char] || {};
-    const data       = [];
-    const runCounts  = [];
-    const winCounts  = [];
-    DATA.ascensions.forEach(asc => {
-      const b = bucket[asc];
-      if (!b || b.runs === 0) return;
-      data.push({ x: asc, y: +(b.wins / b.runs * 100).toFixed(1) });
-      runCounts.push(b.runs);
-      winCounts.push(b.wins);
-    });
+    const cells = DATA.ascensions.map(asc => bucket[asc] || { wins: 0, runs: 0 });
     return {
       label: fmtCharName(char),
-      data, runCounts, winCounts,
-      pointRadius: 6,
-      pointHoverRadius: 8,
-      borderColor: color,
+      data:      cells.map(b => b.runs ? +(b.wins / b.runs * 100).toFixed(1) : null),
+      runCounts: cells.map(b => b.runs),
+      winCounts: cells.map(b => b.wins),
       backgroundColor: color,
     };
   });
 }
 
 function updateAscWinChart(filteredRuns) {
-  ascWinChart.data.datasets = aggregateAscLineDatasets(filteredRuns);
+  ascWinChart.data.datasets = aggregateAscBarDatasets(filteredRuns);
   ascWinChart.update();
 }
 

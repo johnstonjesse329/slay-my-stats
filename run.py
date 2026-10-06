@@ -1223,10 +1223,15 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="cards" id="summary-cards"></div>
 <div class="cards" id="personal-bests-cards"></div>
 
-<div class="grid-1">
+<div class="grid-2">
   <div class="chart-box">
     <h2>Win % by Ascension Level (per Character)</h2>
     <div class="chart-wrap"><canvas id="ascWinChart"></canvas></div>
+  </div>
+  <div class="chart-box">
+    <h2>Win % by Month</h2>
+    <p class="chart-caption">Dotted lines mark when each game build was first played.</p>
+    <div class="chart-wrap"><canvas id="monthlyWinChart"></canvas></div>
   </div>
 </div>
 
@@ -1240,14 +1245,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <h2>Final Boss Win %</h2>
     <p class="chart-caption">Of the runs that reached the final boss, the share that beat it. Ascension 10's two Act 3 bosses are shown separately.</p>
     <div class="pivot-wrap"><table class="pivot" id="final-boss-win-table"></table></div>
-  </div>
-</div>
-
-<div class="grid-1">
-  <div class="chart-box">
-    <h2>Win % by Month</h2>
-    <p class="chart-caption">Dotted lines mark when each game build was first played.</p>
-    <div class="chart-wrap"><canvas id="monthlyWinChart"></canvas></div>
   </div>
 </div>
 
