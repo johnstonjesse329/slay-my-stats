@@ -1190,6 +1190,19 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </div>
 
+<div class="grid-2">
+  <div class="chart-box">
+    <h2>Win %</h2>
+    <p class="chart-caption">Share of runs won, by character and ascension.</p>
+    <div class="pivot-wrap"><table class="pivot" id="pivot-table"></table></div>
+  </div>
+  <div class="chart-box">
+    <h2>Final Boss Win %</h2>
+    <p class="chart-caption">Of the runs that reached the final boss, the share that beat it. Ascension 10's two Act 3 bosses are shown separately.</p>
+    <div class="pivot-wrap"><table class="pivot" id="final-boss-win-table"></table></div>
+  </div>
+</div>
+
 <div class="grid-1">
   <div class="chart-box">
     <h2>Win % by Month</h2>
@@ -1227,19 +1240,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <h2>Elite Win Rate</h2>
     <p class="chart-caption">Share of runs won, by how many elites the run fought in total.</p>
     <div class="chart-wrap"><canvas id="eliteWinRateChart"></canvas></div>
-  </div>
-</div>
-
-<div class="grid-2">
-  <div class="chart-box">
-    <h2>Win %</h2>
-    <p class="chart-caption">Share of runs won, by character and ascension.</p>
-    <div class="pivot-wrap"><table class="pivot" id="pivot-table"></table></div>
-  </div>
-  <div class="chart-box">
-    <h2>Final Boss Win %</h2>
-    <p class="chart-caption">Of the runs that reached the final boss, the share that beat it. Ascension 10's two Act 3 bosses are shown separately.</p>
-    <div class="pivot-wrap"><table class="pivot" id="final-boss-win-table"></table></div>
   </div>
 </div>
 
