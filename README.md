@@ -216,7 +216,9 @@ the CLI's default account and region (us-west-2 today).
 | **Ingest Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Public Function URL, CORS for `https://slay-my-stats.com` POSTs only. | Checks the Steam sign-in and the rate limits, then hands out a presigned POST for one upload. It verifies the sign-in itself, so no API Gateway, and never sees the upload, so it stays small. |
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
-| **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process Lambda gets read and `kms:Decrypt`. | Steam Web API key for display names. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
+| **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and ingest Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
+| **SSM parameter** `/slay-my-stats/mod-allowlist` | StringList of SteamID64s, not in the stack: created and edited by hand. The ingest Lambda gets `ssm:GetParameter` on it. | Who may upload through the mod (see "Mod uploads"). By hand so adding a player is one command and no deploy. |
+| **Metric filters + alarms** `ModRequests`, `ModRefusals` | Counted from the ingest Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
 | **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
 | **SNS topic + kill-switch Lambda** | Python 3.12, 128 MB. Only permission: `lambda:PutFunctionConcurrency` on the ingest and process functions. | Sets their reserved concurrency to 0. Budgets evaluate a few times a day, so this bounds a sustained attack rather than stopping it instantly. Undo with `aws lambda delete-function-concurrency`. |
 
@@ -343,6 +345,44 @@ Upload limits, from the top of `handler.py`:
 | Parsed run size | 1 MB |
 | Strings in a run | `[A-Za-z0-9_.-]`, up to 80 characters |
 
+### Mod uploads
+
+A short allowlist of players can upload through a game mod instead (its own repo, `slay-my-stats-mod`), which
+sends each run as it ends. It's the same upload through a different door: the mod POSTs to the ingest function's
+`/mod` path, and from the presigned POST on, everything above is unchanged.
+
+- **Who is playing.** Instead of the browser sign-in, the mod asks the Steam client the game is running under
+  for a Web API ticket and sends it with the player's Steam ID. The ingest Lambda checks the ID against the
+  allowlist first, then has Steam confirm the ticket (`ISteamUserAuth/AuthenticateUserTicket`, with the same
+  key as display names) and requires that the ticket is that player's. A ticket is only good for Slay the
+  Spire 2 and for the name `slay-my-stats`, which the mod and the Lambda agree on.
+- **The allowlist** is the SSM StringList parameter `/slay-my-stats/mod-allowlist`
+  (`/slay-my-stats-gamma/mod-allowlist` on gamma), created and edited by hand. Until it exists, nobody is on
+  it. The Lambda reads it again every 5 minutes, so adding or removing a player needs no deploy:
+
+  ```sh
+  aws ssm put-parameter --name /slay-my-stats/mod-allowlist --type StringList --overwrite --value 76561198000000001,76561198000000002
+  ```
+- **Limits** are looser, since these are a few known players, but still there in case a mod goes wrong. They're
+  counted apart from the site's, so the mod never uses up an upload from the page.
+- **Alarms.** Every request on this path is logged with `"via": "mod"`. Two metric filters count them, and an
+  alarm emails the alert address at 30 mod requests in 5 minutes, or 10 refused ones (a 401 or 403) in 15
+  minutes. The budget kill switch still sits behind all of it.
+
+| Limit | Value |
+|-------|-------|
+| Upload URLs | 5 seconds apart and 200 a day per Steam account; no per-IP limit |
+| Upload size | 2 MB gzip'd |
+| Request body | 8 KB |
+| Everything after the upload | the same as above |
+
+Each run the mod sends carries one extra top-level key, `slay_my_stats_mod`: the mod's version and every mod
+the game had loaded (`{"version", "mods": [{"id", "name", "version", "affects_gameplay"}]}`), since the game's
+own run file says nothing about mods. The parser keeps each mod's id, version and whether it says it changes
+gameplay, cut down to plain characters, as `mods` on the run. Run Detail shows a "Modded" tag on those runs, in
+the run list and the run's header, with the mod list on hover. A run uploaded from files has no such key, so a
+run without the tag isn't known to be unmodded.
+
 ### Site-wide stats
 
 The home page shows stats across every player's runs, solo and multiplayer side by side (solo leaves out
@@ -387,7 +427,8 @@ Lambda code against `local_data/` (the same layout as the bucket): `POST /api/in
 upload URL it hands out is the server's own `/api/raw-upload`, which stores the file under `local_data/raw/` and
 processes it on the spot, in place of S3 and its event. So the upload flow, including a real Steam sign-in, works
 locally. Locally the Steam name comes from the public profile XML, unless
-you set `STEAM_API_KEY`.
+you set `STEAM_API_KEY`. `POST /api/ingest/mod` is the mod's door (the Function URL's `/mod`), for the Steam IDs
+in `MOD_ALLOWLIST` (comma-separated); its ticket check is real, so it needs `STEAM_API_KEY`.
 
 ```mermaid
 flowchart LR

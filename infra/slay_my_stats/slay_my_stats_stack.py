@@ -4,6 +4,8 @@ from aws_cdk import (
     RemovalPolicy,
     Stack,
     aws_certificatemanager as acm,
+    aws_cloudwatch as cloudwatch,
+    aws_cloudwatch_actions as cloudwatch_actions,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
     aws_iam as iam,
@@ -68,6 +70,15 @@ DOMAIN_NAME = "slay-my-stats.com"
 # deploys to.
 # Everything these services bill is covered by free tier at normal traffic,
 # so any actual spend on them means the ingest path is being abused.
+# The game mod's way in (POST /mod on the ingest function) is for a handful of
+# allowlisted players sending one run at a time, so a few requests an hour is
+# normal. Either of these in one window means something is wrong -- a mod
+# stuck sending in a loop, or someone poking at it -- and emails the alert
+# topic. Refusals are the 401s and 403s: a ticket Steam won't confirm, or an
+# account that isn't on the list.
+MOD_REQUESTS_ALARM = (30, Duration.minutes(5))
+MOD_REFUSALS_ALARM = (10, Duration.minutes(15))
+
 KILL_SWITCH_BUDGET_USD = 1
 KILL_SWITCH_SERVICES = ["AWS Lambda", "AmazonCloudWatch", "Amazon Simple Storage Service"]
 
@@ -397,6 +408,62 @@ class SlayMyStatsStack(Stack):
             )
         )
         process_fn.add_environment("STEAM_API_KEY_PARAM_NAME", STEAM_API_KEY_PARAM_NAME)
+
+        # The game mod's way in: POST /mod on the ingest function, for the
+        # players on the allowlist. It needs the key too, to ask Steam whose
+        # ticket it was handed.
+        steam_api_key_param.grant_read(ingest_fn)
+        ingest_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["kms:Decrypt"],
+                resources=[self.format_arn(service="kms", resource="alias", resource_name="aws/ssm")],
+            )
+        )
+        ingest_fn.add_environment("STEAM_API_KEY_PARAM_NAME", STEAM_API_KEY_PARAM_NAME)
+        # The allowlist is a StringList parameter of SteamID64s, created and
+        # edited by hand so adding a player is one command and no deploy (see
+        # README "Mod uploads"). Until it exists, nobody is on it.
+        mod_allowlist_param_name = f"/{name_prefix}/mod-allowlist"
+        ingest_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["ssm:GetParameter"],
+                resources=[self.format_arn(service="ssm", resource="parameter",
+                                           resource_name=mod_allowlist_param_name.lstrip("/"))],
+            )
+        )
+        ingest_fn.add_environment("MOD_ALLOWLIST_PARAM_NAME", mod_allowlist_param_name)
+
+        # The handler logs one JSON line per request, marked "via": "mod" on
+        # this path. Count them, and email when there are too many.
+        from_mod = logs.FilterPattern.string_value("$.via", "=", "mod")
+        mod_alarms = {
+            "ModRequests": (from_mod, MOD_REQUESTS_ALARM, "Mod upload requests are coming in fast"),
+            "ModRefusals": (
+                logs.FilterPattern.all(from_mod, logs.FilterPattern.any(
+                    logs.FilterPattern.number_value("$.status", "=", 401),
+                    logs.FilterPattern.number_value("$.status", "=", 403))),
+                MOD_REFUSALS_ALARM, "Mod upload requests are being refused",
+            ),
+        }
+        for name, (pattern, (threshold, period), what) in mod_alarms.items():
+            metric = logs.MetricFilter(
+                self, f"{name}Filter",
+                log_group=ingest_log_group,
+                filter_pattern=pattern,
+                metric_namespace=name_prefix,
+                metric_name=name,
+            ).metric(statistic="Sum", period=period)
+            cloudwatch.Alarm(
+                self, f"{name}Alarm",
+                metric=metric,
+                threshold=threshold,
+                evaluation_periods=1,
+                comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+                # No requests at all is the normal state, not missing data.
+                treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+                alarm_description=f"{what} on {domain_name}: {threshold} or more in "
+                                  f"{period.to_minutes()} minutes. Details are in IngestLogGroup.",
+            ).add_alarm_action(cloudwatch_actions.SnsAction(alert_topic))
 
         # No API Gateway: OpenID verification happens inside the handler, so
         # a bare public Function URL is enough and one less moving part.

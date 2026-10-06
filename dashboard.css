@@ -759,10 +759,14 @@ h1 {
 
 #detail-layout {
   display: grid;
-  grid-template-columns: 230px 1fr;
+  grid-template-columns: var(--run-list-width, 230px) 1fr;
   gap: 1.5rem;
   align-items: start;
 }
+/* A "Modded" tag in the run list needs the room: 316px fits the widest row
+   (Necrobinder, A10, tag, two-digit month and day) beside a scrollbar. A
+   variable, so the phone layout's single column still wins. */
+#detail-layout:has(.detail-run-item .run-modded-tag) { --run-list-width: 316px; }
 
 /* ---- Run list (left column) ---- */
 
@@ -809,6 +813,20 @@ h1 {
 .detail-run-won  { font-weight: 700; font-size: 0.8rem; }
 .detail-run-floor { font-size: 0.78rem; }
 .detail-run-date  { font-size: 0.74rem; margin-left: auto; }
+
+/* "Modded": on a run the game mod reported loaded mods for, in the run list
+   and the run header. The mod list is its data-tip. */
+.run-modded-tag {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  padding: 0 0.3rem;
+  color: var(--ember);
+  border: 1px solid var(--ember);
+  border-radius: 3px;
+}
 
 /* ---- Run header ---- */
 

@@ -13,6 +13,15 @@ lambda_handler -- the Function URL (POST from the browser upload page):
     new raw/ object, capped at UPLOAD_MAX_BYTES, plus the upload's id. A
     sign-in works again (after the cooldown) until it expires.
 
+    POST /mod is the game mod's way in, for the few players on the mod
+    allowlist. Its JSON body is {"steamId", "ticket"}: a Steam Web API
+    ticket the game got from the Steam client it's running under, which
+    stands in for the browser sign-in. Flow: steamId on the allowlist ->
+    Steam confirms the ticket is that account's, for this game -> looser
+    limits (MOD_COOLDOWN_SECONDS, MOD_UPLOADS_PER_DAY) -> the same kind of
+    presigned POST, capped at MOD_UPLOAD_MAX_BYTES. Everything after that
+    is the same pipeline.
+
 process_handler -- S3 "object created" events under raw/:
     The uploaded object is gzip'd NDJSON: one raw .run file's JSON per line
     (the browser re-serializes each file onto a single line), in any order.
@@ -57,17 +66,19 @@ Storage (the data bucket; CloudFront serves users/* only):
                             Steam account.
     raw/<steamid>/<time>-<id>.ndjson.gz
                             private: every upload exactly as sent.
-    limits/steam/<steamid>.json.gz, limits/ip/<hash>.json.gz
+    limits/steam/<steamid>.json.gz, limits/ip/<hash>.json.gz,
+    limits/mod/<steamid>.json.gz
                             private: when upload URLs were last handed out.
 A profile's slug is its Steam display name at first upload, lowercased with
 everything but a-z0-9 dropped ("Mr. Bean!" -> "mrbean"; "player" if nothing
 is left), plus "-2", "-3"... if taken. It never changes after that, so
 shared links keep working; a rename only updates the shown name.
 
-The cores (authorize(), process_upload()) take a storage object rather than
+The cores (authorize(), authorize_mod(), process_upload()) take a storage object rather than
 calling S3 themselves, so tools/serve_site.py can run the same code against
 local_data/.
 """
+import base64
 import gzip
 import hashlib
 import ipaddress
@@ -79,6 +90,7 @@ import secrets
 import tempfile
 import time
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
@@ -102,6 +114,26 @@ COOLDOWN_SECONDS = 60
 # one machine spamming uploads.
 IP_UPLOADS_PER_HOUR = 5
 IP_WINDOW_SECONDS = 3600
+
+# The mod's way in (authorize_mod). Only allowlisted players get this far, so
+# the limits are loose: the mod sends each run as it ends, and two runs can
+# end close together (an abandon, then a quick death). What's left is there
+# for a mod that has gone wrong and is sending in a loop -- the cooldown
+# slows it to a crawl, the daily cap stops it, and the size cap (one run is a
+# few KB gzip'd, so this is hundreds) bounds what each try can store.
+MOD_COOLDOWN_SECONDS = 5
+MOD_UPLOADS_PER_DAY = 200
+MOD_WINDOW_SECONDS = 24 * 3600
+MOD_UPLOAD_MAX_BYTES = 2 * 1024 * 1024
+MOD_BODY_MAX_BYTES = 8 * 1024
+# Slay the Spire 2 on Steam. A ticket is only good for the game it was issued
+# to and the name it was asked for, which the mod and this file agree on.
+STS2_APP_ID = "2868840"
+TICKET_IDENTITY = "slay-my-stats"
+AUTH_TICKET_URL = "https://api.steampowered.com/ISteamUserAuth/AuthenticateUserTicket/v1/"
+STEAM_ID_RE = re.compile(r"^\d{17}$")
+# Hex, as the Web API wants it. Steam's buffer for one is 2560 bytes.
+TICKET_RE = re.compile(r"^[0-9A-Fa-f]{32,5120}$")
 
 # Upload limits. A real run is 28-63 KB raw and ~2.7 KB once a whole history
 # is gzip'd together, so 100 MB holds ~35,000 runs: any real history in one
@@ -274,6 +306,40 @@ def lookup_steam_name(steam_id: str) -> str | None:
     except Exception:
         pass
     return None
+
+
+# ---------------------------------------------------------------------------
+# Steam tickets (the mod)
+# ---------------------------------------------------------------------------
+
+def verify_ticket(ticket: str, get=_http_get) -> str:
+    """
+    Ask Steam whose ticket this is and return that SteamID64. The game gets
+    the ticket from the Steam client it's running under (the mod calls
+    GetAuthTicketForWebApi), so only someone signed in to that account, with
+    the game running, can produce one. Errors never carry the URL: the key
+    is in it.
+    """
+    if not isinstance(ticket, str) or not TICKET_RE.match(ticket):
+        raise IngestError(401, "bad_ticket", "Not a Steam ticket.")
+    key = _steam_api_key()
+    if not key:
+        raise IngestError(503, "no_steam_key", "Mod uploads aren't set up here.")
+    q = urllib.parse.urlencode({"key": key, "appid": STS2_APP_ID, "ticket": ticket, "identity": TICKET_IDENTITY})
+    try:
+        answer = json.loads(get(f"{AUTH_TICKET_URL}?{q}"))
+    except urllib.error.HTTPError as e:
+        # Steam answers a key it won't take with 401/403: ours to fix, not
+        # something trying again helps.
+        code = "steam_key_rejected" if e.code in (401, 403) else "steam_unreachable"
+        raise IngestError(502, code, "Couldn't check the ticket with Steam. Try again shortly.") from None
+    except Exception:
+        raise IngestError(502, "steam_unreachable", "Couldn't check the ticket with Steam. Try again shortly.") from None
+    params = (answer.get("response") or {}).get("params") if isinstance(answer, dict) else None
+    steam_id = params.get("steamid") if isinstance(params, dict) else None
+    if not isinstance(steam_id, str) or not STEAM_ID_RE.match(steam_id) or params.get("result") != "OK":
+        raise IngestError(401, "bad_ticket", "Steam did not confirm the ticket.")
+    return steam_id
 
 
 def clean_name(name) -> str | None:
@@ -467,6 +533,10 @@ def result_key(upload_id: str) -> str:
 
 def steam_limit_key(steam_id: str) -> str:
     return f"limits/steam/{steam_id}.json.gz"
+
+
+def mod_limit_key(steam_id: str) -> str:
+    return f"limits/mod/{steam_id}.json.gz"
 
 
 def ip_limit_key(ip: str) -> str:
@@ -687,6 +757,42 @@ def authorize(params: dict, ip: str, store, allowed_return_to: list[str], presig
     return {"uploadId": upload_id, "maxBytes": UPLOAD_MAX_BYTES,
             "slug": _unpack(record[0])["slug"] if record else None,
             **presign(raw_key(steam_id, upload_id, now), UPLOAD_MAX_BYTES, UPLOAD_URL_SECONDS)}
+
+
+def authorize_mod(body: dict, store, allowlist, presign, now: float | None = None,
+                  verify=None) -> dict:
+    """
+    authorize() for the game mod: the same answer, for {"steamId", "ticket"}
+    instead of a browser sign-in. `allowlist` is the SteamID64s allowed to
+    use it. The claimed id is checked against it first, so a request from
+    anyone not on it never costs a round trip to Steam; the ticket then has
+    to be that same account's.
+    """
+    now = time.time() if now is None else now
+    steam_id = body.get("steamId") if isinstance(body, dict) else None
+    if not isinstance(steam_id, str) or not STEAM_ID_RE.match(steam_id):
+        raise IngestError(400, "bad_request", "Expected a steamId and a ticket.")
+    if steam_id not in allowlist:
+        raise IngestError(403, "not_allowlisted", "This Steam account isn't set up for mod uploads.")
+    if (verify or verify_ticket)(body.get("ticket")) != steam_id:
+        raise IngestError(401, "bad_ticket", "That ticket belongs to a different Steam account.")
+
+    got = store.get(mod_limit_key(steam_id))
+    times = [t for t in (_unpack(got[0]).get("times", []) if got else []) if now - t < MOD_WINDOW_SECONDS]
+    if times and now - max(times) < MOD_COOLDOWN_SECONDS:
+        raise IngestError(429, "cooldown", "You just uploaded. Wait a few seconds and try again.")
+    if len(times) >= MOD_UPLOADS_PER_DAY:
+        raise IngestError(429, "rate_limited", "Too many uploads today. Try again tomorrow.")
+    try:
+        store.put(mod_limit_key(steam_id), _pack({"times": times + [now]}), {}, got[2] if got else None)
+    except StoreConflict:
+        raise IngestError(409, "conflict", "Another upload started at the same time. Try again.")
+
+    record = store.get(id_key(steam_id))
+    upload_id = secrets.token_urlsafe(12)
+    return {"uploadId": upload_id, "maxBytes": MOD_UPLOAD_MAX_BYTES,
+            "slug": _unpack(record[0])["slug"] if record else None,
+            **presign(raw_key(steam_id, upload_id, now), MOD_UPLOAD_MAX_BYTES, UPLOAD_URL_SECONDS)}
 
 
 # ---------------------------------------------------------------------------
@@ -1156,6 +1262,48 @@ def _response(status: int, body: dict) -> dict:
             "body": json.dumps(body)}
 
 
+MOD_ALLOWLIST_SECONDS = 5 * 60
+_mod_allowlist = (None, frozenset())  # (read at, SteamID64s)
+
+
+def mod_allowlist(now: float | None = None) -> frozenset:
+    """
+    The SteamID64s allowed to upload through the mod: $MOD_ALLOWLIST if set
+    (dev), else the SSM StringList parameter named by
+    $MOD_ALLOWLIST_PARAM_NAME, which is edited by hand. Nobody, if neither
+    is there. Read again every few minutes, so taking someone off works
+    without a deploy.
+    """
+    global _mod_allowlist
+    now = time.time() if now is None else now
+    if _mod_allowlist[0] is not None and now - _mod_allowlist[0] < MOD_ALLOWLIST_SECONDS:
+        return _mod_allowlist[1]
+    value = os.environ.get("MOD_ALLOWLIST", "")
+    param = os.environ.get("MOD_ALLOWLIST_PARAM_NAME")
+    if not value and param:
+        import boto3
+        ssm = boto3.client("ssm")
+        try:
+            value = ssm.get_parameter(Name=param)["Parameter"]["Value"]
+        except ssm.exceptions.ParameterNotFound:
+            value = ""
+    ids = frozenset(v for v in (part.strip() for part in value.split(",")) if STEAM_ID_RE.match(v))
+    _mod_allowlist = (now, ids)
+    return ids
+
+
+def _mod_body(event) -> dict:
+    """The JSON object a POST /mod carried, or {} for anything else."""
+    raw = event.get("body") or ""
+    try:
+        if event.get("isBase64Encoded"):
+            raw = base64.b64decode(raw).decode("utf-8")
+        body = json.loads(raw) if len(raw) <= MOD_BODY_MAX_BYTES else None
+    except ValueError:
+        body = None
+    return body if isinstance(body, dict) else {}
+
+
 def _ip_allowed(ip: str, allowed: list[str]) -> bool:
     """An entry ending in "." or ":" is a prefix; anything else is exact.
     Mirrors IP_ALLOWLIST_CODE in the stack."""
@@ -1171,15 +1319,21 @@ def lambda_handler(event, context):
         return _response(403, {"error": "forbidden", "message": "Not available from this address."})
     if http.get("method") != "POST":
         return _response(405, {"error": "method_not_allowed", "message": "POST only."})
-    params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", ""), keep_blank_values=True))
-    allowed = [p for p in os.environ.get("ALLOWED_RETURN_TO", "").split(",") if p]
     store = _get_store()
+    # Log lines from the mod's way in say so: the stack counts them, and
+    # alarms when there are too many.
+    via = {"via": "mod"} if event.get("rawPath", "").rstrip("/") == "/mod" else {}
     try:
-        result = authorize(params, http.get("sourceIp", ""), store, allowed, store.presign_post)
+        if via:
+            result = authorize_mod(_mod_body(event), store, mod_allowlist(), store.presign_post)
+        else:
+            params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", ""), keep_blank_values=True))
+            allowed = [p for p in os.environ.get("ALLOWED_RETURN_TO", "").split(",") if p]
+            result = authorize(params, http.get("sourceIp", ""), store, allowed, store.presign_post)
     except IngestError as e:
-        print(json.dumps({"status": e.status, "code": e.code}))
+        print(json.dumps({**via, "status": e.status, "code": e.code}))
         return _response(e.status, {"error": e.code, "message": e.message})
-    print(json.dumps({"status": 200, "uploadId": result["uploadId"]}))
+    print(json.dumps({**via, "status": 200, "uploadId": result["uploadId"]}))
     return _response(200, result)
 
 

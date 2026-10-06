@@ -416,6 +416,182 @@ class AuthorizeTests(Uploads, unittest.TestCase):
         self.assertEqual(post.calls, [])
 
 
+TICKET = "14000000" + "ab" * 100
+
+
+def steam_ticket_says(steam_id=STEAM_ID, result="OK"):
+    """Stands in for _http_get on AuthenticateUserTicket."""
+    calls = []
+
+    def get(url):
+        calls.append(url)
+        if result != "OK":
+            return json.dumps({"response": {"error": {"errorcode": 101, "errordesc": "Invalid ticket"}}})
+        return json.dumps({"response": {"params": {"result": "OK", "steamid": steam_id, "ownersteamid": steam_id}}})
+    get.calls = calls
+    return get
+
+
+class VerifyTicketTests(unittest.TestCase):
+    def setUp(self):
+        self.saved, handler._api_key = handler._api_key, "KEY"
+
+    def tearDown(self):
+        handler._api_key = self.saved
+
+    def assertRefused(self, code, ticket=TICKET, get=None):
+        with self.assertRaises(handler.IngestError) as cm:
+            handler.verify_ticket(ticket, get=get or steam_ticket_says())
+        self.assertEqual(cm.exception.code, code)
+        return cm.exception
+
+    def test_valid(self):
+        get = steam_ticket_says()
+        self.assertEqual(handler.verify_ticket(TICKET, get=get), STEAM_ID)
+        asked = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(get.calls[0]).query))
+        self.assertEqual(asked, {"key": "KEY", "appid": handler.STS2_APP_ID, "ticket": TICKET,
+                                 "identity": handler.TICKET_IDENTITY})
+
+    def test_steam_says_invalid(self):
+        self.assertRefused("bad_ticket", get=steam_ticket_says(result="Invalid ticket"))
+
+    def test_junk_skips_steam(self):
+        get = steam_ticket_says()
+        for junk in (None, "", "abcd", "zz" * 40, "ab" * 3000, 5, TICKET + "&key=x"):
+            self.assertRefused("bad_ticket", ticket=junk, get=get)
+        self.assertEqual(get.calls, [])
+
+    def test_unexpected_answers(self):
+        for answer in ("not json", "[]", '{"response": {"params": {"result": "OK", "steamid": "7"}}}',
+                       '{"response": {"params": {"result": "OK", "steamid": 76561198000000001}}}',
+                       '{"response": {"params": ["OK"]}}'):
+            with self.subTest(answer=answer):
+                code = "steam_unreachable" if answer == "not json" else "bad_ticket"
+                self.assertRefused(code, get=lambda url, answer=answer: answer)
+
+    def test_steam_down_and_key_refused(self):
+        def down(url):
+            raise OSError("timed out")
+
+        def refused(url):
+            raise handler.urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+        self.assertEqual(self.assertRefused("steam_unreachable", get=down).status, 502)
+        e = self.assertRefused("steam_key_rejected", get=refused)
+        # The URL has the key in it; nothing about it may reach the caller.
+        self.assertNotIn("KEY", e.message)
+
+    def test_no_key(self):
+        handler._api_key = ""
+        get = steam_ticket_says()
+        self.assertRefused("no_steam_key", get=get)
+        self.assertEqual(get.calls, [])
+
+
+class AuthorizeModTests(Uploads, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.saved, handler._api_key = handler._api_key, "KEY"
+
+    def tearDown(self):
+        handler._api_key = self.saved
+
+    def authorize_mod(self, now=NOW, steam_id=STEAM_ID, ticket_for=None, allowlist=(STEAM_ID,), get=None, **body):
+        get = get or steam_ticket_says(steam_id if ticket_for is None else ticket_for)
+        return handler.authorize_mod({"steamId": steam_id, "ticket": TICKET, **body}, self.store, set(allowlist),
+                                     fake_presign, now=now, verify=lambda t: handler.verify_ticket(t, get=get))
+
+    def assertRefused(self, code, **kw):
+        with self.assertRaises(handler.IngestError) as cm:
+            self.authorize_mod(**kw)
+        self.assertEqual(cm.exception.code, code)
+        return cm.exception
+
+    def test_hands_out_one_raw_key(self):
+        auth = self.authorize_mod()
+        self.assertEqual(auth["fields"]["key"], handler.raw_key(STEAM_ID, auth["uploadId"], NOW))
+        self.assertEqual((auth["maxBytes"], auth["slug"]), (handler.MOD_UPLOAD_MAX_BYTES, None))
+
+    def test_upload_lands_on_the_same_profile_as_the_site(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        auth = self.authorize_mod()
+        self.assertEqual(auth["slug"], "mrbean")
+        self.store.put(auth["fields"]["key"], body_of(minimal_run(1700000002, slay_my_stats_mod={"mods": ["X"]})),
+                       {}, None)
+        self.assertEqual(self.process(auth["fields"]["key"])["added"], 1)
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1700000001, 1700000002])
+
+    def test_the_mods_a_run_was_played_with_are_kept(self):
+        reported = {"version": "v0.0.1", "mods": [
+            {"id": "SlayMyStats", "name": "Slay My Stats", "version": "v0.0.1", "affects_gameplay": False},
+            {"id": "CheatMod", "name": "Cheats!", "version": "2.0", "affects_gameplay": True},
+        ]}
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002, slay_my_stats_mod=reported)))
+        plain, modded = self.store.runs()
+        self.assertNotIn("mods", plain)
+        self.assertEqual(modded["mods"], [{"id": "SlayMyStats", "version": "v0.0.1"},
+                                          {"id": "CheatMod", "version": "2.0", "gameplay": True}])
+
+    def test_what_a_mod_says_about_itself_is_cleaned_not_trusted(self):
+        reported = {"mods": [
+            {"id": "<img src=x onerror=alert(1)>", "version": "1.0 beta", "affects_gameplay": "yes"},
+            {"id": "x" * 500}, {"id": ""}, {"id": 7}, {"version": "1"}, "NotAMod", None,
+        ] + [{"id": f"Mod{i}"} for i in range(500)]}
+        self.assertEqual(self.ingest(body_of(minimal_run(1700000001, slay_my_stats_mod=reported)))["added"], 1)
+        mods = self.store.runs()[0]["mods"]
+        self.assertEqual(mods[:2], [{"id": "_img_src_x_onerror_alert_1__", "version": "1.0_beta"}, {"id": "x" * 80}])
+        # Only the first MAX_MODS_PER_RUN reported are looked at; five of those have no usable id.
+        self.assertEqual(len(mods), run.MAX_MODS_PER_RUN - 5)
+
+    def test_a_mod_report_that_is_not_a_list_is_ignored(self):
+        for junk in ("yes", 3, ["A"], {"mods": "A"}, {"mods": {"id": "A"}}, {"modded": True}):
+            self.assertNotIn("mods", run.parse_run_data(minimal_run(1700000001, slay_my_stats_mod=junk)))
+
+    def test_not_on_the_allowlist_never_reaches_steam(self):
+        get = steam_ticket_says()
+        self.assertEqual(self.assertRefused("not_allowlisted", allowlist=(), get=get).status, 403)
+        self.assertRefused("not_allowlisted", allowlist=("76561198000000002",), get=get)
+        self.assertEqual(get.calls, [])
+        self.assertEqual(self.store.objects, {})
+
+    def test_someone_elses_ticket(self):
+        # An allowlisted id claimed with a real ticket for another account.
+        self.assertRefused("bad_ticket", ticket_for="76561198000000002")
+        self.assertRefused("bad_ticket", ticket="00")
+        self.assertRefused("bad_ticket", get=steam_ticket_says(result="Invalid ticket"))
+        self.assertEqual(self.store.objects, {})
+
+    def test_bad_requests(self):
+        for body in (None, [], {}, {"steamId": 76561198000000001}, {"steamId": "76561198000000001x"}):
+            with self.subTest(body=body), self.assertRaises(handler.IngestError) as cm:
+                handler.authorize_mod(body, self.store, {STEAM_ID}, fake_presign, now=NOW)
+            self.assertEqual(cm.exception.code, "bad_request")
+
+    def test_cooldown_is_short(self):
+        self.authorize_mod()
+        self.assertRefused("cooldown", now=NOW + handler.MOD_COOLDOWN_SECONDS - 1)
+        self.authorize_mod(now=NOW + handler.MOD_COOLDOWN_SECONDS)
+
+    def test_daily_cap(self):
+        step = handler.MOD_COOLDOWN_SECONDS
+        for i in range(handler.MOD_UPLOADS_PER_DAY):
+            self.authorize_mod(now=NOW + i * step)
+        last = NOW + handler.MOD_UPLOADS_PER_DAY * step
+        self.assertEqual(self.assertRefused("rate_limited", now=last).status, 429)
+        # Another player is unaffected, and the window slides.
+        other = "76561198000000002"
+        self.authorize_mod(now=last, steam_id=other, allowlist=(STEAM_ID, other))
+        self.authorize_mod(now=NOW + handler.MOD_WINDOW_SECONDS + 1)
+
+    def test_separate_from_the_sites_limits(self):
+        # Right after a site upload, and more of them than one address gets
+        # there: neither the site's cooldown nor its per-IP count applies.
+        self.authorize()
+        for i in range(handler.IP_UPLOADS_PER_HOUR + 2):
+            self.authorize_mod(now=NOW + i * handler.MOD_COOLDOWN_SECONDS)
+        self.assertEqual(len(self.store.json(handler.ip_limit_key("203.0.113.7"))["times"]), 1)
+        self.authorize(now=NOW + 61, nonce_suffix="2")
+
+
 class ProcessTests(Uploads, unittest.TestCase):
     def result(self, key=None):
         m = handler.RAW_KEY_RE.match(key or self.last_key)
@@ -879,6 +1055,64 @@ class LambdaHandlerTests(unittest.TestCase):
             self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
         finally:
             del os.environ["ALLOWED_IPS"]
+
+    def test_mod_event_plumbing(self):
+        saved = (handler.verify_ticket, handler._mod_allowlist, os.environ.get("MOD_ALLOWLIST"))
+        handler.verify_ticket = lambda ticket, get=None: STEAM_ID if ticket == TICKET else "76561198000000002"
+        handler._mod_allowlist = (None, frozenset())
+        os.environ["MOD_ALLOWLIST"] = f"{STEAM_ID}, not-an-id"
+        lines = []
+        orig_print, handler.print = getattr(handler, "print", None), lambda line: lines.append(json.loads(line))
+
+        def post(body, path="/mod", **extra):
+            event = {"requestContext": {"http": {"method": "POST", "sourceIp": "203.0.113.7"}},
+                     "rawPath": path, "rawQueryString": "", "body": body, **extra}
+            resp = handler.lambda_handler(event, None)
+            return resp["statusCode"], json.loads(resp["body"])
+        try:
+            good = json.dumps({"steamId": STEAM_ID, "ticket": TICKET})
+            status, auth = post(good)
+            self.assertEqual(status, 200, auth)
+            self.assertRegex(auth["fields"]["key"], rf"^raw/{STEAM_ID}/")
+            self.assertEqual(auth["maxBytes"], handler.MOD_UPLOAD_MAX_BYTES)
+            self.assertEqual(lines[-1], {"via": "mod", "status": 200, "uploadId": auth["uploadId"]})
+
+            self.assertEqual(post(good, path="/mod/")[1]["error"], "cooldown")
+            self.assertEqual(lines[-1], {"via": "mod", "status": 429, "code": "cooldown"})
+            self.assertEqual(post(json.dumps({"steamId": "76561198000000002", "ticket": TICKET}))[0], 403)
+            self.assertEqual(lines[-1], {"via": "mod", "status": 403, "code": "not_allowlisted"})
+            self.assertEqual(post(json.dumps({"steamId": STEAM_ID, "ticket": TICKET + "00"}))[1]["error"], "bad_ticket")
+            for junk in (None, "", "{", "[1]", '"x"', "x" * (handler.MOD_BODY_MAX_BYTES + 1)):
+                self.assertEqual(post(junk)[1]["error"], "bad_request")
+            self.assertEqual(post("!!!", isBase64Encoded=True)[1]["error"], "bad_request")
+
+            # Anything else is still the site's way in, and isn't counted as the mod's.
+            self.assertEqual(post(good, path="/")[1]["error"], "bad_openid")
+            self.assertEqual(lines[-1], {"status": 401, "code": "bad_openid"})
+        finally:
+            handler.verify_ticket, handler._mod_allowlist, allowlist = saved
+            if orig_print is None:
+                del handler.print
+            if allowlist is None:
+                os.environ.pop("MOD_ALLOWLIST", None)
+            else:
+                os.environ["MOD_ALLOWLIST"] = allowlist
+
+    def test_mod_allowlist_is_reread(self):
+        saved = (handler._mod_allowlist, os.environ.get("MOD_ALLOWLIST"))
+        handler._mod_allowlist = (None, frozenset())
+        try:
+            os.environ["MOD_ALLOWLIST"] = STEAM_ID
+            self.assertEqual(handler.mod_allowlist(now=NOW), {STEAM_ID})
+            os.environ["MOD_ALLOWLIST"] = "76561198000000002"
+            self.assertEqual(handler.mod_allowlist(now=NOW + handler.MOD_ALLOWLIST_SECONDS - 1), {STEAM_ID})
+            self.assertEqual(handler.mod_allowlist(now=NOW + handler.MOD_ALLOWLIST_SECONDS), {"76561198000000002"})
+        finally:
+            handler._mod_allowlist, allowlist = saved
+            if allowlist is None:
+                os.environ.pop("MOD_ALLOWLIST", None)
+            else:
+                os.environ["MOD_ALLOWLIST"] = allowlist
 
     def test_failure_handler_tells_the_page(self):
         key = handler.raw_key("76561197960287930", "abcDEF123456abcd", 1700000000)

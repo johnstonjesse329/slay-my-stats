@@ -24,6 +24,9 @@ the site bucket:
     POST /api/ingest     -> the ingest Lambda's authorize(), storing into
                             local_data/ (stands in for the Function URL); the
                             upload URL it hands out is this server's own:
+    POST /api/ingest/mod -> the same for the game mod: authorize_mod(), for
+                            the SteamID64s in $MOD_ALLOWLIST (stands in for
+                            the Function URL's /mod)
     POST /api/raw-upload -> stands in for the presigned S3 POST: stores the
                             file under local_data/raw/ and processes it on
                             the spot (stands in for the S3 event)
@@ -61,9 +64,9 @@ _DIST = _REPO_ROOT / "dist"
 _USERS_DIR = _REPO_ROOT / "local_data" / "users"
 _DATA_DIR = _USERS_DIR.parent
 
-# Raw keys handed out by /api/ingest and not yet used: what the presigned
-# POST's signature pins down on real S3.
-_issued_keys: set[str] = set()
+# Raw keys handed out by /api/ingest and not yet used, with the size each may
+# be: what the presigned POST's signature pins down on real S3.
+_issued_keys: dict[str, int] = {}
 _issued_lock = threading.Lock()
 
 # Committed game-art folders, served straight from the repo root — these
@@ -101,6 +104,13 @@ def _safe_join(root: Path, parts: list[str]) -> Path | None:
     if resolved_candidate != resolved_root and resolved_root not in resolved_candidate.parents:
         return None
     return resolved_candidate
+
+
+def _presign(key, max_bytes, expires):
+    """Stands in for the store's presign_post: an upload URL on this server."""
+    with _issued_lock:
+        _issued_keys[key] = max_bytes
+    return {"url": "/api/raw-upload", "fields": {"key": key, "Content-Type": "application/gzip"}}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -155,6 +165,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/ingest":
             self._authorize()
+        elif path == "/api/ingest/mod":
+            self._authorize_mod()
         elif path == "/api/raw-upload":
             self._raw_upload()
         else:
@@ -168,13 +180,24 @@ class Handler(BaseHTTPRequestHandler):
         port = self.server.server_address[1]
         allowed = [f"http://127.0.0.1:{port}/", f"http://localhost:{port}/"]
 
-        def presign(key, max_bytes, expires):
-            with _issued_lock:
-                _issued_keys.add(key)
-            return {"url": "/api/raw-upload", "fields": {"key": key, "Content-Type": "application/gzip"}}
         try:
             result = ingest_handler.authorize(params, self.client_address[0], ingest_handler.DirStore(_DATA_DIR),
-                                              allowed, presign)
+                                              allowed, _presign)
+        except ingest_handler.IngestError as e:
+            self._send_json(e.status, {"error": e.code, "message": e.message})
+            return
+        self._send_json(200, result)
+
+    def _authorize_mod(self):
+        # The same for the mod's door: the real authorize_mod(), with the
+        # allowlist from $MOD_ALLOWLIST (comma-separated SteamID64s; nobody
+        # if unset). The Steam ticket check is real too, so it needs
+        # $STEAM_API_KEY and a ticket from a running Steam client.
+        length = int(self.headers.get("Content-Length") or 0)
+        body = ingest_handler._mod_body({"body": self.rfile.read(length).decode("utf-8", "replace")})
+        try:
+            result = ingest_handler.authorize_mod(body, ingest_handler.DirStore(_DATA_DIR),
+                                                  ingest_handler.mod_allowlist(), _presign)
         except ingest_handler.IngestError as e:
             self._send_json(e.status, {"error": e.code, "message": e.message})
             return
@@ -195,12 +218,11 @@ class Handler(BaseHTTPRequestHandler):
         key = (fields.get("key") or b"").decode()
         data = fields.get("file")
         with _issued_lock:
-            issued = key in _issued_keys
-            _issued_keys.discard(key)
-        if not issued or data is None:
+            max_bytes = _issued_keys.pop(key, None)
+        if max_bytes is None or data is None:
             self.send_error(403, "AccessDenied")
             return
-        if len(data) > ingest_handler.UPLOAD_MAX_BYTES:
+        if len(data) > max_bytes:
             self.send_error(400, "EntityTooLarge")
             return
         store = ingest_handler.DirStore(_DATA_DIR)

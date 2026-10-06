@@ -73,6 +73,18 @@ function getDetailRuns() {
   return filterRuns().sort((a, b) => b.ts - a.ts);
 }
 
+// "Modded" tag for a run the game mod reported loaded mods for (run.mods, from
+// run.py's _loaded_mods), with the list on hover. A run uploaded from files
+// says nothing about mods, so a run without the tag isn't known to be
+// unmodded. The ids and versions are cut down to plain characters by the
+// parser, which is what makes them safe to drop into data-tip here.
+function moddedTagHtml(run, focusable = false) {
+  const mods = run.mods || [];
+  if (mods.length === 0) return "";
+  const lines = mods.map(m => `${m.id}${m.version ? ` ${m.version}` : ""}${m.gameplay ? " (changes gameplay)" : ""}`);
+  return `<span class="run-modded-tag" data-tip="${["Mods loaded:", ...lines].join("\n")}"${focusable ? ` tabindex="0"` : ""}>Modded</span>`;
+}
+
 // ---- Run list ----
 
 function renderDetailRunList() {
@@ -104,6 +116,7 @@ function renderDetailRunList() {
       <span class="detail-run-asc" style="color:#bcbcd0">A${run.asc}</span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:#bcbcd0">F${run.floor}</span>
+      ${moddedTagHtml(run)}
       <span class="detail-run-date" style="color:#8a8aa0">${fmtDate(run.ts)}</span>
     </div>`;
   }).join("");
@@ -268,6 +281,7 @@ function renderDetailRun(run) {
       <span style="color:#bcbcd0">${fmtHrsMin(run.mins)}</span>
       <span style="color:#8a8aa0;font-size:0.85rem">${fmtDate(run.ts)}</span>
       ${run.seed ? `<span style="color:#8a8aa0;font-size:0.82rem;font-family:monospace">Seed: ${run.seed}</span>` : ""}
+      ${moddedTagHtml(run, true)}
     </div>
     <div class="detail-run-headline-stats">
       ${headlineHtml}

@@ -34,6 +34,7 @@ No external Python libraries are needed — only the standard library.
 
 import json        # for reading .run files (they are JSON) and for embedding data in HTML
 import platform    # for detecting Windows / Mac / Linux so we know where to look for saves
+import re          # for cleaning up the text a mod reports about itself
 import sys         # for reading command-line arguments and exiting with an error code
 import webbrowser  # for opening the finished HTML file in the default browser
 from pathlib import Path             # a modern, cross-platform way to work with file paths
@@ -655,6 +656,46 @@ def _card_enchantment(card: dict) -> dict:
     return out
 
 
+# What a mod says about itself is shown on the site, so only plain characters
+# are kept: the same ones the ingest Lambda allows anywhere in a parsed run.
+_MOD_TEXT_UNSAFE = re.compile(r"[^A-Za-z0-9_.\-]")
+MAX_MODS_PER_RUN = 100
+
+
+def _mod_text(value) -> str:
+    return _MOD_TEXT_UNSAFE.sub("_", value)[:80] if isinstance(value, str) else ""
+
+
+def _loaded_mods(data: dict) -> list[dict]:
+    """
+    The mods that were loaded when the run ended, as [{"id", "version", "gameplay"}].
+
+    The game's own .run file says nothing about mods: a run played modded has
+    exactly the keys of one that wasn't. The slay-my-stats mod adds the list
+    itself, under "slay_my_stats_mod", from the game's loaded-mod list, with
+    each mod's manifest id, version and its own "affects_gameplay" claim. So
+    only runs that mod sent have any, and a run without the key is not known
+    to be unmodded.
+    """
+    reported = data.get("slay_my_stats_mod")
+    mods = reported.get("mods") if isinstance(reported, dict) else None
+    if not isinstance(mods, list):
+        return []
+    out = []
+    for mod in mods[:MAX_MODS_PER_RUN]:
+        mod_id = _mod_text(mod.get("id")) if isinstance(mod, dict) else ""
+        if not mod_id:
+            continue
+        entry = {"id": mod_id}
+        version = _mod_text(mod.get("version"))
+        if version:
+            entry["version"] = version
+        if mod.get("affects_gameplay") is True:
+            entry["gameplay"] = True
+        out.append(entry)
+    return out
+
+
 def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | None = None) -> dict:
     """
     parse_run() minus the file: takes an already-loaded .run JSON object, the
@@ -782,6 +823,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     # already carries, so this doesn't walk map_point_history a second time.
     timeline = extract_timeline(data, local_idx)
     gold_gained_total = sum(t["goldGained"] for t in timeline)
+    mods = _loaded_mods(data)
 
     return {
         "char":          char,
@@ -806,6 +848,8 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         "finalRelics":   final_relics,
         "fights":        extract_fights(data, char, asc, run_won, local_idx),
         "timeline":      timeline,
+        # Only on runs the mod reported mods for, so every other run parses as before.
+        **({"mods": mods} if mods else {}),
     }
 
 
