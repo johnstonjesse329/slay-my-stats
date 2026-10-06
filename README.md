@@ -84,7 +84,7 @@ slay-my-stats/
 │   ├── import_game_data.py  folds that export into the site's data files
 │   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
 │   └── requirements.txt     pipeline requirements
-├── githooks/pre-push        runs tools/deploy.py when main is pushed
+├── githooks/pre-push        runs tools/deploy.py when main or gamma is pushed
 ├── docs/                    architecture diagram source (draw.io)
 └── images/                  README screenshots and the architecture diagram
 ```
@@ -417,12 +417,13 @@ must match `run.py`'s output exactly.
 
 ### Deploying
 
-`git config core.hooksPath githooks` (once per clone) makes every push of `main` run `tools/deploy.py`:
+`git config core.hooksPath githooks` (once per clone) makes every push of `main` run `tools/deploy.py`, and
+every push of `gamma` run it for [gamma](#gamma):
 
 ```mermaid
 flowchart TB
-    push["git push (main)"] --> hook["githooks/pre-push"]
-    hook --> check{"HEAD is the pushed commit,<br/>tree clean, fast-forward?"}
+    push["git push (main or gamma)"] --> hook["githooks/pre-push"]
+    hook --> check{"HEAD is the pushed commit,<br/>tree clean, fast-forward (main)?"}
     check -- no --> abort["push aborted"]
     check -- yes --> diff["cdk diff"]
     diff -- "changes" --> ask{"Deploy these<br/>infra changes? y/N"}
@@ -450,7 +451,9 @@ Set up once, outside CDK:
 
 `tools/deploy.py --stage gamma` deploys the same checkout to gamma.slay-my-stats.com: a second copy of the
 stack, with its own buckets and upload function, for checking a change against real CloudFront before
-production gets it. It only runs by hand; pushing `main` always deploys production. It needs its own
+production gets it. Pushing the `gamma` branch runs the same thing (`git push origin gamma`, or
+`git push --force origin HEAD:gamma` from whichever branch you want there); pushing `main` always deploys
+production. It needs its own
 certificate (for `gamma.slay-my-stats.com`, in us-east-1) and the hosted zone that subdomain is delegated to,
 as `"gammaCertificateArn"` and `"gammaHostedZoneId"` in `infra/cdk.context.json`. Without those two the gamma
 stack isn't built at all.
