@@ -457,7 +457,8 @@ as `"gammaCertificateArn"` and `"gammaHostedZoneId"` in `infra/cdk.context.json`
 stack isn't built at all.
 
 Gamma isn't public. It answers only the addresses listed as `"gammaAllowedIps"` in `infra/cdk.context.json`
-(e.g. `["203.0.113.7"]`) and returns 403 to everyone else, pages and uploads both. If your address changes,
+(e.g. `["203.0.113.7"]`) and returns 403 to everyone else, pages and uploads both (for the site, a short
+"403 Forbidden" page). If your address changes,
 update the list and deploy gamma again.
 
 ## Refreshing game data

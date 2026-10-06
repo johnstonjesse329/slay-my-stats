@@ -102,8 +102,16 @@ function handler(event) {
 # distribution is checked against the addresses in "gammaAllowedIps" before
 # the cache is consulted. An entry ending in "." or ":" matches as a prefix
 # (an IPv6 /64, say); anything else must match exactly.
+#
+# The refusal carries a page of its own. A 403 with no body and no
+# Content-Type isn't shown as an error by a phone's browser: it shows nothing,
+# or offers to save an empty file.
 IP_ALLOWLIST_CODE = """
 var ALLOWED_IPS = %s;
+
+var FORBIDDEN_PAGE = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1"><title>403 Forbidden</title></head>'
+    + '<body><h1>403 Forbidden</h1><p>This test site only answers the addresses on its allowlist.</p></body></html>';
 
 function allowed(ip) {
     for (var i = 0; i < ALLOWED_IPS.length; i++) {
@@ -116,7 +124,16 @@ function allowed(ip) {
 
 function handler(event) {
     if (!allowed(event.viewer.ip)) {
-        return { statusCode: 403, statusDescription: "Forbidden" };
+        return {
+            statusCode: 403,
+            statusDescription: "Forbidden",
+            // no-store: once the address is allowed, the browser must ask again.
+            headers: {
+                "content-type": { value: "text/html; charset=utf-8" },
+                "cache-control": { value: "no-store" },
+            },
+            body: { encoding: "text", data: FORBIDDEN_PAGE },
+        };
     }
     var request = event.request;
 %s    return request;
