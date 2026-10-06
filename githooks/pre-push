@@ -1,6 +1,7 @@
 #!/bin/sh
-# Deploys infra + site to AWS when main is pushed (see tools/deploy.py), after
-# refusing to publish anything private (see tools/check_secrets.py).
+# Deploys infra + site to AWS when main is pushed, or to the gamma site when
+# gamma is (see tools/deploy.py), after refusing to publish anything private
+# (see tools/check_secrets.py).
 # Enable once per clone:  git config core.hooksPath githooks
 # Skip the deploy for one push:  SKIP_DEPLOY=1 git push   (or git push --no-verify)
 # SKIP_DEPLOY still runs the secrets check: the point is not to publish a leak.

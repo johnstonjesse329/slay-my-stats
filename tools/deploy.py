@@ -1,8 +1,8 @@
 """
 deploy.py — Push the committed site + infra to AWS.
 
-Runs automatically from githooks/pre-push whenever main is pushed (enable
-once per clone with `git config core.hooksPath githooks`), or by hand:
+Runs automatically from githooks/pre-push whenever main or gamma is pushed
+(enable once per clone with `git config core.hooksPath githooks`), or by hand:
 
     infra\\.venv\\Scripts\\python.exe tools/deploy.py
 
@@ -25,7 +25,7 @@ bucket by hand, once, with `tools/deploy.py --reheader`.
 
 `--stage gamma` deploys the same checkout to gamma.slay-my-stats.com instead: a
 separate copy of the stack for trying a change against real CloudFront first.
-Only by hand; pushing main always deploys production.
+Pushing the gamma branch does the same; pushing main always deploys production.
 
     infra\\.venv\\Scripts\\python.exe tools/deploy.py --stage gamma
 
@@ -54,6 +54,8 @@ STAGES = {
     "prod": (SITE_BUCKET, DOMAIN_NAME, STACK_NAME),
     "gamma": ("slay-my-stats-gamma-site", "gamma.slay-my-stats.com", "SlayMyStatsGammaStack"),
 }
+# Pushing one of these branches deploys its stage (see check_pre_push).
+DEPLOY_BRANCHES = {"main": "prod", "gamma": "gamma"}
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
 ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images",
             "enchantment_images", "ui_icons", "thumbs"]
@@ -98,13 +100,18 @@ class DeployError(Exception):
     pass
 
 
+def set_stage(stage: str) -> None:
+    """Point the deploy at a stage's bucket, domain and stack."""
+    global SITE_BUCKET, DOMAIN_NAME, STACK_NAME
+    SITE_BUCKET, DOMAIN_NAME, STACK_NAME = STAGES[stage]
+
+
 def use_stage(argv) -> str:
     """Point the deploy at the stage named by `--stage <name>` (default prod)."""
-    global SITE_BUCKET, DOMAIN_NAME, STACK_NAME
     stage = argv[argv.index("--stage") + 1] if "--stage" in argv[:-1] else "prod"
     if "--stage" in argv[-1:] or stage not in STAGES:
         raise DeployError(f"--stage takes one of: {', '.join(STAGES)}")
-    SITE_BUCKET, DOMAIN_NAME, STACK_NAME = STAGES[stage]
+    set_stage(stage)
     return stage
 
 
@@ -165,32 +172,40 @@ def ask(question: str) -> bool:
         return False
 
 
-def check_pre_push(ref_lines) -> bool:
+def check_pre_push(ref_lines) -> str | None:
     """
-    Decide from git's pre-push stdin whether this push deploys. Returns False
-    when main isn't being pushed; raises (aborting the push) when main is being
-    pushed but the checkout doesn't match what's going up, since the build
-    reads the working tree, not the pushed commit.
+    Decide from git's pre-push stdin which stage this push deploys: the one
+    DEPLOY_BRANCHES names for the branch being pushed, or None when it is
+    neither of them. Raises (aborting the push) when the checkout doesn't match
+    what's going up, since the build reads the working tree, not the pushed
+    commit.
     """
-    pushed = None
+    pushed = {}
     for line in ref_lines:
         parts = line.split()
-        if len(parts) == 4 and parts[2] == "refs/heads/main" and parts[1] != ZERO_SHA:
-            pushed = parts
-    if pushed is None:
-        return False
+        if len(parts) == 4 and parts[1] != ZERO_SHA and parts[2].startswith("refs/heads/"):
+            branch = parts[2].removeprefix("refs/heads/")
+            if branch in DEPLOY_BRANCHES:
+                pushed[branch] = parts
+    if not pushed:
+        return None
+    if len(pushed) > 1:
+        raise DeployError(f"pushing {' and '.join(pushed)} in one go -- push them one at a time, "
+                          "each from its own checkout, so each build matches")
 
-    _, local_sha, _, remote_sha = pushed
+    (branch, (_, local_sha, _, remote_sha)), = pushed.items()
     if local_sha != git("rev-parse", "HEAD"):
-        raise DeployError("pushing main from a commit other than HEAD -- check it out first so the build matches")
+        raise DeployError(f"pushing {branch} from a commit other than HEAD -- check it out first so the build matches")
     if git("status", "--porcelain", "--untracked-files=no"):
         raise DeployError("uncommitted changes -- commit or set them aside so the build matches the push")
-    if remote_sha != ZERO_SHA:
+    # gamma gets pointed at whatever is being tried next, so a forced push is
+    # normal there, and the hook can't tell one from a push git will reject.
+    if branch == "main" and remote_sha != ZERO_SHA:
         ff = subprocess.run(["git", "merge-base", "--is-ancestor", remote_sha, local_sha],
                             cwd=_HERE, stdin=subprocess.DEVNULL, capture_output=True)
         if ff.returncode != 0:
             raise DeployError("not a fast-forward of origin/main (fetch first) -- the push would be rejected after deploying")
-    return True
+    return DEPLOY_BRANCHES[branch]
 
 
 def deploy_infra() -> None:
@@ -347,15 +362,19 @@ def main() -> int:
     sys.stdout.reconfigure(errors="replace")
     pre_push = "--pre-push" in sys.argv
     try:
-        stage = "prod" if pre_push else use_stage(sys.argv)
+        if pre_push:
+            stage = check_pre_push(sys.stdin.read().splitlines())
+            if stage is None:
+                return 0
+            set_stage(stage)
+        else:
+            stage = use_stage(sys.argv)
         if stage != "prod":
             print(f"Deploying to {stage}: {DOMAIN_NAME}")
         if "--reheader" in sys.argv:
             reheader()
             print("Re-headed and invalidated. Browsers that already hold a copy "
                   "keep it until they next ask.")
-            return 0
-        if pre_push and not check_pre_push(sys.stdin.read().splitlines()):
             return 0
         if not pre_push and git("status", "--porcelain", "--untracked-files=no"):
             print("Note: deploying a working tree with uncommitted changes.")
