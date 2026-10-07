@@ -207,13 +207,14 @@
 .site-row-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .site-row-num { color: var(--text-dim); font-size: 0.82rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .site-chars { margin-bottom: 1rem; }
-/* Name, then a solo and a multiplayer bar with their numbers. */
-.site-chars li, .site-chars-head { display: grid; grid-template-columns: 8rem minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; }
-.site-chars-head { color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 0.2rem; }
-.site-bar-cell { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
-.site-bar { flex: 1 1 auto; height: 0.5rem; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
-.site-bar-fill { display: block; height: 100%; border-radius: 4px; }
-.site-bar-cell .site-row-num { flex: 0 0 7.5rem; text-align: right; }
+/* The lanes are dashboard.css's .fl-* (the player pages' fight lanes). On the home page
+   a list is a third of the width, so its name column is narrower and the lane keeps the
+   room the value needs. A character row is a name and a solo and a multiplayer lane. */
+.site-lanes { grid-template-columns: 26px 7.5rem minmax(0, 1fr); }
+.site-lanes.no-icons { grid-template-columns: 7.5rem minmax(0, 1fr); }
+.site-lanes .fl-lane { margin-right: 6.5rem; }
+.site-chars-rows { grid-template-columns: 8rem minmax(0, 1fr) minmax(0, 1fr); column-gap: 2.5rem; }
+.site-chars-rows .fl-section { margin: 0.25rem 0 0; }
 .site-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 
 /* Recent uploads (boot.js showRecentUploads): the front door's list of who
@@ -240,8 +241,18 @@
   .site-lists { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
+  /* A list's row is its name, then the bar underneath at the full width of the panel,
+     with the number after it. The spacer cells and every second axis label go: on a phone
+     there is no room for the labels to sit side by side. */
+  .site-lanes, .site-lanes.no-icons { grid-template-columns: 26px minmax(0, 1fr); row-gap: 0.15rem; }
+  .site-lanes.no-icons { grid-template-columns: minmax(0, 1fr); }
+  .site-lanes > span { display: none; }
+  .site-lanes .fl-lane { grid-column: 1 / -1; margin-right: 4.8rem; margin-bottom: 0.45rem; }
+  .site-lanes .fl-axis { margin-bottom: 0; }
+  .site-lanes .fl-axis span:nth-child(2), .site-lanes .fl-axis span:nth-child(4) { display: none; }
+  /* The character rows: a name over a solo bar beside a multiplayer bar. */
+  .site-chars-rows { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 1rem; }
+  .site-chars-rows .fl-name { grid-column: 1 / -1; margin-top: 0.3rem; }
+  .site-chars-rows .fl-lane { grid-column: auto; margin-right: 4.6rem; margin-bottom: 0.1rem; }
   .site-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .site-chars li, .site-chars-head { grid-template-columns: 5.5rem minmax(0, 1fr) minmax(0, 1fr); gap: 0.6rem; }
-  .site-bar-cell { flex-direction: column; align-items: stretch; gap: 0.2rem; }
-  .site-bar-cell .site-row-num { flex: none; text-align: left; }
 }
