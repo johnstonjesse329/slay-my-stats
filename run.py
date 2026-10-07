@@ -1149,9 +1149,9 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 {top}
 <nav class="page-tabs" aria-label="Pages">
   <button class="page-tab active" id="tab-overview" onclick="showPage('overview')">Overview</button>
-  <button class="page-tab" id="tab-detail" onclick="showPage('detail')">Run Detail</button>
-  <button class="page-tab" id="tab-cards" onclick="showPage('cards')">Card Stats</button>
-  <button class="page-tab" id="tab-seeds" onclick="showPage('seeds')">Seed Data</button>
+  <button class="page-tab" id="tab-detail" onclick="showPage('detail')">Runs</button>
+  <button class="page-tab" id="tab-cards" onclick="showPage('cards')">Cards</button>
+  <button class="page-tab" id="tab-seeds" onclick="showPage('seeds')">Seeds</button>
 </nav>
 
 <nav class="filter-bar filter-bar-2row" id="shared-filter-bar" aria-label="Filters">
