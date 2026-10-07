@@ -17,8 +17,7 @@ function updateAll() {
 
   renderCards(grand, charStats, avgRestOnWins(filteredRuns));
   renderWinPivot(pivot);
-  updateWonLostChart(cardsEndChart,  pivot, "median_win_cards",  "median_loss_cards");
-  updateWonLostChart(relicsEndChart, pivot, "median_win_relics", "median_loss_relics");
+  renderRunEndLanes(pivot);
   renderFightTables();
   renderFinalBossWinPivot(filteredRuns);
   updateRestWinCharts(filteredRuns);

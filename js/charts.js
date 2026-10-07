@@ -56,42 +56,6 @@ function makeBarChart(id, colors, yLabel, tooltipFn) {
   });
 }
 
-// Won next to Lost per character (Cards / Relics at Run End).
-function makeWonLostChart(id, yLabel) {
-  const dataset = (label, color) => ({
-    label, data: DATA.characters.map(() => null), backgroundColor: color, borderRadius: 5, borderSkipped: false,
-  });
-  return new Chart(document.getElementById(id), {
-    type: "bar",
-    data: {
-      labels:   DATA.characters.map(fmtCharName),
-      datasets: [dataset("Won", "#5cba7d"), dataset("Lost", "#e05c5c")],
-    },
-    options: {
-      responsive:          true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: { legend: { labels: { color: "#ccc", boxWidth: 12 } } },
-      scales: {
-        x: { grid: { color: "#3f4147" }, ticks: { color: "#bcbcd0" } },
-        y: {
-          grid:        { color: "#3f4147" },
-          ticks:       { color: "#bcbcd0" },
-          title:       { display: true, text: yLabel, color: "#999" },
-          beginAtZero: true,
-        },
-      },
-    },
-  });
-}
-
-function updateWonLostChart(chart, pivotData, winKey, lossKey) {
-  const at = key => DATA.characters.map(char => pivotData[char]?.["ALL"]?.[key] ?? null);
-  chart.data.datasets[0].data = at(winKey);
-  chart.data.datasets[1].data = at(lossKey);
-  chart.update();
-}
-
 const fmtHrsMin = m => {
   if (m == null) return "—";
   const totalMin = Math.round(m);
@@ -114,8 +78,6 @@ const runsRecord = (n, wins, losses) =>
 
 const timeChart      = makeBarChart("charTimeChart",      DATA.charColors, "Median Minutes",
   s => s ? ` Median time: ${fmtHrsMin(s.median_min)} (${s.wins}W / ${s.losses}L)` : null);
-const cardsEndChart  = makeWonLostChart("cardsEndChart",  "Median Cards");
-const relicsEndChart = makeWonLostChart("relicsEndChart", "Median Relics");
 const totalTimeChart = makeBarChart("charTotalTimeChart", DATA.charColors, "Hours",
   s => s ? ` Total time: ${s.total_hrs ?? 0}h (${s.wins}W / ${s.losses}L)` : null);
 

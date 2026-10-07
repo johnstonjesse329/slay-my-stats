@@ -250,6 +250,12 @@ h1 {
 .fl-low { background: var(--panel); box-shadow: inset 0 0 0 2px #5cba7d; }
 .fl-axis { height: 14px; background: none; font-size: 0.65rem; color: var(--text-dim); }
 .fl-axis span { position: absolute; transform: translateX(-50%); }
+/* Deck and Relics at Run End: character, cards lane, relics lane. */
+.re-rows { display: grid; grid-template-columns: 7rem minmax(0, 1fr) minmax(0, 1fr); gap: 0.35rem 2.5rem; align-items: center; font-size: 0.8rem; }
+.re-rows .fl-section { margin: 0.5rem 0 0.1rem; }
+.re-rows .fl-lane { margin-right: 4.5rem; }
+.re-ring { background: var(--panel); box-shadow: inset 0 0 0 2px #bcbcd0; }
+.re-dot  { background: #bcbcd0; }
 @media (max-width: 900px) { .fl-groups { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---- Chart layout grids ---- */
