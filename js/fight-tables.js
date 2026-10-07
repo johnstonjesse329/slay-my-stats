@@ -224,8 +224,9 @@ function renderFightLanes(elId, encGroups, fightData, opts) {
 const WON_LOST_LEGEND = `<div class="fl-legend"><i class="fl-won"></i>won<i class="fl-lost"></i>lost</div>`;
 const fightCount = n => `${n} fight${n !== 1 ? "s" : ""}`;
 
-// A dot for fights won and a dot for fights lost, joined by a line, on a
-// 0..max scale. won / lost are the values, wonTip / lostTip their tooltip text.
+// A dot for fights won and a dot for fights lost, joined by a line that runs
+// from the one colour to the other, on a 0..max scale.
+// won / lost are the values, wonTip / lostTip their tooltip text.
 function wonLostLane(s, won, lost, max, unit, wonTip, lostTip) {
   const pos = v => +(v / max * 100).toFixed(1);
   const pts = [won, lost].filter(v => v != null);
@@ -235,10 +236,10 @@ function wonLostLane(s, won, lost, max, unit, wonTip, lostTip) {
     lost != null ? `Lost: ${lostTip}, ${fightCount(s.runs - s.wins)}` : null,
   ].filter(Boolean).join("\n");
   return `<div class="fl-lane" data-tip="${tip}">` +
-    `<span class="fl-line" style="left:${lo}%;width:${(hi - lo).toFixed(1)}%"></span>` +
+    `<span class="fl-line${won != null && lost != null && won > lost ? " fl-line-rev" : ""}" style="left:${lo}%;width:${(hi - lo).toFixed(1)}%"></span>` +
     (lost != null ? `<span class="fl-dot fl-lost" style="left:${pos(lost)}%"></span>` : "") +
     (won  != null ? `<span class="fl-dot fl-won" style="left:${pos(won)}%"></span>` : "") +
-    `<span class="fl-value" style="left:calc(${hi}% + 10px)">${won ?? "—"}${unit} vs ${lost ?? "—"}${unit}</span></div>`;
+    `<span class="fl-value" style="left:calc(${hi}% + 10px)">${won ?? "—"}${unit} · ${lost ?? "—"}${unit}</span></div>`;
 }
 
 // HP Entering Fight: how healthy to be before taking the fight. A ring at the
