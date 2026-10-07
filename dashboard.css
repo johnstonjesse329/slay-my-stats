@@ -259,6 +259,19 @@ h1 {
 .re-ring { background: var(--panel); box-shadow: inset 0 0 0 2px #bcbcd0; }
 .re-dot  { background: #bcbcd0; }
 @media (max-width: 900px) { .fl-groups { grid-template-columns: minmax(0, 1fr); } }
+/* Phones: the name sits over a full-width lane, so the lane has room to show
+   differences. Axis labels thin to 0 / mid / max. */
+@media (max-width: 700px) {
+  .fl-rows { grid-template-columns: 26px minmax(0, 1fr); row-gap: 0.1rem; }
+  .fl-rows > span { display: none; }
+  .fl-rows .fl-lane { grid-column: 1 / -1; margin-bottom: 0.45rem; }
+  .fl-rows .fl-axis { margin-bottom: 0; }
+  .fl-axis span:nth-child(2), .fl-axis span:nth-child(4) { display: none; }
+  .re-rows { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 1rem; }
+  .re-rows > span { display: none; }
+  .re-rows > div:not(.fl-section):not(.fl-lane) { grid-column: 1 / -1; margin-top: 0.3rem; }
+  .re-rows .fl-lane { margin-right: 5.2rem; }
+}
 
 /* ---- Chart layout grids ---- */
 .grid-2 {
