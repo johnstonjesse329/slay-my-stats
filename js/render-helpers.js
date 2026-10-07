@@ -697,40 +697,55 @@ function valCell(bucket, valueKey, color, isAll) {
 }
 
 // One Won / Lost median pair for Cards/Relics/Elites at Run End.
-function winLossPairCells(bucket, winKey, lossKey, border, isAll) {
-  const cls = "cell" + (isAll ? " all-col" : "");
-  const first = `border-left:${border} solid #3f4147;`;
-  const cell = (v, isLoss, style) => v == null
-    ? `<td class="${cls} empty" style="${style}">—</td>`
-    : `<td class="${cls}" style="${style}font-size:0.88rem;color:${isLoss ? "#e05c5c" : "#5cba7d"};${isLoss ? "" : "font-weight:600"}">${v}</td>`;
-  return cell(bucket?.[winKey], false, first) + cell(bucket?.[lossKey], true, "");
+// A gap chart: one lane per row, a dot for runs won and a dot for runs lost,
+// joined by a line. The tables this replaced held the same two numbers per
+// row; the gap between them is the thing to read.
+// sections: [{ title, rows: [{ label, won, lost }] }]. Each section scales to
+// its own largest value unless sharedScale is set.
+function renderGapChart(elId, sections, sharedScale = false) {
+  const values = rows => rows.flatMap(r => [r.won, r.lost]).filter(v => v != null);
+  const allMax = Math.max(0, ...values(sections.flatMap(sec => sec.rows)));
+  const fmt = v => v == null ? "—" : v;
+  let html = `<div class="gap-legend"><i class="gap-won"></i>won<i class="gap-lost"></i>lost</div><div class="gap-chart">`;
+  sections.forEach(sec => {
+    const max = (sharedScale ? allMax : Math.max(0, ...values(sec.rows))) || 1;
+    // Lanes stop short of the right edge to leave room for the "W vs L" text.
+    const pos = v => v / max * 78;
+    html += `<div class="gap-section">${sec.title}</div>`;
+    sec.rows.forEach(r => {
+      const pts = [r.won, r.lost].filter(v => v != null);
+      if (!pts.length) {
+        html += `<div class="gap-label">${r.label}</div><div class="gap-lane"><span class="gap-value" style="left:0">—</span></div>`;
+        return;
+      }
+      const lo = pos(Math.min(...pts)), hi = pos(Math.max(...pts));
+      html += `<div class="gap-label">${r.label}</div><div class="gap-lane">` +
+        `<span class="gap-line" style="left:${lo.toFixed(1)}%;width:${(hi - lo).toFixed(1)}%"></span>` +
+        (r.lost != null ? `<span class="gap-dot gap-lost" style="left:${pos(r.lost).toFixed(1)}%"></span>` : "") +
+        (r.won  != null ? `<span class="gap-dot gap-won" style="left:${pos(r.won).toFixed(1)}%"></span>` : "") +
+        `<span class="gap-value" style="left:calc(${hi.toFixed(1)}% + 12px)">${fmt(r.won)} vs ${fmt(r.lost)}</span></div>`;
+    });
+  });
+  document.getElementById(elId).innerHTML = html + `</div>`;
 }
 
-function renderDeckPivot(tableId, pivotData, winKey, lossKey) {
-  const chars = DATA.characters;
-  const ascs  = ascColumns();
-
-  // Same two-row Won / Lost header as Rest Site Choices, so each cell holds
-  // one number instead of a "W / L" pair the reader has to decode.
-  const thSub  = `font-size:0.72rem;color:#8a8aa0;font-weight:400;text-align:center`;
-  const groups = [...ascs.map(col => ({ key: col.key, label: col.label, border: "1px" })), { key: "ALL", label: "All<br>columns", border: "2px", all: true }];
-  let html = `<thead><tr>
-    <th class="char-head" rowspan="2">Character</th>
-    ${groups.map(g => `<th colspan="2" class="${g.all ? "all-col" : ""}" style="border-left:${g.border} solid #3f4147;text-align:center">${g.label}</th>`).join("")}
-  </tr><tr>
-    ${groups.map(g => `<th class="${g.all ? "all-col" : ""}" style="${thSub};border-left:${g.border} solid #3f4147">Won</th><th class="${g.all ? "all-col" : ""}" style="${thSub}">Lost</th>`).join("")}
-  </tr></thead><tbody>`;
-
-  const rowCells = (byCol) => groups.map(g =>
-    winLossPairCells(byCol?.[g.key], winKey, lossKey, g.border, g.all)).join("");
-
-  chars.forEach(char => {
-    html += `<tr>${charNameCell(char)}${rowCells(pivotData[char])}</tr>`;
+// Median cards and relics at run end, a lane per character.
+function renderRunEndGap(pivotData) {
+  const section = (title, winKey, lossKey) => ({
+    title,
+    rows: [...DATA.characters, "ALL"].map(char => {
+      const b = pivotData[char]?.["ALL"];
+      return {
+        label: char === "ALL" ? `<span style="color:#e0c468">All Characters</span>`
+          : `<span class="dot" style="background:${CHAR_COLOR_MAP[char] || "#a0a0b8"}"></span>${fmtCharName(char)}`,
+        won: b?.[winKey], lost: b?.[lossKey],
+      };
+    }),
   });
-
-  html += `<tr class="total-row"><td class="char-name" style="color:#e0c468">All Characters</td>${rowCells(pivotData["ALL"])}</tr></tbody>`;
-
-  document.getElementById(tableId).innerHTML = html;
+  renderGapChart("run-end-gap", [
+    section("Cards", "median_win_cards", "median_loss_cards"),
+    section("Relics", "median_win_relics", "median_loss_relics"),
+  ]);
 }
 
 

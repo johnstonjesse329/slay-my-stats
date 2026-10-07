@@ -76,8 +76,6 @@ const fmtHrsMinSec = m => {
 const runsRecord = (n, wins, losses) =>
   wins != null && losses != null ? `Runs: ${n} (${wins}W / ${losses}L)` : `Runs: ${n}`;
 
-const floorChart     = makeBarChart("charFloorChart",     DATA.charColors, "Median Floor",
-  s => s ? ` Median floor: ${s.median_floor ?? "—"} (${s.wins}W / ${s.losses}L)` : null);
 const timeChart      = makeBarChart("charTimeChart",      DATA.charColors, "Median Minutes",
   s => s ? ` Median time: ${fmtHrsMin(s.median_min)} (${s.wins}W / ${s.losses}L)` : null);
 const totalTimeChart = makeBarChart("charTotalTimeChart", DATA.charColors, "Hours",

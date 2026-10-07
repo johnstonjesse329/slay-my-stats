@@ -7,22 +7,19 @@ function updateAll() {
 
   const { pivot, grand, charStats } = aggregateRuns(filteredRuns);
 
-  floorChart.data.datasets[0].data     = charStats.map(s => s.median_floor ?? 0);
   timeChart.data.datasets[0].data      = charStats.map(s => s.median_min   ?? 0);
   totalTimeChart.data.datasets[0].data = charStats.map(s => s.total_hrs  ?? 0);
-  [floorChart, timeChart, totalTimeChart].forEach(chart => chart.data.datasets[0].meta = charStats);
+  [timeChart, totalTimeChart].forEach(chart => chart.data.datasets[0].meta = charStats);
   const totalHrs = charStats.reduce((sum, s) => sum + (s.total_hrs ?? 0), 0);
   timeShareChart.data.datasets[0].data = charStats.map(s => totalHrs > 0 ? +((s.total_hrs ?? 0) / totalHrs * 100).toFixed(1) : 0);
   timeShareChart.data.datasets[0].meta  = charStats;
-  [floorChart, timeChart, totalTimeChart, timeShareChart].forEach(chart => chart.update());
+  [timeChart, totalTimeChart, timeShareChart].forEach(chart => chart.update());
 
   renderCards(grand, charStats, avgRestOnWins(filteredRuns));
   renderWinPivot(pivot);
-  renderDeckPivot("cards-table", pivot, "median_win_cards", "median_loss_cards");
-  renderDeckPivot("relics-table", pivot, "median_win_relics", "median_loss_relics");
-  renderStarterCardsTable(aggregateStarterCards(filteredRuns));
+  renderRunEndGap(pivot);
+  renderStarterCardsGap(aggregateStarterCards(filteredRuns));
   renderFinalBossWinPivot(filteredRuns);
-  renderRestChoicesTable(aggregateRestChoices(filteredRuns), filteredRuns);
   updateRestWinCharts(filteredRuns);
   updateEliteActCharts(filteredRuns);
   updateMonthlyWinChart(filteredRuns);
