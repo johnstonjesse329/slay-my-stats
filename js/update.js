@@ -7,16 +7,9 @@ function updateAll() {
 
   const { pivot, grand, charStats } = aggregateRuns(filteredRuns);
 
-  timeChart.data.datasets[0].data      = charStats.map(s => s.median_min   ?? 0);
-  totalTimeChart.data.datasets[0].data = charStats.map(s => s.total_hrs  ?? 0);
-  [timeChart, totalTimeChart].forEach(chart => chart.data.datasets[0].meta = charStats);
-  const totalHrs = charStats.reduce((sum, s) => sum + (s.total_hrs ?? 0), 0);
-  timeShareChart.data.datasets[0].data = charStats.map(s => totalHrs > 0 ? +((s.total_hrs ?? 0) / totalHrs * 100).toFixed(1) : 0);
-  timeShareChart.data.datasets[0].meta  = charStats;
-  [timeChart, totalTimeChart, timeShareChart].forEach(chart => chart.update());
-
   renderCards(grand, charStats, avgRestOnWins(filteredRuns));
   renderWinPivot(pivot);
+  renderTimeLanes(pivot);
   renderRunEndLanes(pivot);
   renderFightTables();
   renderFinalBossWinPivot(filteredRuns);

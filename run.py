@@ -1259,18 +1259,11 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </div>
 
-<div class="grid-4 grid-3">
+<div class="grid-1">
   <div class="chart-box">
-    <h2>Median Run Length (min) by Character</h2>
-    <div class="chart-wrap"><canvas id="charTimeChart"></canvas></div>
-  </div>
-  <div class="chart-box">
-    <h2>Total Time Played (hrs) by Character</h2>
-    <div class="chart-wrap"><canvas id="charTotalTimeChart"></canvas></div>
-  </div>
-  <div class="chart-box">
-    <h2>Time Played (% Share)</h2>
-    <div class="chart-wrap" style="display:flex;align-items:center;justify-content:center;height:100%"><canvas id="charTimeShareChart" style="max-height:220px"></canvas></div>
+    <h2>Time Played</h2>
+    <p class="chart-caption">Hours on each character and its share of your total, and median run length in runs you lost and runs you won.</p>
+    <div id="time-lanes"></div>
   </div>
 </div>
 
@@ -1281,9 +1274,9 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <div class="chart-wrap"><canvas id="eliteCheckpointChart"></canvas></div>
   </div>
   <div class="chart-box">
-    <h2>Elite Win Rate</h2>
-    <p class="chart-caption">Share of runs won, by how many elites the run fought in total.</p>
-    <div class="chart-wrap"><canvas id="eliteWinRateChart"></canvas></div>
+    <h2>Rest Site Win %</h2>
+    <p class="chart-caption">Win % by how many times you picked each rest site option over a run. Only runs that reached Act 3.</p>
+    <div class="chart-wrap"><canvas id="restWinChartAll"></canvas></div>
   </div>
 </div>
 
@@ -1292,14 +1285,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <h2>Deck and Relics at Run End</h2>
     <p class="chart-caption">Median cards and relics when the run ended, in runs you lost and runs you won.</p>
     <div id="run-end-lanes"></div>
-  </div>
-</div>
-
-<div class="grid-1">
-  <div class="chart-box">
-    <h2>Rest Site Win %</h2>
-    <p class="chart-caption">Win % by how many times you picked each rest site option over a run. Only runs that reached Act 3.</p>
-    <div class="chart-wrap"><canvas id="restWinChartAll"></canvas></div>
   </div>
 </div>
 
