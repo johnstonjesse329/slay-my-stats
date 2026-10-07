@@ -928,6 +928,9 @@ h1 {
   font-size: 0.92rem;
 }
 
+.rh-date { color: #8a8aa0; font-size: 0.85rem; }
+.rh-seed { color: #8a8aa0; font-size: 0.82rem; font-family: monospace; }
+
 .detail-run-headline-stats {
   display: flex;
   flex-wrap: wrap;
@@ -1936,6 +1939,13 @@ body.suppress-hover-tooltips .node-tooltip {
 /* Narrow screens only, not a phone turned sideways: landscape has room for
    the full tables. */
 @media (max-width: 700px) {
+  /* Run header: date, seed and Copy link share one row under the run's
+     name line, instead of the seed and the button each wrapping alone. */
+  .detail-run-header-bar { gap: 0.3rem 0.6rem; }
+  .rh-date, .rh-seed { font-size: 0.72rem; white-space: nowrap; }
+  .rh-seed-label { display: none; }
+  .run-copy-link { font-size: 0.7rem; padding: 0.12rem 0.4rem; white-space: nowrap; }
+
   /* Tables fit the screen instead of scrolling sideways. */
 
   /* Win % and Final Boss Win %: tighter cells, headers may wrap.

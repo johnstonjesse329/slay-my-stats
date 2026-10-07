@@ -301,8 +301,8 @@ function renderDetailRun(run) {
       <span style="color:${won ? "#5cba7d" : "#e05c5c"};font-weight:600">${won ? "Victory" : "Defeat"}</span>
       <span style="color:#bcbcd0">Floor ${run.floor}</span>
       <span style="color:#bcbcd0">${fmtHrsMin(run.mins)}</span>
-      <span style="color:#8a8aa0;font-size:0.85rem">${fmtDate(run.ts)}</span>
-      ${run.seed ? `<span style="color:#8a8aa0;font-size:0.82rem;font-family:monospace">Seed: ${run.seed}</span>` : ""}
+      <span class="rh-date">${fmtDate(run.ts)}</span>
+      ${run.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed: </span>${run.seed}</span>` : ""}
       ${moddedTagHtml(run, true)}
       ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
     </div>
