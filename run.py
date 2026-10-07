@@ -1287,6 +1287,27 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </div>
 
+<div class="grid-2">
+  <div class="chart-box">
+    <h2>Cards at Run End</h2>
+    <p class="chart-caption">Median deck size when the run ended, in runs you won vs. lost.</p>
+    <div class="chart-wrap"><canvas id="cardsEndChart"></canvas></div>
+  </div>
+  <div class="chart-box">
+    <h2>Relics at Run End</h2>
+    <p class="chart-caption">Median relics held when the run ended, in runs you won vs. lost.</p>
+    <div class="chart-wrap"><canvas id="relicsEndChart"></canvas></div>
+  </div>
+</div>
+
+<div class="grid-1">
+  <div class="chart-box">
+    <h2>Rest Site Win %</h2>
+    <p class="chart-caption">Win % by how many times you picked each rest site option over a run. Only runs that reached Act 3.</p>
+    <div class="chart-wrap"><canvas id="restWinChartAll"></canvas></div>
+  </div>
+</div>
+
 <div class="grid-1">
   <div class="chart-box">
     <h2>Fight Win Rate</h2>
@@ -1308,27 +1329,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <h2>Damage Taken</h2>
     <p class="chart-caption">Median damage taken per elite and boss fight.</p>
     <div id="dmg-lanes"></div>
-  </div>
-</div>
-
-<div class="grid-2">
-  <div class="chart-box">
-    <h2>Cards at Run End</h2>
-    <p class="chart-caption">Median deck size when the run ended, in runs you won vs. lost.</p>
-    <div class="chart-wrap"><canvas id="cardsEndChart"></canvas></div>
-  </div>
-  <div class="chart-box">
-    <h2>Relics at Run End</h2>
-    <p class="chart-caption">Median relics held when the run ended, in runs you won vs. lost.</p>
-    <div class="chart-wrap"><canvas id="relicsEndChart"></canvas></div>
-  </div>
-</div>
-
-<div class="grid-1">
-  <div class="chart-box">
-    <h2>Rest Site Win %</h2>
-    <p class="chart-caption">Win % by how many times you picked each rest site option over a run. Only runs that reached Act 3.</p>
-    <div class="chart-wrap"><canvas id="restWinChartAll"></canvas></div>
   </div>
 </div>
 </div><!-- end #page-overview -->
