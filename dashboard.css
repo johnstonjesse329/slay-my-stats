@@ -1932,3 +1932,47 @@ body.suppress-hover-tooltips .node-tooltip {
   #detail-run-list { max-height: 240px; }
 
 }
+
+/* Narrow screens only, not a phone turned sideways: landscape has room for
+   the full tables. */
+@media (max-width: 700px) {
+  /* Tables fit the screen instead of scrolling sideways. */
+
+  /* Win % and Final Boss Win %: tighter cells, headers may wrap.
+     (Show granular adds a column per ascension and still scrolls.) */
+  #pivot-table th, #final-boss-win-table th { padding: 0.4rem 0.2rem; font-size: 0.62rem; letter-spacing: 0; white-space: normal; }
+  #pivot-table td.cell, #final-boss-win-table td.cell { min-width: 0; padding: 0.3rem 0.15rem; }
+  #pivot-table td.char-name, #final-boss-win-table td.char-name { padding: 0 0.3rem 0 0; font-size: 0.74rem; }
+  #pivot-table td.char-name .dot, #final-boss-win-table td.char-name .dot { margin-right: 5px; }
+  #pivot-table td.cell .pct, #final-boss-win-table td.cell .pct { font-size: 0.85rem; }
+  #pivot-table td.cell .meta, #final-boss-win-table td.cell .meta { font-size: 0.66rem; }
+
+  /* Card Stats: Pool, Type and Rarity are dropped (the filters above cover
+     them); the numbers stay. The table sets its widths inline, hence
+     !important. */
+  #cards-table-main { width: 100% !important; }
+  #cards-table-main th:nth-child(n+2):nth-child(-n+4),
+  #cards-table-main td:nth-child(n+2):nth-child(-n+4) { display: none; }
+  #cards-table-main th { white-space: normal !important; padding: 0.3rem 0.15rem !important; font-size: 0.6rem !important; letter-spacing: 0 !important; vertical-align: bottom; }
+  #cards-table-main th:first-child { width: auto !important; }
+  #cards-table-main th:nth-child(5) { width: 46px !important; }
+  #cards-table-main th:nth-child(6) { width: 50px !important; }
+  #cards-table-main th:nth-child(7) { width: 50px !important; }
+  #cards-table-main th:nth-child(8) { width: 52px !important; }
+  #cards-table-main td { padding: 0.18rem 0.15rem !important; }
+  #cards-table-main td:first-child { white-space: normal !important; }
+
+  /* Seed Data: four tight columns; what a search matched goes on its own
+     line under the row instead of in a fifth column. */
+  #seeds-table, #seeds-table thead, #seeds-table tbody { display: block; }
+  #seeds-table tr { display: block; }
+  #seeds-table #seeds-thead-row, #seeds-table tr.seed-row { display: grid; grid-template-columns: 7.4rem minmax(0, 1fr) 2.4rem 4.9rem; align-items: center; }
+  #seeds-table tr.seed-row > td, #seeds-table tr.seed-row > td * { font-size: 0.72rem !important; }
+  #seeds-table .seed-expand-arrow { margin-right: 0.2rem !important; }
+  #seeds-table th, #seeds-table tr.seed-row > td { padding: 0.4rem 0.25rem !important; }
+  #seeds-table th { font-size: 0.62rem; letter-spacing: 0; }
+  #seeds-table th:last-child { display: none; }
+  #seeds-table tr.seed-row > td:last-child { grid-column: 1 / -1; padding-top: 0 !important; }
+  #seeds-table tr.seed-row > td:last-child:empty { display: none; }
+  #seeds-table tr:not(.seed-row) > td { display: block; }
+}
