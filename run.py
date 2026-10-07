@@ -875,10 +875,9 @@ _JS_MODULES = [
     "charts.js",
     "aggregation.js",
     "render-helpers.js",
-    "overview-tables.js",
+    "fight-tables.js",
     "update.js",
     "page-nav.js",
-    "character-detail.js",
     "cards-page.js",
     "seeds.js",
     "run-detail.js",
@@ -1117,8 +1116,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     """
     The markup between <body> and the <script> tag: the map background
     (dashboard.css; panned by js/map-bg.js), skip link, header, the
-    shared filter bar, and all five pages (Overview / Character Detail / Run
-    Detail / Card Stats / Seed Data). Shared by build_html() (the local HTML
+    shared filter bar, and all four pages (Overview / Run Detail / Card Stats /
+    Seed Data). Shared by build_html() (the local HTML
     generator) and build_site.py (the static site).
 
     site_links (live site only): (href, label) pairs for a site bar in place
@@ -1150,7 +1149,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 {top}
 <nav class="page-tabs" aria-label="Pages">
   <button class="page-tab active" id="tab-overview" onclick="showPage('overview')">Overview</button>
-  <button class="page-tab" id="tab-character" onclick="showPage('character')">Character Detail</button>
   <button class="page-tab" id="tab-detail" onclick="showPage('detail')">Run Detail</button>
   <button class="page-tab" id="tab-cards" onclick="showPage('cards')">Card Stats</button>
   <button class="page-tab" id="tab-seeds" onclick="showPage('seeds')">Seed Data</button>
@@ -1286,49 +1284,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2>Deck and Relics at Run End</h2>
-    <p class="chart-caption">Median cards and relics when the run ended, in runs you won vs. lost.</p>
-    <div id="run-end-gap"></div>
-  </div>
-  <div class="chart-box">
-    <h2>Starter Cards Entering Boss</h2>
-    <p class="chart-caption">Average Strikes and Defends still in your deck when you reached each act's boss, in runs you won vs. lost.</p>
-    <div id="starter-cards-gap"></div>
-  </div>
-</div>
-
-<div class="grid-1">
-  <div class="chart-box">
-    <h2>Rest Site Win %</h2>
-    <p class="chart-caption">Win % by how many times you picked each rest site option over a run. Only runs that reached Act 3.</p>
-    <div class="chart-wrap"><canvas id="restWinChartAll"></canvas></div>
-  </div>
-</div>
-</div><!-- end #page-overview -->
-
-<!-- ================================================================
-     Character Detail page
-     ================================================================ -->
-<div id="page-character" style="display:none">
-
-<div id="detail-char-fallback-note" class="char-fallback-note" style="display:none;margin-bottom:0.75rem"></div>
-
-<div class="grid-1">
-  <div class="chart-box">
-    <h2>Deck Size Entering Boss</h2>
-    <p class="chart-caption">Median cards in your deck at each act's boss; green for runs you won, red for runs you lost.</p>
-    <div class="pivot-wrap"><table class="pivot" id="deck-act-table"></table></div>
-  </div>
-</div>
-
-<div class="grid-2">
-  <div class="chart-box">
-    <h2>Boss Win Rate</h2>
+    <h2>Boss Fight Win Rate</h2>
     <p class="chart-caption">Share of times you won each boss fight, by ascension.</p>
     <div class="pivot-wrap"><table class="pivot" id="boss-win-table"></table></div>
   </div>
   <div class="chart-box">
-    <h2>Elite Win Rate</h2>
+    <h2>Elite Fight Win Rate</h2>
     <p class="chart-caption">Share of times you won each elite fight, by ascension.</p>
     <div class="pivot-wrap"><table class="pivot" id="elite-win-table"></table></div>
   </div>
@@ -1344,21 +1305,33 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2>Cards / Relics / Potions Entering Fight</h2>
-    <p class="chart-caption">Median cards, relics and potions held at the start of elite and boss fights; green for runs you won, red for runs you lost.</p>
-    <div class="pivot-wrap"><table class="pivot" id="loadout-table"></table></div>
-  </div>
-</div>
-
-<div class="grid-1">
-  <div class="chart-box">
     <h2>Damage Taken</h2>
     <p class="chart-caption">Median damage taken per elite and boss fight; green for runs you won, red for runs you lost.</p>
     <div class="pivot-wrap"><table class="pivot" id="dmg-table"></table></div>
   </div>
 </div>
 
-</div><!-- end #page-character -->
+<div class="grid-2">
+  <div class="chart-box">
+    <h2>Cards at Run End</h2>
+    <p class="chart-caption">Median deck size when the run ended, in runs you won vs. lost.</p>
+    <div class="chart-wrap"><canvas id="cardsEndChart"></canvas></div>
+  </div>
+  <div class="chart-box">
+    <h2>Relics at Run End</h2>
+    <p class="chart-caption">Median relics held when the run ended, in runs you won vs. lost.</p>
+    <div class="chart-wrap"><canvas id="relicsEndChart"></canvas></div>
+  </div>
+</div>
+
+<div class="grid-1">
+  <div class="chart-box">
+    <h2>Rest Site Win %</h2>
+    <p class="chart-caption">Win % by how many times you picked each rest site option over a run. Only runs that reached Act 3.</p>
+    <div class="chart-wrap"><canvas id="restWinChartAll"></canvas></div>
+  </div>
+</div>
+</div><!-- end #page-overview -->
 
 <!-- ================================================================
      Cards page

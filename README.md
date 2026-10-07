@@ -19,15 +19,11 @@ bar or **Copy link** in the run's header), and opening one shows that run whatev
 
 ![Run Detail tab showing a run's final deck](images/site-run-detail.png)
 
-**Character Detail:** win rates against each boss and elite.
-
-![Character Detail tab with boss and elite win rates](images/site-character-detail.png)
-
 **Card Stats:** pick and win rates for every card.
 
 ![Card Stats tab with card pick rates](images/site-card-stats.png)
 
-The dashboard has five pages: Overview, Character Detail, Run Detail, Card Stats and Seed Data. They cover win
+The dashboard has four pages: Overview, Run Detail, Card Stats and Seed Data. They cover win
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup.
 
@@ -49,8 +45,7 @@ slay-my-stats/
 │   ├── data.js              window.DATA shape and helpers
 │   ├── aggregation.js       filtering and stat roll-ups
 │   ├── page-nav.js          tabs and the shared filter bar
-│   ├── overview-tables.js   Overview page
-│   ├── character-detail.js  Character Detail page
+│   ├── fight-tables.js      Overview page: per-boss and per-elite tables
 │   ├── run-detail.js        Run Detail page
 │   ├── cards-page.js        Card Stats page
 │   ├── seeds.js             Seed Data page

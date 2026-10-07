@@ -2,7 +2,7 @@
 // Page navigation
 // =========================================================================
 
-const PAGES = ["overview", "character", "detail", "cards", "seeds"];
+const PAGES = ["overview", "detail", "cards", "seeds"];
 let currentPage = "overview";
 
 // The URL hash names the tab, and on Run Detail the run as well:
@@ -18,7 +18,6 @@ function pageHash(page) {
 
 const PAGE_RENDERERS = {
   overview:  updateAll,
-  character: updateDetail,
   detail:    renderDetailRunList,
   cards:     renderCardsPage,
   seeds:     renderSeeds,
@@ -81,59 +80,27 @@ function showPage(page) {
     document.getElementById("page-" + p).style.display = p === page ? "" : "none";
     document.getElementById("tab-"  + p).classList.toggle("active", p === page);
   });
-  // Character Detail's tables are only meaningful for one character at a
-  // time (unlike Card Stats, which genuinely aggregates for "All").
-  // Rather than silently
-  // rendering one character's data while the shared filter still reads
-  // "All" (previously surfaced via a barely-visible page note, easy to
-  // miss), landing on this tab with "All" active now sets the SHARED
-  // filter itself to the same fallback character, so the filter bar and
-  // the page can never disagree. The "All" button is also disabled while
-  // this tab is active, so it's visibly not an option rather than something
-  // that looks clickable but silently redirects.
-  // setSharedActiveChar() (not a direct assignment) so this goes through
-  // the same rerenderCurrentPage() chokepoint every other filter change
-  // does — pageDirty tracking then just works, with no manual flagging
-  // needed here for this page having been forced dirty. isUserPick=false
-  // on all three branches below: none of them represent the user actually
-  // choosing a character, so none should overwrite lastUnlockedChar.
-  if (page === "character" && sharedActiveChar === "ALL") {
-    // Prefer the user's actual last choice over the computed "most
-    // played" fallback — singleCharFallback() only sees whatever
-    // sharedActiveChar happens to be at this exact moment, which depends
-    // on navigation path (e.g. "ALL" fresh from Overview vs. already a
-    // specific character if arriving via an unlocked page), not on what
-    // the user really wants. Falling back to singleCharFallback() only
-    // when lastUnlockedChar is itself still "ALL" (never touched this
-    // session) keeps this consistent regardless of path taken to get here.
-    setSharedActiveChar(lastUnlockedChar !== "ALL" ? lastUnlockedChar : singleCharFallback(), false);
-  }
-  sharedAllBtn.disabled = page === "character";
-  sharedAllBtn.title = page === "character"
-    ? "Character Detail shows one character at a time — pick a character above"
-    : "";
-  // Overview is the mirror image: its charts/tables exist to compare
-  // characters side by side, so a single-character selection there is
-  // disabled the same way "All" is disabled on Character Detail. Landing
-  // here with one already selected (e.g. arriving from Card Stats) snaps
-  // back to "All" rather than leaving the filter bar and page disagreeing.
+  // Overview's charts and tables compare characters side by side, so a
+  // single-character selection is disabled there. Landing on it with one
+  // selected (e.g. arriving from Card Stats) snaps back to "All" rather than
+  // leaving the filter bar and page disagreeing. setSharedActiveChar() (not
+  // a direct assignment) so this goes through the same rerenderCurrentPage()
+  // chokepoint every other filter change does. isUserPick=false on both
+  // branches below: neither is the user choosing a character, so neither
+  // should overwrite lastUnlockedChar.
   if (page === "overview" && sharedActiveChar !== "ALL") {
     setSharedActiveChar("ALL", false);
   }
   // Landing on an unlocked page restores whatever character was last
-  // actually chosen, in case it got forced away to something else (e.g.
-  // Character Detail's own fallback) while cycling through locked pages
-  // in between — without this, a real "Defect" selection could silently
-  // turn into whatever Character Detail's singleCharFallback() picks
-  // (e.g. "Ironclad", if that's the most-played character) just by
-  // passing through it on the way to somewhere else.
+  // actually chosen — without this, a real "Defect" selection would turn
+  // into "All" just by passing through Overview on the way somewhere else.
   if (!charIsLocked(page) && sharedActiveChar !== lastUnlockedChar) {
     setSharedActiveChar(lastUnlockedChar, false);
   }
   sharedCharSel.querySelectorAll(".char-btn[data-char]").forEach(btn => {
     btn.disabled = page === "overview";
     btn.title = page === "overview"
-      ? "Overview compares every character — pick a character in Character Detail or Card Stats instead"
+      ? "Overview compares every character — pick a character in Card Stats instead"
       : "";
   });
   if (pageDirty[page]) {
@@ -200,8 +167,6 @@ sharedAllBtn.className = "char-btn active";
 sharedAllBtn.textContent = "All";
 sharedAllBtn.style.setProperty("--char-color", "#e0c468");
 sharedAllBtn.addEventListener("click", () => {
-  // Disabled (via showPage()) while Character Detail is active, so this
-  // only ever fires on pages where "All" is a valid selection.
   setSharedActiveChar("ALL");
 });
 sharedCharSel.appendChild(sharedAllBtn);
@@ -217,15 +182,15 @@ DATA.characters.forEach((char, i) => {
   // set needs a matching starting value here too.
   btn.disabled = currentPage === "overview";
   btn.title = btn.disabled
-    ? "Overview compares every character — pick a character in Character Detail or Card Stats instead"
+    ? "Overview compares every character — pick a character in Card Stats instead"
     : "";
   btn.addEventListener("click", () => setSharedActiveChar(char));
   sharedCharSel.appendChild(btn);
 });
 
 // Single setter for sharedActiveChar, mirroring setSharedMode() below —
-// every caller (these two click handlers, and showPage()'s Character
-// Detail / Overview character-filter lock) goes through here instead of
+// every caller (these two click handlers, and showPage()'s Overview
+// character-filter lock) goes through here instead of
 // mutating sharedActiveChar directly, so rerenderCurrentPage()'s dirty
 // tracking (see pageDirty) always sees the change without each call site
 // needing to remember to flag it by hand.
@@ -485,17 +450,15 @@ function showFilterStatus(text) {
   showFilterStatus._t = setTimeout(() => { el.textContent = ""; }, 2500);
 }
 
-// Overview and Character Detail each compute their own required character
-// value independently (see showPage()) — Overview always needs "ALL",
-// Character Detail always needs a specific character via
-// singleCharFallback(), regardless of anything saved or currently active.
-// A saved/current character value only means anything on the three pages
-// that don't constrain it (Card Stats, Run Detail, Seed Data). Used by
+// Overview always needs "ALL" (see showPage()), regardless of anything
+// saved or currently active. A saved/current character value only means
+// anything on the three pages that don't constrain it (Card Stats, Run
+// Detail, Seed Data). Used by
 // applySharedFilterState (skip applying a saved char here), the Save
 // button (preserve rather than overwrite the saved char here), and the
 // unsaved-changes indicator (don't compare char here).
 function charIsLocked(page) {
-  return page === "overview" || page === "character";
+  return page === "overview";
 }
 
 // Applies a saved (or default) filter state to both the in-memory shared
