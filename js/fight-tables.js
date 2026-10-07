@@ -179,20 +179,61 @@ function aggregateFights(fights) {
 }
 
 
-// ---- Rendering helpers for the fight tables ----
-
-function encNameCell(enc) {
-  const label = DATA.encLabels[enc] || enc;
-  return `<td class="char-name" style="font-size:0.8rem;padding-right:0.75rem">${label}</td>`;
+// ---- Rendering: the fight sections (Overview page) ----
+//
+// Fight Win Rate, HP Entering Fight and Damage Taken share one layout: a lane
+// per fight, elites beside bosses for each act. Bosses carry their own map
+// icon; the game has one icon for every elite. The section header says Elites
+// or Bosses, so the names drop that word; the name column is a fixed width so
+// every group's scale lines up.
+//
+// Each lane is the filtered fights as a whole. The ascension filter narrows
+// them; there is no per-ascension column.
+// opts: { legend, has(s), lane(s), ticks: [[pos %, label]] }
+function renderFightLanes(elId, encGroups, fightData, opts) {
+  const icons = DATA.nodeIcons || {};
+  const axis = `<span></span><span></span><div class="fl-lane fl-axis">${
+    opts.ticks.map(([pos, label]) => `<span style="left:${pos}%">${label}</span>`).join("")}</div>`;
+  let html = `${opts.legend || ""}<div class="fl-groups">`;
+  encGroups.forEach(({ label, ids }) => {
+    const rows = ids.filter(enc => fightData[enc]?.["ALL"] && opts.has(fightData[enc]["ALL"]));
+    if (!rows.length) return;
+    html += `<div><div class="fl-section">${label}</div><div class="fl-rows">`;
+    rows.forEach(enc => {
+      const src = icons[enc] || icons.elite;
+      html += `${src ? `<img src="${src}" alt="">` : `<span></span>`}` +
+        `<div class="fl-name">${(DATA.encLabels[enc] || enc).replace(/ (Boss|Elite)$/, "")}</div>` +
+        opts.lane(fightData[enc]["ALL"]);
+    });
+    html += `${axis}</div></div>`;
+  });
+  document.getElementById(elId).innerHTML = html + `</div>`;
 }
 
-function fightWinCell(s, isAll) {
-  const cls = "cell" + (isAll ? " all-col" : "");
-  if (!s) return `<td class="${cls} empty">—</td>`;
-  const { bg, color } = winPctStyle(s.win_pct, [60, 40, 20]);
+const WON_LOST_LEGEND = `<div class="fl-legend"><i class="fl-won"></i>won<i class="fl-lost"></i>lost</div>`;
+const fightCount = n => `${n} fight${n !== 1 ? "s" : ""}`;
+
+// A dot for fights won and a dot for fights lost, joined by a line, on a
+// 0..max scale. won / lost are the values, wonTip / lostTip their tooltip text.
+function wonLostLane(s, won, lost, max, unit, wonTip, lostTip) {
+  const pos = v => +(v / max * 100).toFixed(1);
+  const pts = [won, lost].filter(v => v != null);
+  const lo = pos(Math.min(...pts)), hi = pos(Math.max(...pts));
+  const tip = [
+    won  != null ? `Won: ${wonTip}, ${fightCount(s.wins)}` : null,
+    lost != null ? `Lost: ${lostTip}, ${fightCount(s.runs - s.wins)}` : null,
+  ].filter(Boolean).join("\n");
+  return `<div class="fl-lane" data-tip="${tip}">` +
+    `<span class="fl-line" style="left:${lo}%;width:${(hi - lo).toFixed(1)}%"></span>` +
+    (lost != null ? `<span class="fl-dot fl-lost" style="left:${pos(lost)}%"></span>` : "") +
+    (won  != null ? `<span class="fl-dot fl-won" style="left:${pos(won)}%"></span>` : "") +
+    `<span class="fl-value" style="left:calc(${hi}% + 10px)">${won ?? "—"}${unit} vs ${lost ?? "—"}${unit}</span></div>`;
+}
+
+// A bar filled to the win %, coloured by the same tiers the win tables use.
+function winLane(s) {
   // Fights/turns/HP are three distinct stats, not fragments of one — each
-  // gets its own line (via showTableTooltip's "\n" handling) rather than
-  // being run together on one wrapped line, which read as a wall of text.
+  // gets its own line (via showTableTooltip's "\n" handling).
   const tipLines = [`Fights: ${s.runs} (${s.wins}W / ${s.runs - s.wins}L)`];
   if (s.avg_turns != null) {
     tipLines.push(`Turns: ${s.avg_turns}W${s.loss_avg_turns != null ? ` / ${s.loss_avg_turns}L` : ""}`);
@@ -202,126 +243,37 @@ function fightWinCell(s, isAll) {
     const loss = s.loss_avg_hp != null ? ` / ${s.loss_avg_hp} HP (${s.loss_avg_hp_pct}%)L` : "";
     tipLines.push(`HP entering: ${win}${loss}`);
   }
-  return `<td class="${cls}" style="background:${bg}"
-      data-tip="${tipLines.join("\n")}">
-    <div class="pct" style="color:${color}">${s.win_pct}%</div>
-    <div class="meta">${s.runs} fight${s.runs !== 1 ? "s" : ""}</div>
-  </td>`;
+  const { color } = winPctStyle(s.win_pct, [60, 40, 20]);
+  return `<div class="fl-lane" data-tip="${tipLines.join("\n")}">` +
+    `<span class="fl-fill" style="width:${s.win_pct}%;background:${color}"></span>` +
+    `<span class="fl-value" style="left:calc(${s.win_pct}% + 8px)"><b style="color:${color}">${s.win_pct}%</b> · ${s.wins}W / ${s.runs - s.wins}L</span></div>`;
 }
 
-// Won / Lost sub-columns (see renderFightTable's `split`): the header says
-// which number is which, so each cell holds one value instead of a
-// "win / loss" pair run together.
-function wonLostCells(s, isAll, has, won, lost) {
-  const cls = "cell" + (isAll ? " all-col" : "");
-  const border = `border-left:${isAll ? "2px" : "1px"} solid #3f4147;`;
-  // The Lost cell of the All pair must not repeat .all-col's divider.
-  const emptyLost = `<td class="${cls} empty" style="border-left:0">—</td>`;
-  if (!s || !has) return `<td class="${cls} empty" style="${border}">—</td>${emptyLost}`;
-  const lostCell = lost == null
-    ? emptyLost
-    : `<td class="${cls}" style="border-left:0;font-size:0.88rem;color:#e05c5c">${lost}</td>`;
-  return `<td class="${cls}" style="${border}font-size:0.88rem;color:#5cba7d;font-weight:600">${won}</td>${lostCell}`;
-}
-
-// HP Entering Fight: one lane per fight on a 0-100% scale, a dot for fights
-// won and a dot for fights lost. Bosses carry their own map icon; the game
-// has one icon for every elite. The section header says Elites or Bosses, so
-// the names drop that word; the name column is a fixed width so every
-// group's scale lines up.
-function renderHpLanes(encGroups, fightData) {
-  const icons = DATA.nodeIcons || {};
-  const axis = `<span></span><span></span><div class="hp-lane hp-axis">${
-    [0, 25, 50, 75, 100].map(v => `<span style="left:${v}%">${v}%</span>`).join("")}</div>`;
-  let html = `<div class="hp-legend"><i class="hp-won"></i>won<i class="hp-lost"></i>lost</div><div class="hp-groups">`;
-  encGroups.forEach(({ label, ids }) => {
-    const rows = ids.filter(enc => fightData[enc]?.["ALL"]?.avg_hp_pct != null || fightData[enc]?.["ALL"]?.loss_avg_hp_pct != null);
-    if (!rows.length) return;
-    html += `<div><div class="hp-section">${label}</div><div class="hp-rows">`;
-    rows.forEach(enc => {
-      const s = fightData[enc]["ALL"];
-      const won = s.avg_hp_pct, lost = s.loss_avg_hp_pct;
-      const pts = [won, lost].filter(v => v != null);
-      const lo = Math.min(...pts), hi = Math.max(...pts);
-      const src = icons[enc] || icons.elite;
-      const tip = [
-        won  != null ? `Won: ${s.avg_hp} HP (${won}%), ${s.wins} fight${s.wins !== 1 ? "s" : ""}` : null,
-        lost != null ? `Lost: ${s.loss_avg_hp} HP (${lost}%), ${s.runs - s.wins} fight${s.runs - s.wins !== 1 ? "s" : ""}` : null,
-      ].filter(Boolean).join("\n");
-      html += `${src ? `<img src="${src}" alt="">` : `<span></span>`}<div class="hp-name">${(DATA.encLabels[enc] || enc).replace(/ (Boss|Elite)$/, "")}</div>` +
-        `<div class="hp-lane" data-tip="${tip}">` +
-        `<span class="hp-line" style="left:${lo}%;width:${hi - lo}%"></span>` +
-        (lost != null ? `<span class="hp-dot hp-lost" style="left:${lost}%"></span>` : "") +
-        (won  != null ? `<span class="hp-dot hp-won" style="left:${won}%"></span>` : "") +
-        `<span class="hp-value" style="left:calc(${hi}% + 10px)">${won ?? "—"}% vs ${lost ?? "—"}%</span></div>`;
-    });
-    html += `${axis}</div></div>`;
-  });
-  document.getElementById("hp-lanes").innerHTML = html + `</div>`;
-}
-
-function dmgCell(s, isAll) {
-  return wonLostCells(s, isAll, s && s.avg_dmg !== null,
-    s && s.avg_dmg,
-    s && s.loss_avg_dmg !== null ? s.loss_avg_dmg : null);
-}
-
-// encGroups: array of {label, ids} for section headers, or a flat array of IDs.
-// split: cellFn returns a Won and a Lost <td> per column (wonLostCells).
-function renderFightTable(tableId, encGroups, fightData, cellFn, split) {
-  const visAscs = ascColumns();
-  const colSpan = (visAscs.length + 1) * (split ? 2 : 1) + 1; // ascs + ALL + name
-  const thSub = `font-size:0.72rem;color:#8a8aa0;font-weight:400;text-align:center`;
-  const subHead = (cls, border) =>
-    `<th class="${cls}" style="${thSub};border-left:${border} solid #3f4147">Won</th><th class="${cls}" style="${thSub};border-left:0">Lost</th>`;
-  let html = split
-    ? `<thead><tr>
-    <th class="char-head" rowspan="2">Encounter</th>
-    ${visAscs.map(col => `<th colspan="2" style="border-left:1px solid #3f4147;text-align:center">${col.label}</th>`).join("")}
-    <th colspan="2" class="all-col" style="border-left:2px solid #3f4147;text-align:center">All<br>columns</th>
-  </tr><tr>
-    ${visAscs.map(() => subHead("", "1px")).join("")}${subHead("all-col", "2px")}
-  </tr></thead><tbody>`
-    : `<thead><tr>
-    <th class="char-head">Encounter</th>
-    ${visAscs.map(col => `<th>${col.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">All<br>columns</th>
-  </tr></thead><tbody>`;
-
-  // Normalise: flat array → single unlabelled group
-  const groups = Array.isArray(encGroups[0])
-    ? encGroups.map((ids, i) => ({ label: `Act ${i + 1}`, ids }))
-    : (encGroups[0]?.ids !== undefined ? encGroups : [{ label: null, ids: encGroups }]);
-
-  groups.forEach(({ label, ids }) => {
-    const rows = ids.filter(enc => fightData[enc]?.["ALL"]);
-    if (!rows.length) return;
-
-    if (label) {
-      html += `<tr><td colspan="${colSpan}" class="act-header">${label}</td></tr>`;
-    }
-
-    rows.forEach(enc => {
-      html += `<tr>${encNameCell(enc)}`;
-      visAscs.forEach(col => { html += cellFn(fightData[enc][col.key], false); });
-      html += cellFn(fightData[enc]["ALL"], true);
-      html += `</tr>`;
-    });
-  });
-
-  html += `</tbody>`;
-  document.getElementById(tableId).innerHTML = html;
-}
+const PCT_TICKS = [0, 25, 50, 75, 100].map(v => [v, `${v}%`]);
 
 function renderFightTables() {
   const fightData = aggregateFights(filterFights());
   const groups    = DATA.encGroups;
 
-  const bossGroups  = groups.filter(g => g.label.includes("Boss"));
-  const eliteGroups = groups.filter(g => g.label.includes("Elite"));
+  renderFightLanes("win-lanes", groups, fightData, {
+    has: s => s.win_pct != null, lane: winLane, ticks: PCT_TICKS,
+  });
 
-  renderFightTable("boss-win-table",  bossGroups,  fightData, fightWinCell);
-  renderFightTable("elite-win-table", eliteGroups, fightData, fightWinCell);
-  renderHpLanes(groups, fightData);
-  renderFightTable("dmg-table", groups, fightData, dmgCell, true);
+  renderFightLanes("hp-lanes", groups, fightData, {
+    legend: WON_LOST_LEGEND, ticks: PCT_TICKS,
+    has:  s => s.avg_hp_pct != null || s.loss_avg_hp_pct != null,
+    lane: s => wonLostLane(s, s.avg_hp_pct, s.loss_avg_hp_pct, 100, "%",
+      `${s.avg_hp} HP (${s.avg_hp_pct}%)`, `${s.loss_avg_hp} HP (${s.loss_avg_hp_pct}%)`),
+  });
+
+  // One damage scale for every group, so an Act 1 elite and an Act 3 boss
+  // compare. Rounded up to a multiple of 20 so the quarter ticks are whole.
+  const dmgVals = Object.values(fightData).flatMap(byAsc => [byAsc["ALL"]?.avg_dmg, byAsc["ALL"]?.loss_avg_dmg]).filter(v => v != null);
+  const dmgMax = Math.max(20, Math.ceil(Math.max(0, ...dmgVals) / 20) * 20);
+  renderFightLanes("dmg-lanes", groups, fightData, {
+    legend: WON_LOST_LEGEND, ticks: [0, 25, 50, 75, 100].map(v => [v, dmgMax * v / 100]),
+    has:  s => s.avg_dmg != null || s.loss_avg_dmg != null,
+    lane: s => wonLostLane(s, s.avg_dmg, s.loss_avg_dmg, dmgMax, "",
+      `${s.avg_dmg} damage`, `${s.loss_avg_dmg} damage`),
+  });
 }
