@@ -282,7 +282,7 @@ const ASC_TRACKER_MODES = [
   { label: "Multiplayer", test: run => !!run.mp },
 ];
 
-// { runs, highestWin: {value, ts} | null, top, topWins, topLosses } for one
+// { highestWin: {value, ts} | null, top, topWins, topLosses } for one
 // character in one mode, or null with no runs. highestWin is the first run
 // that won at the highest ascension won; top is the highest ascension played.
 function aggregateAscTracker(runs) {
@@ -294,7 +294,7 @@ function aggregateAscTracker(runs) {
   const top = Math.max(...runs.map(run => run.asc));
   const atTop = runs.filter(run => run.asc === top);
   const topWins = atTop.filter(run => run.won).length;
-  return { runs: runs.length, highestWin, top, topWins, topLosses: atTop.length - topWins };
+  return { highestWin, top, topWins, topLosses: atTop.length - topWins };
 }
 
 function renderAscTracker() {
@@ -327,7 +327,7 @@ function renderAscTracker() {
     return `<div class="asc-mode">
       <div class="asc-mode-label">${mode.label}</div>
       <div class="asc-big${t.highestWin ? "" : " asc-none"}" style="color:${color}">${big}</div>
-      <div class="asc-sub">${t.highestWin ? "highest win" : "no wins yet"} · ${t.runs} runs</div>
+      <div class="asc-sub">${t.highestWin ? "highest ascension won" : "no wins yet"}</div>
       <div class="asc-pips">${pips}</div>
       <div class="asc-now">${now}</div>
     </div>`;
