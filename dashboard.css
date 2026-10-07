@@ -237,7 +237,21 @@ h1 {
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
+.grid-4.grid-3 { grid-template-columns: 1fr 1fr 1fr; }
 .grid-1 { margin-bottom: 2rem; }
+
+/* ---- Gap charts (won vs. lost dots on a lane) ---- */
+.gap-legend { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.5rem; }
+.gap-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 5px 0 12px; }
+.gap-legend i:first-child { margin-left: 0; }
+.gap-won  { background: #5cba7d; }
+.gap-lost { background: #e05c5c; }
+.gap-chart { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.5rem 0.9rem; align-items: center; font-size: 0.82rem; }
+.gap-section { grid-column: 1 / -1; font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-dim); margin-top: 0.35rem; }
+.gap-lane { position: relative; height: 18px; margin-left: 6px; }
+.gap-line { position: absolute; top: 8px; height: 2px; background: rgba(255,255,255,0.22); }
+.gap-dot { position: absolute; top: 3px; width: 12px; height: 12px; border-radius: 50%; transform: translateX(-6px); }
+.gap-value { position: absolute; top: 0; font-size: 0.72rem; color: #bcbcd0; white-space: nowrap; }
 
 .chart-box {
   background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
@@ -1859,7 +1873,7 @@ body.suppress-hover-tooltips .node-tooltip {
      refuses to shrink below that content's width and blows the grid out
      past the viewport instead of wrapping it. */
   .grid-2 { grid-template-columns: minmax(0, 1fr); }
-  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-4, .grid-4.grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* One column, not two -- each of these cards packs a 3-4-wide row of
      label/value stat blocks (Best Win / Games Played / Total Wins / Final
      Boss Deaths) that's already tight at full card width; at half width
