@@ -18,44 +18,6 @@ const WIN_PCT_Y_AXIS = {
   },
 };
 
-function makeBarChart(id, colors, yLabel, tooltipFn) {
-  return new Chart(document.getElementById(id), {
-    type: "bar",
-    data: {
-      labels: DATA.characters.map(fmtCharName),
-      datasets: [{
-        data:            DATA.characters.map(() => 0),
-        backgroundColor: colors,
-        borderRadius:    5,
-        borderSkipped:   false,
-        meta:            [],
-      }],
-    },
-    options: {
-      responsive:          true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { display: false },
-        ...(tooltipFn ? { tooltip: { callbacks: {
-          title: ctx => ctx[0].label,
-          label: ctx => tooltipFn(ctx.dataset.meta?.[ctx.dataIndex]),
-        } } } : {}),
-      },
-      scales: {
-        x: { grid: { color: "#3f4147" }, ticks: { color: "#bcbcd0" } },
-        y: {
-          grid:        { color: "#3f4147" },
-          ticks:       { color: "#bcbcd0" },
-          title:       { display: true, text: yLabel, color: "#999" },
-          beginAtZero: true,
-          ...(yLabel === "Win %" ? WIN_PCT_Y_AXIS : {}),
-        },
-      },
-    },
-  });
-}
-
 const fmtHrsMin = m => {
   if (m == null) return "—";
   const totalMin = Math.round(m);
@@ -75,39 +37,6 @@ const fmtHrsMinSec = m => {
 // win/loss record when available) last.
 const runsRecord = (n, wins, losses) =>
   wins != null && losses != null ? `Runs: ${n} (${wins}W / ${losses}L)` : `Runs: ${n}`;
-
-const timeChart      = makeBarChart("charTimeChart",      DATA.charColors, "Median Minutes",
-  s => s ? ` Median time: ${fmtHrsMin(s.median_min)} (${s.wins}W / ${s.losses}L)` : null);
-const totalTimeChart = makeBarChart("charTotalTimeChart", DATA.charColors, "Hours",
-  s => s ? ` Total time: ${s.total_hrs ?? 0}h (${s.wins}W / ${s.losses}L)` : null);
-
-const _shareLabels = DATA.characters.map(fmtCharName);
-const timeShareChart = new Chart(document.getElementById("charTimeShareChart"), {
-  type: "doughnut",
-  data: {
-    labels:   _shareLabels,
-    datasets: [{ data: [], backgroundColor: DATA.charColors, borderWidth: 2, borderColor: "#13132a" }],
-  },
-  options: {
-    responsive: true,
-    cutout: "60%",
-    plugins: {
-      legend: { position: "bottom", labels: { color: "#bcbcd0", boxWidth: 12, padding: 8, font: { size: 11 } } },
-      tooltip: {
-        callbacks: {
-          title: ctx => ctx[0].label,
-          label: ctx => {
-            const s = ctx.dataset.meta?.[ctx.dataIndex];
-            const hrs = s ? (s.total_hrs ?? 0) : 0;
-            return s
-              ? ` ${ctx.parsed.toFixed(1)}% of time played — ${hrs}h (${s.wins}W / ${s.losses}L)`
-              : ` ${ctx.parsed.toFixed(1)}% of time played — ${hrs}h`;
-          },
-        },
-      },
-    },
-  },
-});
 
 // Bars side by side: each character's own win % at each ascension. A character
 // with no runs at an ascension gets no bar there (null), not a 0% one.
@@ -533,65 +462,12 @@ const ACT_COLORS = { 1: "#9ecfff", 2: "#e8a930", 3: "#e05c5c" };
 // Upper bound derived from the actual data (not hardcoded) so a future run
 // that fights more elites than any run so far isn't silently folded into
 // the top bucket. Recomputed against DATA.runsData (not the live filtered
-// set) purely to size the two charts' shared x-axis once at load; the
-// charts themselves are populated per the active filter in updateEliteActCharts.
+// set) purely to size the chart's x-axis once at load; the chart itself is
+// populated per the active filter in updateEliteActCharts.
 const ELITE_TOTAL_X = Array.from(
   { length: Math.max(0, ...DATA.runsData.map(run => (run.timeline || []).filter(n => n.type === "elite").length)) },
   (_, i) => i + 1
 );
-
-const eliteTotalTooltipTitle = items => `${items[0].label} elites fought this run`;
-
-// Bar chart of a rate per total-elites bucket, one series per spec in
-// `datasetSpecs` ({label, color}).
-function makeEliteRateChart(id, xLabel, yLabel, xVals, datasetSpecs, tooltipTitleFn, labelFn) {
-  return new Chart(document.getElementById(id), {
-    type: "bar",
-    data: {
-      labels: xVals,
-      datasets: datasetSpecs.map(spec => ({
-        label: spec.label, data: [],
-        backgroundColor: spec.color, borderRadius: 4, borderSkipped: false, order: 1,
-      })),
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      // "index"+intersect:false makes the whole x-axis column hoverable,
-      // not just the filled pixels of a bar — needed because a genuine 0%
-      // bar renders at (or near) zero height, which is otherwise an
-      // unhoverable target no matter how it's sized. Removes the need for
-      // a fake non-zero stand-in value tuned to survive different charts'
-      // y-axis scales.
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { display: datasetSpecs.length > 1, labels: { color: "#ccc", boxWidth: 12, font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            title: tooltipTitleFn,
-            label: ctx => {
-              const trueVal = ctx.dataset.trueData?.[ctx.dataIndex];
-              if (trueVal == null) return null;
-              const n = ctx.dataset.counts?.[ctx.dataIndex] ?? 0;
-              const w = ctx.dataset.wins?.[ctx.dataIndex] ?? 0;
-              return labelFn(ctx.dataset.label, trueVal, n, w);
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          grid: { color: "#3f4147" }, ticks: { color: "#bcbcd0" },
-          title: { display: true, text: xLabel, color: "#999" },
-        },
-        y: {
-          grid: { color: "#3f4147" }, ticks: { color: "#bcbcd0" },
-          title: { display: true, text: yLabel, color: "#999" },
-          beginAtZero: true,
-        },
-      },
-    },
-  });
-}
 
 // A point is only drawn with at least this many runs behind it: one or two
 // runs would put a 0% or 100% dot on the line.
@@ -641,13 +517,6 @@ const eliteCheckpointChart = new Chart(document.getElementById("eliteCheckpointC
   },
 });
 
-const eliteWinRateChart = makeEliteRateChart(
-  "eliteWinRateChart", "Total elites fought this run", "Overall Win %", ELITE_TOTAL_X,
-  [{ label: "All acts", color: "#7ec8a0" }],
-  eliteTotalTooltipTitle,
-  (label, trueVal, n, w) => ` ${trueVal.toFixed(0)}% won the run (${w}W / ${n - w}L)`
-);
-
 // bucket[act][elitesBeaten] = { runs, wins }: the runs that reached that
 // act's boss having beaten that many elites so far, and how many of them
 // went on to win. Only an act's first boss counts (Ascension 10 has two in
@@ -674,24 +543,8 @@ function aggregateEliteCheckpoints(filteredRuns) {
   return bucket;
 }
 
-// winBucket[totalElites] = { overallWins, overallTotal } — of runs that
-// fought exactly totalElites elites across the WHOLE run (final count,
-// not per-act), how many won vs. didn't. Not split by act — this is a
-// whole-run outcome, so per-act coloring wouldn't mean anything here.
-function aggregateElitesPerRun(filteredRuns) {
-  const bucket = {};
-  filteredRuns.forEach(run => {
-    const total = (run.timeline || []).filter(n => n.type === "elite").length;
-    const b = bucket[total] || (bucket[total] = { overallWins: 0, overallTotal: 0 });
-    b.overallTotal += 1;
-    if (run.won) b.overallWins += 1;
-  });
-  return bucket;
-}
-
 function updateEliteActCharts(filteredRuns) {
   const checkpoints = aggregateEliteCheckpoints(filteredRuns);
-  const winBucket   = aggregateElitesPerRun(filteredRuns);
 
   REST_ACTS.forEach((act, i) => {
     const ds = eliteCheckpointChart.data.datasets[i];
@@ -706,19 +559,6 @@ function updateEliteActCharts(filteredRuns) {
   const missing = filteredRuns.filter(run => !(run.timeline || []).some(n => n.type === "boss")).length;
   document.getElementById("elite-checkpoint-missing").textContent = missing
     ? `${missing} run${missing !== 1 ? "s" : ""} ended before the Act 1 boss and ${missing !== 1 ? "aren't" : "isn't"} shown.` : "";
-
-  {
-    const ds = eliteWinRateChart.data.datasets[0];
-    ds.trueData = ELITE_TOTAL_X.map(n => {
-      const b = winBucket[n];
-      return b && b.overallTotal >= 1 ? +(b.overallWins / b.overallTotal * 100).toFixed(1) : null;
-    });
-    ds.data = ds.trueData;
-    ds.counts = ELITE_TOTAL_X.map(n => (winBucket[n] || {}).overallTotal || 0);
-    ds.wins   = ELITE_TOTAL_X.map(n => (winBucket[n] || {}).overallWins || 0);
-    ds.backgroundColor = "#7ec8a0";
-  }
-  eliteWinRateChart.update();
 }
 
 

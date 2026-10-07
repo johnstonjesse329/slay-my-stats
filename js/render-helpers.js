@@ -707,45 +707,79 @@ function valCell(bucket, valueKey, color, isAll) {
   </td>`;
 }
 
-// Deck and Relics at Run End: a row per character, a cards lane beside a
-// relics lane, in the character's colour. A ring at the median in runs lost,
-// a dot at the median in runs won, and a band between. Cards and relics each
-// have their own scale, rounded up to a multiple of 20 so the quarter ticks
-// are whole.
-function renderRunEndLanes(pivotData) {
-  const stats = DATA.characters.map(char => [char, pivotData[char]?.["ALL"]]).filter(([, s]) => s && s.runs);
-  const scale = (winKey, lossKey) => {
-    const vals = stats.flatMap(([, s]) => [s[winKey], s[lossKey]]).filter(v => v != null);
-    return Math.max(20, Math.ceil(Math.max(0, ...vals) / 20) * 20);
-  };
-  const runCount = n => `${n} run${n !== 1 ? "s" : ""}`;
-  const lane = (s, color, winKey, lossKey, max, unit) => {
-    const won = s[winKey], lost = s[lossKey];
-    const pos = v => +(v / max * 100).toFixed(1);
-    const pts = [won, lost].filter(v => v != null);
-    const lo = pos(Math.min(...pts)), hi = pos(Math.max(...pts));
-    const tip = [
-      lost != null ? `Lost: ${lost} ${unit}, ${runCount(s.losses)}` : null,
-      won  != null ? `Won: ${won} ${unit}, ${runCount(s.wins)}` : null,
-    ].filter(Boolean).join("\n");
-    return `<div class="fl-lane" data-tip="${tip}">` +
-      `<span class="fl-band" style="left:${lo}%;width:${(hi - lo).toFixed(1)}%;background:${color};opacity:0.4"></span>` +
-      (lost != null ? `<span class="fl-dot" style="left:${pos(lost)}%;background:var(--panel);box-shadow:inset 0 0 0 2px ${color}"></span>` : "") +
-      (won  != null ? `<span class="fl-dot" style="left:${pos(won)}%;background:${color}"></span>` : "") +
-      `<span class="fl-value" style="left:calc(${hi}% + 10px)">${lost ?? "—"} · ${won ?? "—"}</span></div>`;
-  };
-  const axis = max => `<div class="fl-lane fl-axis">${
-    [0, 0.25, 0.5, 0.75, 1].map(f => `<span style="left:${f * 100}%">${max * f}</span>`).join("")}</div>`;
-  const cardsMax  = scale("median_win_cards",  "median_loss_cards");
-  const relicsMax = scale("median_win_relics", "median_loss_relics");
+// ---- Character lanes (Overview): Time Played, Deck and Relics at Run End ----
+//
+// A row per character in its colour, two lanes side by side, each with its
+// own scale rounded up to a multiple of 20 so the quarter ticks are whole.
 
-  let html = `<div class="fl-legend"><i class="re-ring"></i>runs lost<i class="re-dot"></i>runs won</div>` +
-    `<div class="re-rows"><span></span><div class="fl-section">Cards</div><div class="fl-section">Relics</div>`;
+const runCount = n => `${n} run${n !== 1 ? "s" : ""}`;
+const laneMax = vals => Math.max(20, Math.ceil(Math.max(0, ...vals.filter(v => v != null)) / 20) * 20);
+const charLaneAxis = (max, fmt = v => v) => `<div class="fl-lane fl-axis">${
+  [0, 0.25, 0.5, 0.75, 1].map(f => `<span style="left:${f * 100}%">${fmt(max * f)}</span>`).join("")}</div>`;
+
+// A ring at the median in runs lost, a dot at the median in runs won, and a
+// band between. fmt formats a value for the label and the tooltip.
+function lostWonLane(s, color, lost, won, max, fmt) {
+  const pos = v => +(v / max * 100).toFixed(1);
+  const pts = [won, lost].filter(v => v != null);
+  if (!pts.length) return `<div class="fl-lane"></div>`;
+  const lo = pos(Math.min(...pts)), hi = pos(Math.max(...pts));
+  const tip = [
+    lost != null ? `Lost: ${fmt(lost)}, ${runCount(s.losses)}` : null,
+    won  != null ? `Won: ${fmt(won)}, ${runCount(s.wins)}` : null,
+  ].filter(Boolean).join("\n");
+  return `<div class="fl-lane" data-tip="${tip}">` +
+    `<span class="fl-band" style="left:${lo}%;width:${(hi - lo).toFixed(1)}%;background:${color};opacity:0.4"></span>` +
+    (lost != null ? `<span class="fl-dot" style="left:${pos(lost)}%;background:var(--panel);box-shadow:inset 0 0 0 2px ${color}"></span>` : "") +
+    (won  != null ? `<span class="fl-dot" style="left:${pos(won)}%;background:${color}"></span>` : "") +
+    `<span class="fl-value" style="left:calc(${hi}% + 10px)">${lost != null ? fmt(lost) : "—"} · ${won != null ? fmt(won) : "—"}</span></div>`;
+}
+
+const LOST_WON_LEGEND = `<div class="fl-legend"><i class="re-ring"></i>runs lost<i class="re-dot"></i>runs won</div>`;
+
+// headers: the two lane titles; lanes(s, color): the two lanes of a row;
+// axes: the two axis rows.
+function renderCharLanes(elId, pivotData, headers, lanes, axes) {
+  const stats = DATA.characters.map(char => [char, pivotData[char]?.["ALL"]]).filter(([, s]) => s && s.runs);
+  let html = `${LOST_WON_LEGEND}<div class="re-rows"><span></span>${headers.map(h => `<div class="fl-section">${h}</div>`).join("")}`;
   stats.forEach(([char, s]) => {
     const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
-    html += `<div style="color:${color};font-weight:600">${fmtCharName(char)}</div>` +
-      lane(s, color, "median_win_cards",  "median_loss_cards",  cardsMax,  "cards") +
-      lane(s, color, "median_win_relics", "median_loss_relics", relicsMax, "relics");
+    html += `<div style="color:${color};font-weight:600">${fmtCharName(char)}</div>${lanes(s, color).join("")}`;
   });
-  document.getElementById("run-end-lanes").innerHTML = html + `<span></span>${axis(cardsMax)}${axis(relicsMax)}</div>`;
+  document.getElementById(elId).innerHTML = html + `<span></span>${axes.join("")}</div>`;
+}
+
+const charAllStats = pivotData => DATA.characters.map(char => pivotData[char]?.["ALL"]).filter(s => s && s.runs);
+
+// Time Played: a bar of hours on the character with its share of the total,
+// beside the median run length in runs lost and runs won.
+function renderTimeLanes(pivotData) {
+  const stats = charAllStats(pivotData);
+  const totalHrs = stats.reduce((sum, s) => sum + (s.total_hrs ?? 0), 0);
+  const hrsMax = laneMax(stats.map(s => s.total_hrs));
+  const minMax = laneMax(stats.flatMap(s => [s.median_win_min, s.median_loss_min]));
+  const hoursLane = (s, color) => {
+    const hrs = s.total_hrs ?? 0;
+    const share = totalHrs > 0 ? (hrs / totalHrs * 100).toFixed(1) : "0.0";
+    const width = +(hrs / hrsMax * 100).toFixed(1);
+    return `<div class="fl-lane" data-tip="${hrs}h, ${share}% of time played\n${runCount(s.runs)} (${s.wins}W / ${s.losses}L)">` +
+      `<span class="fl-fill" style="width:${width}%;background:${color}"></span>` +
+      `<span class="fl-value" style="left:calc(${width}% + 8px)">${hrs}h · ${Math.round(share)}%</span></div>`;
+  };
+  renderCharLanes("time-lanes", pivotData, ["Hours Played", "Median Run Length"],
+    (s, color) => [hoursLane(s, color), lostWonLane(s, color, s.median_loss_min, s.median_win_min, minMax, fmtHrsMin)],
+    [charLaneAxis(hrsMax, v => `${v}h`), charLaneAxis(minMax, v => `${v}m`)]);
+}
+
+// Deck and Relics at Run End: median cards beside median relics.
+function renderRunEndLanes(pivotData) {
+  const stats = charAllStats(pivotData);
+  const cardsMax  = laneMax(stats.flatMap(s => [s.median_win_cards,  s.median_loss_cards]));
+  const relicsMax = laneMax(stats.flatMap(s => [s.median_win_relics, s.median_loss_relics]));
+  renderCharLanes("run-end-lanes", pivotData, ["Cards", "Relics"],
+    (s, color) => [
+      lostWonLane(s, color, s.median_loss_cards,  s.median_win_cards,  cardsMax,  v => `${v}`),
+      lostWonLane(s, color, s.median_loss_relics, s.median_win_relics, relicsMax, v => `${v}`),
+    ],
+    [charLaneAxis(cardsMax), charLaneAxis(relicsMax)]);
 }

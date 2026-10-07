@@ -19,6 +19,7 @@ function emptyBucket() {
     floorVals:       [],
     timeVals:        [],
     winTimeVals:     [],
+    lossTimeVals:    [],
     cardSum:         0,
     relicSum:        0,
     goldSum:         0,
@@ -58,7 +59,7 @@ function addToBucket(bucket, run) {
   bucket.timeSum  += run.mins;
   bucket.floorVals.push(run.floor);
   bucket.timeVals.push(run.mins);
-  if (run.won) bucket.winTimeVals.push(run.mins);
+  (run.won ? bucket.winTimeVals : bucket.lossTimeVals).push(run.mins);
   bucket.cardSum  += run.cards;
   bucket.relicSum += run.relics;
   bucket.goldSum  += run.goldGained ?? 0;
@@ -109,6 +110,7 @@ function summarize(bucket) {
     median_floor:    median(bucket.floorVals),
     median_min:      median(bucket.timeVals),
     median_win_min:  median(bucket.winTimeVals),
+    median_loss_min: median(bucket.lossTimeVals),
     total_hrs:       n ? +(bucket.timeSum / 60).toFixed(1)   : null,
     total_min:       n ? bucket.timeSum : null,
     avg_cards:       n ? +(bucket.cardSum  / n).toFixed(1)   : null,
