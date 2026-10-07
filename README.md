@@ -501,10 +501,77 @@ Gamma isn't public. It answers only the addresses listed as `"gammaAllowedIps"` 
 "403 Forbidden" page). If your address changes,
 update the list and deploy gamma again.
 
+### Publishing gamma to production
+
+Run these in order, from the repo root. Each step says what you should see before going on.
+
+1. **Sign in to AWS** (the deploy uses your session):
+
+   ```sh
+   aws login
+   ```
+
+2. **Check gamma is the build you looked at.** It should be clean, and the same as what is on gamma.slay-my-stats.com:
+
+   ```sh
+   git checkout gamma
+   git status                        # nothing to commit (untracked notes are fine)
+   git fetch origin
+   git status -sb                    # "## gamma...origin/gamma", with no ahead or behind
+   ```
+
+   If it says ahead, push gamma first (`git push origin gamma`) and look at it again.
+
+3. **See what is going out:**
+
+   ```sh
+   git log --oneline origin/main..gamma
+   ```
+
+   That is the list of changes production will get. If it is empty, there is nothing to publish.
+
+4. **Run the tests:**
+
+   ```sh
+   infra\.venv\Scripts\python.exe -m unittest discover infra/tests
+   ```
+
+   It must end in `OK`.
+
+5. **Bring `main` up to gamma.** This only moves forward:
+
+   ```sh
+   git checkout main
+   git pull
+   git merge --ff-only gamma
+   ```
+
+   If the merge refuses, `main` has a commit gamma doesn't. Go back (`git checkout gamma`), run
+   `git merge main`, redeploy gamma, look at it again, and start over from step 2.
+
+6. **Push `main`.** The hook deploys it:
+
+   ```sh
+   git push origin main
+   ```
+
+   - If the stack changed it prints the `cdk diff` and asks *Deploy these infra changes? y/N*. Read the diff,
+     then answer `y` (production always asks). Any change to `run.py` or the handler shows as new Lambda code;
+     that is normal.
+   - It ends with `Deployed.`. If it stops earlier, the push did not happen: fix what it said and run the
+     command again.
+
+7. **Look at https://slay-my-stats.com.** Hard-refresh (the stylesheets can be up to 5 minutes old). Check
+   the page you changed, and that the browser console has no errors.
+
+8. **Go back to gamma** for the next change: `git checkout gamma`.
+
+To take a change back, `git revert <commit>` on `gamma`, then run these steps again. A deploy never touches
+stored runs (`users/` and `raw/` in the data bucket), only the stack, the site files and the art.
+
 ### Rolling a change out by hand
 
-The whole path, from a change to production, with the commands to type. Gamma first, production only after
-looking at gamma.
+From a change to gamma, with the commands to type. Production comes after, once you have looked at gamma.
 
 1. Start from `gamma`, on a branch of its own:
 
@@ -540,16 +607,7 @@ looking at gamma.
    invalidated by the deploy; the stylesheets can be up to 5 minutes old, so hard-refresh if a style looks
    wrong.
 
-5. Production is the same push, of `main`:
-
-   ```sh
-   git checkout main && git pull
-   git merge --ff-only gamma
-   git push origin main
-   ```
-
-   This one always asks y/N on stack changes; there is no `DEPLOY_YES` for production. The hook also refuses a
-   push that isn't a fast-forward of `origin/main`. Then look at https://slay-my-stats.com.
+5. Production: follow [Publishing gamma to production](#publishing-gamma-to-production).
 
 To deploy without pushing, run the same tool directly. It deploys the working tree as it is, committed or not:
 
@@ -557,10 +615,6 @@ To deploy without pushing, run the same tool directly. It deploys the working tr
 infra\.venv\Scripts\python.exe tools/deploy.py --stage gamma    # gamma
 infra\.venv\Scripts\python.exe tools/deploy.py                  # production
 ```
-
-To take a change back, revert it and roll that out the same way (`git revert <commit>`, then steps 3 to 5).
-Stored runs are not touched by a deploy: it changes the stack, the site files and the art, never `users/` or
-`raw/` in the data bucket.
 
 ## Refreshing game data
 
