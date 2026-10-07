@@ -201,6 +201,10 @@ h1 {
   .seeds-preview .seed-detail-cards .cardface { width: 132px !important; }
   .seeds-preview .seed-detail-panel { padding-top: 0; }
 }
+/* Cards and Seeds: the column headings stay put while the rows scroll.
+   box-shadow, not a border: a collapsed border stays behind when the cell sticks. */
+#cards-table-main thead, #seeds-table thead { position: sticky; top: 0; z-index: 2; }
+#cards-table-main thead th, #seeds-table thead th { background: var(--panel-2); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--hairline); }
 .cards-thumb-wrap { display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
 .cards-hi { font-size: 1rem; }
 .cards-thumb { width: 44px; height: 33px; object-fit: contain; border-radius: 4px; vertical-align: middle; }
@@ -2003,6 +2007,8 @@ body.suppress-hover-tooltips .node-tooltip {
 
   /* Seed Data: four tight columns; what a search matched goes on its own
      line under the row instead of in a fifth column. */
+  /* No sideways scroll here (the grid fits), so the headings can stick to the page. */
+  .seeds-list { overflow: visible; }
   #seeds-table, #seeds-table thead, #seeds-table tbody { display: block; }
   #seeds-table tr { display: block; }
   #seeds-table #seeds-thead-row, #seeds-table tr.seed-row { display: grid; grid-template-columns: 7.4rem minmax(0, 1fr) 2.4rem 4.9rem; align-items: center; }
@@ -2014,4 +2020,8 @@ body.suppress-hover-tooltips .node-tooltip {
   #seeds-table tr.seed-row > td:last-child { grid-column: 1 / -1; padding-top: 0 !important; }
   #seeds-table tr.seed-row > td:last-child:empty { display: none; }
   #seeds-table tr:not(.seed-row) > td { display: block; }
+  /* The opened run's deck: two cards a row, as on Run History. */
+  #seeds-table .seed-detail-panel { padding-left: 0; padding-right: 0; }
+  #seeds-table .seed-detail-cards .deck-tile-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #seeds-table .seed-detail-cards .cardface { width: 100% !important; }
 }
