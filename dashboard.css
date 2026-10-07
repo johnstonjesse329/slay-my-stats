@@ -240,9 +240,10 @@ h1 {
 .fl-section { font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--gold); margin: 0.75rem 0 0.4rem; }
 .fl-rows { display: grid; grid-template-columns: 26px 9.5rem minmax(0, 1fr); gap: 0.35rem 0.6rem; align-items: center; font-size: 0.8rem; }
 .fl-rows img { width: 26px; height: 26px; object-fit: contain; }
-/* The lane stops short of the edge to leave room for the "W% vs L%" text. */
+/* The lane stops short of the edge to leave room for the value text. */
 .fl-lane { position: relative; height: 18px; margin-right: 6.5rem; background: linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08)) 0 8px / 100% 2px no-repeat; }
-.fl-line { position: absolute; top: 6px; height: 6px; border-radius: 3px; background: #8f8fa8; }
+.fl-line { position: absolute; top: 6px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #5cba7d, #e05c5c); }
+.fl-line-rev { background: linear-gradient(90deg, #e05c5c, #5cba7d); }
 .fl-dot { position: absolute; top: 3px; width: 12px; height: 12px; border-radius: 50%; transform: translateX(-6px); }
 .fl-value { position: absolute; top: 1px; font-size: 0.7rem; color: #bcbcd0; white-space: nowrap; }
 .fl-fill { position: absolute; left: 0; top: 4px; height: 10px; border-radius: 3px; min-width: 2px; }
