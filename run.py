@@ -1270,7 +1270,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="grid-2">
   <div class="chart-box">
     <h2>Run Won, by Elites Beaten at Each Act Boss</h2>
-    <p class="chart-caption">Of the runs that reached an act's boss, the share that went on to win, by how many elites they had beaten so far. A strong run takes more elites, so this isn't only the rewards.</p>
+    <p class="chart-caption">Win rate by elites beaten before each act boss. Can signal the rewards scaling into a win, or greed getting you killed.</p>
     <div class="chart-wrap"><canvas id="eliteCheckpointChart"></canvas></div>
   </div>
   <div class="chart-box">
