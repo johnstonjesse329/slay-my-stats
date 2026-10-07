@@ -17,8 +17,9 @@ function updateAll() {
 
   renderCards(grand, charStats, avgRestOnWins(filteredRuns));
   renderWinPivot(pivot);
-  renderRunEndGap(pivot);
-  renderStarterCardsGap(aggregateStarterCards(filteredRuns));
+  updateWonLostChart(cardsEndChart,  pivot, "median_win_cards",  "median_loss_cards");
+  updateWonLostChart(relicsEndChart, pivot, "median_win_relics", "median_loss_relics");
+  renderFightTables();
   renderFinalBossWinPivot(filteredRuns);
   updateRestWinCharts(filteredRuns);
   updateEliteActCharts(filteredRuns);
@@ -30,7 +31,7 @@ function updateAll() {
 
 
 // -------------------------------------------------------------------------
-// Shared filter state — used identically by all 5 pages.
+// Shared filter state — used identically by all 4 pages.
 // -------------------------------------------------------------------------
 
 const allTimestamps = DATA.runsData.map(run => run.ts);
@@ -52,12 +53,10 @@ let sharedActiveChar   = "ALL";
 // The character preference that applies to the three pages that don't
 // constrain it (Card Stats, Run Detail, Seed Data) — see charIsLocked()
 // below. sharedActiveChar itself gets temporarily forced away from this
-// while Overview or Character Detail is active (each computes its own
-// required value independently); lastUnlockedChar is what showPage()
-// restores sharedActiveChar to the moment you land back on an unlocked
-// page, so a real character selection survives cycling through any
-// number of locked pages in between instead of getting silently replaced
-// by whatever the last-visited locked page happened to force it to.
+// while Overview is active (it always shows every character);
+// lastUnlockedChar is what showPage() restores sharedActiveChar to the
+// moment you land back on an unlocked page, so a real character selection
+// survives a visit to Overview instead of being silently replaced by "ALL".
 let lastUnlockedChar   = "ALL";
 // The ascension ranges the tables group their columns by (next to an "All"
 // column) unless granular view is on. A bucket the player has no runs in is
@@ -133,22 +132,3 @@ function filterRuns() {
 function filteredRunTsSet() {
   return new Set(filterRuns().map(r => r.ts));
 }
-
-// Character Detail is inherently single-character (its tables only make
-// sense for one character's kit at a time) and can't render for "All
-// Characters" — it falls back to the most-played character in the
-// current filtered view, so the default drill-down opens on dense data
-// rather than a sparsely-played character full of "—" cells. (Card Stats
-// does NOT use this — it genuinely aggregates across every character's
-// card pool when "All" is selected.) showPage() also pushes this fallback into the SHARED
-// character filter itself when landing on this tab with "All" active, so
-// the filter bar and the page can never show conflicting state.
-function singleCharFallback() {
-  if (sharedActiveChar !== "ALL") return sharedActiveChar;
-  const counts = {};
-  filterRuns().forEach(r => { counts[r.char] = (counts[r.char] || 0) + 1; });
-  let best = "", bestN = 0;
-  Object.entries(counts).forEach(([char, n]) => { if (n > bestN) { best = char; bestN = n; } });
-  return best || DATA.characters[0] || "";
-}
-

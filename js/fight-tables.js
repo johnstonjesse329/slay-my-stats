@@ -1,5 +1,7 @@
 // =========================================================================
-// Character detail page
+// Per-encounter fight tables (Overview page): boss and elite win rates,
+// HP entering each fight, damage taken. These were the Character Detail
+// page, one character at a time; on the Overview they cover every character.
 // =========================================================================
 
 // Each run's fights array is already embedded — flatten them all here.
@@ -17,8 +19,7 @@ const ELITE_IDS = [...new Set(ALL_FIGHTS.filter(f => f.type === "elite").map(f =
 
 function filterFights() {
   const okTs = filteredRunTsSet();
-  const char = singleCharFallback();
-  return ALL_FIGHTS.filter(f => f.char === char && okTs.has(f.ts));
+  return ALL_FIGHTS.filter(f => okTs.has(f.ts));
 }
 
 
@@ -178,86 +179,7 @@ function aggregateFights(fights) {
 }
 
 
-function deckActBucket() {
-  return { wins: 0, runs: 0, winVals: [], lossVals: [] };
-}
-
-function addDeckAct(bucket, fight) {
-  bucket.runs++;
-  if (fight.won) { bucket.wins++; bucket.winVals.push(fight.cards); }
-  else           { bucket.lossVals.push(fight.cards); }
-}
-
-function summarizeDeckAct(bucket) {
-  if (!bucket.runs) return null;
-  return {
-    runs:      bucket.runs,
-    wins:      bucket.wins,
-    win_pct:   +(bucket.wins / bucket.runs * 100).toFixed(1),
-    avg_cards: median(bucket.winVals),
-    loss_avg_cards: median(bucket.lossVals),
-    min_win:   bucket.winVals.length  ? Math.min(...bucket.winVals)  : null,
-    max_win:   bucket.winVals.length  ? Math.max(...bucket.winVals)  : null,
-    min_loss:  bucket.lossVals.length ? Math.min(...bucket.lossVals) : null,
-    max_loss:  bucket.lossVals.length ? Math.max(...bucket.lossVals) : null,
-  };
-}
-
-// Returns { act: { asc: summarizeDeckAct, ALL: summarizeDeckAct } }
-function aggregateDeckByAct(fights) {
-  const acts = [1, 2, 3];
-  const byActAsc = {};
-  acts.forEach(act => {
-    byActAsc[act] = {};
-    ascColumns().forEach(col => { byActAsc[act][col.key] = deckActBucket(); });
-    byActAsc[act]["ALL"] = deckActBucket();
-  });
-
-  fights.forEach(f => {
-    if (f.type !== "boss") return;
-    const act = bossAct(f.enc);
-    if (!act) return;
-    const b = byActAsc[act][ascColumnKey(f.asc)];
-    if (b) addDeckAct(b, f);
-    addDeckAct(byActAsc[act]["ALL"],   f);
-  });
-
-  const result = {};
-  acts.forEach(act => {
-    result[act] = {};
-    ascColumns().forEach(col => { result[act][col.key] = summarizeDeckAct(byActAsc[act][col.key]); });
-    result[act]["ALL"] = summarizeDeckAct(byActAsc[act]["ALL"]);
-  });
-  return result;
-}
-
-function renderDeckActTable(tableId, deckData) {
-  const visAscs = ascColumns();
-  const thSub = `font-size:0.72rem;color:#8a8aa0;font-weight:400;text-align:center`;
-  const subHead = (cls, border) =>
-    `<th class="${cls}" style="${thSub};border-left:${border} solid #3f4147">Won</th><th class="${cls}" style="${thSub};border-left:0">Lost</th>`;
-  const cells = (s, isAll) => wonLostCells(s, isAll, s && s.avg_cards != null,
-    s && s.avg_cards, s && s.loss_avg_cards);
-  let html = `<thead><tr>
-    <th class="char-head" rowspan="2">Act</th>
-    ${visAscs.map(col => `<th colspan="2" style="border-left:1px solid #3f4147;text-align:center">${col.label}</th>`).join("")}
-    <th colspan="2" class="all-col" style="border-left:2px solid #3f4147;text-align:center">All<br>columns</th>
-  </tr><tr>
-    ${visAscs.map(() => subHead("", "1px")).join("")}${subHead("all-col", "2px")}
-  </tr></thead><tbody>`;
-  [1, 2, 3].forEach(act => {
-    const s = deckData[act];
-    if (!s?.["ALL"]) return;
-    html += `<tr><td class="char-name">Act ${act}</td>`;
-    visAscs.forEach(col => { html += cells(s[col.key], false); });
-    html += cells(s["ALL"], true);
-    html += `</tr>`;
-  });
-  html += `</tbody>`;
-  document.getElementById(tableId).innerHTML = html;
-}
-
-// ---- Rendering helpers for detail tables ----
+// ---- Rendering helpers for the fight tables ----
 
 function encNameCell(enc) {
   const label = DATA.encLabels[enc] || enc;
@@ -314,19 +236,6 @@ function dmgCell(s, isAll) {
     s && s.loss_avg_dmg !== null ? s.loss_avg_dmg : null);
 }
 
-// Cards, relics and potions each get a line in the Won cell and the matching
-// line in the Lost cell.
-function loadoutCell(s, isAll) {
-  const unit = `<span style="color:#8a8aa0;font-size:0.72rem;font-weight:400">`;
-  const lines = (cards, relics, potions) =>
-    `<div>${cards} ${unit}${cards === 1 ? "card" : "cards"}</span></div>
-    <div style="margin-top:2px">${relics} ${unit}${relics === 1 ? "relic" : "relics"}</span></div>
-    <div style="margin-top:2px">${potions} ${unit}${potions === 1 ? "potion" : "potions"}</span></div>`;
-  return wonLostCells(s, isAll, s && s.avg_cards !== null,
-    s && lines(s.avg_cards, s.avg_relics, s.avg_potions),
-    s && s.loss_avg_cards !== null ? lines(s.loss_avg_cards, s.loss_avg_relics, s.loss_avg_potions) : null);
-}
-
 // encGroups: array of {label, ids} for section headers, or a flat array of IDs.
 // split: cellFn returns a Won and a Lost <td> per column (wonLostCells).
 function renderFightTable(tableId, encGroups, fightData, cellFn, split) {
@@ -374,19 +283,8 @@ function renderFightTable(tableId, encGroups, fightData, cellFn, split) {
   document.getElementById(tableId).innerHTML = html;
 }
 
-function updateDetail() {
-  const note = document.getElementById("detail-char-fallback-note");
-  if (sharedActiveChar === "ALL") {
-    const label = singleCharFallback();
-    note.textContent = `Showing data for ${fmtCharName(label)}. Pick a character above to change.`;
-    note.style.display = "";
-  } else {
-    note.style.display = "none";
-  }
-
-  const fights    = filterFights();
-  const fightData = aggregateFights(fights);
-  const deckData  = aggregateDeckByAct(fights);
+function renderFightTables() {
+  const fightData = aggregateFights(filterFights());
   const groups    = DATA.encGroups;
 
   const bossGroups  = groups.filter(g => g.label.includes("Boss"));
@@ -394,10 +292,6 @@ function updateDetail() {
 
   renderFightTable("boss-win-table",  bossGroups,  fightData, fightWinCell);
   renderFightTable("elite-win-table", eliteGroups, fightData, fightWinCell);
-  renderFightTable("hp-table",      groups, fightData, hpCell, true);
-  renderFightTable("loadout-table", groups, fightData, loadoutCell, true);
-  renderFightTable("dmg-table",     groups, fightData, dmgCell, true);
-  renderDeckActTable("deck-act-table", deckData);
+  renderFightTable("hp-table",  groups, fightData, hpCell, true);
+  renderFightTable("dmg-table", groups, fightData, dmgCell, true);
 }
-
-
