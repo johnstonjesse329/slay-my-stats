@@ -198,7 +198,6 @@ h1 {
   #seeds-tbody tr.seed-current td { background: rgba(255,255,255,.06); }
   .seeds-preview { display: block; flex: 1 1 0; min-width: 0; align-self: flex-start; }
   /* Smaller tiles than under a row: the whole deck should fit beside the list. */
-  .seeds-preview .seed-detail-cards .cardface { width: 132px !important; }
   .seeds-preview .seed-detail-panel { padding-top: 0; }
 }
 /* Cards and Seeds: the column headings stay put while the rows scroll.
@@ -828,11 +827,8 @@ h1 {
   margin-bottom: 0.5rem;
 }
 
-.seed-detail-cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
+/* One card type per block, as on Run History. */
+.seed-detail-cards { display: block; }
 
 .seed-match-row {
   display: flex;
