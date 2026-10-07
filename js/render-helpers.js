@@ -735,13 +735,15 @@ function lostWonLane(s, color, lost, won, max, fmt) {
     `<span class="fl-value" style="left:calc(${hi}% + 10px)">${lost != null ? fmt(lost) : "—"} · ${won != null ? fmt(won) : "—"}</span></div>`;
 }
 
-const LOST_WON_LEGEND = `<div class="fl-legend"><i class="re-ring"></i>runs lost<i class="re-dot"></i>runs won</div>`;
+const LOST_WON_KEY = `<i class="re-ring"></i>runs lost<i class="re-dot"></i>runs won`;
+const LOST_WON_LEGEND = `<div class="fl-legend">${LOST_WON_KEY}</div>`;
 
 // headers: the two lane titles; lanes(s, color): the two lanes of a row;
-// axes: the two axis rows.
-function renderCharLanes(elId, pivotData, headers, lanes, axes) {
+// axes: the two axis rows; legend: shown above both lanes, for a section
+// where the ring and dot are in both.
+function renderCharLanes(elId, pivotData, headers, lanes, axes, legend = "") {
   const stats = DATA.characters.map(char => [char, pivotData[char]?.["ALL"]]).filter(([, s]) => s && s.runs);
-  let html = `${LOST_WON_LEGEND}<div class="re-rows"><span></span>${headers.map(h => `<div class="fl-section">${h}</div>`).join("")}`;
+  let html = `${legend}<div class="re-rows"><span></span>${headers.map(h => `<div class="fl-section">${h}</div>`).join("")}`;
   stats.forEach(([char, s]) => {
     const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
     html += `<div style="color:${color};font-weight:600">${fmtCharName(char)}</div>${lanes(s, color).join("")}`;
@@ -752,7 +754,8 @@ function renderCharLanes(elId, pivotData, headers, lanes, axes) {
 const charAllStats = pivotData => DATA.characters.map(char => pivotData[char]?.["ALL"]).filter(s => s && s.runs);
 
 // Time Played: a bar of hours on the character with its share of the total,
-// beside the median run length in runs lost and runs won.
+// beside the median run length in runs lost and runs won. The ring and dot
+// are only in the run length lane, so its header carries the key.
 function renderTimeLanes(pivotData) {
   const stats = charAllStats(pivotData);
   const totalHrs = stats.reduce((sum, s) => sum + (s.total_hrs ?? 0), 0);
@@ -766,7 +769,7 @@ function renderTimeLanes(pivotData) {
       `<span class="fl-fill" style="width:${width}%;background:${color}"></span>` +
       `<span class="fl-value" style="left:calc(${width}% + 8px)">${hrs}h · ${Math.round(share)}%</span></div>`;
   };
-  renderCharLanes("time-lanes", pivotData, ["Hours Played", "Median Run Length"],
+  renderCharLanes("time-lanes", pivotData, ["Hours Played", `Median Run Length<span class="fl-legend">${LOST_WON_KEY}</span>`],
     (s, color) => [hoursLane(s, color), lostWonLane(s, color, s.median_loss_min, s.median_win_min, minMax, fmtHrsMin)],
     [charLaneAxis(hrsMax, v => `${v}h`), charLaneAxis(minMax, v => `${v}m`)]);
 }
@@ -781,5 +784,5 @@ function renderRunEndLanes(pivotData) {
       lostWonLane(s, color, s.median_loss_cards,  s.median_win_cards,  cardsMax,  v => `${v}`),
       lostWonLane(s, color, s.median_loss_relics, s.median_win_relics, relicsMax, v => `${v}`),
     ],
-    [charLaneAxis(cardsMax), charLaneAxis(relicsMax)]);
+    [charLaneAxis(cardsMax), charLaneAxis(relicsMax)], LOST_WON_LEGEND);
 }
