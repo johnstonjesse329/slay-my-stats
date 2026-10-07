@@ -1311,12 +1311,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </div>
 
-<div class="grid-2">
-  <div class="chart-box">
-    <h2>Elites Defeated</h2>
-    <p class="chart-caption">Median elite fights won per run (all acts), in runs you won vs. lost.</p>
-    <div class="pivot-wrap"><table class="pivot" id="elites-table"></table></div>
-  </div>
+<div class="grid-1">
   <div class="chart-box">
     <h2>Rest Site Win %</h2>
     <p class="chart-caption">Win % by how many times you picked each rest site option over a run. Only runs that reached Act 3.</p>

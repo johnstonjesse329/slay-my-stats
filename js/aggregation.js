@@ -131,8 +131,6 @@ function summarize(bucket) {
     median_loss_cards:    median(bucket.lossCardVals),
     median_win_relics:    median(bucket.winRelicVals),
     median_loss_relics:   median(bucket.lossRelicVals),
-    median_win_elites:    median(bucket.winEliteVals),
-    median_loss_elites:   median(bucket.lossEliteVals),
     min_win_elites:   w ? bucket.minWinElites : null,
     max_win_elites:   w ? bucket.maxWinElites : null,
     min_win_cards:   w ? bucket.minWinCards  : null,

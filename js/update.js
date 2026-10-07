@@ -20,7 +20,6 @@ function updateAll() {
   renderWinPivot(pivot);
   renderDeckPivot("cards-table", pivot, "median_win_cards", "median_loss_cards");
   renderDeckPivot("relics-table", pivot, "median_win_relics", "median_loss_relics");
-  renderDeckPivot("elites-table", pivot, "median_win_elites", "median_loss_elites");
   renderStarterCardsTable(aggregateStarterCards(filteredRuns));
   renderFinalBossWinPivot(filteredRuns);
   renderRestChoicesTable(aggregateRestChoices(filteredRuns), filteredRuns);
