@@ -1298,7 +1298,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="grid-1">
   <div class="chart-box">
     <h2>HP Entering Fight</h2>
-    <p class="chart-caption">How healthy should you be before taking the fight? The lowest HP you've won each one at, and your median HP when you win, as % of max HP at the time.</p>
+    <p class="chart-caption">How healthy should you be before taking the fight? Your HP at the lowest 10% of your wins on each one, and your median HP when you win, as % of max HP at the time.</p>
     <div id="hp-lanes"></div>
   </div>
 </div>
