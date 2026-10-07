@@ -54,8 +54,8 @@ function renderCards(grand, charStats, restAvg) {
   const mostPlayedPct = grand.runs ? +((charStats[mostIdx].runs / grand.runs) * 100).toFixed(0) : 0;
   const winPct = grand.win_pct !== null ? grand.win_pct + "%" : "—";
   const items = [
-    { label: "Win Rate", value: winPct },
-    { label: "Best Win Rate", value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
+    { label: "Win %", value: winPct },
+    { label: "Best Win %", value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
       tip: charStats[bestIdx].win_pct !== null ? `${fmtCharName(chars[bestIdx])} · ${charStats[bestIdx].wins}W / ${charStats[bestIdx].runs}L` : "No wins" },
     { label: "Most Played",    value: fmtCharName(chars[mostIdx]),
       // Run count is the Runs card's value — show only the share here.
@@ -564,7 +564,7 @@ function renderWinPivot(pivotData) {
   let html = `<thead><tr>
     <th class="char-head">Character</th>
     ${ascs.map(col => `<th>${col.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">All<br>columns</th>
+    <th class="all-col" style="border-left:2px solid #3f4147">All<br>Ascensions</th>
   </tr></thead><tbody>`;
 
   chars.forEach(char => {
@@ -680,7 +680,7 @@ function renderFinalBossWinPivot(filteredRuns) {
   let html = `<thead><tr>
     <th class="char-head">Character</th>
     ${cols.map(c => `<th>${c.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">All<br>columns</th>
+    <th class="all-col" style="border-left:2px solid #3f4147">All<br>Ascensions</th>
   </tr></thead><tbody>`;
 
   chars.forEach(char => {
@@ -707,7 +707,7 @@ function valCell(bucket, valueKey, color, isAll) {
   </td>`;
 }
 
-// ---- Character lanes (Overview): Time Played, Cards and Relics ----
+// ---- Character lanes (Overview): Time Played, Cards & Relics ----
 //
 // A row per character in its colour, two lanes side by side, each with its
 // own scale rounded up to a multiple of 20 so the quarter ticks are whole.
@@ -769,12 +769,12 @@ function renderTimeLanes(pivotData) {
       `<span class="fl-fill" style="width:${width}%;background:${color}"></span>` +
       `<span class="fl-value" style="left:calc(${width}% + 8px)">${hrs}h · ${Math.round(share)}%</span></div>`;
   };
-  renderCharLanes("time-lanes", pivotData, ["Hours Played", `Median Run Length<span class="fl-legend">${LOST_WON_KEY}</span>`],
+  renderCharLanes("time-lanes", pivotData, ["Hours", `Median Run Length<span class="fl-legend">${LOST_WON_KEY}</span>`],
     (s, color) => [hoursLane(s, color), lostWonLane(s, color, s.median_loss_min, s.median_win_min, minMax, fmtHrsMin)],
     [charLaneAxis(hrsMax, v => `${v}h`), charLaneAxis(minMax, v => `${v}m`)]);
 }
 
-// Cards and Relics: median cards beside median relics.
+// Cards & Relics: median cards beside median relics.
 function renderRunEndLanes(pivotData) {
   const stats = charAllStats(pivotData);
   const cardsMax  = laneMax(stats.flatMap(s => [s.median_win_cards,  s.median_loss_cards]));

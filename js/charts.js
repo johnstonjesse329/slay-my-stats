@@ -331,7 +331,7 @@ function makeRestWinChart(id) {
       scales: {
         x: {
           grid: { color: "#3f4147" }, ticks: { color: "#bcbcd0" },
-          title: { display: true, text: "Times chosen across full run", color: "#999" },
+          title: { display: true, text: "Times chosen", color: "#999" },
         },
         y: {
           grid: { color: "#3f4147" },
@@ -438,7 +438,7 @@ function updateRestWinCharts(filteredRuns) {
 // comes after everything in Acts 1 and 2, and what the earlier ones gave
 // (relics, cards, gold) is still with the run.
 //
-// "Win % by Elites Beaten" asks where a run has taken
+// "Win % by Elites Defeated" asks where a run has taken
 // enough elites to be safer. A run counts once per act boss it reached, at
 // the number of elites it had beaten by then, so along one line every run
 // is at the same point and only the elite total differs. Counting by "beat
@@ -492,7 +492,7 @@ const eliteCheckpointChart = new Chart(document.getElementById("eliteCheckpointC
       legend: { labels: { color: "#ccc", boxWidth: 12, font: { size: 11 } } },
       tooltip: {
         callbacks: {
-          title: items => `${items[0].label} elites beaten so far`,
+          title: items => `${items[0].label} elites defeated so far`,
           label: ctx => {
             if (ctx.parsed.y == null) return null;
             const n = ctx.dataset.counts[ctx.dataIndex];
@@ -505,11 +505,11 @@ const eliteCheckpointChart = new Chart(document.getElementById("eliteCheckpointC
     scales: {
       x: {
         grid: { display: false }, ticks: { color: "#bcbcd0" },
-        title: { display: true, text: "Elites beaten so far this run", color: "#999" },
+        title: { display: true, text: "Elites defeated", color: "#999" },
       },
       y: {
         grid: { color: "#3f4147" },
-        title: { display: true, text: "Run Won %", color: "#999" },
+        title: { display: true, text: "Win %", color: "#999" },
         beginAtZero: true,
         ...WIN_PCT_Y_AXIS,
       },
