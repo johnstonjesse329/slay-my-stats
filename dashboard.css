@@ -106,7 +106,7 @@ h1 {
 /* ---- Summary stat cards ---- */
 /* Was flex-wrap with flex:0 0 auto cards, so each card sized to its own
    label/value/sub content -- rows never lined up column-to-column, and a
-   card with a longer sub (Time Played, Best Win Rate) ballooned wider
+   card with a longer sub (Time Played, Best Win %) ballooned wider
    than its neighbors for no reason. A grid of equal-width tracks fixes both:
    every card is the same width, and one wrapping to a second row still lines
    up under the column above it. minmax(220px, 1fr): wide enough that none of
@@ -251,7 +251,7 @@ h1 {
 .fl-low { background: var(--panel); box-shadow: inset 0 0 0 2px #5cba7d; }
 .fl-axis { height: 14px; background: none; font-size: 0.65rem; color: var(--text-dim); }
 .fl-axis span { position: absolute; transform: translateX(-50%); }
-/* Character lanes (Time Played, Cards and Relics): character, two lanes. */
+/* Character lanes (Time Played, Cards & Relics): character, two lanes. */
 .re-rows { display: grid; grid-template-columns: 7rem minmax(0, 1fr) minmax(0, 1fr); gap: 0.35rem 2.5rem; align-items: center; font-size: 0.8rem; }
 .re-rows .fl-section { margin: 0.5rem 0 0.1rem; }
 .re-rows .fl-lane { margin-right: 4.5rem; }

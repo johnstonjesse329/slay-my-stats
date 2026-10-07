@@ -192,7 +192,7 @@ function aggregateFights(fights) {
 
 // ---- Rendering: the fight sections (Overview page) ----
 //
-// Fight Win Rate, HP Entering Fight and Damage Taken share one layout: a lane
+// Fight Win %, HP Entering Fight and Damage Taken share one layout: a lane
 // per fight, elites beside bosses for each act. Bosses carry their own map
 // icon; the game has one icon for every elite. The section header says Elites
 // or Bosses, so the names drop that word; the name column is a fixed width so

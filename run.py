@@ -1269,8 +1269,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2>Win % by Elites Beaten</h2>
-    <p class="chart-caption">Win rate by elites beaten before each act boss. Can signal the rewards scaling into a win, or greed getting you killed. <span id="elite-checkpoint-missing"></span></p>
+    <h2>Win % by Elites Defeated</h2>
+    <p class="chart-caption">Win % by elites defeated before each act boss. Can signal the rewards scaling into a win, or greed getting you killed. <span id="elite-checkpoint-missing"></span></p>
     <div class="chart-wrap"><canvas id="eliteCheckpointChart"></canvas></div>
   </div>
   <div class="chart-box">
@@ -1282,7 +1282,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2>Cards and Relics</h2>
+    <h2>Cards &amp; Relics</h2>
     <p class="chart-caption">Median cards and relics when the run ended, in runs you lost and runs you won.</p>
     <div id="run-end-lanes"></div>
   </div>
@@ -1290,7 +1290,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2>Fight Win Rate</h2>
+    <h2>Fight Win %</h2>
     <p class="chart-caption">Share of times you won each elite and boss fight.</p>
     <div id="win-lanes"></div>
   </div>
