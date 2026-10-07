@@ -506,6 +506,67 @@ Gamma isn't public. It answers only the addresses listed as `"gammaAllowedIps"` 
 "403 Forbidden" page). If your address changes,
 update the list and deploy gamma again.
 
+### Rolling a change out by hand
+
+The whole path, from a change to production, with the commands to type. Gamma first, production only after
+looking at gamma.
+
+1. Start from `gamma`, on a branch of its own:
+
+   ```sh
+   git checkout gamma && git pull
+   git checkout -b my-change
+   ```
+
+2. Make the change, then check it locally:
+
+   ```sh
+   infra\.venv\Scripts\python.exe build_site.py                   # builds dist/
+   infra\.venv\Scripts\python.exe -m unittest discover infra/tests # must end in OK
+   infra\.venv\Scripts\python.exe tools/serve_site.py --port 8123 # http://127.0.0.1:8123/
+   ```
+
+   Start `serve_site.py` fresh each time; a long-running one can serve an older build.
+
+3. Commit, merge into `gamma` and push it. The push deploys gamma:
+
+   ```sh
+   git commit -am "What changed and why"
+   git checkout gamma
+   git merge --no-ff my-change
+   git push origin gamma
+   ```
+
+   The hook stops the push if there are uncommitted changes to tracked files, or if `gamma` isn't what is
+   checked out. If the stack changed it shows the `cdk diff` and asks y/N (any change to `run.py` or the
+   handler counts, as new Lambda code). It ends with `Deployed.`
+
+4. Look at https://gamma.slay-my-stats.com from an address in `gammaAllowedIps`. `app.js` and `index.html` are
+   invalidated by the deploy; the stylesheets can be up to 5 minutes old, so hard-refresh if a style looks
+   wrong.
+
+5. Production is the same push, of `main`:
+
+   ```sh
+   git checkout main && git pull
+   git merge --ff-only gamma
+   git push origin main
+   ```
+
+   This one always asks y/N on stack changes; there is no `DEPLOY_YES` for production. The hook also refuses a
+   push that isn't a fast-forward of `origin/main`. Then look at https://slay-my-stats.com.
+
+To deploy without pushing, run the same tool directly. It deploys the working tree as it is, committed or not:
+
+```sh
+infra\.venv\Scripts\python.exe tools/deploy.py --stage gamma    # gamma
+infra\.venv\Scripts\python.exe tools/deploy.py                  # production
+```
+
+To take a change back, revert it and roll that out the same way (`git revert <commit>`, then steps 3 to 5).
+Stored runs are not touched by a deploy: it changes the stack, the site files and the art, never `users/` or
+`raw/` in the data bucket.
+
 ## Refreshing game data
 
 After a game update, run `python tools/refresh_game_data.py`. Its requirements are in

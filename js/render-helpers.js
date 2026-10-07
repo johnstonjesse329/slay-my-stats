@@ -60,16 +60,12 @@ function renderCards(grand, charStats, restAvg) {
     { label: "Most Played",    value: fmtCharName(chars[mostIdx]),
       // Run count is the Runs card's value — show only the share here.
       tip: `${mostPlayedPct}% of all runs` },
-    // Median floor and median win time used to be two cards. Both answer "what
-    // does a typical run look like", so they share one now and the row is 8
-    // cards, which divides evenly into 4 + 4 instead of leaving a ragged edge.
-    // The per-run median already sits on the Total Time Played card.
-    { label: "Median Floor", value: grand.median_floor !== null ? grand.median_floor : "—",
-      tip: grand.median_win_min !== null ? `${grand.median_win_min}m in winning runs` : "No wins yet" },
     { label: "Total Gold Gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
       tip: grand.runs ? `median ${grand.median_gold.toLocaleString()} per run` : "" },
-    { label: "Elites/Bosses Defeated", value: grand.runs ? (grand.total_elites_defeated + grand.total_bosses_defeated).toLocaleString() : "—",
-      tip: grand.runs ? `${grand.total_elites_defeated.toLocaleString()} elites · ${grand.total_bosses_defeated.toLocaleString()} bosses` : "" },
+    // Elites and bosses are a card each. The row stays at 8 cards, which
+    // divides evenly into 4 + 4 instead of leaving a ragged edge.
+    { label: "Elites Defeated", value: grand.runs ? grand.total_elites_defeated.toLocaleString() : "—" },
+    { label: "Bosses Defeated", value: grand.runs ? grand.total_bosses_defeated.toLocaleString() : "—" },
   ];
 
   // The scope note is worth keeping — a filtered number must not read as a
@@ -273,10 +269,13 @@ function renderPersonalBests() {
 // count. A daily or custom run sets its own ascension (a daily can be A8 for a
 // character whose climb is at A2), so it says nothing about the climb.
 //
-// The pips are the ascensions regarded as the big difficulty jumps. A pip
-// lights on a WON run at that ascension or above: ascensions unlock in order,
-// so an A10 win means the earlier ones were beaten too.
-const ASC_TRACKER_MILESTONES = [1, 8, 9, 10];
+// One pip per ascension, A1 to A10, so every step of the climb shows. (Pips
+// for only the big difficulty jumps, A1 / A8 / A9 / A10, left a character on
+// one pip all the way from A1 to its A8 win.) A pip lights on a WON run at
+// that ascension or above: ascensions unlock in order, so an A10 win means
+// the earlier ones were beaten too.
+const ASC_TRACKER_MAX = 10;
+const ASC_TRACKER_LEVELS = Array.from({ length: ASC_TRACKER_MAX }, (_, i) => i + 1);
 const ASC_TRACKER_MODES = [
   { label: "Solo",        test: run => !run.mp },
   { label: "Multiplayer", test: run => !!run.mp },
@@ -299,7 +298,7 @@ function aggregateAscTracker(runs) {
 
 function renderAscTracker() {
   const fmtDate = ts => new Date(ts * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  const maxAsc = ASC_TRACKER_MILESTONES[ASC_TRACKER_MILESTONES.length - 1];
+  const maxAsc = ASC_TRACKER_MAX;
   const standard = DATA.runsData
     .filter(run => (run.mode || "standard") === "standard" && run.asc != null)
     .sort((a, b) => a.ts - b.ts);
@@ -307,7 +306,7 @@ function renderAscTracker() {
   const block = (char, color, mode) => {
     const t = aggregateAscTracker(standard.filter(run => run.char === char && mode.test(run)));
     const won = t && t.highestWin ? t.highestWin.value : -1;
-    const pips = ASC_TRACKER_MILESTONES.map(level =>
+    const pips = ASC_TRACKER_LEVELS.map(level =>
       `<span class="asc-pip" data-tip="A${level}"${won >= level ? ` style="background:${color}"` : ""}></span>`).join("");
     if (!t) {
       return `<div class="asc-mode">

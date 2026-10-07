@@ -123,7 +123,7 @@ h1 {
 @media (max-width: 1200px) {
   .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-/* The dashboard's summary row is 8 cards, not 9 -- the two medians merged --
+/* The dashboard's summary row is 8 cards, not 9,
    so four across divides it into 4 + 4 with no ragged edge. Keyed off the id
    rather than .cards because .cards is shared with the finder's 6-card grid
    (players.css .site-cards) and the Personal Bests row, both of which need
@@ -220,7 +220,7 @@ h1 {
 .asc-big { font-size: 1.9rem; font-weight: 700; line-height: 1.1; }
 .asc-big.asc-none { color: var(--text-dim) !important; opacity: 0.6; }
 .asc-sub { font-size: 0.72rem; color: var(--text-dim); }
-.asc-pips { display: flex; gap: 3px; margin: 0.5rem 0 0.45rem; }
+.asc-pips { display: flex; gap: 2px; margin: 0.5rem 0 0.45rem; }
 .asc-pip { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); }
 .asc-now { font-size: 0.74rem; color: var(--text); opacity: 0.85; }
 
