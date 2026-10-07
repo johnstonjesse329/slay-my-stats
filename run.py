@@ -1351,11 +1351,14 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <h2 id="cards-title">Card Offer &amp; Pick Rates</h2>
   <p class="chart-caption" id="cards-caption">Every card offered under the current filters.</p>
   <input type="text" class="seeds-input" id="cards-name-filter" placeholder="Filter by card name…" aria-label="Filter cards by name" style="max-width:260px;margin-bottom:0.75rem">
-  <div class="pivot-wrap" style="max-height:min(70vh,720px);overflow-y:auto">
-    <table class="pivot" id="cards-table-main" style="table-layout:fixed;min-width:0;width:100%">
-      <thead id="cards-thead"></thead>
-      <tbody id="cards-tbody"></tbody>
-    </table>
+  <div class="cards-split">
+    <div class="pivot-wrap cards-list">
+      <table class="pivot" id="cards-table-main" style="table-layout:fixed;min-width:0;width:100%">
+        <thead id="cards-thead"></thead>
+        <tbody id="cards-tbody"></tbody>
+      </table>
+    </div>
+    <div class="cards-preview" id="cards-preview" aria-hidden="true"></div>
   </div>
 </div>
 
@@ -1394,7 +1397,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="chart-box">
   <h2 id="seeds-title">Matching Seeds</h2>
   <p class="chart-caption" id="seeds-caption">Seeds whose run offered every card and relic you searched for.</p>
-  <div class="pivot-wrap">
+  <div class="cards-split">
+  <div class="pivot-wrap seeds-list">
     <table class="pivot" id="seeds-table">
       <thead><tr id="seeds-thead-row">
         <th style="text-align:left">Seed</th>
@@ -1405,6 +1409,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </tr></thead>
       <tbody id="seeds-tbody"></tbody>
     </table>
+  </div>
+  <div class="seeds-preview" id="seeds-preview"></div>
   </div>
 </div>
 

@@ -335,11 +335,32 @@ function renderSeeds() {
   if (moreBtn) moreBtn.addEventListener("click", () => { seedRowLimit += SEED_PAGE_SIZE; renderSeeds(); });
   const allBtn = document.getElementById("seeds-show-all");
   if (allBtn) allBtn.addEventListener("click", () => { seedRowLimit = Infinity; renderSeeds(); });
+
+  // Wide screens: the pane beside the table starts on the top seed.
+  document.getElementById("seeds-preview").innerHTML = "";
+  previewSeed(tbody.querySelector("tr.seed-row"));
 }
 
 let _seedDetailRuns = [];
 
+// The deck and relics of the picked seed beside the table, on screens wide
+// enough to have the room (the same width as .seeds-preview in
+// dashboard.css). Returns false when the pane is not showing, so a click falls
+// back to opening the detail under the row.
+const SEEDS_PREVIEW_MQ = "(min-width: 1100px)";
+function previewSeed(row) {
+  if (!row || !window.matchMedia(SEEDS_PREVIEW_MQ).matches) return false;
+  const run = _seedDetailRuns[+row.dataset.idx];
+  if (!run) return false;
+  document.querySelectorAll(".seed-detail-row").forEach(r => r.remove());
+  document.querySelectorAll("#seeds-tbody tr.seed-current").forEach(r => r.classList.remove("seed-current"));
+  row.classList.add("seed-current");
+  document.getElementById("seeds-preview").innerHTML = renderSeedDetail(run);
+  return true;
+}
+
 function toggleSeedDetail(row) {
+  if (previewSeed(row)) return;
   const next = row.nextElementSibling;
   if (next && next.classList.contains("seed-detail-row")) {
     next.remove();

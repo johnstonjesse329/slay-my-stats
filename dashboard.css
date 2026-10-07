@@ -179,6 +179,28 @@ h1 {
   visibility: visible;
 }
 /* Card Stats table: the card art beside each name (62px-wide thumbnails). */
+/* Card Stats: the table at a snug width, and on wide screens the full card of
+   the row under the pointer in the space beside it (previewCard). */
+.cards-split { display: flex; gap: 1.5rem; align-items: stretch; }
+.cards-list { flex: 0 1 1040px; min-width: 0; max-height: min(70vh, 720px); overflow-y: auto; }
+.cards-preview { display: none; flex: 1 1 0; min-width: 0; align-items: center; justify-content: flex-start; padding-left: 1.5rem; }
+.cards-preview .cardface, .cards-preview .card-tooltip { width: min(360px, 100%) !important; max-height: min(70vh, 720px); object-fit: contain; }
+#cards-tbody tr.cards-current td { background: rgba(255,255,255,.06); }
+@media (min-width: 1420px) { .cards-preview { display: flex; } }
+/* Seed Data, same idea: a snug list, and the picked seed's deck and relics
+   beside it (previewSeed) instead of under its row. */
+.seeds-list { flex: 1 1 auto; min-width: 0; }
+.seeds-preview { display: none; }
+@media (min-width: 1100px) {
+  .seeds-list { flex: 0 1 auto; max-width: 60%; max-height: min(70vh, 720px); overflow-y: auto; position: sticky; top: 1rem; align-self: flex-start; }
+  #seeds-table { width: auto; }
+  #seeds-table .seed-expand-arrow { display: none; }
+  #seeds-tbody tr.seed-current td { background: rgba(255,255,255,.06); }
+  .seeds-preview { display: block; flex: 1 1 0; min-width: 0; align-self: flex-start; }
+  /* Smaller tiles than under a row: the whole deck should fit beside the list. */
+  .seeds-preview .seed-detail-cards .cardface { width: 132px !important; }
+  .seeds-preview .seed-detail-panel { padding-top: 0; }
+}
 .cards-thumb-wrap { display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
 .cards-hi { font-size: 1rem; }
 .cards-thumb { width: 44px; height: 33px; object-fit: contain; border-radius: 4px; vertical-align: middle; }
