@@ -153,14 +153,14 @@ function renderCardsPage() {
 
   // Header
   const cols = [
-    { key: "title",      label: "Card",            align: "left",   width: "26%" },
-    { key: "owner",      label: "Pool",            align: "left",   width: "12%" },
-    { key: "type",       label: "Type",            align: "left",   width: "9%"  },
-    { key: "rarity",     label: "Rarity",          align: "left",   width: "11%"  },
-    { key: "offered",    label: "Offered",         align: "center", width: "9%"  },
-    { key: "pickRate",   label: "Pick Rate",       align: "center", width: "10%"  },
-    { key: "winPicked",  label: "Win % if Picked", align: "center", width: "11%" },
-    { key: "winSkipped", label: "Win % if Skipped",align: "center", width: "12%" },
+    { key: "title",      label: "Card",            align: "left",   width: "240px" },
+    { key: "owner",      label: "Pool",            align: "left",   width: "120px" },
+    { key: "type",       label: "Type",            align: "left",   width: "80px"  },
+    { key: "rarity",     label: "Rarity",          align: "left",   width: "110px"  },
+    { key: "offered",    label: "Offered",         align: "center", width: "90px"  },
+    { key: "pickRate",   label: "Pick Rate",       align: "center", width: "100px"  },
+    { key: "winPicked",  label: "Win % if Picked", align: "center", width: "130px" },
+    { key: "winSkipped", label: "Win % if Skipped",align: "center", width: "140px" },
   ];
 
   const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.3rem 0.5rem;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "#bcbcd0"}"`;
@@ -216,12 +216,35 @@ function renderCardsPage() {
   }).join("");
 
   document.getElementById("cards-tbody").querySelectorAll(".fav-item[data-card-id]").forEach(el => {
-    const show = () => showFloatingHtmlTooltip(el, buildCardTooltip(el.dataset.cardId, 0));
+    // Wide screens show the card in the pane beside the table instead.
+    const show = () => {
+      if (!previewCard(el.closest("tr"))) showFloatingHtmlTooltip(el, buildCardTooltip(el.dataset.cardId, 0));
+    };
     el.addEventListener("mouseenter", show);
     el.addEventListener("mouseleave", hideFloatingHtmlTooltip);
     // Tap or keyboard: focus shows it; the next tap anywhere blurs it (tooltip.js).
     el.addEventListener("focus", show);
     el.addEventListener("blur", hideFloatingHtmlTooltip);
   });
+
+  // The pane follows the pointer over the whole row, and starts on the top card.
+  const tbody = document.getElementById("cards-tbody");
+  tbody.querySelectorAll("tr").forEach(tr => tr.addEventListener("mouseenter", () => previewCard(tr)));
+  document.getElementById("cards-preview").innerHTML = "";
+  previewCard(tbody.querySelector("tr"));
+}
+
+// The full card beside the table, on screens wide enough to have the room
+// (the same width as .cards-preview in dashboard.css). Returns false when the
+// pane is not showing, so the caller falls back to the floating tooltip.
+const CARDS_PREVIEW_MQ = "(min-width: 1420px)";
+function previewCard(tr) {
+  if (!tr || !window.matchMedia(CARDS_PREVIEW_MQ).matches) return false;
+  const id = tr.querySelector(".fav-item[data-card-id]").dataset.cardId;
+  document.querySelectorAll("#cards-tbody tr.cards-current").forEach(row => row.classList.remove("cards-current"));
+  tr.classList.add("cards-current");
+  document.getElementById("cards-preview").innerHTML =
+    (cardFaceAvailable() && renderCardFace(id, 0, "100%")) || buildCardTooltip(id, 0);
+  return true;
 }
 
