@@ -271,6 +271,8 @@ h1 {
   .re-rows > span { display: none; }
   .re-rows > div:not(.fl-section):not(.fl-lane) { grid-column: 1 / -1; margin-top: 0.3rem; }
   .re-rows .fl-lane { margin-right: 5.2rem; }
+  /* The key drops under its lane title: beside it, it wraps mid-key. */
+  .re-rows .fl-section .fl-legend { display: block; margin: 0.15rem 0 0; font-size: 0.68rem; white-space: nowrap; }
 }
 
 /* ---- Chart layout grids ---- */

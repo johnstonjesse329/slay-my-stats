@@ -466,11 +466,11 @@
       card("Runs uploaded", num(stats.allRuns),
         `${num(solo.runs)} solo · ${num(multi.runs)} multiplayer${daily ? ` · ${num(daily)} daily` : ""}`),
       card("Hours played", num(Math.round(((solo.minutes || 0) + (multi.minutes || 0)) / 60))),
-      card("Solo win rate", pct(solo.wins, solo.runs), `${num(solo.wins)} of ${num(solo.runs)}`),
+      card("Solo win %", pct(solo.wins, solo.runs), `${num(solo.wins)} of ${num(solo.runs)}`),
       // "Multi", not "Multiplayer": the row of six bars fits its label and value
       // on one 243px line only because this label is the same width as
-      // "Solo win rate". See .site-cards in players.css.
-      card("Multi win rate", pct(multi.wins, multi.runs), `${num(multi.wins)} of ${num(multi.runs)}`),
+      // "Solo win %". See .site-cards in players.css.
+      card("Multi win %", pct(multi.wins, multi.runs), `${num(multi.wins)} of ${num(multi.runs)}`),
     ];
     const fastest = (solo.records || {}).fastestWin;
     if (fastest) {
