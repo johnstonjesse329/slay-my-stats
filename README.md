@@ -45,7 +45,7 @@ slay-my-stats/
 │   ├── data.js              window.DATA shape and helpers
 │   ├── aggregation.js       filtering and stat roll-ups
 │   ├── page-nav.js          tabs and the shared filter bar
-│   ├── fight-tables.js      Overview page: per-boss and per-elite tables
+│   ├── fight-tables.js      Overview page: per-boss and per-elite fight lanes
 │   ├── run-detail.js        Run Detail page
 │   ├── cards-page.js        Card Stats page
 │   ├── seeds.js             Seed Data page

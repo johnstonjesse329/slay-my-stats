@@ -1287,16 +1287,11 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </div>
 
-<div class="grid-2">
+<div class="grid-1">
   <div class="chart-box">
-    <h2>Boss Fight Win Rate</h2>
-    <p class="chart-caption">Share of times you won each boss fight, by ascension.</p>
-    <div class="pivot-wrap"><table class="pivot" id="boss-win-table"></table></div>
-  </div>
-  <div class="chart-box">
-    <h2>Elite Fight Win Rate</h2>
-    <p class="chart-caption">Share of times you won each elite fight, by ascension.</p>
-    <div class="pivot-wrap"><table class="pivot" id="elite-win-table"></table></div>
+    <h2>Fight Win Rate</h2>
+    <p class="chart-caption">Share of times you won each elite and boss fight.</p>
+    <div id="win-lanes"></div>
   </div>
 </div>
 
@@ -1311,8 +1306,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="grid-1">
   <div class="chart-box">
     <h2>Damage Taken</h2>
-    <p class="chart-caption">Median damage taken per elite and boss fight; green for runs you won, red for runs you lost.</p>
-    <div class="pivot-wrap"><table class="pivot" id="dmg-table"></table></div>
+    <p class="chart-caption">Median damage taken per elite and boss fight.</p>
+    <div id="dmg-lanes"></div>
   </div>
 </div>
 
