@@ -32,6 +32,7 @@ function fightBucket() {
     winCardsSum: 0, winRelicsSum: 0, winPotionsSum: 0,
     winDmgSum: 0,
     minWinHp: Infinity,  maxWinHp: 0,
+    lowWin: null,  // the won fight entered at the lowest % of max HP
     minWinCards: Infinity,   maxWinCards: 0,
     minWinRelics: Infinity,  maxWinRelics: 0,
     minWinPotions: Infinity, maxWinPotions: 0,
@@ -72,7 +73,9 @@ function addFight(bucket, fight) {
     bucket.minWinDmg     = Math.min(bucket.minWinDmg, fight.dmg);
     bucket.maxWinDmg     = Math.max(bucket.maxWinDmg, fight.dmg);
     bucket.winHpVals.push(fight.hp);
-    bucket.winHpPctVals.push(+(fight.hp / maxHp * 100).toFixed(1));
+    const hpPct = +(fight.hp / maxHp * 100).toFixed(1);
+    bucket.winHpPctVals.push(hpPct);
+    if (!bucket.lowWin || hpPct < bucket.lowWin.pct) bucket.lowWin = { hp: fight.hp, maxHp, pct: hpPct };
     bucket.winCardsVals.push(fight.cards);
     bucket.winRelicsVals.push(fight.relics);
     bucket.winPotionsVals.push(fight.potions);
@@ -122,6 +125,7 @@ function summarizeFights(bucket) {
     avg_relics:  median(bucket.winRelicsVals),
     avg_potions: median(bucket.winPotionsVals),
     min_win_hp:      w ? bucket.minWinHp      : null,
+    low_win:         bucket.lowWin,
     max_win_hp:      w ? bucket.maxWinHp      : null,
     min_win_cards:   w ? bucket.minWinCards   : null,
     max_win_cards:   w ? bucket.maxWinCards   : null,
@@ -230,6 +234,24 @@ function wonLostLane(s, won, lost, max, unit, wonTip, lostTip) {
     `<span class="fl-value" style="left:calc(${hi}% + 10px)">${won ?? "—"}${unit} vs ${lost ?? "—"}${unit}</span></div>`;
 }
 
+// HP Entering Fight: how healthy to be before taking the fight. A ring at the
+// lowest HP the fight has been won from, a dot at the median HP when it is
+// won, and a band between. Fights lost are in the tooltip only.
+function hpLane(s) {
+  const low = s.low_win.pct, med = s.avg_hp_pct;
+  const losses = s.runs - s.wins;
+  const tip = [
+    `Lowest win: ${s.low_win.hp} / ${s.low_win.maxHp} HP (${low}%)`,
+    `Median when you win: ${s.avg_hp} HP (${med}%), ${fightCount(s.wins)}`,
+    s.loss_avg_hp_pct != null ? `Median when you lost: ${s.loss_avg_hp} HP (${s.loss_avg_hp_pct}%), ${fightCount(losses)}` : null,
+  ].filter(Boolean).join("\n");
+  return `<div class="fl-lane" data-tip="${tip}">` +
+    `<span class="fl-band" style="left:${low}%;width:${(med - low).toFixed(1)}%"></span>` +
+    `<span class="fl-dot fl-low" style="left:${low}%"></span>` +
+    `<span class="fl-dot fl-won" style="left:${med}%"></span>` +
+    `<span class="fl-value" style="left:calc(${med}% + 10px)">${low}% · ${med}%</span></div>`;
+}
+
 // A bar filled to the win %, coloured by the same tiers the win tables use.
 function winLane(s) {
   // Fights/turns/HP are three distinct stats, not fragments of one — each
@@ -260,10 +282,8 @@ function renderFightTables() {
   });
 
   renderFightLanes("hp-lanes", groups, fightData, {
-    legend: WON_LOST_LEGEND, ticks: PCT_TICKS,
-    has:  s => s.avg_hp_pct != null || s.loss_avg_hp_pct != null,
-    lane: s => wonLostLane(s, s.avg_hp_pct, s.loss_avg_hp_pct, 100, "%",
-      `${s.avg_hp} HP (${s.avg_hp_pct}%)`, `${s.loss_avg_hp} HP (${s.loss_avg_hp_pct}%)`),
+    legend: `<div class="fl-legend"><i class="fl-low"></i>lowest HP you've won at<i class="fl-won"></i>median HP when you win</div>`,
+    ticks: PCT_TICKS, has: s => s.low_win != null, lane: hpLane,
   });
 
   // One damage scale for every group, so an Act 1 elite and an Act 3 boss
