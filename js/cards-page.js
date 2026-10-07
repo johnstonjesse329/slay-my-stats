@@ -153,14 +153,14 @@ function renderCardsPage() {
 
   // Header
   const cols = [
-    { key: "title",      label: "Card",            align: "left",   width: "160px" },
-    { key: "owner",      label: "Pool",            align: "left",   width: "100px" },
-    { key: "type",       label: "Type",            align: "left",   width: "70px"  },
-    { key: "rarity",     label: "Rarity",          align: "left",   width: "90px"  },
-    { key: "offered",    label: "Offered",         align: "center", width: "70px"  },
-    { key: "pickRate",   label: "Pick Rate",       align: "center", width: "80px"  },
-    { key: "winPicked",  label: "Win % if Picked", align: "center", width: "110px" },
-    { key: "winSkipped", label: "Win % if Skipped",align: "center", width: "120px" },
+    { key: "title",      label: "Card",            align: "left",   width: "26%" },
+    { key: "owner",      label: "Pool",            align: "left",   width: "12%" },
+    { key: "type",       label: "Type",            align: "left",   width: "9%"  },
+    { key: "rarity",     label: "Rarity",          align: "left",   width: "11%"  },
+    { key: "offered",    label: "Offered",         align: "center", width: "9%"  },
+    { key: "pickRate",   label: "Pick Rate",       align: "center", width: "10%"  },
+    { key: "winPicked",  label: "Win % if Picked", align: "center", width: "11%" },
+    { key: "winSkipped", label: "Win % if Skipped",align: "center", width: "12%" },
   ];
 
   const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.3rem 0.5rem;font-size:0.72rem;text-transform:uppercase;letter-spacing:.05em;width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "#bcbcd0"}"`;
@@ -185,7 +185,7 @@ function renderCardsPage() {
   // warning about.
   const pct = (v, color) => {
     if (v == null) return `<span style="color:#8a8aa0">—</span>`;
-    return `<span style="color:${color};font-weight:${v >= 50 ? "800" : "400"};${v >= 50 ? "font-size:0.88rem;" : ""}">${v}%</span>`;
+    return `<span style="color:${color};font-weight:${v >= 50 ? "800" : "400"};"${v >= 50 ? ` class="cards-hi"` : ""}>${v}%</span>`;
   };
 
   document.getElementById("cards-tbody").innerHTML = rows.map(r => {
@@ -199,19 +199,19 @@ function renderCardsPage() {
     // The thumbnail and the name are one trigger, so hovering, tapping or
     // tabbing to either opens the card.
     const icon = src
-      ? `<span style="display:inline-block;vertical-align:middle;margin-right:6px;line-height:0">
-          <img loading="lazy" src="${thumbSrc(src)}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:4px;vertical-align:middle">
+      ? `<span class="cards-thumb-wrap">
+          <img loading="lazy" src="${thumbSrc(src)}" alt="" class="cards-thumb">
         </span>`
       : "";
     return `<tr>
-    <td style="padding:0.18rem 0.5rem;font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
-    <td style="padding:0.18rem 0.5rem;font-size:0.75rem;color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "#bcbcd0"}">${r.owner}</td>
-    <td style="padding:0.18rem 0.5rem;font-size:0.75rem;color:${TYPE_COLOR[r.type] || "#bcbcd0"}">${r.type}</td>
-    <td style="padding:0.18rem 0.5rem;font-size:0.75rem;color:${RARITY_COLOR[r.rarity] || "#bcbcd0"}">${r.rarity}</td>
-    <td style="padding:0.18rem 0.5rem;text-align:center;font-size:0.83rem;color:#bcbcd0">${r.offered}</td>
-    <td style="padding:0.18rem 0.5rem;text-align:center">${pct(r.pickRate, "#ccc")}</td>
-    <td style="padding:0.18rem 0.5rem;text-align:center">${pct(r.winPicked,  "#ccc")}</td>
-    <td style="padding:0.18rem 0.5rem;text-align:center">${pct(r.winSkipped, "#ccc")}</td>
+    <td style="padding:0.3rem 0.5rem;font-size:0.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
+    <td style="padding:0.3rem 0.5rem;font-size:0.82rem;color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "#bcbcd0"}">${r.owner}</td>
+    <td style="padding:0.3rem 0.5rem;font-size:0.82rem;color:${TYPE_COLOR[r.type] || "#bcbcd0"}">${r.type}</td>
+    <td style="padding:0.3rem 0.5rem;font-size:0.82rem;color:${RARITY_COLOR[r.rarity] || "#bcbcd0"}">${r.rarity}</td>
+    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:0.92rem;color:#bcbcd0">${r.offered}</td>
+    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:0.92rem">${pct(r.pickRate, "#ccc")}</td>
+    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:0.92rem">${pct(r.winPicked,  "#ccc")}</td>
+    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:0.92rem">${pct(r.winSkipped, "#ccc")}</td>
   </tr>`;
   }).join("");
 

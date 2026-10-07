@@ -1351,8 +1351,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <h2 id="cards-title">Card Offer &amp; Pick Rates</h2>
   <p class="chart-caption" id="cards-caption">Every card offered under the current filters.</p>
   <input type="text" class="seeds-input" id="cards-name-filter" placeholder="Filter by card name…" aria-label="Filter cards by name" style="max-width:260px;margin-bottom:0.75rem">
-  <div class="pivot-wrap" style="max-height:420px;overflow-y:auto">
-    <table class="pivot" id="cards-table-main" style="table-layout:fixed;min-width:0;width:auto">
+  <div class="pivot-wrap" style="max-height:min(70vh,720px);overflow-y:auto">
+    <table class="pivot" id="cards-table-main" style="table-layout:fixed;min-width:0;width:100%">
       <thead id="cards-thead"></thead>
       <tbody id="cards-tbody"></tbody>
     </table>
