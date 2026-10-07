@@ -729,7 +729,7 @@ function lostWonLane(s, color, lost, won, max, fmt) {
     won  != null ? `Won: ${fmt(won)}, ${runCount(s.wins)}` : null,
   ].filter(Boolean).join("\n");
   return `<div class="fl-lane" data-tip="${tip}">` +
-    `<span class="fl-band" style="left:${lo}%;width:${(hi - lo).toFixed(1)}%;background:${color};opacity:0.4"></span>` +
+    `<span class="fl-band" style="left:${lo}%;width:${(hi - lo).toFixed(1)}%;background:${color}"></span>` +
     (lost != null ? `<span class="fl-dot" style="left:${pos(lost)}%;background:var(--panel);box-shadow:inset 0 0 0 2px ${color}"></span>` : "") +
     (won  != null ? `<span class="fl-dot" style="left:${pos(won)}%;background:${color}"></span>` : "") +
     `<span class="fl-value" style="left:calc(${hi}% + 10px)">${lost != null ? fmt(lost) : "—"} · ${won != null ? fmt(won) : "—"}</span></div>`;
