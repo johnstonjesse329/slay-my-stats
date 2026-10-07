@@ -1236,7 +1236,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2>Win % by Ascension Level (per Character)</h2>
+    <h2>Win % by Ascension</h2>
     <div class="chart-wrap"><canvas id="ascWinChart"></canvas></div>
   </div>
   <div class="chart-box">
