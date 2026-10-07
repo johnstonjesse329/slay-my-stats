@@ -271,6 +271,91 @@ function renderPersonalBests() {
   });
 }
 
+// Ascension Tracker: per character, how far the climb to A10 has got, once for
+// solo runs and once for multiplayer.
+//
+// Reads every run, not the filtered set: it is a record of what has been
+// reached, and it has its own solo / multiplayer split. Only standard runs
+// count. A daily or custom run sets its own ascension (a daily can be A8 for a
+// character whose climb is at A2), so it says nothing about the climb.
+//
+// The pips are the ascensions regarded as the big difficulty jumps. A pip
+// lights on a WON run at that ascension or above: ascensions unlock in order,
+// so an A10 win means the earlier ones were beaten too.
+const ASC_TRACKER_MILESTONES = [1, 8, 9, 10];
+const ASC_TRACKER_MODES = [
+  { label: "Solo",        test: run => !run.mp },
+  { label: "Multiplayer", test: run => !!run.mp },
+];
+
+// { runs, highestWin: {value, ts} | null, top, topWins, topLosses } for one
+// character in one mode, or null with no runs. highestWin is the first run
+// that won at the highest ascension won; top is the highest ascension played.
+function aggregateAscTracker(runs) {
+  if (!runs.length) return null;
+  let highestWin = null;
+  runs.forEach(run => {
+    if (run.won && (highestWin === null || run.asc > highestWin.value)) highestWin = { value: run.asc, ts: run.ts };
+  });
+  const top = Math.max(...runs.map(run => run.asc));
+  const atTop = runs.filter(run => run.asc === top);
+  const topWins = atTop.filter(run => run.won).length;
+  return { runs: runs.length, highestWin, top, topWins, topLosses: atTop.length - topWins };
+}
+
+function renderAscTracker() {
+  const fmtDate = ts => new Date(ts * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  const maxAsc = ASC_TRACKER_MILESTONES[ASC_TRACKER_MILESTONES.length - 1];
+  const standard = DATA.runsData
+    .filter(run => (run.mode || "standard") === "standard" && run.asc != null)
+    .sort((a, b) => a.ts - b.ts);
+
+  const block = (char, color, mode) => {
+    const t = aggregateAscTracker(standard.filter(run => run.char === char && mode.test(run)));
+    const won = t && t.highestWin ? t.highestWin.value : -1;
+    const pips = ASC_TRACKER_MILESTONES.map(level =>
+      `<span class="asc-pip" data-tip="A${level}"${won >= level ? ` style="background:${color}"` : ""}></span>`).join("");
+    if (!t) {
+      return `<div class="asc-mode">
+        <div class="asc-mode-label">${mode.label}</div>
+        <div class="asc-big asc-none">—</div>
+        <div class="asc-sub">no runs</div>
+        <div class="asc-pips">${pips}</div>
+      </div>`;
+    }
+    const record = `${t.topWins}W / ${t.topLosses}L`;
+    const big = t.highestWin
+      ? `<span class="pb-stat-link" data-ts="${t.highestWin.ts}" data-tip="Jump to this run" style="cursor:pointer">A${won}</span>`
+      : "—";
+    const now = won >= maxAsc
+      ? `A${maxAsc} won ${fmtDate(t.highestWin.ts)}<br>${record} at A${maxAsc}`
+      : `Now on A${t.top}<br>${record} there`;
+    return `<div class="asc-mode">
+      <div class="asc-mode-label">${mode.label}</div>
+      <div class="asc-big${t.highestWin ? "" : " asc-none"}" style="color:${color}">${big}</div>
+      <div class="asc-sub">${t.highestWin ? "highest win" : "no wins yet"} · ${t.runs} runs</div>
+      <div class="asc-pips">${pips}</div>
+      <div class="asc-now">${now}</div>
+    </div>`;
+  };
+
+  const el = document.getElementById("asc-tracker-cards");
+  el.innerHTML = DATA.characters.map(char => {
+    const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
+    return `<div class="asc-card" style="border-top-color:${color}">
+      <div class="asc-name">${fmtCharName(char)}</div>
+      ${ASC_TRACKER_MODES.map(mode => block(char, color, mode)).join("")}
+    </div>`;
+  }).join("");
+
+  el.querySelectorAll(".pb-stat-link").forEach(link => {
+    link.setAttribute("role", "link");
+    link.setAttribute("tabindex", "0");
+    link.addEventListener("click", () => jumpToRun(+link.dataset.ts));
+    bindEnterSpace(link);
+  });
+}
+
 // Aggregates offer/pick/win data per character for cards and relics.
 // Respects shared filters. Returns, per character:
 // mostPicked (highest pick count) and bestWinRate (highest win % overall)
