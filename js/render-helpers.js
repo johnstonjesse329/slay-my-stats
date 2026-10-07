@@ -108,7 +108,7 @@ function renderPersonalBests() {
 
   const bests = {};
   chars.forEach(char => {
-    bests[char] = { gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, highestWinAsc: null };
+    bests[char] = { gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null };
   });
 
   allRuns.forEach(run => {
@@ -135,11 +135,6 @@ function renderPersonalBests() {
       b.totalWins = (b.totalWins || 0) + 1;
       b._streak++;
       if (b._streak > b.longestStreak) b.longestStreak = b._streak;
-      // Highest ascension this character has ever won at. Ties keep the
-      // earliest such run (strict >), so the link points at the first time
-      // that ceiling was reached rather than the most recent repeat of it.
-      if (run.asc != null && (b.highestWinAsc === null || run.asc > b.highestWinAsc.value))
-        b.highestWinAsc = { value: run.asc, ts: run.ts };
     } else {
       b._streak = 0;
     }
@@ -229,7 +224,6 @@ function renderPersonalBests() {
       ${row("Wins", b.gamesPlayed
         ? `${b.totalWins}<span style="color:#8a8aa0;font-weight:400"> · </span>${Math.round(b.totalWins / b.gamesPlayed * 100)}%`
         : "—")}
-      ${row("Highest Asc", link(b.highestWinAsc, v => `A${v}`))}
       ${row("Final boss deaths", deaths(b.finalBossDeaths))}
       ${row("Elite deaths", deaths(b.eliteDeaths))}
       ${noRuns
