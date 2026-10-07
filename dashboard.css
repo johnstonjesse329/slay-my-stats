@@ -106,7 +106,7 @@ h1 {
 /* ---- Summary stat cards ---- */
 /* Was flex-wrap with flex:0 0 auto cards, so each card sized to its own
    label/value/sub content -- rows never lined up column-to-column, and a
-   card with a longer sub (Total Time Played, Best Win Rate) ballooned wider
+   card with a longer sub (Time Played, Best Win Rate) ballooned wider
    than its neighbors for no reason. A grid of equal-width tracks fixes both:
    every card is the same width, and one wrapping to a second row still lines
    up under the column above it. minmax(220px, 1fr): wide enough that none of
@@ -1920,7 +1920,7 @@ body.suppress-hover-tooltips .node-tooltip {
   #personal-bests-cards { grid-template-columns: minmax(0, 1fr); }
   .card > div { flex-wrap: wrap; }
 
-  /* Summary stat cards (Total Time Played, Runs, etc.): each one is short
+  /* Summary stat cards (Time Played, Runs, etc.): each one is short
      enough that a single-column stack (from .cards' 220px auto-fit minimum)
      leaves half the card empty. Two narrower columns use that space instead. */
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }

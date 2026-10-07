@@ -54,13 +54,13 @@ function renderCards(grand, charStats, restAvg) {
   const mostPlayedPct = grand.runs ? +((charStats[mostIdx].runs / grand.runs) * 100).toFixed(0) : 0;
   const winPct = grand.win_pct !== null ? grand.win_pct + "%" : "—";
   const items = [
-    { label: "Overall Win Rate", value: winPct },
+    { label: "Win Rate", value: winPct },
     { label: "Best Win Rate", value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
       tip: charStats[bestIdx].win_pct !== null ? `${fmtCharName(chars[bestIdx])} · ${charStats[bestIdx].wins}W / ${charStats[bestIdx].runs}L` : "No wins" },
     { label: "Most Played",    value: fmtCharName(chars[mostIdx]),
       // Run count is the Runs card's value — show only the share here.
       tip: `${mostPlayedPct}% of all runs` },
-    { label: "Total Gold Gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
+    { label: "Gold Gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
       tip: grand.runs ? `median ${grand.median_gold.toLocaleString()} per run` : "" },
     // Elites and bosses are a card each. The row stays at 8 cards, which
     // divides evenly into 4 + 4 instead of leaving a ragged edge.
@@ -84,7 +84,7 @@ function renderCards(grand, charStats, restAvg) {
   // Leads the row — total time invested is one of the most immediately
   // relevant stats, ahead of even the Runs count.
   const timeCard = `<div class="card"${grand.runs ? ` data-tip="median ${grand.median_min}m per run" tabindex="0"` : ""}>
-    <div class="label">Total Time Played</div>
+    <div class="label">Time Played</div>
     <div class="value">${grand.runs ? fmtHrsMin(grand.total_min) : "—"}</div>
   </div>`;
 
