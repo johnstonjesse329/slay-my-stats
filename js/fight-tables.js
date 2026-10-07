@@ -32,7 +32,7 @@ function fightBucket() {
     winCardsSum: 0, winRelicsSum: 0, winPotionsSum: 0,
     winDmgSum: 0,
     minWinHp: Infinity,  maxWinHp: 0,
-    lowWin: null,  // the won fight entered at the lowest % of max HP
+    lowWin: null,  // the won fight entered at the lowest HP
     minWinCards: Infinity,   maxWinCards: 0,
     minWinRelics: Infinity,  maxWinRelics: 0,
     minWinPotions: Infinity, maxWinPotions: 0,
@@ -73,9 +73,8 @@ function addFight(bucket, fight) {
     bucket.minWinDmg     = Math.min(bucket.minWinDmg, fight.dmg);
     bucket.maxWinDmg     = Math.max(bucket.maxWinDmg, fight.dmg);
     bucket.winHpVals.push(fight.hp);
-    const hpPct = +(fight.hp / maxHp * 100).toFixed(1);
-    bucket.winHpPctVals.push(hpPct);
-    if (!bucket.lowWin || hpPct < bucket.lowWin.pct) bucket.lowWin = { hp: fight.hp, maxHp, pct: hpPct };
+    bucket.winHpPctVals.push(+(fight.hp / maxHp * 100).toFixed(1));
+    if (!bucket.lowWin || fight.hp < bucket.lowWin.hp) bucket.lowWin = { hp: fight.hp, maxHp };
     bucket.winCardsVals.push(fight.cards);
     bucket.winRelicsVals.push(fight.relics);
     bucket.winPotionsVals.push(fight.potions);
@@ -109,7 +108,7 @@ function addFight(bucket, fight) {
   }
 }
 
-// The lowest tenth of a fight's wins by HP % entering, at least one fight.
+// The lowest tenth of a fight's wins by HP entering, at least one fight.
 // A share, not a fixed count, so it is the same kind of number for a fight
 // with 200 wins and one with 20.
 const LOW_WINS_SHARE = 0.1;
@@ -119,7 +118,7 @@ function summarizeFights(bucket) {
   if (!n) return null;
   const w = bucket.wins;
   const l = n - w;
-  const lowWins = [...bucket.winHpPctVals].sort((a, b) => a - b).slice(0, Math.max(1, Math.round(w * LOW_WINS_SHARE)));
+  const lowWins = [...bucket.winHpVals].sort((a, b) => a - b).slice(0, Math.max(1, Math.round(w * LOW_WINS_SHARE)));
   return {
     wins:        w,
     losses:      l,
@@ -132,7 +131,7 @@ function summarizeFights(bucket) {
     avg_potions: median(bucket.winPotionsVals),
     min_win_hp:      w ? bucket.minWinHp      : null,
     low_win:         bucket.lowWin,
-    low_wins_hp_pct: w ? median(lowWins) : null,
+    low_wins_hp:     w ? median(lowWins) : null,
     low_wins_count:  w ? lowWins.length : 0,
     max_win_hp:      w ? bucket.maxWinHp      : null,
     min_win_cards:   w ? bucket.minWinCards   : null,
@@ -245,21 +244,24 @@ function wonLostLane(s, won, lost, max, unit, wonTip, lostTip) {
 // HP Entering Fight: how healthy to be before taking the fight. A ring at the
 // median HP of the lowest tenth of wins, a dot at the median HP of all wins,
 // and a band between. The single lowest win is one lucky escape (an elite
-// won from 8.6%), so it and the fights lost are in the tooltip only.
-function hpLane(s) {
-  const low = s.low_wins_hp_pct, med = s.avg_hp_pct;
-  const losses = s.runs - s.wins;
+// won from 6 HP), so it and the fights lost are in the tooltip only.
+//
+// Actual HP, not % of max: max HP differs by character and moves with relics,
+// and HP reads straight against Damage Taken, which shares the scale (max).
+function hpLane(s, max) {
+  const low = s.low_wins_hp, med = s.avg_hp;
+  const pos = v => +(v / max * 100).toFixed(1);
   const tip = [
-    `Lowest 10% of wins: ${low}%, ${fightCount(s.low_wins_count)}`,
-    `Lowest win: ${s.low_win.hp} / ${s.low_win.maxHp} HP (${s.low_win.pct}%)`,
-    `Median when you win: ${s.avg_hp} HP (${med}%), ${fightCount(s.wins)}`,
-    s.loss_avg_hp_pct != null ? `Median when you lost: ${s.loss_avg_hp} HP (${s.loss_avg_hp_pct}%), ${fightCount(losses)}` : null,
+    `Lowest 10% of wins: ${low} HP, ${fightCount(s.low_wins_count)}`,
+    `Lowest win: ${s.low_win.hp} / ${s.low_win.maxHp} HP`,
+    `Median when you win: ${med} HP, ${fightCount(s.wins)}`,
+    s.loss_avg_hp != null ? `Median when you lost: ${s.loss_avg_hp} HP, ${fightCount(s.runs - s.wins)}` : null,
   ].filter(Boolean).join("\n");
   return `<div class="fl-lane" data-tip="${tip}">` +
-    `<span class="fl-band" style="left:${low}%;width:${(med - low).toFixed(1)}%"></span>` +
-    `<span class="fl-dot fl-low" style="left:${low}%"></span>` +
-    `<span class="fl-dot fl-won" style="left:${med}%"></span>` +
-    `<span class="fl-value" style="left:calc(${med}% + 10px)">${low}% · ${med}%</span></div>`;
+    `<span class="fl-band" style="left:${pos(low)}%;width:${(pos(med) - pos(low)).toFixed(1)}%"></span>` +
+    `<span class="fl-dot fl-low" style="left:${pos(low)}%"></span>` +
+    `<span class="fl-dot fl-won" style="left:${pos(med)}%"></span>` +
+    `<span class="fl-value" style="left:calc(${pos(med)}% + 10px)">${low} · ${med} HP</span></div>`;
 }
 
 // A bar filled to the win %, coloured by the same tiers the win tables use.
@@ -291,19 +293,25 @@ function renderFightTables() {
     has: s => s.win_pct != null, lane: winLane, ticks: PCT_TICKS,
   });
 
+  // HP Entering Fight and Damage Taken share one scale, for every group: an
+  // Act 1 elite and an Act 3 boss compare, and so do HP and damage. Rounded
+  // up to a multiple of 20 so the quarter ticks are whole.
+  const vals = Object.values(fightData).flatMap(byAsc => {
+    const s = byAsc["ALL"];
+    return s ? [s.avg_hp, s.avg_dmg, s.loss_avg_dmg] : [];
+  }).filter(v => v != null);
+  const max = Math.max(20, Math.ceil(Math.max(0, ...vals) / 20) * 20);
+  const ticks = [0, 25, 50, 75, 100].map(v => [v, max * v / 100]);
+
   renderFightLanes("hp-lanes", groups, fightData, {
     legend: `<div class="fl-legend"><i class="fl-low"></i>HP at your lowest 10% of wins<i class="fl-won"></i>median HP when you win</div>`,
-    ticks: PCT_TICKS, has: s => s.low_win != null, lane: hpLane,
+    ticks, has: s => s.low_win != null, lane: s => hpLane(s, max),
   });
 
-  // One damage scale for every group, so an Act 1 elite and an Act 3 boss
-  // compare. Rounded up to a multiple of 20 so the quarter ticks are whole.
-  const dmgVals = Object.values(fightData).flatMap(byAsc => [byAsc["ALL"]?.avg_dmg, byAsc["ALL"]?.loss_avg_dmg]).filter(v => v != null);
-  const dmgMax = Math.max(20, Math.ceil(Math.max(0, ...dmgVals) / 20) * 20);
   renderFightLanes("dmg-lanes", groups, fightData, {
-    legend: WON_LOST_LEGEND, ticks: [0, 25, 50, 75, 100].map(v => [v, dmgMax * v / 100]),
+    legend: WON_LOST_LEGEND, ticks,
     has:  s => s.avg_dmg != null || s.loss_avg_dmg != null,
-    lane: s => wonLostLane(s, s.avg_dmg, s.loss_avg_dmg, dmgMax, "",
+    lane: s => wonLostLane(s, s.avg_dmg, s.loss_avg_dmg, max, "",
       `${s.avg_dmg} damage`, `${s.loss_avg_dmg} damage`),
   });
 }
