@@ -224,10 +224,40 @@ function wonLostCells(s, isAll, has, won, lost) {
   return `<td class="${cls}" style="${border}font-size:0.88rem;color:#5cba7d;font-weight:600">${won}</td>${lostCell}`;
 }
 
-function hpCell(s, isAll) {
-  return wonLostCells(s, isAll, s && s.avg_hp_pct !== null,
-    s && `${s.avg_hp} HP (${s.avg_hp_pct}%)`,
-    s && s.loss_avg_hp_pct !== null ? `${s.loss_avg_hp} HP (${s.loss_avg_hp_pct}%)` : null);
+// HP Entering Fight: one lane per fight on a 0-100% scale, a dot for fights
+// won and a dot for fights lost. Bosses carry their own map icon; the game
+// has one icon for every elite. The section header says Elites or Bosses, so
+// the names drop that word; the name column is a fixed width so every
+// group's scale lines up.
+function renderHpLanes(encGroups, fightData) {
+  const icons = DATA.nodeIcons || {};
+  const axis = `<span></span><span></span><div class="hp-lane hp-axis">${
+    [0, 25, 50, 75, 100].map(v => `<span style="left:${v}%">${v}%</span>`).join("")}</div>`;
+  let html = `<div class="hp-legend"><i class="hp-won"></i>won<i class="hp-lost"></i>lost</div><div class="hp-groups">`;
+  encGroups.forEach(({ label, ids }) => {
+    const rows = ids.filter(enc => fightData[enc]?.["ALL"]?.avg_hp_pct != null || fightData[enc]?.["ALL"]?.loss_avg_hp_pct != null);
+    if (!rows.length) return;
+    html += `<div><div class="hp-section">${label}</div><div class="hp-rows">`;
+    rows.forEach(enc => {
+      const s = fightData[enc]["ALL"];
+      const won = s.avg_hp_pct, lost = s.loss_avg_hp_pct;
+      const pts = [won, lost].filter(v => v != null);
+      const lo = Math.min(...pts), hi = Math.max(...pts);
+      const src = icons[enc] || icons.elite;
+      const tip = [
+        won  != null ? `Won: ${s.avg_hp} HP (${won}%), ${s.wins} fight${s.wins !== 1 ? "s" : ""}` : null,
+        lost != null ? `Lost: ${s.loss_avg_hp} HP (${lost}%), ${s.runs - s.wins} fight${s.runs - s.wins !== 1 ? "s" : ""}` : null,
+      ].filter(Boolean).join("\n");
+      html += `${src ? `<img src="${src}" alt="">` : `<span></span>`}<div class="hp-name">${(DATA.encLabels[enc] || enc).replace(/ (Boss|Elite)$/, "")}</div>` +
+        `<div class="hp-lane" data-tip="${tip}">` +
+        `<span class="hp-line" style="left:${lo}%;width:${hi - lo}%"></span>` +
+        (lost != null ? `<span class="hp-dot hp-lost" style="left:${lost}%"></span>` : "") +
+        (won  != null ? `<span class="hp-dot hp-won" style="left:${won}%"></span>` : "") +
+        `<span class="hp-value" style="left:calc(${hi}% + 10px)">${won ?? "—"}% vs ${lost ?? "—"}%</span></div>`;
+    });
+    html += `${axis}</div></div>`;
+  });
+  document.getElementById("hp-lanes").innerHTML = html + `</div>`;
 }
 
 function dmgCell(s, isAll) {
@@ -292,6 +322,6 @@ function renderFightTables() {
 
   renderFightTable("boss-win-table",  bossGroups,  fightData, fightWinCell);
   renderFightTable("elite-win-table", eliteGroups, fightData, fightWinCell);
-  renderFightTable("hp-table",  groups, fightData, hpCell, true);
+  renderHpLanes(groups, fightData);
   renderFightTable("dmg-table", groups, fightData, dmgCell, true);
 }

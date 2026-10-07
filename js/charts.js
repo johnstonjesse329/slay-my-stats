@@ -740,6 +740,11 @@ function updateEliteActCharts(filteredRuns) {
   });
   eliteCheckpointChart.update();
 
+  // A run that never got to a boss is on none of the lines; say how many.
+  const missing = filteredRuns.filter(run => !(run.timeline || []).some(n => n.type === "boss")).length;
+  document.getElementById("elite-checkpoint-missing").textContent = missing
+    ? `${missing} run${missing !== 1 ? "s" : ""} ended before the Act 1 boss and ${missing !== 1 ? "aren't" : "isn't"} shown.` : "";
+
   {
     const ds = eliteWinRateChart.data.datasets[0];
     ds.trueData = ELITE_TOTAL_X.map(n => {

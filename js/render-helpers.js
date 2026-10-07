@@ -332,6 +332,17 @@ function renderAscTracker() {
     </div>`;
   };
 
+  // Beside the title: how many characters have an A10 win in each mode, and
+  // the first A10 win of all.
+  const a10 = standard.filter(run => run.won && run.asc >= maxAsc);
+  const first = a10[0];
+  const total = DATA.characters.length;
+  document.getElementById("asc-tracker-stats").innerHTML = ASC_TRACKER_MODES.map(mode =>
+    `<div><b>${new Set(a10.filter(mode.test).map(run => run.char)).size} / ${total}</b>A${maxAsc} ${mode.label.toLowerCase()}</div>`).join("") +
+    `<div><b>${first
+      ? `<span class="pb-stat-link" data-ts="${first.ts}" data-tip="Jump to this run" style="cursor:pointer">${fmtDate(first.ts)}</span>`
+      : "—"}</b>first A${maxAsc} win${first ? ` · ${fmtCharName(first.char)}` : ""}</div>`;
+
   const el = document.getElementById("asc-tracker-cards");
   el.innerHTML = DATA.characters.map(char => {
     const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
@@ -341,7 +352,7 @@ function renderAscTracker() {
     </div>`;
   }).join("");
 
-  el.querySelectorAll(".pb-stat-link").forEach(link => {
+  el.parentElement.querySelectorAll(".pb-stat-link").forEach(link => {
     link.setAttribute("role", "link");
     link.setAttribute("tabindex", "0");
     link.addEventListener("click", () => jumpToRun(+link.dataset.ts));
