@@ -438,7 +438,7 @@ function updateRestWinCharts(filteredRuns) {
 // comes after everything in Acts 1 and 2, and what the earlier ones gave
 // (relics, cards, gold) is still with the run.
 //
-// "Run Won, by Elites Beaten at Each Act Boss" asks where a run has taken
+// "Win % by Elites Beaten" asks where a run has taken
 // enough elites to be safer. A run counts once per act boss it reached, at
 // the number of elites it had beaten by then, so along one line every run
 // is at the same point and only the elite total differs. Counting by "beat

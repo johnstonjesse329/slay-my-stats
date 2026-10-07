@@ -707,7 +707,7 @@ function valCell(bucket, valueKey, color, isAll) {
   </td>`;
 }
 
-// ---- Character lanes (Overview): Time Played, Deck and Relics at Run End ----
+// ---- Character lanes (Overview): Time Played, Cards and Relics ----
 //
 // A row per character in its colour, two lanes side by side, each with its
 // own scale rounded up to a multiple of 20 so the quarter ticks are whole.
@@ -774,7 +774,7 @@ function renderTimeLanes(pivotData) {
     [charLaneAxis(hrsMax, v => `${v}h`), charLaneAxis(minMax, v => `${v}m`)]);
 }
 
-// Deck and Relics at Run End: median cards beside median relics.
+// Cards and Relics: median cards beside median relics.
 function renderRunEndLanes(pivotData) {
   const stats = charAllStats(pivotData);
   const cardsMax  = laneMax(stats.flatMap(s => [s.median_win_cards,  s.median_loss_cards]));
