@@ -29,6 +29,7 @@ function updateAll() {
   updateMonthlyWinChart(filteredRuns);
   updateAscWinChart(filteredRuns);
   renderPersonalBests();
+  renderAscTracker();
 }
 
 

@@ -1223,6 +1223,14 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="cards" id="summary-cards"></div>
 <div class="cards" id="personal-bests-cards"></div>
 
+<div class="grid-1">
+  <div class="chart-box">
+    <h2>Ascension Tracker</h2>
+    <p class="chart-caption">Where each character stands on the climb to A10. Standard runs only.</p>
+    <div id="asc-tracker-cards"></div>
+  </div>
+</div>
+
 <div class="grid-2">
   <div class="chart-box">
     <h2>Win % by Ascension Level (per Character)</h2>

@@ -198,6 +198,32 @@ h1 {
    statLink() in dashboard.js) — gold on hover, matching every other
    interactive-text affordance in the app. */
 .pb-stat-link:hover { color: var(--gold) !important; }
+/* ---- Ascension Tracker (Overview) ---- */
+/* One card per character, solo over multiplayer. auto-fit so a player with
+   two characters gets two wide cards and a phone gets one or two per row. */
+#asc-tracker-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+.asc-card {
+  background: rgba(255,255,255,0.04);
+  border-top: 3px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  min-width: 0;
+}
+.asc-name { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+.asc-mode { margin-top: 0.5rem; }
+.asc-mode + .asc-mode { border-top: 1px solid var(--panel-border); margin-top: 0.65rem; padding-top: 0.6rem; }
+.asc-mode-label { font-size: 0.66rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .07em; }
+.asc-big { font-size: 1.9rem; font-weight: 700; line-height: 1.1; }
+.asc-big.asc-none { color: var(--text-dim) !important; opacity: 0.6; }
+.asc-sub { font-size: 0.72rem; color: var(--text-dim); }
+.asc-pips { display: flex; gap: 3px; margin: 0.5rem 0 0.45rem; }
+.asc-pip { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); }
+.asc-now { font-size: 0.74rem; color: var(--text); opacity: 0.85; }
+
 /* ---- Chart layout grids ---- */
 .grid-2 {
   display: grid;
