@@ -13,17 +13,17 @@ dashboard code:
 
 ![Overview tab of a player profile](images/site-overview.png)
 
-**Run Detail:** every run in a list; pick one to see its path, fights and final deck, including any
+**Runs:** every run in a list; pick one to see its path, fights and final deck, including any
 enchantment a card is carrying. Each run has its own link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 
-![Run Detail tab showing a run's final deck](images/site-run-detail.png)
+![Runs tab showing a run's final deck](images/site-run-detail.png)
 
-**Card Stats:** pick and win rates for every card.
+**Cards:** pick and win rates for every card.
 
-![Card Stats tab with card pick rates](images/site-card-stats.png)
+![Cards tab with card pick rates](images/site-card-stats.png)
 
-The dashboard has four pages: Overview, Run Detail, Card Stats and Seed Data. They cover win
+The dashboard has four pages: Overview, Runs, Cards and Seeds. They cover win
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup.
 
@@ -46,9 +46,9 @@ slay-my-stats/
 │   ├── aggregation.js       filtering and stat roll-ups
 │   ├── page-nav.js          tabs and the shared filter bar
 │   ├── fight-tables.js      Overview page: per-boss and per-elite fight lanes
-│   ├── run-detail.js        Run Detail page
-│   ├── cards-page.js        Card Stats page
-│   ├── seeds.js             Seed Data page
+│   ├── run-detail.js        Runs page
+│   ├── cards-page.js        Cards page
+│   ├── seeds.js             Seeds page
 │   ├── charts.js            Chart.js setup
 │   ├── card-face.js         card rendering
 │   ├── render-helpers.js    shared markup builders
@@ -375,7 +375,7 @@ sends each run as it ends. It's the same upload through a different door: the mo
 Each run the mod sends carries one extra top-level key, `slay_my_stats_mod`: the mod's version and every mod
 the game had loaded (`{"version", "mods": [{"id", "name", "version", "affects_gameplay"}]}`), since the game's
 own run file says nothing about mods. The parser keeps each mod's id, version and whether it says it changes
-gameplay, cut down to plain characters, as `mods` on the run. Run Detail shows a "Modded" tag on those runs, in
+gameplay, cut down to plain characters, as `mods` on the run. The Runs page shows a "Modded" tag on those runs, in
 the run list and the run's header, with the mod list on hover. A run uploaded from files has no such key, so a
 run without the tag isn't known to be unmodded.
 

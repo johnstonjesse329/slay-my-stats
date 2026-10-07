@@ -1883,11 +1883,9 @@ body.suppress-hover-tooltips .node-tooltip {
   .chart-box { padding: 0.85rem; }
   .grid-1, .grid-2, .grid-4 { gap: 0.9rem; margin-bottom: 1.5rem; }
 
-  /* Page tabs: 5 tabs at desktop size overflow the screen ("Card Stats" and
-     "Seed Data" run off the right edge) -- wrap them onto a second row
-     instead, so every tab stays reachable without a sideways swipe. */
-  .page-tabs { flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
-  .page-tab { padding: 0.35rem 0.8rem; font-size: 0.8rem; }
+  /* Page tabs: the four share one row, each an equal share of it. */
+  .page-tabs { gap: 0.4rem; margin-bottom: 1rem; }
+  .page-tab { flex: 1 1 0; min-width: 0; padding: 0.4rem 0.2rem; font-size: 0.82rem; text-align: center; }
 
   /* Filter bar: a .filter-group sizes to its widest child (the character
      selector, the ascension checkboxes are each 400px+) and a non-wrapping

@@ -100,7 +100,7 @@ function showPage(page) {
   sharedCharSel.querySelectorAll(".char-btn[data-char]").forEach(btn => {
     btn.disabled = page === "overview";
     btn.title = page === "overview"
-      ? "Overview compares every character — pick a character in Card Stats instead"
+      ? "Overview compares every character — pick a character in Cards instead"
       : "";
   });
   if (pageDirty[page]) {
@@ -182,7 +182,7 @@ DATA.characters.forEach((char, i) => {
   // set needs a matching starting value here too.
   btn.disabled = currentPage === "overview";
   btn.title = btn.disabled
-    ? "Overview compares every character — pick a character in Card Stats instead"
+    ? "Overview compares every character — pick a character in Cards instead"
     : "";
   btn.addEventListener("click", () => setSharedActiveChar(char));
   sharedCharSel.appendChild(btn);
