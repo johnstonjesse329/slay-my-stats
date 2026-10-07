@@ -482,40 +482,61 @@
       cards.push(card("Fastest solo win", `${fastest.mins}m`, sub));
     }
 
-    // One row per character, solo and multiplayer side by side.
-    const bar = (pair, color) => {
-      const [n, w] = pair || [0, 0];
-      return el("span", { className: "site-bar-cell" }, [
-        el("span", { className: "site-bar" }, [el("span", {
-          className: "site-bar-fill", style: `width:${n ? 100 * w / n : 0}%;background:${color}`,
-        })]),
-        el("span", { className: "site-row-num", textContent: n ? `${pct(w, n)} · ${num(n)}` : "—" }),
+    // The lanes the player pages use (dashboard.css .fl-*): a row per item, a bar
+    // out to its win rate, the number after it. The colour of a win rate is the
+    // fight win tiers' (js/render-helpers.js winPctStyle).
+    const tierColor = p => p >= 40 ? "#5cba7d" : p >= 20 ? "#e8a930" : "#e05c5c";
+    const axis = (max, spare) => el("div", { className: "fl-lane fl-axis" },
+      [0, 25, 50, 75, 100].map(f => el("span", { style: `left:${f}%`, textContent: `${+(max * f / 100).toFixed(1)}%` })));
+    // value is a share of max (0..max); text follows the bar.
+    const lane = (value, max, color, text) => {
+      const width = max ? +(100 * value / max).toFixed(1) : 0;
+      return el("div", { className: "fl-lane" }, [
+        el("span", { className: "fl-fill", style: `width:${width}%;background:${color}` }),
+        el("span", { className: "fl-value", style: `left:calc(${width}% + 8px)`, textContent: text }),
       ]);
     };
+    const winLane = (n, w, color) => n
+      ? lane(100 * w / n, 100, color || tierColor(100 * w / n), `${pct(w, n)} · ${num(n)}`)
+      : el("div", { className: "fl-lane" });
+
+    // One row per character, solo and multiplayer side by side.
     const allChars = pooled(solo.chars, multi.chars);
-    const charRows = Object.keys(allChars).sort((a, b) => allChars[b][0] - allChars[a][0]).map(c => {
+    const charRows = Object.keys(allChars).sort((a, b) => allChars[b][0] - allChars[a][0]).flatMap(c => {
       const color = catalog.charColorMap[c] || "var(--gold)";
-      return el("li", {}, [
-        el("span", { className: "site-row-name", textContent: charName(c) }),
-        bar((solo.chars || {})[c], color),
-        bar((multi.chars || {})[c], color),
-      ]);
+      const [sn, sw] = (solo.chars || {})[c] || [0, 0], [mn, mw] = (multi.chars || {})[c] || [0, 0];
+      return [
+        el("div", { className: "fl-name", style: `color:${color};font-weight:600`, textContent: charName(c) }),
+        winLane(sn, sw, color), winLane(mn, mw, color),
+      ];
     });
 
     const ranked = (pairs, keep) => Object.entries(pairs)
       .filter(([id, [n]]) => n >= MIN_RUNS && (!keep || keep(id)))
       .sort((a, b) => b[1][1] / b[1][0] - a[1][1] / a[1][0] || b[1][0] - a[1][0])
       .slice(0, TOP_N);
-    const list = (title, note, rows) => el("section", { className: "site-list" }, [
+    // rows: [icon src or "", name, lane element]; the axis runs 0..max.
+    const list = (title, note, rows, max) => {
+      const icons = rows.some(r => r[0]);
+      return el("section", { className: "site-list" }, [
       el("h3", { textContent: title }),
       el("p", { className: "site-note", textContent: note }),
-      el("ol", {}, rows.map(([name, value]) => el("li", {}, [
-        el("span", { className: "site-row-name", textContent: name }),
-        el("span", { className: "site-row-num", textContent: value }),
-      ]))),
-    ]);
+      el("div", { className: "fl-rows site-lanes" + (icons ? "" : " no-icons") }, [
+        ...rows.flatMap(([icon, name, laneEl]) => [
+          ...(icons ? [icon ? el("img", { src: icon, alt: "" }) : el("span")] : []),
+          el("div", { className: "fl-name", textContent: name }),
+          laneEl,
+        ]),
+        ...(icons ? [el("span")] : []), el("span"), axis(max),
+      ]),
+    ]); };
+    const winRows = (pairs, name, icon) => pairs.map(([id, [n, w]]) => [icon ? icon(id) : "", name(id), winLane(n, w)]);
+    const relicIcon = id => (catalog.relicData[id] || {}).imagePath || "";
+    const fightIcon = enc => catalog.nodeIcons[enc]
+      || (/_ELITE$/.test(enc) ? catalog.nodeIcons.elite : catalog.nodeIcons.monster) || "";
     const losses = (solo.runs - solo.wins) + (multi.runs - multi.wins);
     const killers = Object.entries(pooled(solo.killers, multi.killers)).sort((a, b) => b[1] - a[1]).slice(0, TOP_N);
+    const killMax = Math.max(5, Math.ceil(100 * (killers[0] ? killers[0][1] / losses : 0) / 5) * 5);
     const both = "solo and multiplayer";
 
     main.append(el("section", { className: "site-stats" }, [
@@ -523,22 +544,22 @@
       el("div", { className: "cards site-cards" }, cards),
       el("section", { className: "site-list site-chars" }, [
         el("h3", { textContent: "Win rate by character" }),
-        el("div", { className: "site-chars-head" }, [
-          el("span"), el("span", { textContent: "Solo" }), el("span", { textContent: "Multiplayer" }),
+        el("div", { className: "fl-rows site-lanes site-chars-rows" }, [
+          el("span"), el("div", { className: "fl-section", textContent: "Solo" }), el("div", { className: "fl-section", textContent: "Multiplayer" }),
+          ...charRows,
+          el("span"), axis(100), axis(100),
         ]),
-        el("ul", {}, charRows),
       ]),
       el("div", { className: "site-lists" }, [
         list("Cards in winning decks",
           `Highest win rate when in the final deck, ${both}. Uncommon and rarer cards in at least ${MIN_RUNS} runs.`,
-          ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity))
-            .map(([id, [n, w]]) => [cardName(id), `${pct(w, n)} · ${num(n)} runs`])),
+          winRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)), cardName), 100),
         list("Relics in winning runs",
           `Highest win rate when held at the end, ${both}. Relics in at least ${MIN_RUNS} runs.`,
-          ranked(pooled(solo.relics, multi.relics))
-            .map(([id, [n, w]]) => [relicName(id), `${pct(w, n)} · ${num(n)} runs`])),
+          winRows(ranked(pooled(solo.relics, multi.relics)), relicName, relicIcon), 100),
         list("Deadliest fights", `The fight that ended the run, as a share of all losses, ${both}.`,
-          killers.map(([enc, n]) => [fmtEncounter(enc), pct(n, losses)])),
+          killers.map(([enc, n]) => [fightIcon(enc), fmtEncounter(enc).replace(/ (Boss|Elite)$/, ""),
+            lane(100 * n / losses, killMax, "#e05c5c", pct(n, losses))]), killMax),
       ]),
     ]));
   }
