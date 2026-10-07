@@ -246,6 +246,8 @@ h1 {
 .fl-dot { position: absolute; top: 3px; width: 12px; height: 12px; border-radius: 50%; transform: translateX(-6px); }
 .fl-value { position: absolute; top: 1px; font-size: 0.7rem; color: #bcbcd0; white-space: nowrap; }
 .fl-fill { position: absolute; left: 0; top: 4px; height: 10px; border-radius: 3px; min-width: 2px; }
+.fl-band { position: absolute; top: 6px; height: 6px; border-radius: 3px; background: rgba(92,186,125,0.3); }
+.fl-low { background: var(--panel); box-shadow: inset 0 0 0 2px #5cba7d; }
 .fl-axis { height: 14px; background: none; font-size: 0.65rem; color: var(--text-dim); }
 .fl-axis span { position: absolute; transform: translateX(-50%); }
 @media (max-width: 900px) { .fl-groups { grid-template-columns: minmax(0, 1fr); } }
