@@ -1223,8 +1223,13 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2>Ascension Tracker</h2>
-    <p class="chart-caption">Where each character stands on the climb to A10. Standard runs only.</p>
+    <div class="asc-head">
+      <div>
+        <h2>Ascension Tracker</h2>
+        <p class="chart-caption">Where each character stands on the climb to A10. Standard runs only.</p>
+      </div>
+      <div class="asc-stats" id="asc-tracker-stats"></div>
+    </div>
     <div id="asc-tracker-cards"></div>
   </div>
 </div>
@@ -1272,7 +1277,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="grid-2">
   <div class="chart-box">
     <h2>Run Won, by Elites Beaten at Each Act Boss</h2>
-    <p class="chart-caption">Win rate by elites beaten before each act boss. Can signal the rewards scaling into a win, or greed getting you killed.</p>
+    <p class="chart-caption">Win rate by elites beaten before each act boss. Can signal the rewards scaling into a win, or greed getting you killed. <span id="elite-checkpoint-missing"></span></p>
     <div class="chart-wrap"><canvas id="eliteCheckpointChart"></canvas></div>
   </div>
   <div class="chart-box">
@@ -1298,8 +1303,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="grid-1">
   <div class="chart-box">
     <h2>HP Entering Fight</h2>
-    <p class="chart-caption">Median HP at the start of elite and boss fights, as % of max HP at the time; green for runs you won, red for runs you lost.</p>
-    <div class="pivot-wrap"><table class="pivot" id="hp-table"></table></div>
+    <p class="chart-caption">Median HP at the start of elite and boss fights, as % of max HP at the time.</p>
+    <div id="hp-lanes"></div>
   </div>
 </div>
 
