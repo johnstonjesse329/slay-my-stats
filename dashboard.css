@@ -340,6 +340,16 @@ h1 {
 
 .chart-wrap { position: relative; height: 260px; }
 
+/* Act Boss Defeated, by Rest Site Choices: a Heal and a Smith chart share one
+   half-width box, a little shorter so the box stays level with its neighbour
+   once the Heal/Smith labels are added. Stacked on phones (below). */
+.rest-act-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem; }
+.rest-act-pair h3 { font-size: 0.85rem; color: var(--text-dim); text-align: center; margin-bottom: 0.3rem; }
+.rest-act-pair .chart-wrap { height: 236px; }
+@media (max-width: 700px) {
+  .rest-act-pair { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* A default OS/browser scrollbar (thin, gray, sometimes overlay-hidden until
    hover) gives no visible cue that a pivot table has more columns off to the
    right (notably the ALL rollup column) — style it to be unmistakably always

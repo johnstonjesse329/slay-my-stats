@@ -1274,9 +1274,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <div class="chart-wrap"><canvas id="eliteCheckpointChart"></canvas></div>
   </div>
   <div class="chart-box">
-    <h2>Rest Site Win %</h2>
-    <p class="chart-caption">Win % by how many times you picked each rest site option over a run. Only runs that reached Act 3.</p>
-    <div class="chart-wrap"><canvas id="restWinChartAll"></canvas></div>
+    <h2>Act Boss Defeated, by Rest Site Choices</h2>
+    <p class="chart-caption">Runs that reached each act boss: the share that defeated it, by how many times you picked Heal or Smith in that act.</p>
+    <div class="rest-act-pair">
+      <div><h3>Heal</h3><div class="chart-wrap"><canvas id="restHealChart"></canvas></div></div>
+      <div><h3>Smith</h3><div class="chart-wrap"><canvas id="restSmithChart"></canvas></div></div>
+    </div>
   </div>
 </div>
 
