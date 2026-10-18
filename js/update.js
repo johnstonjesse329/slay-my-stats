@@ -13,7 +13,7 @@ function updateAll() {
   renderRunEndLanes(pivot);
   renderFightTables();
   renderFinalBossWinPivot(filteredRuns);
-  updateRestWinCharts(filteredRuns);
+  updateRestActCharts(filteredRuns);
   updateEliteActCharts(filteredRuns);
   updateMonthlyWinChart(filteredRuns);
   updateAscWinChart(filteredRuns);

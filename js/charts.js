@@ -287,19 +287,39 @@ function updateMonthlyWinChart(filteredRuns) {
 }
 
 // -------------------------------------------------------------------------
-// Rest site win % line charts — one per act, Heal vs Smith, all chars combined
+// Act Boss Defeated, by Rest Site Choices: a Heal chart and a Smith chart,
+// one line per act
+//
+// A run is on an act's line once it reaches that act's boss. Every rest site
+// of the act comes before the boss, so the act's count is complete, and a run
+// that died earlier in the act is on none of the lines. A point is the share
+// of those runs that defeated the boss -- in Act 3 every boss there (two at
+// Ascension 10), which is winning the run. Only Heal and Smith are drawn: the
+// relic-granted options (Dig, Lift, Hatch, ...) are ~3% of rest picks.
 // -------------------------------------------------------------------------
 
-const REST_WIN_X = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 const REST_ACTS = [1, 2, 3];
 const REST_CHOICES = ["HEAL", "SMITH"];
-const REST_CHOICE_LABELS = { HEAL: "Heal", SMITH: "Smith" };
-const REST_CHOICE_COLORS = { HEAL: "#9ecfff", SMITH: "#7ec8a0" };
+const ACT_COLORS = { 1: "#9ecfff", 2: "#e8a930", 3: "#e05c5c" };
 
-function makeRestWinChart(id) {
+// Sized from the data, like ELITE_TOTAL_X below and for the same reason.
+const REST_ACT_X = Array.from(
+  { length: 1 + Math.max(0, ...DATA.runsData.flatMap(run =>
+      Object.values(run.restChoices || {}).flatMap(c => REST_CHOICES.map(ch => c[ch] || 0)))) },
+  (_, i) => i
+);
+
+function makeRestActChart(id) {
   return new Chart(document.getElementById(id), {
     type: "line",
-    data: { labels: REST_WIN_X, datasets: [] },
+    data: {
+      labels: REST_ACT_X,
+      datasets: REST_ACTS.map(act => ({
+        label: `Act ${act}`, data: [],
+        borderColor: ACT_COLORS[act], backgroundColor: ACT_COLORS[act],
+        borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 6, tension: 0.25,
+      })),
+    },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
@@ -309,34 +329,23 @@ function makeRestWinChart(id) {
           callbacks: {
             title: items => `${items[0].label} times chosen`,
             label: ctx => {
-              if (ctx.raw == null) return null;
-              const n = ctx.dataset.counts?.[ctx.dataIndex] ?? 0;
-              const w = ctx.dataset.wins?.[ctx.dataIndex] ?? 0;
-              return ` ${ctx.dataset.label} — ${ctx.raw.toFixed(0)}% (${w}W / ${n - w}L)`;
-            },
-            afterLabel: ctx => {
-              if (ctx.raw == null) return [];
-              const chars = ctx.dataset.chars?.[ctx.dataIndex] ?? {};
-              return Object.entries(chars)
-                .sort((a, b) => b[1].total - a[1].total)
-                .map(([char, s]) => {
-                  const pct = s.total > 0 ? Math.round(s.wins / s.total * 100) : 0;
-                  const label = fmtCharName(char);
-                  return `   ${label} — win rate: ${pct}% (${s.wins}W / ${s.total - s.wins}L)`;
-                });
+              if (ctx.parsed.y == null) return null;
+              const n = ctx.dataset.counts[ctx.dataIndex];
+              const w = ctx.dataset.beat[ctx.dataIndex];
+              return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)}% defeated the boss (${w}W / ${n - w}L)`;
             },
           },
         },
       },
       scales: {
         x: {
-          grid: { color: "#3f4147" }, ticks: { color: "#bcbcd0" },
+          grid: { display: false }, ticks: { color: "#bcbcd0" },
           title: { display: true, text: "Times chosen", color: "#999" },
         },
         y: {
           grid: { color: "#3f4147" },
-          title: { display: true, text: "Win %", color: "#999" },
-          beginAtZero: true, min: 0,
+          title: { display: true, text: "Act boss defeated %", color: "#999" },
+          beginAtZero: true,
           ...WIN_PCT_Y_AXIS,
         },
       },
@@ -344,91 +353,56 @@ function makeRestWinChart(id) {
   });
 }
 
-const restWinChartAll = makeRestWinChart("restWinChartAll");
+const restActCharts = {
+  HEAL:  makeRestActChart("restHealChart"),
+  SMITH: makeRestActChart("restSmithChart"),
+};
 
-function aggregateRestWinRates(filteredRuns) {
-  // freq[act][choice][count] = { wins, total }
-  const freq = {};
-  [...REST_ACTS, "FULL"].forEach(act => {
-    freq[act] = {};
-    REST_CHOICES.forEach(ch => { freq[act][ch] = {}; });
+// bucket[choice][act][timesChosen] = { runs, beat }: the runs that reached
+// that act's boss having made that choice that many times in the act, and
+// how many of them defeated the boss. A run past an act's boss has nodes in
+// a later act; the last act's boss is defeated only by winning.
+function aggregateRestActs(filteredRuns) {
+  const bucket = {};
+  REST_CHOICES.forEach(ch => {
+    bucket[ch] = {};
+    REST_ACTS.forEach(act => { bucket[ch][act] = {}; });
   });
 
   filteredRuns.forEach(run => {
-    const rc = run.restChoices || {};
-    const reachedAct3 = rc["3"] !== undefined;
-
+    const timeline = run.timeline || [];
+    const lastAct = timeline.length ? timeline[timeline.length - 1].act : 0;
+    const bossActs = new Set(timeline.filter(n => n.type === "boss").map(n => n.act));
     REST_ACTS.forEach(act => {
-      const actChoices = rc[String(act)];
-      if (actChoices === undefined) return;
-      REST_CHOICES.forEach(choice => {
-        const count = actChoices[choice] || 0;
-        const b = freq[act][choice];
-        if (!b[count]) b[count] = { wins: 0, total: 0, chars: {} };
-        b[count].total += 1;
-        if (run.won) b[count].wins += 1;
-        const c = b[count].chars;
-        if (!c[run.char]) c[run.char] = { wins: 0, total: 0 };
-        c[run.char].total += 1;
-        if (run.won) c[run.char].wins += 1;
+      if (!bossActs.has(act)) return;
+      const defeated = run.won || act < lastAct;
+      const chosen = (run.restChoices || {})[act] || {};
+      REST_CHOICES.forEach(ch => {
+        const b = (bucket[ch][act][chosen[ch] || 0] ??= { runs: 0, beat: 0 });
+        b.runs += 1;
+        if (defeated) b.beat += 1;
       });
-    });
-
-    if (reachedAct3) {
-      REST_CHOICES.forEach(choice => {
-        const totalCount = REST_ACTS.reduce((s, act) => s + ((rc[String(act)] || {})[choice] || 0), 0);
-        const b = freq["FULL"][choice];
-        if (!b[totalCount]) b[totalCount] = { wins: 0, total: 0, chars: {} };
-        b[totalCount].total += 1;
-        if (run.won) b[totalCount].wins += 1;
-        const c = b[totalCount].chars;
-        if (!c[run.char]) c[run.char] = { wins: 0, total: 0 };
-        c[run.char].total += 1;
-        if (run.won) c[run.char].wins += 1;
-      });
-    }
-  });
-
-  // Convert to arrays aligned to REST_WIN_X — null where no runs
-  const result = {};
-  [...REST_ACTS, "FULL"].forEach(act => {
-    result[act] = {};
-    REST_CHOICES.forEach(choice => {
-      result[act][choice] = {
-        values: REST_WIN_X.map(x => {
-          const b = freq[act][choice][x];
-          return (b && b.total >= 1) ? +(b.wins / b.total * 100).toFixed(1) : null;
-        }),
-        counts: REST_WIN_X.map(x => (freq[act][choice][x] || {}).total || 0),
-        wins:   REST_WIN_X.map(x => (freq[act][choice][x] || {}).wins  || 0),
-        chars:  REST_WIN_X.map(x => (freq[act][choice][x] || {}).chars  || {}),
-      };
     });
   });
 
-  return result;
+  return bucket;
 }
 
-function updateRestWinCharts(filteredRuns) {
-  const rates = aggregateRestWinRates(filteredRuns);
-  const datasets = REST_CHOICES.map(choice => ({
-    label:                REST_CHOICE_LABELS[choice],
-    data:                 rates["FULL"][choice].values,
-    counts:               rates["FULL"][choice].counts,
-    wins:                 rates["FULL"][choice].wins,
-    chars:                rates["FULL"][choice].chars,
-    borderColor:          REST_CHOICE_COLORS[choice],
-    backgroundColor:      REST_CHOICE_COLORS[choice] + "22",
-    borderWidth:          2,
-    pointRadius:          4,
-    pointBackgroundColor: REST_CHOICE_COLORS[choice],
-    tension:              0.3,
-    fill:                 false,
-    spanGaps:             true,
-  }));
-  restWinChartAll.data.labels   = REST_WIN_X;
-  restWinChartAll.data.datasets = datasets;
-  restWinChartAll.update();
+function updateRestActCharts(filteredRuns) {
+  const bucket = aggregateRestActs(filteredRuns);
+  REST_CHOICES.forEach(ch => {
+    const chart = restActCharts[ch];
+    REST_ACTS.forEach((act, i) => {
+      const ds = chart.data.datasets[i];
+      const cells = REST_ACT_X.map(n => bucket[ch][act][n] || { runs: 0, beat: 0 });
+      // Same floor as the elites chart: one or two runs would put a 0% or
+      // 100% dot on the line.
+      ds.data   = cells.map(b => b.runs >= ELITE_CHECKPOINT_MIN_RUNS ? +(b.beat / b.runs * 100).toFixed(1) : null);
+      ds.counts = cells.map(b => b.runs);
+      ds.beat   = cells.map(b => b.beat);
+    });
+    chart.update();
+  });
 }
 
 // -------------------------------------------------------------------------
@@ -456,8 +430,6 @@ function updateRestWinCharts(filteredRuns) {
 // that job for every chart on Overview, these included, so the split was
 // redundant — removed in favor of the page-level filter.
 // -------------------------------------------------------------------------
-
-const ACT_COLORS = { 1: "#9ecfff", 2: "#e8a930", 3: "#e05c5c" };
 
 // Upper bound derived from the actual data (not hardcoded) so a future run
 // that fights more elites than any run so far isn't silently folded into
