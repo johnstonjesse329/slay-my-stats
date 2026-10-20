@@ -600,8 +600,9 @@ function renderDetailTimeline(run) {
     const actNodes = acts[actNum];
     const nodeCards = actNodes.map(node => {
       const icon    = nodeIconHtml(nodeIconKey(node), 30, node.type);
-      const hasDmg  = node.dmg > 0;
-      const hpClass = hasDmg ? "node-hp damaged" : "node-hp";
+      // Red for a floor that cost HP, green for one that only gave it back.
+      const hpClass = node.dmg > 0 ? "node-hp damaged"
+        : node.healed > 0 ? "node-hp healed" : "node-hp";
       const hpText  = `${node.hpAfter} HP`;
 
       const indicators = [];
