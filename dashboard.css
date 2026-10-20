@@ -883,7 +883,10 @@ h1 {
 
 #detail-layout {
   display: grid;
-  grid-template-columns: var(--run-list-width, 230px) 1fr;
+  /* minmax(0, ...): a bare 1fr never shrinks below its content, and a drawn
+     chart canvas is content, so narrowing the window (or zooming in) left
+     the timeline as wide as before, clipped off the right edge. */
+  grid-template-columns: var(--run-list-width, 230px) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
@@ -1824,12 +1827,18 @@ body.suppress-hover-tooltips .node-tooltip {
 /* Reward cards render a small card face. Skipped/removed/for-sale ones are
    dimmed so a floor's actual gains stay the thing you read first. */
 
-/* Cards lay out side by side, up to three per row, then onto further rows.
-   The column count lives on the row itself (not a width cap on the tooltip),
-   so the tooltip hugs its cards: no leftover strip beside a full row, and a
-   lone card gets a one-card-wide tooltip. Three must match NT_CARD_COLS in
-   run-detail.js, which sizes the cards so three fit the screen. */
-.nt-cardrow { display: grid; grid-template-columns: repeat(3, max-content); gap: 4px; }
+/* Cards lay out side by side, --nt-cols per row, then onto further rows.
+   fitNodeTooltip in run-detail.js picks the count and the card width from
+   the room the window has. The column count lives on the row itself (not a
+   width cap on the tooltip), so the tooltip hugs its cards: no leftover strip
+   beside a full row, and a lone card gets a one-card-wide tooltip. The
+   fallbacks only show if the script hasn't sized it. */
+.node-tooltip { --nt-cols: 3; --nt-card-w: 150px; }
+/* Laid out, unseen, while fitNodeTooltip measures -- even while scrolling
+   suppresses hover tooltips (mouseover fires before the mousemove that lifts
+   it). */
+body .node-tooltip.nt-measuring { display: block !important; visibility: hidden !important; }
+.nt-cardrow { display: grid; grid-template-columns: repeat(var(--nt-cols), max-content); gap: 4px; }
 .node-tooltip:has(.nt-cardrow) {
   /* max-content, not shrink-to-fit: anchored under a 100px node the tooltip
      would otherwise sit at its 160px min-width. 92vw is a backstop. */
@@ -1978,7 +1987,7 @@ body.suppress-hover-tooltips .node-tooltip {
   /* Run Detail: the 230px run list + timeline side-by-side has no room.
      Stack them, and cap the run list's height (it's independently
      scrollable already) so it doesn't push the timeline below the fold. */
-  #detail-layout { grid-template-columns: 1fr; }
+  #detail-layout { grid-template-columns: minmax(0, 1fr); }
   #detail-run-list { max-height: 240px; }
 
 }
