@@ -6,6 +6,8 @@
 // a label next to other labels, so inherit the page's own stack (body,
 // dashboard.css) instead of rendering the data in a second typeface.
 Chart.defaults.font.family = '"Segoe UI", system-ui, sans-serif';
+// Canvas text can't read dashboard.css's type scale, so this is --fs-sm in px.
+Chart.defaults.font.size = 14;
 
 // Shared y-axis config for win-% charts: cap at 105 for headroom above 100,
 // hide the 105 tick label, and force a 100 tick to always exist
@@ -191,7 +193,7 @@ function buildChangeVlinePlugin(buildChangeMonths) {
       // Build version labels, drawn solid (no dash) just above the chart area.
       // Stack upward if a month introduced more than one build.
       ctx.save();
-      ctx.font = "11px sans-serif";
+      ctx.font = "13px sans-serif";
       ctx.fillStyle = "#e0c468";
       ctx.textBaseline = "bottom";
       ctx.textAlign = "center";
@@ -324,7 +326,7 @@ function makeRestActChart(id) {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
-        legend: { labels: { color: "#ccc", boxWidth: 12, font: { size: 11 } } },
+        legend: { labels: { color: "#ccc", boxWidth: 12 } },
         tooltip: {
           callbacks: {
             title: items => `${items[0].label} times chosen`,
@@ -461,7 +463,7 @@ const eliteCheckpointChart = new Chart(document.getElementById("eliteCheckpointC
     responsive: true, maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: { labels: { color: "#ccc", boxWidth: 12, font: { size: 11 } } },
+      legend: { labels: { color: "#ccc", boxWidth: 12 } },
       tooltip: {
         callbacks: {
           title: items => `${items[0].label} elites defeated so far`,

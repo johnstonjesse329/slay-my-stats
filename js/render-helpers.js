@@ -164,7 +164,7 @@ function renderPersonalBests() {
   // uppercase label over every value in a two-column grid, and in a 5-wide
   // grid most labels wrapped to two or three lines, so each panel ran ~970px.
   const row = (label, valueHtml) =>
-    `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;font-size:0.8rem;line-height:1.55">
+    `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;font-size:var(--fs-sm);line-height:1.55">
       <span style="color:#8a8aa0">${label}</span>
       <span style="font-weight:600;color:#ccc;white-space:nowrap">${valueHtml}</span>
     </div>`;
@@ -182,8 +182,8 @@ function renderPersonalBests() {
 
   const heading = (title, note = "") =>
     `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;border-top:1px solid #3f4147;margin-top:0.4rem;padding-top:0.35rem;margin-bottom:0.15rem">
-      <span style="font-size:0.68rem;color:#a8a2c4;text-transform:uppercase;letter-spacing:.06em;font-weight:600">${title}</span>
-      <span style="font-size:0.68rem;color:#8a8aa0;text-align:right">${note}</span>
+      <span style="font-size:var(--fs-xs);color:#a8a2c4;text-transform:uppercase;letter-spacing:.06em;font-weight:600">${title}</span>
+      <span style="font-size:var(--fs-xs);color:#8a8aa0;text-align:right">${note}</span>
     </div>`;
 
   // Favorites as a two-column grid: column headers once ("Most picked" /
@@ -191,9 +191,9 @@ function renderPersonalBests() {
   // columns. Items use favoriteItemHtml's column layout, where names wrap to
   // two lines instead of truncating to "Bloodle…" in the narrow column.
   const colHead = text =>
-    `<div style="font-size:0.7rem;color:#a8a2c4;font-weight:600">${text}</div>`;
+    `<div style="font-size:var(--fs-xs);color:#a8a2c4;font-weight:600">${text}</div>`;
   const groupLabel = text =>
-    `<div style="grid-column:1/-1;font-size:0.66rem;color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-top:0.2rem">${text}</div>`;
+    `<div style="grid-column:1/-1;font-size:var(--fs-xs);color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-top:0.2rem">${text}</div>`;
   const favGrid = (headA, headB, groups) =>
     `<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:0.15rem 0.6rem;border-top:1px solid #3f4147;margin-top:0.4rem;padding-top:0.35rem">
       ${colHead(headA)}${colHead(headB)}
@@ -215,7 +215,7 @@ function renderPersonalBests() {
     const fav = favorites[char];
 
     return `<div class="card" style="border-color:${color}55;box-sizing:border-box">
-      <div style="font-size:0.75rem;font-weight:700;color:${color};letter-spacing:.04em;margin-bottom:0.35rem">${label.toUpperCase()}</div>
+      <div style="font-size:var(--fs-sm);font-weight:700;color:${color};letter-spacing:.04em;margin-bottom:0.35rem">${label.toUpperCase()}</div>
       ${row("Runs", b.gamesPlayed || "—")}
       ${row("Wins", b.gamesPlayed
         ? `${b.totalWins}<span style="color:#8a8aa0;font-weight:400"> · </span>${Math.round(b.totalWins / b.gamesPlayed * 100)}%`
@@ -223,7 +223,7 @@ function renderPersonalBests() {
       ${row("Final boss deaths", deaths(b.finalBossDeaths))}
       ${row("Elite deaths", deaths(b.eliteDeaths))}
       ${noRuns
-        ? `<div style="color:#8a8aa0;font-size:0.8rem;padding:0.25rem 0">No wins yet</div>`
+        ? `<div style="color:#8a8aa0;font-size:var(--fs-sm);padding:0.25rem 0">No wins yet</div>`
         : `${row("Current win streak", b.currentStreak || 0)}
           ${row("Best win streak", b.longestStreak)}
           ${row("Fastest win", link(b.fastestWin, fmtHrsMinSec))}
@@ -449,8 +449,8 @@ function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column 
   if (!item) return `<div style="display:flex;align-items:${column ? "flex-start" : "center"};gap:0.4rem;min-width:0;opacity:0.45">
     <span style="width:22px;height:22px;flex:0 0 auto;border:1px dashed #3f4147;border-radius:4px"></span>
     <div style="min-width:0">
-      <div style="font-size:0.78rem;color:#8a8aa0">None yet</div>
-      <div style="font-size:0.72rem;color:#8a8aa0">no ${countLabel}</div>
+      <div style="font-size:var(--fs-sm);color:#8a8aa0">None yet</div>
+      <div style="font-size:var(--fs-sm);color:#8a8aa0">no ${countLabel}</div>
     </div>
   </div>`;
   const label = kind === "card" ? fmtCardLabel(item.id) : fmtRelicLabel(item.id);
@@ -490,14 +490,14 @@ function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column 
     ${thumbHtml}
     ${column
       ? `<div style="min-width:0">
-      <div style="font-size:0.76rem;color:#ccc;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;hyphens:auto" lang="en">${label}</div>
-      <div style="font-size:0.7rem;color:#a0a0b8;display:flex;flex-wrap:wrap;align-items:center;column-gap:0.3rem;line-height:1.35">
+      <div style="font-size:var(--fs-sm);color:#ccc;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;hyphens:auto" lang="en">${label}</div>
+      <div style="font-size:var(--fs-xs);color:#a0a0b8;display:flex;flex-wrap:wrap;align-items:center;column-gap:0.3rem;line-height:1.35">
         ${pieces.map(p => `<span style="white-space:nowrap">${p}</span>`).join("")}
       </div>
     </div>`
       : `<div style="overflow:hidden;min-width:0">
-      <div style="font-size:0.78rem;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
-      <div style="font-size:0.72rem;color:#a0a0b8;display:flex;align-items:center;gap:0.25rem;min-width:0">
+      <div style="font-size:var(--fs-sm);color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
+      <div style="font-size:var(--fs-sm);color:#a0a0b8;display:flex;align-items:center;gap:0.25rem;min-width:0">
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${sub}</span>
       </div>
     </div>`}
@@ -703,7 +703,7 @@ function valCell(bucket, valueKey, color, isAll) {
   const cls = "cell" + (isAll ? " all-col" : "");
   if (!bucket || !bucket.runs) return `<td class="${cls} empty">—</td>`;
   return `<td class="${cls}">
-    <div style="font-size:0.9rem;font-weight:700;color:${color}">${bucket[valueKey]}</div>
+    <div style="font-size:var(--fs-md);font-weight:700;color:${color}">${bucket[valueKey]}</div>
   </td>`;
 }
 
