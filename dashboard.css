@@ -1202,6 +1202,7 @@ h1 {
   white-space: nowrap;
 }
 .node-hp.damaged { color: #e05c5c; }
+.node-hp.healed { color: #5cba7d; } /* .nt-heal's green */
 
 .node-indicators {
   display: flex;
