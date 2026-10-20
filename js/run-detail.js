@@ -112,7 +112,7 @@ function renderDetailRunList() {
   const container = document.getElementById("detail-run-list");
 
   if (runs.length === 0) {
-    container.innerHTML = `<div style="color:#8a8aa0;padding:1rem;font-size:0.85rem">No runs match the current filters.</div>`;
+    container.innerHTML = `<div style="color:#8a8aa0;padding:1rem;font-size:var(--fs-sm)">No runs match the current filters.</div>`;
     return;
   }
 
@@ -385,6 +385,10 @@ function cardTypeColor(id) {
   return _TYPE_COLORS[info?.type] || _TYPE_DEFAULT;
 }
 
+// Most cards a node tooltip lays side by side; dashboard.css's .nt-cardrow
+// grid has the same count.
+const NT_CARD_COLS = 3;
+
 function buildNodeTooltip(node) {
   // Small art beside each named item, so a floor's rewards read at a glance
   // instead of as a wall of text. Cards get the real card face; relics and
@@ -392,13 +396,19 @@ function buildNodeTooltip(node) {
   const fmtPotion = fmtPotionLabel;
   const iconRow = (cls, src, label, extra = "") =>
     `<div class="${cls} nt-item">${src ? `<img loading="lazy" class="nt-item-icon" src="${thumbSrc(src)}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
+  // Card faces size from --nt-card-w, set on the wrapper below once the
+  // tooltip's card rows are counted.
   const nodeCardHtml = (id, dim = false) => cardFaceAvailable()
-    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}">${renderCardFace(id, 0, cardFaceWidth(84, 128))}</div>`
+    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}">${renderCardFace(id, 0, "var(--nt-card-w)")}</div>`
     : `<div class="${dim ? "nt-skipped" : "nt-reward-card"}">${fmtCardLabel(id)}</div>`;
-  // Wraps a group of cards in one flex row so they lay out side by side
-  // (wrapping onto further rows as needed) instead of stacking one per line.
-  const cardRow = (ids, dim = false) =>
-    ids.length ? `<div class="nt-cardrow">${ids.map(id => nodeCardHtml(id, dim)).join("")}</div>` : "";
+  // Wraps a group of cards in one grid row so they lay out side by side, up
+  // to NT_CARD_COLS a row, instead of stacking one per line.
+  let cardRows = 0;
+  const cardRow = (ids, dim = false) => {
+    if (!ids.length) return "";
+    cardRows += Math.ceil(ids.length / NT_CARD_COLS);
+    return `<div class="nt-cardrow">${ids.map(id => nodeCardHtml(id, dim)).join("")}</div>`;
+  };
   const lines = [];
   lines.push(`<div class="nt-floor">Floor ${node.floor + 1}</div>`);
 
@@ -480,7 +490,16 @@ function buildNodeTooltip(node) {
     lines.push(cardRow(node.cardsRemoved, true));
   }
 
-  return lines.join("");
+  if (!cardRows || !cardFaceAvailable()) return lines.join("");
+  // Cards are as big as the deck's hover cards, unless that would make the
+  // tooltip taller than the window (it can't be scrolled: hovering is all it
+  // takes to show it) or NT_CARD_COLS of them wider than it. The text lines
+  // are budgeted at ~1.5rem each; 1.37 is the card art's height/width.
+  const textLines = lines.filter(l => l && !l.startsWith(`<div class="nt-cardrow">`)).length;
+  const cardW = `min(${cardFaceWidth(150, 210)}, ` +
+    `calc((86vh - ${(textLines * 1.5 + 1.5).toFixed(1)}rem - ${cardRows * 4}px) / ${cardRows} / 1.37), ` +
+    `calc((92vw - 2rem) / ${NT_CARD_COLS}))`;
+  return `<div style="--nt-card-w: ${cardW}">${lines.join("")}</div>`;
 }
 
 const TYPE_LABEL = {
@@ -561,11 +580,11 @@ function renderDetailTimeline(run) {
 
 // ---- Shared vertical-line plugin ----
 
-const MARKER_ICON = 18;
+const MARKER_ICON = 24;
 // Room reserved above the plot for the marker icons. The Canvas legend would
 // otherwise fill the top of the canvas: chartArea.top comes out flush with the
 // legend's bottom, leaving nowhere to put them.
-const MARKER_BAND = 26;
+const MARKER_BAND = 32;
 // One colour for every marker, rather than the node type's colour.
 //
 // The node-type colours (seeds.js NODE_COLORS) and the character colours
@@ -639,7 +658,7 @@ function makeVlinePlugin(nodes, isMarked) {
       ctx.setLineDash([]);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.font = "14px sans-serif";
+      ctx.font = "18px sans-serif";
       const y = top / 2;         // centred in the reserved band
       marks.forEach(m => {
         const px = x.getPixelForValue(m.index);
@@ -667,7 +686,7 @@ function makeActBoundaryPlugin(nodes) {
       ctx.setLineDash([3, 4]);
       ctx.lineWidth = 1;
       ctx.strokeStyle = "#8a8aa088";
-      ctx.font = "10px sans-serif";
+      ctx.font = "13px sans-serif";
       ctx.fillStyle = "#8a8aa0";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";

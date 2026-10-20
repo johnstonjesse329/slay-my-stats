@@ -37,8 +37,8 @@ function locBadge(l) {
   const tip     = (l.picked ? "✓ Picked — " : "Not picked — ") + encLabel(l).replace(/"/g, "&quot;");
   const label   = nodeTypeLabel(l.type);
   const flColor = l.picked ? "#e0e0e0" : "#555";
-  const picked  = l.picked ? `<span style="color:#5cba7d;font-size:0.7rem;margin-left:1px">✓</span>` : "";
-  return `<span class="seed-loc-badge" style="border-color:${color};opacity:${l.picked ? 1 : 0.5}" data-tip="${tip}"><span style="color:${color};font-size:0.72rem">${label}</span><span style="color:${flColor}">${l.floor}</span>${picked}</span>`;
+  const picked  = l.picked ? `<span style="color:#5cba7d;font-size:var(--fs-xs);margin-left:1px">✓</span>` : "";
+  return `<span class="seed-loc-badge" style="border-color:${color};opacity:${l.picked ? 1 : 0.5}" data-tip="${tip}"><span style="color:${color};font-size:var(--fs-sm)">${label}</span><span style="color:${flColor}">${l.floor}</span>${picked}</span>`;
 }
 
 // Deduplicate runs to one entry per seed+character (most recent play wins),
@@ -320,14 +320,14 @@ function renderSeeds() {
 
     return `<tr class="seed-row" data-idx="${i}" style="cursor:pointer" tabindex="0">
       <td style="padding:0.4rem 0.75rem;font-family:monospace;white-space:nowrap">
-        <span class="seed-expand-arrow" style="color:#8a8aa0;font-size:0.7rem;margin-right:0.4rem">▶</span><span class="seed-id" role="button" tabindex="0" aria-label="Copy seed ${run.seed}" style="cursor:pointer;color:#e0c468" data-tip="Click to copy" data-seed="${run.seed}">${run.seed}</span>
+        <span class="seed-expand-arrow" style="color:#8a8aa0;font-size:var(--fs-xs);margin-right:0.4rem">▶</span><span class="seed-id" role="button" tabindex="0" aria-label="Copy seed ${run.seed}" style="cursor:pointer;color:#e0c468" data-tip="Click to copy" data-seed="${run.seed}">${run.seed}</span>
       </td>
       <td style="padding:0.4rem 0.75rem;white-space:nowrap">
         <span style="color:${color}">${fmtCharName(run.char)}</span>
       </td>
       <td style="padding:0.4rem 0.75rem;text-align:center">${wonDot}</td>
-      <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:#bcbcd0;font-size:0.82rem">${fmt(run.ts)}</td>
-      <td style="padding:0.4rem 0.75rem;font-size:0.82rem">${matchSummary}</td>
+      <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:#bcbcd0;font-size:var(--fs-sm)">${fmt(run.ts)}</td>
+      <td style="padding:0.4rem 0.75rem;font-size:var(--fs-sm)">${matchSummary}</td>
     </tr>`;
   }).join("") + moreRow;
 
