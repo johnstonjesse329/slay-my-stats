@@ -58,6 +58,9 @@ def _ingest_asset_hash() -> str:
 
 
 STEAM_API_KEY_PARAM_NAME ="/slay-my-stats/steam-api-key"
+# One allowlist for every stage, like the key: a player on it can use the mod
+# against prod and gamma alike.
+MOD_ALLOWLIST_PARAM_NAME = "/slay-my-stats/mod-allowlist"
 DOMAIN_NAME = "slay-my-stats.com"
 # The ACM certificate and Route 53 hosted zone are created outside CDK and
 # passed in as context ("certificateArn", "hostedZoneId"), which lives in the
@@ -440,15 +443,14 @@ class SlayMyStatsStack(Stack):
         # The allowlist is a StringList parameter of SteamID64s, created and
         # edited by hand so adding a player is one command and no deploy (see
         # README "Mod uploads"). Until it exists, nobody is on it.
-        mod_allowlist_param_name = f"/{name_prefix}/mod-allowlist"
         ingest_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["ssm:GetParameter"],
                 resources=[self.format_arn(service="ssm", resource="parameter",
-                                           resource_name=mod_allowlist_param_name.lstrip("/"))],
+                                           resource_name=MOD_ALLOWLIST_PARAM_NAME.lstrip("/"))],
             )
         )
-        ingest_fn.add_environment("MOD_ALLOWLIST_PARAM_NAME", mod_allowlist_param_name)
+        ingest_fn.add_environment("MOD_ALLOWLIST_PARAM_NAME", MOD_ALLOWLIST_PARAM_NAME)
 
         # The handler logs one JSON line per request, marked "via": "mod" on
         # this path. Count them, and email when there are too many.

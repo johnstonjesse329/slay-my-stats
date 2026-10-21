@@ -352,9 +352,9 @@ sends each run as it ends. It's the same upload through a different door: the mo
   allowlist first, then has Steam confirm the ticket (`ISteamUserAuth/AuthenticateUserTicket`, with the same
   key as display names) and requires that the ticket is that player's. A ticket is only good for Slay the
   Spire 2 and for the name `slay-my-stats`, which the mod and the Lambda agree on.
-- **The allowlist** is the SSM StringList parameter `/slay-my-stats/mod-allowlist`
-  (`/slay-my-stats-gamma/mod-allowlist` on gamma), created and edited by hand. Until it exists, nobody is on
-  it. The Lambda reads it again every 5 minutes, so adding or removing a player needs no deploy:
+- **The allowlist** is the SSM StringList parameter `/slay-my-stats/mod-allowlist`, one list that prod and gamma
+  both read, created and edited by hand. Until it exists, nobody is on it. The Lambda reads it again every
+  5 minutes, so adding or removing a player needs no deploy:
 
   ```sh
   aws ssm put-parameter --name /slay-my-stats/mod-allowlist --type StringList --overwrite --value 76561198000000001,76561198000000002
