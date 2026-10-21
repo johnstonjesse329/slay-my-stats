@@ -359,6 +359,10 @@ sends each run as it ends. It's the same upload through a different door: the mo
   ```sh
   aws ssm put-parameter --name /slay-my-stats/mod-allowlist --type StringList --overwrite --value 76561198000000001,76561198000000002
   ```
+- **Backfill.** At each launch the mod POSTs the same ticket to `/mod/runs` and gets back the `ts` of every
+  run on the player's profile, read from the profile summary. It then uploads the runs from the game's history
+  that aren't there, through `/mod` as usual. `/mod/runs` hands out no upload and counts against no limit,
+  but it's logged and alarmed like the rest of the path.
 - **Limits** are looser, since these are a few known players, but still there in case a mod goes wrong. They're
   counted apart from the site's, so the mod never uses up an upload from the page.
 - **Alarms.** Every request on this path is logged with `"via": "mod"`. Two metric filters count them, and an
