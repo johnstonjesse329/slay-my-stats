@@ -759,16 +759,13 @@ def authorize(params: dict, ip: str, store, allowed_return_to: list[str], presig
             **presign(raw_key(steam_id, upload_id, now), UPLOAD_MAX_BYTES, UPLOAD_URL_SECONDS)}
 
 
-def authorize_mod(body: dict, store, allowlist, presign, now: float | None = None,
-                  verify=None) -> dict:
+def _mod_player(body: dict, allowlist, verify=None) -> str:
     """
-    authorize() for the game mod: the same answer, for {"steamId", "ticket"}
-    instead of a browser sign-in. `allowlist` is the SteamID64s allowed to
-    use it. The claimed id is checked against it first, so a request from
-    anyone not on it never costs a round trip to Steam; the ticket then has
-    to be that same account's.
+    The SteamID64 a request from the mod is for. The claimed id is checked
+    against the allowlist first, so a request from anyone not on it never
+    costs a round trip to Steam; the ticket then has to be that same
+    account's.
     """
-    now = time.time() if now is None else now
     steam_id = body.get("steamId") if isinstance(body, dict) else None
     if not isinstance(steam_id, str) or not STEAM_ID_RE.match(steam_id):
         raise IngestError(400, "bad_request", "Expected a steamId and a ticket.")
@@ -776,6 +773,35 @@ def authorize_mod(body: dict, store, allowlist, presign, now: float | None = Non
         raise IngestError(403, "not_allowlisted", "This Steam account isn't set up for mod uploads.")
     if (verify or verify_ticket)(body.get("ticket")) != steam_id:
         raise IngestError(401, "bad_ticket", "That ticket belongs to a different Steam account.")
+    return steam_id
+
+
+def mod_runs(body: dict, store, allowlist, verify=None) -> dict:
+    """
+    What the mod asks before backfilling: the ts of every run on the
+    player's profile, so it sends only the runs the site doesn't have.
+    Checked like authorize_mod(), but it hands out no upload and isn't
+    counted against the upload limits. Read from the profile summary only,
+    never the month files.
+    """
+    steam_id = _mod_player(body, allowlist, verify)
+    slug, _, doc = _read_profile(store, steam_id)
+    if doc is None:
+        return {"slug": slug, "runs": []}
+    if doc.get("v", 1) < 2:
+        return {"slug": slug, "runs": sorted(r["ts"] for r in doc.get("runs", []))}
+    return {"slug": slug, "runs": sorted(ts for month in doc.get("months", {}).values() for ts in month)}
+
+
+def authorize_mod(body: dict, store, allowlist, presign, now: float | None = None,
+                  verify=None) -> dict:
+    """
+    authorize() for the game mod: the same answer, for {"steamId", "ticket"}
+    instead of a browser sign-in. `allowlist` is the SteamID64s allowed to
+    use it (see _mod_player()).
+    """
+    now = time.time() if now is None else now
+    steam_id = _mod_player(body, allowlist, verify)
 
     got = store.get(mod_limit_key(steam_id))
     times = [t for t in (_unpack(got[0]).get("times", []) if got else []) if now - t < MOD_WINDOW_SECONDS]
@@ -1322,8 +1348,13 @@ def lambda_handler(event, context):
     store = _get_store()
     # Log lines from the mod's way in say so: the stack counts them, and
     # alarms when there are too many.
-    via = {"via": "mod"} if event.get("rawPath", "").rstrip("/") == "/mod" else {}
+    path = event.get("rawPath", "").rstrip("/")
+    via = {"via": "mod"} if path in ("/mod", "/mod/runs") else {}
     try:
+        if path == "/mod/runs":
+            result = mod_runs(_mod_body(event), store, mod_allowlist())
+            print(json.dumps({**via, "status": 200, "runs": len(result["runs"])}))
+            return _response(200, result)
         if via:
             result = authorize_mod(_mod_body(event), store, mod_allowlist(), store.presign_post)
         else:

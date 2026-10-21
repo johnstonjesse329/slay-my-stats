@@ -592,6 +592,44 @@ class AuthorizeModTests(Uploads, unittest.TestCase):
         self.authorize(now=NOW + 61, nonce_suffix="2")
 
 
+class ModRunsTests(Uploads, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.saved, handler._api_key = handler._api_key, "KEY"
+
+    def tearDown(self):
+        handler._api_key = self.saved
+
+    def mod_runs(self, steam_id=STEAM_ID, ticket_for=None, allowlist=(STEAM_ID,), get=None):
+        get = get or steam_ticket_says(steam_id if ticket_for is None else ticket_for)
+        return handler.mod_runs({"steamId": steam_id, "ticket": TICKET}, self.store, set(allowlist),
+                                verify=lambda t: handler.verify_ticket(t, get=get))
+
+    def test_no_profile_yet(self):
+        self.assertEqual(self.mod_runs(), {"slug": None, "runs": []})
+
+    def test_every_run_on_the_profile_across_months(self):
+        # Runs 40 days apart land in different month files; the answer has them all.
+        later = 1700000001 + 40 * 86400
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(later)))
+        self.assertEqual(self.mod_runs(), {"slug": "mrbean", "runs": [1700000001, later]})
+
+    def test_writes_nothing(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        before = dict(self.store.objects)
+        self.mod_runs()
+        self.assertEqual(self.store.objects, before)
+
+    def test_checked_like_an_upload(self):
+        get = steam_ticket_says()
+        for kw, code in (({"allowlist": (), "get": get}, "not_allowlisted"),
+                         ({"ticket_for": "76561198000000002"}, "bad_ticket")):
+            with self.subTest(code=code), self.assertRaises(handler.IngestError) as cm:
+                self.mod_runs(**kw)
+            self.assertEqual(cm.exception.code, code)
+        self.assertEqual(get.calls, [])
+
+
 class ProcessTests(Uploads, unittest.TestCase):
     def result(self, key=None):
         m = handler.RAW_KEY_RE.match(key or self.last_key)
@@ -1085,6 +1123,13 @@ class LambdaHandlerTests(unittest.TestCase):
             for junk in (None, "", "{", "[1]", '"x"', "x" * (handler.MOD_BODY_MAX_BYTES + 1)):
                 self.assertEqual(post(junk)[1]["error"], "bad_request")
             self.assertEqual(post("!!!", isBase64Encoded=True)[1]["error"], "bad_request")
+
+            status, have = post(good, path="/mod/runs")
+            self.assertEqual((status, have), (200, {"slug": None, "runs": []}))
+            self.assertEqual(lines[-1], {"via": "mod", "status": 200, "runs": 0})
+            other = json.dumps({"steamId": "76561198000000002", "ticket": TICKET})
+            self.assertEqual(post(other, path="/mod/runs")[0], 403)
+            self.assertEqual(lines[-1], {"via": "mod", "status": 403, "code": "not_allowlisted"})
 
             # Anything else is still the site's way in, and isn't counted as the mod's.
             self.assertEqual(post(good, path="/")[1]["error"], "bad_openid")
