@@ -27,6 +27,9 @@ the site bucket:
     POST /api/ingest/mod -> the same for the game mod: authorize_mod(), for
                             the SteamID64s in $MOD_ALLOWLIST (stands in for
                             the Function URL's /mod)
+    POST /api/ingest/mod/runs -> mod_runs(), the runs a profile has, which the
+                            mod asks before backfilling (the Function
+                            URL's /mod/runs)
     POST /api/raw-upload -> stands in for the presigned S3 POST: stores the
                             file under local_data/raw/ and processes it on
                             the spot (stands in for the S3 event)
@@ -167,6 +170,8 @@ class Handler(BaseHTTPRequestHandler):
             self._authorize()
         elif path == "/api/ingest/mod":
             self._authorize_mod()
+        elif path == "/api/ingest/mod/runs":
+            self._mod_runs()
         elif path == "/api/raw-upload":
             self._raw_upload()
         else:
@@ -198,6 +203,17 @@ class Handler(BaseHTTPRequestHandler):
         try:
             result = ingest_handler.authorize_mod(body, ingest_handler.DirStore(_DATA_DIR),
                                                   ingest_handler.mod_allowlist(), _presign)
+        except ingest_handler.IngestError as e:
+            self._send_json(e.status, {"error": e.code, "message": e.message})
+            return
+        self._send_json(200, result)
+
+    def _mod_runs(self):
+        # mod_runs(), checked the same way as _authorize_mod().
+        length = int(self.headers.get("Content-Length") or 0)
+        body = ingest_handler._mod_body({"body": self.rfile.read(length).decode("utf-8", "replace")})
+        try:
+            result = ingest_handler.mod_runs(body, ingest_handler.DirStore(_DATA_DIR), ingest_handler.mod_allowlist())
         except ingest_handler.IngestError as e:
             self._send_json(e.status, {"error": e.code, "message": e.message})
             return
