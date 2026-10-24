@@ -319,6 +319,9 @@ function renderDetailRun(run) {
   renderDetailTimeline(run);
   renderDetailHpChart(run);
   renderDetailGoldChart(run);
+  detailDeckRun = run;
+  renderDetailDeckChart(run);
+  renderDetailRelicChart(run);
   renderDetailDeckRelics(run);
 }
 
@@ -920,6 +923,151 @@ function renderDetailGoldChart(run) {
     },
   });
 }
+
+// ---- Deck and relics by floor ----
+
+// What the deck and relic bar held after each floor, one stacked bar per
+// timeline node, rebuilt from run.py's extract_deck_history: a card counts at
+// floor F if it was added by F and not yet removed or transformed away. Runs
+// parsed before PARSER_VERSION 5 have no deckAdded and hide both charts.
+//
+// Categories stack bottom-up in this order, so what the run started with sits
+// at the base and the rarer picks pile on top. Common/Uncommon/Rare are the
+// same colour in both charts. The starting cards and relics get the one
+// neutral, so they recede; every other colour comes from the validated
+// categorical set (checked against the panel surface, adjacent pairs only).
+const DECK_GROUPS = {
+  rarity: {
+    order: ["Basic", "Common", "Uncommon", "Rare", "Colorless", "Other"],
+    color: { Basic: "#6e6a84", Common: "#199e70", Uncommon: "#3987e5", Rare: "#c98500", Colorless: "#d55181", Other: "#9085e9" },
+    // Colorless before rarity: a colorless Rare is a colorless card first.
+    // Other is everything outside the reward pools -- Ancient, Event, Curse,
+    // Status, Token and Quest cards, each too few to read as its own band.
+    of: info => info?.pool === "colorless" ? "Colorless"
+      : ["Basic", "Common", "Uncommon", "Rare"].includes(info?.rarity) ? info.rarity : "Other",
+  },
+  type: {
+    order: ["Attack", "Skill", "Power", "Other"],
+    color: { Attack: "#d95926", Skill: "#3987e5", Power: "#199e70", Other: "#6e6a84" },
+    of: info => ["Attack", "Skill", "Power"].includes(info?.type) ? info.type : "Other",
+  },
+};
+const RELIC_GROUP = {
+  order: ["Starter", "Common", "Uncommon", "Rare", "Shop", "Event", "Ancient"],
+  color: { Starter: "#6e6a84", Common: "#199e70", Uncommon: "#3987e5", Rare: "#c98500", Shop: "#d55181", Event: "#008300", Ancient: "#9085e9" },
+  // The two "None" relics (deprecated ones) fold into Event, the catch-all
+  // for relics no pool hands out.
+  of: info => RELIC_GROUP.order.includes(info?.rarity) ? info.rarity : "Event",
+};
+
+let detailDeckChart  = null;
+let detailRelicChart = null;
+let detailDeckGroup  = "rarity";
+let detailDeckRun    = null;  // the run on screen, for the Rarity / Type switch
+
+// [{id, added, removed}] for every card or relic the run ever held: the final
+// ones (never removed) plus the ones lost along the way.
+function heldItems(finalItems, added, lost) {
+  return finalItems.map((x, i) => ({ id: x.id, added: added[i], removed: Infinity }))
+    .concat(lost.map(([id, a, r]) => ({ id, added: a, removed: r })));
+}
+
+// Per category, the count held after each node: floor F = node.floor + 1, the
+// same 1-based floors floor_added_to_deck uses.
+function countsByFloor(nodes, items, group, infoOf) {
+  const counts = {};
+  group.order.forEach(k => { counts[k] = nodes.map(() => 0); });
+  items.forEach(it => {
+    const k = group.of(infoOf(it.id));
+    nodes.forEach((n, i) => {
+      const f = n.floor + 1;
+      if (it.added <= f && it.removed > f) counts[k][i]++;
+    });
+  });
+  return counts;
+}
+
+function renderStackedFloorChart(canvasId, prev, nodes, counts, group, unit) {
+  if (prev) prev.destroy();
+  const totals = nodes.map((_, i) => group.order.reduce((s, k) => s + counts[k][i], 0));
+  return new Chart(document.getElementById(canvasId).getContext("2d"), {
+    type: "bar",
+    plugins: [makeActBoundaryPlugin(nodes)],
+    data: {
+      labels: nodes.map(n => `F${n.floor + 1}`),
+      // A category the run never held stays out of the legend too.
+      datasets: group.order.filter(k => counts[k].some(v => v > 0)).map(k => ({
+        label: k,
+        data: counts[k],
+        backgroundColor: group.color[k],
+        // The panel colour between stacked segments, so neighbouring bands
+        // stay apart without relying on their hues alone.
+        borderColor: "#211e36",
+        borderWidth: { top: 2, right: 0, bottom: 0, left: 0 },
+        borderSkipped: false,
+        barPercentage: 0.85,
+        categoryPercentage: 1,
+      })),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
+        tooltip: {
+          // Top of the stack first, like the bar reads; empty bands left out.
+          filter: item => item.raw > 0,
+          itemSort: (a, b) => b.datasetIndex - a.datasetIndex,
+          callbacks: {
+            title: items => {
+              const idx = items[0].dataIndex;
+              const node = nodes[idx];
+              const enc = node.enc ? fmtNodeLabel(node.enc) : (node.type || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+              return `Floor ${node.floor + 1} — ${enc} · ${totals[idx]} ${unit}`;
+            },
+            label: item => `${item.dataset.label}: ${item.raw}`,
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: "#8a8aa0", maxTicksLimit: 20 }, grid: { display: false } },
+        y: { stacked: true, ticks: { color: "#ccc", precision: 0 }, grid: { color: "#2e3035" }, min: 0 },
+      },
+    },
+  });
+}
+
+function renderDetailDeckChart(run) {
+  const nodes = run.timeline || [];
+  const box = document.getElementById("detail-deck-box");
+  if (nodes.length === 0 || !run.deckAdded) { box.style.display = "none"; return; }
+  box.style.display = "";
+  const items = heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []);
+  const group = DECK_GROUPS[detailDeckGroup];
+  detailDeckChart = renderStackedFloorChart("detail-deck-chart", detailDeckChart, nodes,
+    countsByFloor(nodes, items, group, cardInfo), group, "cards");
+}
+
+function renderDetailRelicChart(run) {
+  const nodes = run.timeline || [];
+  const box = document.getElementById("detail-relic-box");
+  if (nodes.length === 0 || !run.relicsAdded) { box.style.display = "none"; return; }
+  box.style.display = "";
+  const items = heldItems(run.finalRelics || [], run.relicsAdded, run.relicsLost || []);
+  detailRelicChart = renderStackedFloorChart("detail-relic-chart", detailRelicChart, nodes,
+    countsByFloor(nodes, items, RELIC_GROUP, relicInfo), RELIC_GROUP, "relics");
+}
+
+// Rarity / Type switch: re-groups the deck chart for whichever run is shown.
+document.querySelectorAll("#detail-deck-box .chart-toggle .toggle-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    detailDeckGroup = btn.dataset.group;
+    document.querySelectorAll("#detail-deck-box .chart-toggle .toggle-btn").forEach(b =>
+      b.setAttribute("aria-pressed", String(b === btn)));
+    if (detailDeckRun) renderDetailDeckChart(detailDeckRun);
+  });
+});
 
 // ---- Final deck + relics ----
 

@@ -564,6 +564,55 @@ def extract_timeline(data: dict, local_idx: int = 0) -> list[dict]:
     return nodes
 
 
+def extract_deck_history(data: dict, player: dict, local_idx: int = 0) -> dict:
+    """
+    When each card and relic entered and left the deck, so the Run Detail page
+    can show what the deck held at every floor.
+
+    Every saved card records `floor_added_to_deck` -- the final deck's cards,
+    and also the copies listed in a node's `cards_removed` and the originals in
+    `cards_transformed`. So the deck after floor F is every one of those whose
+    added floor is <= F and that was not removed by F. Floors are 1-based, the
+    same numbering as the timeline's "F{floor + 1}" labels.
+
+    Relics: the final ones carry `floor_added_to_deck` too, but `relics_removed`
+    lists bare ids. A removed relic dates from the last node that picked it
+    (relic_choices.was_picked), else floor 1 -- a starter relic swapped away at
+    an ancient, the only kind seen without a pick.
+
+    The add floors are lists parallel to finalDeck / finalRelics rather than a
+    field on each entry, so those keep their shape. A lost entry is
+    [id, added, removed].
+    """
+    cards_lost:  list[list] = []
+    relics_lost: list[list] = []
+    picked_at: dict[str, int] = {}
+    floor = 0
+    for act in data.get("map_point_history", []):
+        if not isinstance(act, list):
+            continue
+        for node in act:
+            floor += 1
+            ps = player_stats_at(node, local_idx)
+            for rc in ps.get("relic_choices", []):
+                if rc.get("was_picked") and rc.get("choice"):
+                    picked_at[rc["choice"]] = floor
+            lost = list(ps.get("cards_removed", []))
+            lost += [t.get("original_card") or {} for t in ps.get("cards_transformed", [])]
+            for c in lost:
+                if c.get("id"):
+                    cards_lost.append([c["id"], c.get("floor_added_to_deck", 1), floor])
+            for rid in ps.get("relics_removed", []):
+                if rid:
+                    relics_lost.append([rid, picked_at.pop(rid, 1), floor])
+    return {
+        "deckAdded":   [c.get("floor_added_to_deck", 1) for c in player.get("deck", []) if c.get("id")],
+        "relicsAdded": [r.get("floor_added_to_deck", 1) for r in player.get("relics", []) if r.get("id")],
+        "cardsLost":   cards_lost,
+        "relicsLost":  relics_lost,
+    }
+
+
 def parse_run(path: Path) -> dict:
     """
     Parse a single .run file and return a flat dictionary of stats we care about.
@@ -610,7 +659,9 @@ def parse_run(path: Path) -> dict:
 # Guilty, Dowsing and SpoilsMap show) and `enchantment` ({id, amount}, the tab
 # the game draws on an enchanted card). Without these a deck cannot say what its
 # Mad Science is, so it fell back to the canonical model: type None and "??????".
-PARSER_VERSION = 4
+# v5: deckAdded / relicsAdded / cardsLost / relicsLost (extract_deck_history),
+# when each card and relic entered and left, for Run Detail's deck-by-floor charts.
+PARSER_VERSION = 5
 
 
 def _card_props(card: dict) -> dict:
@@ -848,6 +899,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         "finalRelics":   final_relics,
         "fights":        extract_fights(data, char, asc, run_won, local_idx),
         "timeline":      timeline,
+        **extract_deck_history(data, player, local_idx),
         # Only on runs the mod reported mods for, so every other run parses as before.
         **({"mods": mods} if mods else {}),
     }
@@ -1443,6 +1495,20 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
           <span class="vline-legend-item"><span class="vline-legend-line" style="border-color:#e6e2f299"></span>Shop / Event</span>
         </div>
         <div class="chart-wrap"><canvas id="detail-gold-chart"></canvas></div>
+      </div>
+      <div class="chart-box" id="detail-deck-box" style="margin-top:16px">
+        <div class="chart-box-head">
+          <h2>Deck by Floor</h2>
+          <div class="chart-toggle" role="group" aria-label="Group cards by">
+            <button type="button" class="toggle-btn" data-group="rarity" aria-pressed="true">Rarity</button>
+            <button type="button" class="toggle-btn" data-group="type" aria-pressed="false">Type</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="detail-deck-chart"></canvas></div>
+      </div>
+      <div class="chart-box" id="detail-relic-box" style="margin-top:16px">
+        <h2>Relics by Floor</h2>
+        <div class="chart-wrap"><canvas id="detail-relic-chart"></canvas></div>
       </div>
     </div>
   </div>
