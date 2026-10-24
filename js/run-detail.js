@@ -936,20 +936,33 @@ function renderDetailGoldChart(run) {
 // same colour in both charts. The starting cards and relics get the one
 // neutral, so they recede; every other colour comes from the validated
 // categorical set (checked against the panel surface, adjacent pairs only).
+// Curse sits on top of the stack in both views: the band you'd rather not see
+// grow, kept apart from Other because curses are most of what Other used to be.
+const isCurse = info => info?.rarity === "Curse" || info?.type === "Curse";
 const DECK_GROUPS = {
   rarity: {
-    order: ["Basic", "Common", "Uncommon", "Rare", "Colorless", "Other"],
-    color: { Basic: "#6e6a84", Common: "#199e70", Uncommon: "#3987e5", Rare: "#c98500", Colorless: "#d55181", Other: "#9085e9" },
+    order: ["Basic", "Common", "Uncommon", "Rare", "Colorless", "Other", "Curse"],
+    color: { Basic: "#6e6a84", Common: "#199e70", Uncommon: "#3987e5", Rare: "#c98500", Colorless: "#d55181", Other: "#9085e9", Curse: "#e5484d" },
     // Colorless before rarity: a colorless Rare is a colorless card first.
-    // Other is everything outside the reward pools -- Ancient, Event, Curse,
-    // Status, Token and Quest cards, each too few to read as its own band.
-    of: info => info?.pool === "colorless" ? "Colorless"
-      : ["Basic", "Common", "Uncommon", "Rare"].includes(info?.rarity) ? info.rarity : "Other",
+    // Other is the rest outside the reward pools -- Ancient, Event, Status,
+    // Token and Quest cards, each too few to read as its own band.
+    of: card => {
+      const info = cardInfo(card.id);
+      return isCurse(info) ? "Curse"
+        : info?.pool === "colorless" ? "Colorless"
+        : ["Basic", "Common", "Uncommon", "Rare"].includes(info?.rarity) ? info.rarity : "Other";
+    },
   },
   type: {
-    order: ["Attack", "Skill", "Power", "Other"],
-    color: { Attack: "#d95926", Skill: "#3987e5", Power: "#199e70", Other: "#6e6a84" },
-    of: info => ["Attack", "Skill", "Power"].includes(info?.type) ? info.type : "Other",
+    order: ["Attack", "Skill", "Power", "Other", "Curse"],
+    color: { Attack: "#d95926", Skill: "#3987e5", Power: "#199e70", Other: "#6e6a84", Curse: "#e5484d" },
+    // cardTypeOf reads a rolled Mad Science's type from its props, which only
+    // the final deck carries; one lost along the way stays Other.
+    of: card => {
+      if (isCurse(cardInfo(card.id))) return "Curse";
+      const type = cardTypeOf(card);
+      return ["Attack", "Skill", "Power"].includes(type) ? type : "Other";
+    },
   },
 };
 const RELIC_GROUP = {
@@ -957,7 +970,10 @@ const RELIC_GROUP = {
   color: { Starter: "#6e6a84", Common: "#199e70", Uncommon: "#3987e5", Rare: "#c98500", Shop: "#d55181", Event: "#008300", Ancient: "#9085e9" },
   // The two "None" relics (deprecated ones) fold into Event, the catch-all
   // for relics no pool hands out.
-  of: info => RELIC_GROUP.order.includes(info?.rarity) ? info.rarity : "Event",
+  of: relic => {
+    const rarity = relicInfo(relic.id)?.rarity;
+    return RELIC_GROUP.order.includes(rarity) ? rarity : "Event";
+  },
 };
 
 let detailDeckChart  = null;
@@ -965,20 +981,20 @@ let detailRelicChart = null;
 let detailDeckGroup  = "rarity";
 let detailDeckRun    = null;  // the run on screen, for the Rarity / Type switch
 
-// [{id, added, removed}] for every card or relic the run ever held: the final
+// [{id, props, added, removed}] for every card or relic the run ever held: the final
 // ones (never removed) plus the ones lost along the way.
 function heldItems(finalItems, added, lost) {
-  return finalItems.map((x, i) => ({ id: x.id, added: added[i], removed: Infinity }))
+  return finalItems.map((x, i) => ({ id: x.id, props: x.props, added: added[i], removed: Infinity }))
     .concat(lost.map(([id, a, r]) => ({ id, added: a, removed: r })));
 }
 
 // Per category, the count held after each node: floor F = node.floor + 1, the
 // same 1-based floors floor_added_to_deck uses.
-function countsByFloor(nodes, items, group, infoOf) {
+function countsByFloor(nodes, items, group) {
   const counts = {};
   group.order.forEach(k => { counts[k] = nodes.map(() => 0); });
   items.forEach(it => {
-    const k = group.of(infoOf(it.id));
+    const k = group.of(it);
     nodes.forEach((n, i) => {
       const f = n.floor + 1;
       if (it.added <= f && it.removed > f) counts[k][i]++;
@@ -1046,7 +1062,7 @@ function renderDetailDeckChart(run) {
   const items = heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []);
   const group = DECK_GROUPS[detailDeckGroup];
   detailDeckChart = renderStackedFloorChart("detail-deck-chart", detailDeckChart, nodes,
-    countsByFloor(nodes, items, group, cardInfo), group, "cards");
+    countsByFloor(nodes, items, group), group, "cards");
 }
 
 function renderDetailRelicChart(run) {
@@ -1056,7 +1072,7 @@ function renderDetailRelicChart(run) {
   box.style.display = "";
   const items = heldItems(run.finalRelics || [], run.relicsAdded, run.relicsLost || []);
   detailRelicChart = renderStackedFloorChart("detail-relic-chart", detailRelicChart, nodes,
-    countsByFloor(nodes, items, RELIC_GROUP, relicInfo), RELIC_GROUP, "relics");
+    countsByFloor(nodes, items, RELIC_GROUP), RELIC_GROUP, "relics");
 }
 
 // Rarity / Type switch: re-groups the deck chart for whichever run is shown.
