@@ -76,7 +76,7 @@ function ascColumnKey(asc) {
   return sharedAscGranular ? asc : ASC_BUCKETS.find(b => b.ascs.includes(asc))?.key;
 }
 let sharedActiveBuilds = new Set(DATA.builds);
-let sharedActiveMode   = "solo";
+let sharedActiveMode   = "all";
 // 0 / TS_NO_UPPER_BOUND mean "no bound" rather than a snapshot of the
 // current file's actual min/max run timestamp — this matters because a
 // saved preference (see Save/Reset below) has to survive future
@@ -92,7 +92,7 @@ let sharedTsFrom       = 0;
 let sharedTsTo         = TS_NO_UPPER_BOUND;
 
 // Declared here (not near the Save/Reset buttons that use them) because
-// setSharedMode("solo") below runs during the filter bar's own initial
+// setSharedMode("all") below runs during the filter bar's own initial
 // setup and triggers rerenderCurrentPage() -> updateUnsavedIndicator(),
 // which reads both of these — they must exist before any control's
 // default wiring can possibly call that chain, not just before the
@@ -100,7 +100,7 @@ let sharedTsTo         = TS_NO_UPPER_BOUND;
 const SHARED_FILTER_STORAGE_KEY = "sts2_filter_prefs";
 const SHARED_FILTER_HARDCODED_DEFAULTS = {
   char: "ALL", ascGranular: false, builds: [...DATA.builds],
-  mode: "solo", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
+  mode: "all", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
 };
 
 // Whether the Solo / Multi / Daily / All filter lets a run through.

@@ -355,7 +355,7 @@ Object.entries(sharedModeButtons).forEach(([mode, btn]) => {
   btn.addEventListener("click", () => setSharedMode(mode));
 });
 
-setSharedMode("solo");
+setSharedMode("all");
 
 // ---- Shared date range ----
 document.getElementById("shared-date-from").value = tsToDateStr(minTs);
