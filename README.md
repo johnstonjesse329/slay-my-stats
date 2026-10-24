@@ -454,7 +454,8 @@ infra\.venv\Scripts\python.exe -m unittest discover infra/tests
 ```
 
 These tests stub Steam and S3. They include a round trip of your real local history, if you have one, which
-must match `run.py`'s output exactly.
+must match `run.py`'s output exactly, and `tools/validate_parser.py` over that same history, which checks the
+parse against the game's own labels.
 
 ### Deploying
 
