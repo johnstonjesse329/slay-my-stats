@@ -1193,6 +1193,17 @@ class ValidatorTests(unittest.TestCase):
             run.local_player_index = original
         self.assertTrue(problems, "validator accepted a parse of the wrong player")
 
+    def test_accepts_the_real_history(self):
+        """The made-up run above can't notice the validator falling behind the
+        parser (a new field on deck entries once failed 440 real runs unseen),
+        so run it over this machine's real history too."""
+        dirs = run.find_history_dirs()
+        if not dirs:
+            self.skipTest("no local STS2 history")
+        failed = {label: problems for sid, label, data in validate_parser.from_history(str(dirs[0]))
+                  if (problems := validate_parser.validate_run(data, sid))}
+        self.assertEqual(failed, {})
+
 
 class RealHistoryTests(unittest.TestCase):
     """Uploading real .run files must store everything the ingest path computes.

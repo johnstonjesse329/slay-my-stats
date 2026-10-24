@@ -106,7 +106,9 @@ def validate_run(data: dict, steam_id: str) -> list[str]:
     if parsed["char"] != char:
         problems.append(f"[{tag}] char: parsed {parsed['char']}, players[] says {char}")
     deck = [(c["id"], c.get("current_upgrade_level", 0)) for c in p.get("deck", []) if c.get("id")]
-    if parsed["finalDeck"] != [{"id": a, "upgrade": b} for a, b in deck]:
+    # Which card at which upgrade; the per-card extras (props, enchantment) ride
+    # along on the same entries and are not what picks the player.
+    if [(c["id"], c["upgrade"]) for c in parsed["finalDeck"]] != deck:
         problems.append(f"[{tag}] finalDeck does not match the uploader's own deck")
     relics = [r["id"] for r in p.get("relics", []) if r.get("id")]
     if parsed["finalRelics"] != [{"id": r} for r in relics]:
