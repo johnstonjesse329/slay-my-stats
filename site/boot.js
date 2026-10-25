@@ -483,26 +483,40 @@
     const tierColor = p => p >= 40 ? "#5cba7d" : p >= 20 ? "#e8a930" : "#e05c5c";
     const axis = (max, spare) => el("div", { className: "fl-lane fl-axis" },
       [0, 25, 50, 75, 100].map(f => el("span", { style: `left:${f}%`, textContent: `${+(max * f / 100).toFixed(1)}%` })));
-    // value is a share of max (0..max); text follows the bar.
-    const lane = (value, max, color, text) => {
+    // value is a share of max (0..max); text follows the bar. The fill's colour
+    // is a background-color, so a class can stripe it (.site-chars-rows .multi).
+    const lane = (value, max, color, text, cls) => {
       const width = max ? +(100 * value / max).toFixed(1) : 0;
-      return el("div", { className: "fl-lane" }, [
-        el("span", { className: "fl-fill", style: `width:${width}%;background:${color}` }),
+      return el("div", { className: "fl-lane" + (cls ? ` ${cls}` : "") }, [
+        el("span", { className: "fl-fill", style: `width:${width}%;background-color:${color}` }),
         el("span", { className: "fl-value", style: `left:calc(${width}% + 8px)`, textContent: text }),
       ]);
     };
-    const winLane = (n, w, color) => n
-      ? lane(100 * w / n, 100, color || tierColor(100 * w / n), `${pct(w, n)} · ${num(n)}`)
+    const winLane = (n, w, color, max = 100, cls) => n
+      ? lane(100 * w / n, max, color || tierColor(100 * w / n), `${pct(w, n)} · ${num(n)}`, cls)
       : el("div", { className: "fl-lane" });
 
-    // One row per character, solo and multiplayer side by side.
+    // Each character's name over a solo lane and a striped multiplayer lane. The
+    // axis stops at the best rate rounded up to 10%, so the bars aren't squashed
+    // into the left half.
     const allChars = pooled(solo.chars, multi.chars);
-    const charRows = Object.keys(allChars).sort((a, b) => allChars[b][0] - allChars[a][0]).flatMap(c => {
+    const chars = Object.keys(allChars).sort((a, b) => allChars[b][0] - allChars[a][0]);
+    const modes = [["Solo", solo, ""], ["Multi", multi, "multi"]];
+    const charStats = (m, c) => (m.chars || {})[c] || [0, 0];
+    const bestRate = Math.max(0, ...chars.flatMap(c => modes.map(([, m]) => {
+      const [n, w] = charStats(m, c);
+      return n ? 100 * w / n : 0;
+    })));
+    const charMax = Math.min(100, Math.max(10, Math.ceil(bestRate / 10) * 10));
+    const charRows = chars.flatMap((c, i) => {
       const color = catalog.charColorMap[c] || "var(--gold)";
-      const [sn, sw] = (solo.chars || {})[c] || [0, 0], [mn, mw] = (multi.chars || {})[c] || [0, 0];
       return [
+        ...(i ? [el("div", { className: "site-chars-gap" })] : []),
         el("div", { className: "fl-name", style: `color:${color};font-weight:600`, textContent: charName(c) }),
-        winLane(sn, sw, color), winLane(mn, mw, color),
+        ...modes.flatMap(([label, m, cls]) => [
+          el("div", { className: "site-chars-mode", textContent: label }),
+          winLane(...charStats(m, c), color, charMax, cls),
+        ]),
       ];
     });
 
@@ -562,15 +576,11 @@
     main.append(el("section", { className: "site-stats" }, [
       el("h2", { textContent: "Across all players" }),
       el("div", { className: "cards site-cards" }, cards),
-      el("section", { className: "site-list site-chars" }, [
-        el("h3", { textContent: "Win rate by character" }),
-        el("div", { className: "fl-rows site-lanes site-chars-rows" }, [
-          el("span"), el("div", { className: "fl-section", textContent: "Solo" }), el("div", { className: "fl-section", textContent: "Multiplayer" }),
-          ...charRows,
-          el("span"), axis(100), axis(100),
-        ]),
-      ]),
       el("div", { className: "site-lists" }, [
+        el("section", { className: "site-list site-chars" }, [
+          el("h3", { textContent: "Win rate by character" }),
+          el("div", { className: "site-chars-rows" }, [...charRows, axis(charMax)]),
+        ]),
         list("Cards in winning decks",
           `Highest win rate when in the final deck, ${both}. Uncommon and rarer cards in at least ${MIN_RUNS} runs.`,
           winRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)), cardName, cardIcon, cardTip), 100),
