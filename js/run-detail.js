@@ -643,7 +643,7 @@ const ACT_COLOUR = "#e6e2f2";
 // clear of the top half of a point icon. The Canvas legend would otherwise
 // take the top of the canvas, which is why every Run Detail chart keeps its
 // legend at the bottom.
-const ACT_BAND = 30;
+const ACT_BAND = 34;
 
 // Each floor's point on the HP and Gold lines is the floor map's own icon
 // (fight, rest, shop, ...), so the line says what happened where. Images are
@@ -663,7 +663,7 @@ function nodePointStyles(nodes, getChart) {
     return img;
   });
 }
-const NODE_POINT = 24;
+const NODE_POINT = 30;
 
 // Floor numbers on the x axis: 1 and every fifth floor, so the ticks land
 // on round numbers rather than wherever Chart.js's auto-skip puts them.
