@@ -662,7 +662,7 @@ function nodePointStyles(nodes, getChart) {
     return img;
   });
 }
-const NODE_POINT = 18;
+const NODE_POINT = 24;
 
 // Floor numbers on the x axis: 1 and every fifth floor, so the ticks land
 // on round numbers rather than wherever Chart.js's auto-skip puts them.
@@ -761,7 +761,7 @@ function renderDetailHpChart(run) {
         {
           label: "Max HP",
           data: maxHpData,
-          borderColor: "#555",
+          borderColor: "#8a8aa0",
           borderDash: [4, 4],
           borderWidth: 1,
           pointRadius: 0,
@@ -776,7 +776,18 @@ function renderDetailHpChart(run) {
       interaction: { mode: "index", intersect: false },
       plugins: {
         // At the bottom, to leave the top band to the act labels.
-        legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
+        legend: {
+          position: "bottom",
+          labels: {
+            color: "#ccc",
+            // Max HP's key is a short dashed line like the one on the chart,
+            // not the default box, which drew a dashed line as a faint square.
+            usePointStyle: true,
+            pointStyleWidth: 22,
+            generateLabels: chart => Chart.defaults.plugins.legend.labels.generateLabels(chart)
+              .map(item => ({ ...item, pointStyle: item.text === "Max HP" ? "line" : "rect" })),
+          },
+        },
         tooltip: {
           // The "Max HP" dataset only exists to draw the dashed reference
           // line — its value is already shown as the "/maxHp" half of the
