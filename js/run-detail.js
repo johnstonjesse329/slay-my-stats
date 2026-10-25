@@ -1180,12 +1180,16 @@ function showFloorTip(context, html) {
     floorTip.dataset.key = key;
   }
   floorTip.style.display = "block";
-  // Right of the pointer, flipped to its left near the edge of the window.
+  // Right of the pointer, flipped to its left near the edge of the window
+  // (clientWidth, which leaves out the scrollbar). Measured at the origin,
+  // so the last position near the edge can't squeeze it narrower.
+  floorTip.style.left = floorTip.style.top = "0px";
+  const { clientWidth: vw, clientHeight: vh } = document.documentElement;
   const r = context.chart.canvas.getBoundingClientRect();
   const right = r.left + t.caretX + 16;
-  const left = right + floorTip.offsetWidth > innerWidth - 8 ? r.left + t.caretX - 16 - floorTip.offsetWidth : right;
+  const left = right + floorTip.offsetWidth > vw - 8 ? r.left + t.caretX - 16 - floorTip.offsetWidth : right;
   floorTip.style.left = Math.max(8, left) + "px";
-  floorTip.style.top = Math.max(8, Math.min(r.top + t.caretY - 20, innerHeight - floorTip.offsetHeight - 8)) + "px";
+  floorTip.style.top = Math.max(8, Math.min(r.top + t.caretY - 20, vh - floorTip.offsetHeight - 8)) + "px";
 }
 
 const floorTipHead = (node, total, unit) => {
