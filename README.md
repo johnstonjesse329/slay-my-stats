@@ -380,7 +380,7 @@ Each run the mod sends carries one extra top-level key, `slay_my_stats_mod`: the
 the game had loaded (`{"version", "mods": [{"id", "name", "version", "affects_gameplay"}]}`), since the game's
 own run file says nothing about mods. The parser keeps each mod's id, version and whether it says it changes
 gameplay, cut down to plain characters, as `mods` on the run. The Runs page shows a "Modded" tag on those runs, in
-the run list and the run's header, with the mod list on hover. A run uploaded from files has no such key, so a
+the run list (just "M") and the run's header, with the mod list on hover. A run uploaded from files has no such key, so a
 run without the tag isn't known to be unmodded.
 
 ### Site-wide stats
