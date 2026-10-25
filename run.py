@@ -1491,18 +1491,16 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="chart-wrap"><canvas id="detail-gold-chart"></canvas></div>
       </div>
       <div class="chart-box" id="detail-deck-box" style="margin-top:16px">
-        <div class="chart-box-head">
-          <h2>Deck by Floor</h2>
-          <div class="chart-toggle" role="group" aria-label="Group cards by">
-            <button type="button" class="toggle-btn" data-group="rarity" aria-pressed="true">Rarity</button>
-            <button type="button" class="toggle-btn" data-group="type" aria-pressed="false">Type</button>
-          </div>
-        </div>
-        <div class="chart-wrap"><canvas id="detail-deck-chart"></canvas></div>
+        <h2>Deck by Floor</h2>
+        <p class="chart-caption">Both halves add up to the deck size on every floor. Rarity uses the game's colours (grey, blue, gold); type uses none of them, so the two halves can't be confused.</p>
+        <div class="chart-wrap chart-wrap-tall"><canvas id="detail-deck-chart"></canvas></div>
+        <div class="floor-legend" id="detail-deck-legend"></div>
       </div>
       <div class="chart-box" id="detail-relic-box" style="margin-top:16px">
         <h2>Relics by Floor</h2>
+        <p class="chart-caption">Same rarity colours as the deck chart; Shop, Event and Ancient relics get their own. Each marker is the relic itself.</p>
         <div class="chart-wrap"><canvas id="detail-relic-chart"></canvas></div>
+        <div class="floor-legend" id="detail-relic-legend"></div>
       </div>
     </div>
   </div>

@@ -1151,33 +1151,79 @@ h1 {
 .node-card.node-type-boss   { border-color: #6a1e3a; }
 .node-card.node-type-rest_site { border-color: #1e3a6a; }
 
-/* A chart's heading with a small switch at its right, e.g. Deck by Floor's
-   Rarity / Type. */
-.chart-box-head {
+/* Deck / Relics by Floor: the HTML legend under each chart and the hover
+   box, which holds the floor's notable gains at full size. */
+.chart-wrap-tall { height: 480px; }
+.floor-legend {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 0.9rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  font-size: var(--fs-sm);
+}
+.fl-head { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
+.fl-items { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; color: var(--text); }
+.fl-item { display: inline-flex; align-items: center; gap: 0.4rem; }
+.fl-swatch { width: 14px; height: 10px; border-radius: 2px; box-sizing: border-box; }
+.fl-ring { border: 2px solid; border-radius: 50%; box-sizing: border-box; display: inline-block; }
+.fl-ring-up { width: 23px; height: 23px; position: relative; }
+.fl-ring-up::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #3fbf5f;
+}
+
+.floor-tip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 50;
+  display: none;
+  max-width: calc(100vw - 16px);
+  background: #16142aee;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: var(--fs-xs);
+  color: var(--text);
+}
+.floor-tip .ft-row { display: flex; gap: 14px; align-items: flex-start; }
+.floor-tip .ft-head { margin-bottom: 4px; white-space: nowrap; }
+.floor-tip table { border-collapse: collapse; }
+.floor-tip th, .floor-tip td { padding: 1px 5px; text-align: right; white-space: nowrap; }
+.floor-tip th:first-child, .floor-tip td:first-child { text-align: left; padding-left: 0; }
+.floor-tip th { font-weight: 600; }
+.floor-tip .ft-big {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: 10px;
+  border-left: 1px solid var(--hairline);
+  padding-left: 14px;
 }
-.chart-box-head h2 { margin-bottom: 0; }
-.chart-toggle { display: inline-flex; gap: 0.35rem; }
-.chart-toggle .toggle-btn {
-  font-size: var(--fs-sm);
-  color: var(--text-dim);
-  background: none;
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  cursor: pointer;
-  transition: color .15s, border-color .15s;
+.floor-tip .ft-col { flex-direction: column; }
+.floor-tip .ft-card { width: 190px; }
+.floor-tip .ft-card .cardface { display: block; }
+.floor-tip .ft-cap { color: var(--text-dim); margin-top: 2px; }
+.floor-tip .ft-relic {
+  display: flex;
+  gap: 8px;
+  width: 300px;
+  border-left: 3px solid;
+  padding-left: 8px;
 }
-.chart-toggle .toggle-btn:hover { color: var(--gold); border-color: var(--gold); }
-.chart-toggle .toggle-btn[aria-pressed="true"] {
-  color: var(--gold);
-  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
-  background: rgba(224,196,104,0.08);
+.floor-tip .ft-relic img { width: 72px; height: 72px; object-fit: contain; flex: none; }
+.floor-tip .ft-relic-name { font-weight: 600; font-size: var(--fs-sm); }
+.floor-tip .ft-relic-desc { margin-top: 4px; white-space: normal; }
+@media (max-width: 640px) {
+  .floor-tip .ft-row { flex-wrap: wrap; }
+  .floor-tip .ft-big { border-left: 0; padding-left: 0; }
+  .floor-tip th, .floor-tip td { padding: 1px 3px; }
+  .chart-wrap-tall { height: 400px; }
 }
 
 .node-floor {
