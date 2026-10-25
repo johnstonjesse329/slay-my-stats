@@ -39,6 +39,12 @@ import run
 
 _DIST = _HERE / "dist"
 _SITE_BOOT_JS = _HERE / "site" / "boot.js"
+# js/*.js files every page needs, the finder at / included, which never loads
+# app.js: map-bg.js pans the background, and tooltip.js and item-tips.js show
+# the card and relic popouts on the site-wide stats. Each is served on its own,
+# ahead of boot.js, and left out of app.js. They keep their place in run.py's
+# _JS_MODULES, which its local file still inlines in full.
+SHARED_JS = ("map-bg.js", "tooltip.js", "item-tips.js")
 # Hand-written pages: site/pages/<name>.html is served at /<name> (see
 # site/pages/README.md). infra/slay_my_stats/slay_my_stats_stack.py lists the
 # same folder to route those URLs, and tools/serve_site.py reads it live.
@@ -150,6 +156,7 @@ def build_index_html() -> str:
     """
     links = [(f"/{name}", html.escape(label)) for name, _, label in site_pages() if label]
     body = run.dashboard_body_html(site_links=links)
+    shared_scripts = "\n".join(f'<script src="/{name}"></script>' for name in SHARED_JS)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -164,7 +171,7 @@ def build_index_html() -> str:
 </head>
 <body>
 {body}
-<script src="/map-bg.js"></script>
+{shared_scripts}
 <script src="/boot.js"></script>
 <script src="/upload.js"></script>
 </body>
@@ -190,10 +197,9 @@ def main():
         written.append((rel_path, len(data)))
 
     write("index.html", build_index_html())
-    # map-bg.js pans the background on every page, the finder at / included,
-    # which never loads app.js; so it's served on its own and not bundled.
-    write("app.js", run.read_dashboard_js(skip=("map-bg.js",)))
-    write("map-bg.js", (_HERE / "js" / "map-bg.js").read_text(encoding="utf-8"))
+    write("app.js", run.read_dashboard_js(skip=SHARED_JS))
+    for name in SHARED_JS:
+        write(name, (_HERE / "js" / name).read_text(encoding="utf-8"))
     write("dashboard.css", (_HERE / "dashboard.css").read_text(encoding="utf-8"))
 
     if _SITE_BOOT_JS.exists():

@@ -15,7 +15,7 @@ Output (gitignored, uploaded by tools/deploy.py), mirroring each source folder:
     thumbs/card_final/...      thumbs/card_portraits/...
     thumbs/relic_images/...    thumbs/potion_images/...
 Every file becomes <same relative path>.webp, fitted inside THUMB_BOX.
-js/card-face.js's thumbSrc() maps a full-size URL onto its thumbnail.
+js/item-tips.js's thumbSrc() maps a full-size URL onto its thumbnail.
 
 Run after anything that changes those folders (tools/refresh_game_data.py
 runs it last):

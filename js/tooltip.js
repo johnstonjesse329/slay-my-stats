@@ -175,9 +175,18 @@ function showFloatingHtmlTooltip(target, html) {
   el.style.opacity = 1;
 
   const rect = target.getBoundingClientRect();
-  const { left, top } = clampTooltipPosition(el, rect.left, rect.bottom + 6);
-  el.style.left = `${left}px`;
-  el.style.top  = `${top}px`;
+  const place = () => {
+    const { left, top } = clampTooltipPosition(el, rect.left, rect.bottom + 6);
+    el.style.left = `${left}px`;
+    el.style.top  = `${top}px`;
+  };
+  place();
+  // A card face's art only starts loading now (loadDeferredImages), so the box
+  // grows after it's placed; place it again once each image is in, or one near
+  // the bottom of the window runs off it.
+  el.querySelectorAll("img").forEach(img => {
+    if (!img.complete) img.addEventListener("load", () => { if (el.contains(img)) place(); }, { once: true });
+  });
 }
 function hideFloatingHtmlTooltip() {
   if (!floatingTooltipEl) return;
@@ -196,7 +205,7 @@ function hideFloatingHtmlTooltip() {
 // opens that one right after.
 document.addEventListener("touchstart", () => {
   const active = document.activeElement;
-  if (active && active.matches(".card-tile, .relic-tile, .fav-item, .run-boon-wrap, .node-card")) {
+  if (active && active.matches(".card-tile, .relic-tile, .fav-item, .run-boon-wrap, .node-card, .site-tip")) {
     active.blur();
   }
 }, { passive: true });

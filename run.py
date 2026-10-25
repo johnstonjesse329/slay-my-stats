@@ -924,6 +924,7 @@ _JS_DIR = _HERE / "js"
 _JS_MODULES = [
     "data.js",
     "tooltip.js",
+    "item-tips.js",
     "charts.js",
     "aggregation.js",
     "render-helpers.js",
@@ -1015,7 +1016,7 @@ _THUMBS_DIR = _HERE / "thumbs"
 def build_thumb_roots(url_for=Path.as_uri) -> dict:
     """
     Where tools/bake_thumbs.py's small copies of the art live, for
-    js/card-face.js's thumbSrc(): "art" is the URL prefix every art folder
+    js/item-tips.js's thumbSrc(): "art" is the URL prefix every art folder
     sits under, "thumbs" the thumbs/ folder's URL, and "dirs" the art folders
     that have thumbnails. Empty if the bake hasn't been run, in which case
     icon-size art falls back to the full-size files.
@@ -1037,7 +1038,7 @@ def build_energy_icons(url_for=Path.as_uri) -> dict[str, str]:
     """
     Character pool ("ironclad", "colorless", ...) -> energy orb icon URL, for
     the inline "Gain N Energy" glyph in relic/potion descriptions and the
-    non-baked card tooltip fallback (js/run-detail.js's substituteDescVars).
+    non-baked card tooltip fallback (js/item-tips.js's substituteDescVars).
     ui_icons/energy_<pool>.png are copies of the same card_chrome/ sprites
     tools/bake_finished_cards.py pastes onto a baked card's cost badge, so
     which pools have their own colored orb (vs. falling back to "colorless")

@@ -155,7 +155,7 @@ _COLOR_TAG_TO_SENTINEL = {"gold": "\x01", "blue": "\x02", "purple": "\x03"}
 
 
 # ---------------------------------------------------------------------------
-# substituteDescVars() port (js/run-detail.js:764-807)
+# substituteDescVars() port (js/item-tips.js)
 # ---------------------------------------------------------------------------
 def _split_by_color(desc):
     """Splits a desc string containing the sentinel chars _COLOR_OPEN/_COLOR_CLOSE
@@ -240,7 +240,7 @@ def _passes_test(value, test):
 
 
 def expand_desc(desc, variables):
-    """Port of substituteDescVars (js/run-detail.js): resolves every {{token}}
+    """Port of substituteDescVars (js/item-tips.js): resolves every {{token}}
     to plain text, recursing into the branch a plural/show token picks. Energy
     and star tokens come out as runs of ORB_CHAR / STAR_CHAR.
     """
@@ -283,7 +283,7 @@ def expand_desc(desc, variables):
             # to be known to choose a branch; when it isn't (GainsBlock is
             # runtime state the extractor never records) show nothing rather
             # than guess, which would put invented text on the card. Matches
-            # substituteDescVars in js/run-detail.js.
+            # substituteDescVars in js/item-tips.js.
             test, has_test, branches = arg.partition("?")
             if not has_test:
                 branches, test = test, ""
