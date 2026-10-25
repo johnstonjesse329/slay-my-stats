@@ -119,24 +119,22 @@ function renderDetailRunList() {
   const fmtDate = ts => { const d = new Date(ts * 1000); return `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`; };
 
   container.innerHTML = `<div class="detail-run-header-row">
-    <span class="dot" style="visibility:hidden;flex-shrink:0"></span>
     <span class="detail-run-char">Char</span>
     <span class="detail-run-asc">Asc</span>
     <span class="detail-run-won">W/L</span>
     <span class="detail-run-floor">Floor</span>
+    <span></span>
     <span class="detail-run-date">Date</span>
   </div>` + runs.map((run, i) => {
-    const color  = CHAR_COLOR_MAP[run.char] || "#a0a0b8";
     const won    = run.won;
     const label  = fmtCharName(run.char);
     const active = run.ts === detailSelectedTs;
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
-      <span class="dot" style="background:${color};flex-shrink:0"></span>
       <span class="detail-run-char">${label}</span>
       <span class="detail-run-asc" style="color:#bcbcd0">A${run.asc}</span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:#bcbcd0">F${run.floor}</span>
-      ${moddedTagHtml(run)}
+      <span>${moddedTagHtml(run)}</span>
       <span class="detail-run-date" style="color:#8a8aa0">${fmtDate(run.ts)}</span>
     </div>`;
   }).join("");
