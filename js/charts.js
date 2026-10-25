@@ -170,8 +170,7 @@ let monthlyWinChart = null;
 
 // Draws dashed vertical lines at the given x-axis indices, one per month a
 // new game build first appeared (see aggregateMonthlyWinPct's MIN_BUILD_RUNS
-// filtering). Modeled on makeVlinePlugin (Run Detail's HP chart), but keys
-// off explicit indices since months don't have a per-point "type" to match.
+// filtering).
 function buildChangeVlinePlugin(buildChangeMonths) {
   return {
     id: "buildVlines",

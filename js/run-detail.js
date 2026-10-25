@@ -636,125 +636,93 @@ function renderDetailTimeline(run) {
   document.getElementById("detail-timeline").innerHTML = html;
 }
 
-// ---- Shared vertical-line plugin ----
+// ---- Shared chart pieces ----
 
-const MARKER_ICON = 24;
-// Room reserved above the plot for the marker icons. The Canvas legend would
-// otherwise fill the top of the canvas: chartArea.top comes out flush with the
-// legend's bottom, leaving nowhere to put them.
-const MARKER_BAND = 32;
-// One colour for every marker, rather than the node type's colour.
-//
-// The node-type colours (seeds.js NODE_COLORS) and the character colours
-// (js/data.js charColors) are the same six-colour palette: Ironclad's #e05c5c
-// is also NODE_COLORS.boss, Regent's #e8a930 is also NODE_COLORS.elite. So a
-// marker coloured by node type sits in the exact colour of the line it marks on
-// some character's runs, which is what read as "the shop matches the dotted
-// line". A marker is an annotation, not data: it gets one neutral colour, and
-// the floor map's icon says which node type it is.
-const MARKER_COLOUR = "#e6e2f2";
+const ACT_COLOUR = "#e6e2f2";
+// Room reserved above the plot for the act names (see makeActBoundaryPlugin),
+// clear of the top half of a point icon. The Canvas legend would otherwise
+// take the top of the canvas, which is why every Run Detail chart keeps its
+// legend at the bottom.
+const ACT_BAND = 34;
 
-// Boss/elite and shop/event markers. Each is a narrow band behind the data, a
-// stronger dashed line over it, and the floor map's own icon floated above the
-// plot -- so the chart says *what* each marker is, not just where, and the icon
-// is legible instead of sitting on the gridlines.
-function makeVlinePlugin(nodes, isMarked) {
-  const marks = [];
-  nodes.forEach((n, i) => { if (isMarked(n)) marks.push({ index: i, node: n }); });
-
-  // A canvas can only draw an image once it has decoded, so the map's icons
-  // arrive in the background and ask for a redraw when they do. Until then the
-  // node type's emoji stands in, which is also what a missing icon falls back
-  // to -- the same two-step the timeline cards do with their <img>.
-  const drawn = new Map();  // node index -> decoded Image
-  let chart = null;
-  marks.forEach(m => {
-    const src = (DATA.nodeIcons && DATA.nodeIcons[nodeIconKey(m.node)]) || null;
-    if (!src) return;
-    const img = new Image();
-    img.onload = () => { drawn.set(m.index, img); if (chart) chart.update("none"); };
-    img.src = src;
+// The floors behind each chart's big swings get the floor map's own icon as
+// their point: elites, bosses, rest sites and events on HP, shops and events
+// on Gold. Every other floor has no point, just a small dot on hover, so
+// those few stand out.
+// Images are shared between charts and redraw the chart once they decode.
+const HP_ICON_KEYS   = new Set(["elite", "unknown_elite", "rest_site", "event"]);  // + any boss
+const GOLD_ICON_KEYS = new Set(["shop", "unknown_shop", "event"]);
+const nodePointImages = new Map();  // icon src -> Image
+function nodePoints(nodes, getChart, highlight) {
+  const srcs = nodes.map(n => {
+    const key = nodeIconKey(n);
+    return highlight(n, key) && DATA.nodeIcons ? DATA.nodeIcons[key] : null;
   });
-
   return {
-    id: "vlines",
-    beforeDatasetsDraw(c) {
-      if (!marks.length) return;
-      const { ctx, chartArea: { top, bottom }, scales: { x } } = c;
-      // Narrow: the band is a hint at which column this is, and a wide one
-      // swamps the data it is drawn behind.
-      const gap = nodes.length > 1 ? Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) : 0;
-      const half = Math.max(3, Math.min(6, gap / 2.5));
-      ctx.save();
-      marks.forEach(m => {
-        const px = x.getPixelForValue(m.index);
-        ctx.fillStyle = MARKER_COLOUR + "1c";
-        ctx.fillRect(px - half, top, half * 2, bottom - top);
-      });
-      ctx.restore();
-    },
-    afterDraw(c) {
-      chart = c;
-      if (!marks.length) return;
-      const { ctx, chartArea: { top, bottom }, scales: { x } } = c;
-      // afterDraw, not afterDatasetsDraw: this has to draw above chartArea.top,
-      // and dataset hooks are clipped to the plot area.
-      ctx.save();
-      ctx.setLineDash([4, 4]);
-      ctx.lineWidth = 2;
-      marks.forEach(m => {
-        const px = x.getPixelForValue(m.index);
-        ctx.strokeStyle = MARKER_COLOUR + "cc";
-        ctx.beginPath();
-        // Stops at the plot's top edge rather than the canvas top: the icon sits
-        // in the band above it, and a dashed line running the full height reads
-        // as passing through the icon.
-        ctx.moveTo(px, top);
-        ctx.lineTo(px, bottom);
-        ctx.stroke();
-      });
-      ctx.setLineDash([]);
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = "18px sans-serif";
-      const y = top / 2;         // centred in the reserved band
-      marks.forEach(m => {
-        const px = x.getPixelForValue(m.index);
-        const img = drawn.get(m.index);
-        if (img) ctx.drawImage(img, px - MARKER_ICON / 2, y - MARKER_ICON / 2, MARKER_ICON, MARKER_ICON);
-        else ctx.fillText(NODE_ICONS[m.node.type] || "❓", px, y);
-      });
-      ctx.restore();
+    pointStyle: srcs.map(src => {
+      if (!src) return "circle";
+      let img = nodePointImages.get(src);
+      if (!img) {
+        img = new Image(NODE_POINT, NODE_POINT);
+        img.src = src;
+        nodePointImages.set(src, img);
+      }
+      if (!img.complete) img.addEventListener("load", () => getChart()?.update("none"), { once: true });
+      return img;
+    }),
+    pointRadius: srcs.map(src => src ? NODE_POINT / 2 : 0),
+    pointHoverRadius: srcs.map(src => src ? NODE_POINT / 2 : 4),
+  };
+}
+const NODE_POINT = 30;
+
+// Floor numbers on the x axis: 1 and every fifth floor, so the ticks land
+// on round numbers rather than wherever Chart.js's auto-skip puts them.
+function floorAxis(extra = {}) {
+  return {
+    ...extra,
+    title: { display: true, text: "Floor", color: "#8a8aa0", font: { size: 12 } },
+    ticks: {
+      color: "#8a8aa0", autoSkip: false, maxRotation: 0,
+      callback(v) { const f = Number(this.getLabelForValue(v)); return f === 1 || f % 5 === 0 ? f : ""; },
     },
   };
 }
 
-// Dotted act-boundary lines with "Act N" labels, drawn where the act of
-// consecutive nodes changes — mirrors the act grouping of the timeline rows
+// Each act's name centred above its floors, plus a faint dotted line up
+// through the plot where one act ends -- mirrors the act grouping of the
+// timeline rows.
 function makeActBoundaryPlugin(nodes) {
-  const bounds = [];
+  const spans = [];
   nodes.forEach((n, i) => {
-    if (i > 0 && n.act !== nodes[i - 1].act) bounds.push({ index: i, act: n.act });
+    if (i === 0 || n.act !== nodes[i - 1].act) spans.push({ act: n.act, from: i, to: i });
+    else spans[spans.length - 1].to = i;
   });
   return {
     id: "actBounds",
-    afterDatasetsDraw(chart) {
+    // Before the datasets, so the line runs behind the data and the hover
+    // tooltip draws over it. Only each dataset's own drawing is clipped to the
+    // plot, so this hook can still reach the band above it.
+    beforeDatasetsDraw(chart) {
       const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
       ctx.save();
-      ctx.setLineDash([3, 4]);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = "#8a8aa088";
-      ctx.font = "13px sans-serif";
-      ctx.fillStyle = "#8a8aa0";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      bounds.forEach(({ index, act }) => {
-        const px = x.getPixelForValue(index);
+      ctx.setLineDash([2, 4]);
+      ctx.strokeStyle = ACT_COLOUR + "55";
+      spans.slice(1).forEach(({ from }) => {
+        const px = x.getPixelForValue(from);
         ctx.beginPath();
-        ctx.moveTo(px, top);
+        ctx.moveTo(px, top - ACT_BAND + 4);
         ctx.lineTo(px, bottom);
         ctx.stroke();
-        ctx.fillText(`Act ${act}`, px + 3, top + 2);
+      });
+      ctx.fillStyle = "#cfcbe0";
+      ctx.font = "600 12px 'Segoe UI', system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      spans.forEach(({ act, from, to }) => {
+        const mid = (x.getPixelForValue(from) + x.getPixelForValue(to)) / 2;
+        ctx.fillText(`Act ${act}`, mid, top - ACT_BAND + 2);
       });
       ctx.restore();
     },
@@ -773,7 +741,7 @@ function renderDetailHpChart(run) {
   document.getElementById("detail-hp-box").style.display = "";
 
   const color = CHAR_COLOR_MAP[run.char] || "#a0a0b8";
-  const labels = nodes.map(n => `F${n.floor + 1}`);
+  const labels = nodes.map(n => n.floor + 1);
   const hpData = nodes.map(n => n.hpAfter);
   const maxHpData = nodes.map(n => n.maxHp);
 
@@ -782,13 +750,7 @@ function renderDetailHpChart(run) {
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    // Elite and boss. The icon on each marker says which of the two it is; the
-    // colour can't, because the node palette and the character palette are the
-    // same six colours (see MARKER_COLOUR).
-    plugins: [
-      makeVlinePlugin(nodes, n => n.type === "elite" || n.type === "boss"),
-      makeActBoundaryPlugin(nodes),
-    ],
+    plugins: [makeActBoundaryPlugin(nodes)],
     data: {
       labels,
       datasets: [
@@ -798,15 +760,15 @@ function renderDetailHpChart(run) {
           borderColor: color,
           backgroundColor: color + "33",
           borderWidth: 2,
-          pointRadius: 0,
-          pointHoverRadius: 5,
+          pointBackgroundColor: color,
+          ...nodePoints(nodes, () => detailHpChart, (n, key) => n.type === "boss" || HP_ICON_KEYS.has(key)),
           fill: true,
           cubicInterpolationMode: "monotone",
         },
         {
           label: "Max HP",
           data: maxHpData,
-          borderColor: "#555",
+          borderColor: "#8a8aa0",
           borderDash: [4, 4],
           borderWidth: 1,
           pointRadius: 0,
@@ -817,12 +779,24 @@ function renderDetailHpChart(run) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: MARKER_BAND } },
+      layout: { padding: { top: ACT_BAND } },
       interaction: { mode: "index", intersect: false },
       plugins: {
-        // At the bottom, to leave the top band to the marker icons -- and it
-        // reads better there, since run.py's marker legend is above the canvas.
-        legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
+        // At the bottom, to leave the top band to the act names.
+        legend: {
+          position: "bottom",
+          labels: {
+            color: "#ccc",
+            // Max HP's key is a short dashed line like the one on the chart,
+            // not the default box, which drew a dashed line as a faint square.
+            // HP's box keeps the area's own fill, not the solid point colour.
+            usePointStyle: true,
+            pointStyleWidth: 22,
+            generateLabels: chart => Chart.defaults.plugins.legend.labels.generateLabels(chart)
+              .map(item => item.text === "Max HP" ? { ...item, pointStyle: "line" }
+                : { ...item, pointStyle: "rect", fillStyle: chart.data.datasets[item.datasetIndex].backgroundColor }),
+          },
+        },
         tooltip: {
           // The "Max HP" dataset only exists to draw the dashed reference
           // line — its value is already shown as the "/maxHp" half of the
@@ -841,10 +815,7 @@ function renderDetailHpChart(run) {
         },
       },
       scales: {
-        x: {
-          ticks: { color: "#8a8aa0", maxTicksLimit: 20 },
-          grid:  { color: "#2e3035" },
-        },
+        x: floorAxis({ grid: { color: "#2e3035" } }),
         y: {
           ticks: { color: "#ccc" },
           grid:  { color: "#2e3035" },
@@ -867,7 +838,7 @@ function renderDetailGoldChart(run) {
   }
   document.getElementById("detail-gold-box").style.display = "";
 
-  const labels   = nodes.map(n => `F${n.floor + 1}`);
+  const labels   = nodes.map(n => n.floor + 1);
   const goldData = nodes.map(n => n.gold);
 
   if (detailGoldChart) { detailGoldChart.destroy(); detailGoldChart = null; }
@@ -875,13 +846,7 @@ function renderDetailGoldChart(run) {
   const ctx = document.getElementById("detail-gold-chart").getContext("2d");
   detailGoldChart = new Chart(ctx, {
     type: "line",
-    // Shop and "?" event, marked as one "you stopped here for something other
-    // than a fight" group -- both used to be drawn in the gold of this chart's
-    // own line, so the marker read as part of the data.
-    plugins: [
-      makeVlinePlugin(nodes, n => n.type === "shop" || (n.type === "unknown" && n.enc.startsWith("EVENT."))),
-      makeActBoundaryPlugin(nodes),
-    ],
+    plugins: [makeActBoundaryPlugin(nodes)],
     data: {
       labels,
       datasets: [{
@@ -890,8 +855,8 @@ function renderDetailGoldChart(run) {
         borderColor: "#e0c468",
         backgroundColor: "#e0c46833",
         borderWidth: 2,
-        pointRadius: 0,
-        pointHoverRadius: 5,
+        pointBackgroundColor: "#e0c468",
+        ...nodePoints(nodes, () => detailGoldChart, (n, key) => GOLD_ICON_KEYS.has(key)),
         fill: true,
         cubicInterpolationMode: "monotone",
       }],
@@ -899,10 +864,10 @@ function renderDetailGoldChart(run) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: MARKER_BAND } },
+      layout: { padding: { top: ACT_BAND } },
       interaction: { mode: "index", intersect: false },
       plugins: {
-        // At the bottom, to leave the top band to the marker icons.
+        // At the bottom, to leave the top band to the act names.
         legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
         tooltip: {
           callbacks: {
@@ -917,7 +882,7 @@ function renderDetailGoldChart(run) {
         },
       },
       scales: {
-        x: { ticks: { color: "#8a8aa0", maxTicksLimit: 20 }, grid: { color: "#2e3035" } },
+        x: floorAxis({ grid: { color: "#2e3035" } }),
         y: { ticks: { color: "#ccc" }, grid: { color: "#2e3035" }, min: 0 },
       },
     },
@@ -1010,7 +975,7 @@ function renderStackedFloorChart(canvasId, prev, nodes, counts, group, unit) {
     type: "line",
     plugins: [makeActBoundaryPlugin(nodes)],
     data: {
-      labels: nodes.map(n => `F${n.floor + 1}`),
+      labels: nodes.map(n => n.floor + 1),
       // A category the run never held stays out of the legend too.
       // Stacked areas drawn like the HP and Gold charts above: a 2px line on
       // each band, a 20% fill, and monotone curves, which never overshoot, so
@@ -1030,6 +995,7 @@ function renderStackedFloorChart(canvasId, prev, nodes, counts, group, unit) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: ACT_BAND } },
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
@@ -1049,7 +1015,7 @@ function renderStackedFloorChart(canvasId, prev, nodes, counts, group, unit) {
         },
       },
       scales: {
-        x: { stacked: true, ticks: { color: "#8a8aa0", maxTicksLimit: 20 }, grid: { display: false } },
+        x: floorAxis({ stacked: true, grid: { display: false } }),
         y: { stacked: true, ticks: { color: "#ccc", precision: 0 }, grid: { color: "#2e3035" }, min: 0 },
       },
     },
