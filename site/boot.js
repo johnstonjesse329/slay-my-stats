@@ -557,6 +557,9 @@
       const face = renderCardFace(id, 0, cardFaceWidth(150, 210), { deferred: true });
       return face && `<div class="card-tooltip card-tooltip-face">${face}</div>`;
     };
+    // The card's own face at icon size (tools/bake_thumbs.py's small copy),
+    // as the dashboard's favourite-card rows show it.
+    const cardIcon = id => thumbSrc((catalog.cardFinal || {})[cardFaceKey(id, 0)] || "");
     const relicIcon = id => (catalog.relicData[id] || {}).imagePath || "";
     const fightIcon = enc => catalog.nodeIcons[enc]
       || (/_ELITE$/.test(enc) ? catalog.nodeIcons.elite : catalog.nodeIcons.monster) || "";
@@ -579,7 +582,7 @@
       el("div", { className: "site-lists" }, [
         list("Cards in winning decks",
           `Highest win rate when in the final deck, ${both}. Uncommon and rarer cards in at least ${MIN_RUNS} runs.`,
-          winRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)), cardName, null, cardTip), 100),
+          winRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)), cardName, cardIcon, cardTip), 100),
         list("Relics in winning runs",
           `Highest win rate when held at the end, ${both}. Relics in at least ${MIN_RUNS} runs.`,
           winRows(ranked(pooled(solo.relics, multi.relics)), relicName, relicIcon, buildRelicTooltip), 100),
