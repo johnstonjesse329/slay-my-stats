@@ -796,12 +796,12 @@ function renderDetailHpChart(run) {
           label: "HP",
           data: hpData,
           borderColor: color,
-          backgroundColor: color + "22",
+          backgroundColor: color + "33",
           borderWidth: 2,
-          pointRadius: 3,
+          pointRadius: 0,
           pointHoverRadius: 5,
           fill: true,
-          tension: 0.2,
+          cubicInterpolationMode: "monotone",
         },
         {
           label: "Max HP",
@@ -888,12 +888,12 @@ function renderDetailGoldChart(run) {
         label: "Gold",
         data: goldData,
         borderColor: "#e0c468",
-        backgroundColor: "#e0c46822",
+        backgroundColor: "#e0c46833",
         borderWidth: 2,
-        pointRadius: 2,
+        pointRadius: 0,
         pointHoverRadius: 5,
         fill: true,
-        tension: 0.2,
+        cubicInterpolationMode: "monotone",
       }],
     },
     options: {
@@ -1007,22 +1007,24 @@ function renderStackedFloorChart(canvasId, prev, nodes, counts, group, unit) {
   if (prev) prev.destroy();
   const totals = nodes.map((_, i) => group.order.reduce((s, k) => s + counts[k][i], 0));
   return new Chart(document.getElementById(canvasId).getContext("2d"), {
-    type: "bar",
+    type: "line",
     plugins: [makeActBoundaryPlugin(nodes)],
     data: {
       labels: nodes.map(n => `F${n.floor + 1}`),
       // A category the run never held stays out of the legend too.
-      datasets: group.order.filter(k => counts[k].some(v => v > 0)).map(k => ({
+      // Stacked areas drawn like the HP and Gold charts above: a 2px line on
+      // each band, a 20% fill, and monotone curves, which never overshoot, so
+      // a band only rises on a floor where something was added.
+      datasets: group.order.filter(k => counts[k].some(v => v > 0)).map((k, i) => ({
         label: k,
         data: counts[k],
-        backgroundColor: group.color[k],
-        // The panel colour between stacked segments, so neighbouring bands
-        // stay apart without relying on their hues alone.
-        borderColor: "#211e36",
-        borderWidth: { top: 2, right: 0, bottom: 0, left: 0 },
-        borderSkipped: false,
-        barPercentage: 0.85,
-        categoryPercentage: 1,
+        borderColor: group.color[k],
+        backgroundColor: group.color[k] + "33",
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        cubicInterpolationMode: "monotone",
+        fill: i === 0 ? "origin" : "-1",
       })),
     },
     options: {
