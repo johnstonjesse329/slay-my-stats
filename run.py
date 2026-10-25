@@ -1492,13 +1492,13 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-deck-box" style="margin-top:16px">
         <h2>Deck by Floor</h2>
-        <p class="chart-caption">Both halves add up to the deck size on every floor. Rarity uses the game's colours (grey, blue, gold); type uses none of them, so the two halves can't be confused.</p>
+        <p class="chart-caption">Both halves add up to the deck size on every floor. Rarity uses the game's colours (grey, blue, gold).</p>
         <div class="chart-wrap chart-wrap-tall"><canvas id="detail-deck-chart"></canvas></div>
         <div class="floor-legend" id="detail-deck-legend"></div>
       </div>
       <div class="chart-box" id="detail-relic-box" style="margin-top:16px">
         <h2>Relics by Floor</h2>
-        <p class="chart-caption">Same rarity colours as the deck chart; Shop, Event and Ancient relics get their own. Each marker is the relic itself.</p>
+        <p class="chart-caption">Same rarity colours as the deck chart; Shop, Event and Ancient relics get their own.</p>
         <div class="chart-wrap"><canvas id="detail-relic-chart"></canvas></div>
         <div class="floor-legend" id="detail-relic-legend"></div>
       </div>
