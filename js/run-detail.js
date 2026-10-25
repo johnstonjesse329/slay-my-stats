@@ -646,10 +646,11 @@ const ACT_COLOUR = "#e6e2f2";
 const ACT_BAND = 34;
 
 // The floors behind each chart's big swings get the floor map's own icon as
-// their point: elites, bosses and rest sites on HP, shops and events on Gold. Every other
-// floor has no point, just a small dot on hover, so those few stand out.
+// their point: elites, bosses, rest sites and events on HP, shops and events
+// on Gold. Every other floor has no point, just a small dot on hover, so
+// those few stand out.
 // Images are shared between charts and redraw the chart once they decode.
-const HP_ICON_KEYS   = new Set(["elite", "unknown_elite", "rest_site"]);  // + any boss
+const HP_ICON_KEYS   = new Set(["elite", "unknown_elite", "rest_site", "event"]);  // + any boss
 const GOLD_ICON_KEYS = new Set(["shop", "unknown_shop", "event"]);
 const nodePointImages = new Map();  // icon src -> Image
 function nodePoints(nodes, getChart, highlight) {
