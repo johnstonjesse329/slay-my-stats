@@ -406,7 +406,8 @@
   // [runs, wins] pairs per character, card and relic, loss counts per
   // fight, and the fastest win. Solo leaves out daily runs, like the
   // dashboard's Solo filter. Ranking happens here, so the thresholds below
-  // can change without recounting anything.
+  // can change without recounting anything. The page shows everybody's
+  // totals only, never one player's record, so the fastest win isn't shown.
   const TOP_N = 10;
   const MIN_RUNS = 10;  // before a card or relic's win rate is ranked
   // Starter cards, commons, and cards nobody picks say little about a win.
@@ -443,7 +444,6 @@
     const solo = stats.solo || {}, multi = stats.multi || {};
     if (!solo.runs && !multi.runs) return;
 
-    const names = Object.fromEntries(players.map(p => [p.slug, p.name]));
     const num = n => (n || 0).toLocaleString();
     const pct = (w, n) => n ? (100 * w / n).toFixed(1) + "%" : "—";
     const charName = c => pythonTitle(stripPrefix(c || "", "CHARACTER.").replace(/_/g, " "));
@@ -467,20 +467,11 @@
         `${num(solo.runs)} solo · ${num(multi.runs)} multiplayer${daily ? ` · ${num(daily)} daily` : ""}`),
       card("Hours played", num(Math.round(((solo.minutes || 0) + (multi.minutes || 0)) / 60))),
       card("Solo win %", pct(solo.wins, solo.runs), `${num(solo.wins)} of ${num(solo.runs)}`),
-      // "Multi", not "Multiplayer": the row of six bars fits its label and value
-      // on one 243px line only because this label is the same width as
-      // "Solo win %". See .site-cards in players.css.
+      // "Multi", not "Multiplayer": the row of five bars was measured with this
+      // label the same width as "Solo win %", so a longer one could break the
+      // label/value line. See .site-cards in players.css.
       card("Multi win %", pct(multi.wins, multi.runs), `${num(multi.wins)} of ${num(multi.runs)}`),
     ];
-    const fastest = (solo.records || {}).fastestWin;
-    if (fastest) {
-      const sub = document.createDocumentFragment();
-      sub.append(charName(fastest.char) + " · ");
-      sub.append(names[fastest.slug]
-        ? el("a", { href: `/u/${fastest.slug}`, textContent: names[fastest.slug] })
-        : "a past player");
-      cards.push(card("Fastest solo win", `${fastest.mins}m`, sub));
-    }
 
     // The lanes the player pages use (dashboard.css .fl-*): a row per item, a bar
     // out to its win rate, the number after it. The colour of a win rate is the
