@@ -33,11 +33,15 @@ function getFloatingTooltipEl() {
 
 // Clamps a tooltip element's top-left corner so it stays fully inside the
 // viewport. Call after setting innerHTML (and after resetting left/top to
-// 0) so el.offsetWidth/offsetHeight reflect the current content.
+// 0) so el.offsetWidth/offsetHeight reflect the current content. The
+// viewport is clientWidth/Height, not innerWidth/Height: those include the
+// page's scrollbar, which pushed a tooltip near the right edge under it and
+// squeezed it narrower.
 function clampTooltipPosition(el, rawLeft, rawTop, margin = 8) {
+  const { clientWidth: vw, clientHeight: vh } = document.documentElement;
   return {
-    left: Math.min(Math.max(rawLeft, margin), Math.max(window.innerWidth  - el.offsetWidth  - margin, margin)),
-    top:  Math.min(Math.max(rawTop,  margin), Math.max(window.innerHeight - el.offsetHeight - margin, margin)),
+    left: Math.min(Math.max(rawLeft, margin), Math.max(vw - el.offsetWidth  - margin, margin)),
+    top:  Math.min(Math.max(rawTop,  margin), Math.max(vh - el.offsetHeight - margin, margin)),
   };
 }
 
