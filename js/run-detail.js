@@ -639,10 +639,11 @@ function renderDetailTimeline(run) {
 // ---- Shared chart pieces ----
 
 const ACT_COLOUR = "#e6e2f2";
-// Room reserved above the plot for the "Act N" labels, so they never sit over
-// the data. The Canvas legend would otherwise take the top of the canvas,
-// which is why every Run Detail chart keeps its legend at the bottom.
-const ACT_BAND = 26;
+// The act names sit in a row under the floor numbers (see
+// makeActBoundaryPlugin), so the axis title drops by ACT_ROW to make room.
+// Above the plot there's only room for the top half of a point icon.
+const ACT_ROW = 26;
+const PLOT_TOP = 12;
 
 // Each floor's point on the HP and Gold lines is the floor map's own icon
 // (fight, rest, shop, ...), so the line says what happened where. Images are
@@ -669,7 +670,7 @@ const NODE_POINT = 24;
 function floorAxis(extra = {}) {
   return {
     ...extra,
-    title: { display: true, text: "Floor", color: "#8a8aa0", font: { size: 12 } },
+    title: { display: true, text: "Floor", color: "#8a8aa0", font: { size: 12 }, padding: { top: ACT_ROW } },
     ticks: {
       color: "#8a8aa0", autoSkip: false, maxRotation: 0,
       callback(v) { const f = Number(this.getLabelForValue(v)); return f === 1 || f % 5 === 0 ? f : ""; },
@@ -677,44 +678,50 @@ function floorAxis(extra = {}) {
   };
 }
 
-// Act-boundary lines with "Act N" labels, drawn where the act of
-// consecutive nodes changes — mirrors the act grouping of the timeline rows
+// Acts as a second row under the floor numbers: each act's name centred
+// under a bracket spanning its floors, plus a faint dotted line up through the
+// plot where one act ends -- mirrors the act grouping of the timeline rows.
 function makeActBoundaryPlugin(nodes) {
-  const bounds = [];
+  const spans = [];
   nodes.forEach((n, i) => {
-    if (i > 0 && n.act !== nodes[i - 1].act) bounds.push({ index: i, act: n.act });
+    if (i === 0 || n.act !== nodes[i - 1].act) spans.push({ act: n.act, from: i, to: i });
+    else spans[spans.length - 1].to = i;
   });
   return {
     id: "actBounds",
     // Before the datasets, so the line runs behind the data and the hover
     // tooltip draws over it. Only each dataset's own drawing is clipped to the
-    // plot, so this hook can still reach the band above it.
+    // plot, so this hook can still reach the row under the axis.
     beforeDatasetsDraw(chart) {
       const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+      const half = nodes.length > 1 ? Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) / 2 : 0;
+      const y = x.top + ACT_ROW;  // under the tick labels; x.bottom includes the title
       ctx.save();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = ACT_COLOUR + "99";
-      ctx.font = "bold 12px 'Segoe UI', system-ui, sans-serif";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      bounds.forEach(({ index, act }) => {
-        const px = x.getPixelForValue(index);
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]);
+      ctx.strokeStyle = ACT_COLOUR + "55";
+      spans.slice(1).forEach(({ from }) => {
+        const px = x.getPixelForValue(from);
         ctx.beginPath();
-        ctx.moveTo(px, top - 4);
+        ctx.moveTo(px, top);
         ctx.lineTo(px, bottom);
         ctx.stroke();
-        // A pill in the band above the plot, starting at the line.
-        const text = `Act ${act}`;
-        const w = ctx.measureText(text).width + 12, h = 18, lx = px - 1, ly = top - h - 4;
-        ctx.fillStyle = "#16142a";
-        ctx.strokeStyle = ACT_COLOUR + "99";
+      });
+      ctx.setLineDash([]);
+      ctx.strokeStyle = ACT_COLOUR + "40";
+      ctx.fillStyle = "#cfcbe0";
+      ctx.font = "600 12px 'Segoe UI', system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      spans.forEach(({ act, from, to }) => {
+        const a = x.getPixelForValue(from) - half + 3, z = x.getPixelForValue(to) + half - 3;
         ctx.beginPath();
-        ctx.roundRect(lx, ly, w, h, 9);
-        ctx.fill();
+        ctx.moveTo(a, y - 4);
+        ctx.lineTo(a, y);
+        ctx.lineTo(z, y);
+        ctx.lineTo(z, y - 4);
         ctx.stroke();
-        ctx.fillStyle = ACT_COLOUR;
-        ctx.fillText(text, lx + 6, ly + h / 2 + 0.5);
-        ctx.strokeStyle = ACT_COLOUR + "99";
+        ctx.fillText(`Act ${act}`, (a + z) / 2, y + 3);
       });
       ctx.restore();
     },
@@ -772,10 +779,10 @@ function renderDetailHpChart(run) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: ACT_BAND } },
+      layout: { padding: { top: PLOT_TOP } },
       interaction: { mode: "index", intersect: false },
       plugins: {
-        // At the bottom, to leave the top band to the act labels.
+        // At the bottom, like every Run Detail chart.
         legend: {
           position: "bottom",
           labels: {
@@ -856,10 +863,10 @@ function renderDetailGoldChart(run) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: ACT_BAND } },
+      layout: { padding: { top: PLOT_TOP } },
       interaction: { mode: "index", intersect: false },
       plugins: {
-        // At the bottom, to leave the top band to the act labels.
+        // At the bottom, like every Run Detail chart.
         legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
         tooltip: {
           callbacks: {
@@ -987,7 +994,7 @@ function renderStackedFloorChart(canvasId, prev, nodes, counts, group, unit) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: ACT_BAND } },
+      layout: { padding: { top: PLOT_TOP } },
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
