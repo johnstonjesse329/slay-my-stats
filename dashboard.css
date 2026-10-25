@@ -886,14 +886,15 @@ h1 {
   /* minmax(0, ...): a bare 1fr never shrinks below its content, and a drawn
      chart canvas is content, so narrowing the window (or zooming in) left
      the timeline as wide as before, clipped off the right edge. */
-  grid-template-columns: var(--run-list-width, 230px) minmax(0, 1fr);
+  grid-template-columns: var(--run-list-width, 300px) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
-/* A "Modded" tag in the run list needs the room: 316px fits the widest row
-   (Necrobinder, A10, tag, two-digit month and day) beside a scrollbar. A
-   variable, so the phone layout's single column still wins. */
-#detail-layout:has(.detail-run-item .run-modded-tag) { --run-list-width: 316px; }
+/* 300px fits the widest columns (Necrobinder, A10, F48, a two-digit month
+   and day) beside a scrollbar; a "Modded" tag in the list adds its own
+   column, hence 380px. A variable, so the phone layout's single column
+   still wins. */
+#detail-layout:has(.detail-run-item .run-modded-tag) { --run-list-width: 380px; }
 
 /* ---- Run list (left column) ---- */
 
@@ -905,12 +906,21 @@ h1 {
   max-height: 70vh;
   overflow-y: auto;
   box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+  /* One set of columns for every row (each row is a subgrid of it), so each
+     column is as wide as its widest entry and they line up down the list:
+     char, asc, W/L, floor, Modded tag (empty unless modded), date. Spacing
+     is each cell's left padding, not a column gap, so the empty tag column
+     takes no room. */
+  display: grid;
+  grid-template-columns: auto auto auto auto auto 1fr;
+  align-content: start;
 }
+#detail-run-list > * { grid-column: 1 / -1; }
 
 .detail-run-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: 0.4rem;
   padding: 0.45rem 0.75rem;
   cursor: pointer;
   border-bottom: 1px solid var(--hairline);
@@ -924,9 +934,9 @@ h1 {
 .detail-run-item.active { background: rgba(224,196,104,0.1); border-left: 3px solid var(--gold); padding-left: calc(0.75rem - 3px); }
 
 .detail-run-header-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: 0.5rem;
   padding: 0.3rem 0.75rem;
   font-size: var(--fs-sm);
   color: var(--text-dim);
@@ -935,11 +945,13 @@ h1 {
   top: 0;
   background: var(--panel-2);
 }
+.detail-run-item > :not(:first-child, :empty),
+.detail-run-header-row > :not(:first-child, :empty) { padding-left: 0.5rem; }
 .detail-run-char { font-weight: 600; }
-.detail-run-asc  { font-size: var(--fs-sm); }
-.detail-run-won  { font-weight: 700; font-size: var(--fs-sm); }
-.detail-run-floor { font-size: var(--fs-sm); }
-.detail-run-date  { font-size: var(--fs-sm); margin-left: auto; }
+.detail-run-asc  { font-size: var(--fs-sm); text-align: right; }
+.detail-run-won  { font-weight: 700; font-size: var(--fs-sm); text-align: center; }
+.detail-run-floor { font-size: var(--fs-sm); text-align: right; }
+.detail-run-date  { font-size: var(--fs-sm); text-align: right; }
 
 /* "Modded": on a run the game mod reported loaded mods for, in the run list
    and the run header. The mod list is its data-tip. */
