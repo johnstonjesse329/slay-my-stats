@@ -16,7 +16,7 @@ is "combat" at 1 and "combats" at 5).
 A branch can hold tokens of its own -- "{VoidFormPower:plural:card|{VoidFormPower:
 diff()} cards}", or "{Combats:plural:combat|{} combats}" where the empty {} means
 the enclosing variable -- so the output nests the same way and the renderers
-(substituteDescVars in js/run-detail.js, expand_desc in bake_finished_cards.py)
+(substituteDescVars in js/item-tips.js, expand_desc in bake_finished_cards.py)
 recurse into the branch they pick.
 
 Anything else in braces (choose(), cond:, ...) is dropped.

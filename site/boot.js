@@ -4,7 +4,8 @@
 // finder instead.
 //
 // The dashboard JS (js/*.js in the repo, concatenated to /app.js at deploy
-// time) is a classic script whose top-level code reads a global DATA the
+// time, bar the few in build_site.py's SHARED_JS, which every page loads
+// ahead of this file) is a classic script whose top-level code reads a global DATA the
 // instant it loads — see js/data.js's header comment. run.py used to build
 // that object in Python (build_html()) and inline it straight into the
 // page; now that the site is static, this file rebuilds the exact same
@@ -442,6 +443,9 @@
     }
     const solo = stats.solo || {}, multi = stats.multi || {};
     if (!solo.runs && !multi.runs) return;
+    // The card and relic lists open the dashboard's own popouts
+    // (js/item-tips.js), which read a global DATA: here, a profile's with no runs.
+    window.DATA = buildData(catalog, []);
 
     const names = Object.fromEntries(players.map(p => [p.slug, p.name]));
     const num = n => (n || 0).toLocaleString();
@@ -515,22 +519,44 @@
       .filter(([id, [n]]) => n >= MIN_RUNS && (!keep || keep(id)))
       .sort((a, b) => b[1][1] / b[1][0] - a[1][1] / a[1][0] || b[1][0] - a[1][0])
       .slice(0, TOP_N);
-    // rows: [icon src or "", name, lane element]; the axis runs 0..max.
+    // A row's popout (the card face, or the relic's tooltip) opens on hovering
+    // its name or icon, or on tapping or tabbing to the name; the next tap
+    // anywhere closes it (js/tooltip.js).
+    const withTip = (node, tip, focusable) => {
+      if (!tip) return node;
+      node.classList.add("site-tip");
+      if (focusable) node.tabIndex = 0;
+      const show = () => showFloatingHtmlTooltip(node, tip());
+      node.addEventListener("mouseenter", show);
+      node.addEventListener("mouseleave", hideFloatingHtmlTooltip);
+      node.addEventListener("focus", show);
+      node.addEventListener("blur", hideFloatingHtmlTooltip);
+      return node;
+    };
+    // rows: [icon src or "", name, lane element, popout html maker or null];
+    // the axis runs 0..max.
     const list = (title, note, rows, max) => {
       const icons = rows.some(r => r[0]);
       return el("section", { className: "site-list" }, [
       el("h3", { textContent: title }),
       el("p", { className: "site-note", textContent: note }),
       el("div", { className: "fl-rows site-lanes" + (icons ? "" : " no-icons") }, [
-        ...rows.flatMap(([icon, name, laneEl]) => [
-          ...(icons ? [icon ? el("img", { src: icon, alt: "" }) : el("span")] : []),
-          el("div", { className: "fl-name", textContent: name }),
+        ...rows.flatMap(([icon, name, laneEl, tip]) => [
+          ...(icons ? [icon ? withTip(el("img", { src: icon, alt: "" }), tip) : el("span")] : []),
+          withTip(el("div", { className: "fl-name", textContent: name }), tip, true),
           laneEl,
         ]),
         ...(icons ? [el("span")] : []), el("span"), axis(max),
       ]),
     ]); };
-    const winRows = (pairs, name, icon) => pairs.map(([id, [n, w]]) => [icon ? icon(id) : "", name(id), winLane(n, w)]);
+    const winRows = (pairs, name, icon, tip) => pairs.map(([id, [n, w]]) =>
+      [icon ? icon(id) : "", name(id), winLane(n, w), tip ? () => tip(id) : null]);
+    // The face the dashboard's hover preview shows (buildCardTooltip in
+    // js/card-face.js); these are unupgraded cards, so always the base face.
+    const cardTip = id => {
+      const face = renderCardFace(id, 0, cardFaceWidth(150, 210), { deferred: true });
+      return face && `<div class="card-tooltip card-tooltip-face">${face}</div>`;
+    };
     const relicIcon = id => (catalog.relicData[id] || {}).imagePath || "";
     const fightIcon = enc => catalog.nodeIcons[enc]
       || (/_ELITE$/.test(enc) ? catalog.nodeIcons.elite : catalog.nodeIcons.monster) || "";
@@ -553,10 +579,10 @@
       el("div", { className: "site-lists" }, [
         list("Cards in winning decks",
           `Highest win rate when in the final deck, ${both}. Uncommon and rarer cards in at least ${MIN_RUNS} runs.`,
-          winRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)), cardName), 100),
+          winRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)), cardName, null, cardTip), 100),
         list("Relics in winning runs",
           `Highest win rate when held at the end, ${both}. Relics in at least ${MIN_RUNS} runs.`,
-          winRows(ranked(pooled(solo.relics, multi.relics)), relicName, relicIcon), 100),
+          winRows(ranked(pooled(solo.relics, multi.relics)), relicName, relicIcon, buildRelicTooltip), 100),
         list("Deadliest fights", `The fight that ended the run, as a share of all losses, ${both}.`,
           killers.map(([enc, n]) => [fightIcon(enc), fmtEncounter(enc).replace(/ (Boss|Elite)$/, ""),
             lane(100 * n / losses, killMax, "#e05c5c", pct(n, losses))]), killMax),
