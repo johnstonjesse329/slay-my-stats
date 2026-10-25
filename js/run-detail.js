@@ -78,11 +78,12 @@ function getDetailRuns() {
 // says nothing about mods, so a run without the tag isn't known to be
 // unmodded. The ids and versions are cut down to plain characters by the
 // parser, which is what makes them safe to drop into data-tip here.
-function moddedTagHtml(run, focusable = false) {
+// The run list shows it as just "M" (short), so it doesn't take a wide column.
+function moddedTagHtml(run, focusable = false, short = false) {
   const mods = run.mods || [];
   if (mods.length === 0) return "";
   const lines = mods.map(m => `${m.id}${m.version ? ` ${m.version}` : ""}${m.gameplay ? " (changes gameplay)" : ""}`);
-  return `<span class="run-modded-tag" data-tip="${["Mods loaded:", ...lines].join("\n")}"${focusable ? ` tabindex="0"` : ""}>Modded</span>`;
+  return `<span class="run-modded-tag" data-tip="${["Mods loaded:", ...lines].join("\n")}"${focusable ? ` tabindex="0"` : ""}>${short ? "M" : "Modded"}</span>`;
 }
 
 // Keeps the address bar on the run being shown (#detail/<ts>, see
@@ -134,7 +135,7 @@ function renderDetailRunList() {
       <span class="detail-run-asc" style="color:#bcbcd0">A${run.asc}</span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:#bcbcd0">F${run.floor}</span>
-      <span>${moddedTagHtml(run)}</span>
+      <span>${moddedTagHtml(run, false, true)}</span>
       <span class="detail-run-date" style="color:#8a8aa0">${fmtDate(run.ts)}</span>
     </div>`;
   }).join("");
