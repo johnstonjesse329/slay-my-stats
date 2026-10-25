@@ -752,6 +752,37 @@ function floorAxis(extra = {}) {
   };
 }
 
+// Act 1 comes in two variants with no encounter in common (the game's
+// Acts/Overgrowth.cs and Underdocks.cs), so any Act 1 fight names it. Acts 2
+// and 3 have one variant each.
+const UNDERDOCKS_ENCS = new Set([
+  "CORPSE_SLUGS_NORMAL", "CORPSE_SLUGS_WEAK", "CULTISTS_NORMAL", "FOSSIL_STALKER_NORMAL",
+  "GREMLIN_MERC_NORMAL", "HAUNTED_SHIP_NORMAL", "LAGAVULIN_MATRIARCH_BOSS", "LIVING_FOG_NORMAL",
+  "PHANTASMAL_GARDENERS_ELITE", "PUNCH_CONSTRUCT_NORMAL", "SEAPUNK_NORMAL", "SEAPUNK_WEAK",
+  "SEWER_CLAM_NORMAL", "SKULKING_COLONY_ELITE", "SLUDGE_SPINNER_WEAK", "SOUL_FYSH_BOSS",
+  "TERROR_EEL_ELITE", "TOADPOLES_WEAK", "TWO_TAILED_RATS_NORMAL", "WATERFALL_GIANT_BOSS",
+].map(id => `ENCOUNTER.${id}`));
+const OVERGROWTH_ENCS = new Set([
+  "BYGONE_EFFIGY_ELITE", "BYRDONIS_ELITE", "CEREMONIAL_BEAST_BOSS", "CUBEX_CONSTRUCT_NORMAL",
+  "FLYCONID_NORMAL", "FOGMOG_NORMAL", "FUZZY_WURM_CRAWLER_WEAK", "INKLETS_NORMAL",
+  "MAWLER_NORMAL", "NIBBITS_NORMAL", "NIBBITS_WEAK", "OVERGROWTH_CRAWLERS",
+  "PHROG_PARASITE_ELITE", "RUBY_RAIDERS_NORMAL", "SHRINKER_BEETLE_WEAK", "SLIMES_NORMAL",
+  "SLIMES_WEAK", "SLITHERING_STRANGLER_NORMAL", "SNAPPING_JAXFRUIT_NORMAL", "THE_KIN_BOSS",
+  "VANTOM_BOSS", "VINE_SHAMBLER_NORMAL",
+].map(id => `ENCOUNTER.${id}`));
+
+function actName(act, nodes) {
+  if (act === 2) return "Hive";
+  if (act === 3) return "Glory";
+  if (act !== 1) return null;
+  for (const n of nodes) {
+    if (n.act !== 1) continue;
+    if (UNDERDOCKS_ENCS.has(n.enc)) return "Underdocks";
+    if (OVERGROWTH_ENCS.has(n.enc)) return "Overgrowth";
+  }
+  return null;
+}
+
 // Each act's name centred above its floors, plus a faint dotted line up
 // through the plot where one act ends -- mirrors the act grouping of the
 // timeline rows.
@@ -761,6 +792,7 @@ function makeActBoundaryPlugin(nodes) {
     if (i === 0 || n.act !== nodes[i - 1].act) spans.push({ act: n.act, from: i, to: i });
     else spans[spans.length - 1].to = i;
   });
+  spans.forEach(s => { s.name = actName(s.act, nodes); });
   return {
     id: "actBounds",
     // Before the datasets, so the line runs behind the data and the hover
@@ -783,9 +815,13 @@ function makeActBoundaryPlugin(nodes) {
       ctx.font = "600 12px 'Segoe UI', system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      spans.forEach(({ act, from, to }) => {
-        const mid = (x.getPixelForValue(from) + x.getPixelForValue(to)) / 2;
-        ctx.fillText(`Act ${act}`, mid, top - ACT_BAND + 2);
+      spans.forEach(({ act, name, from, to }) => {
+        const left = x.getPixelForValue(from), right = x.getPixelForValue(to);
+        // Just "Act N" when the name won't fit over the act's floors (a short
+        // last act, or a narrow screen).
+        const full = name ? `Act ${act} · ${name}` : `Act ${act}`;
+        const label = ctx.measureText(full).width <= right - left + 20 ? full : `Act ${act}`;
+        ctx.fillText(label, (left + right) / 2, top - ACT_BAND + 2);
       });
       ctx.restore();
     },
