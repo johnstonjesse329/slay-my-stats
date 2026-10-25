@@ -1200,6 +1200,27 @@ const floorTipCaption = (m, colors) =>
   `<div class="ft-cap">${m.upgrade ? "Upgraded" : "Gained"}${m.count > 1 ? " ×" + m.count : ""} · ` +
   `<span style="color:${colors[m.rarity]}">${m.rarity}</span></div>`;
 
+// The y axis's afterDataLimits for a chart with markers: raises the top (in
+// steps of `step`) until every floor's stack of markers fits under it, so a
+// tall stack near the peak isn't cut off at the top. At most twice the usual
+// top: past that the areas would flatten out, so a freak stack clips instead.
+// Matches makeMarkPlugin's sizes; the plot isn't laid out yet, so its size is
+// the canvas less the act band and the floor axis, close enough.
+function markHeadroom(marks, totals, step) {
+  return scale => {
+    const { width, height } = scale.chart;
+    const cap = scale.max * 2;
+    const plotH = height - ACT_BAND - 60;
+    const k = Math.min(1, Math.max(0.6, (width - 60) / 700));
+    marks.forEach((list, i) => {
+      if (!list.length) return;
+      const h = list.reduce((n, m) => n + Math.round(MARK_SIZE[m.rarity] * k) + 2, 10);
+      const need = h < plotH ? (totals[i] * plotH - scale.min * h) / (plotH - h) : Infinity;
+      if (need > scale.max) scale.max = Math.min(cap, Math.ceil(need / step) * step);
+    });
+  };
+}
+
 function floorChartConfig(nodes, plugins, tip, y, datasets) {
   return {
     type: "line",
@@ -1215,7 +1236,9 @@ function floorChartConfig(nodes, plugins, tip, y, datasets) {
       plugins: { legend: { display: false }, tooltip: { enabled: false, external: tip } },
       scales: {
         x: floorAxis({ stacked: true, grid: { display: false } }),
-        y: { stacked: true, grid: { color: "#2e3035" }, ...y, ticks: { color: "#ccc", precision: 0, ...y.ticks } },
+        // includeBounds off: the top is wherever the markers needed it, not a
+        // round number, so it gets no label of its own crowding the last one.
+        y: { stacked: true, grid: { color: "#2e3035" }, ...y, ticks: { color: "#ccc", precision: 0, includeBounds: false, ...y.ticks } },
       },
     },
   };
@@ -1293,11 +1316,13 @@ function renderDetailDeckChart(run) {
     },
   };
 
-  // Fixed headroom over the peak for the markers, rounded to tens.
+  // Headroom over the peak for the markers, rounded to tens, and more where
+  // a floor's stack of markers needs it.
   const peak = Math.max(...totals);
   const y = {
     min: -Math.ceil((peak + 2) / 10) * 10,
     max: Math.ceil(peak * 1.3 / 10) * 10,
+    afterDataLimits: markHeadroom(marks, totals, 10),
     ticks: { callback: v => Math.abs(v) },
   };
   detailDeckChart = new Chart(document.getElementById("detail-deck-chart").getContext("2d"),
@@ -1342,7 +1367,7 @@ function renderDetailRelicChart(run) {
   const peak = Math.max(...totals);
   detailRelicChart = new Chart(document.getElementById("detail-relic-chart").getContext("2d"),
     floorChartConfig(nodes, [makeMarkPlugin(marks, totals, G.color)], tip,
-      { min: 0, max: Math.ceil(peak * 1.3 / 2) * 2 },
+      { min: 0, max: Math.ceil(peak * 1.3 / 2) * 2, afterDataLimits: markHeadroom(marks, totals, 2) },
       floorBands(keys.map(k => ({ key: k, data: counts[k], color: G.color[k], stack: "relics" })))));
 
   document.getElementById("detail-relic-legend").innerHTML =
