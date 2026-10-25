@@ -54,7 +54,7 @@ _PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
 # A {{Placeholder}} in the site's grammar, which the page's own resolver renders.
 _SITE_TOKEN = re.compile(r"\{\{(.*?)\}\}")
 
-# The game's formatter names, mapped onto the kinds js/run-detail.js's
+# The game's formatter names, mapped onto the kinds js/item-tips.js's
 # substituteDescVars understands. `diff` -- and anything else that turns up --
 # deliberately has no mapping: the resolver would render an unknown kind as "?",
 # so a template using one is rejected in favour of the rendered text.
@@ -140,7 +140,7 @@ class _Unresolvable(Exception):
 
 
 def _resolve_site_template(template: str, variables: dict) -> str:
-    """Render the site's {{...}} grammar the way js/run-detail.js does.
+    """Render the site's {{...}} grammar the way js/item-tips.js does.
 
     Only used as an oracle: a template is used only when this reproduces the
     game's own rendered text, so a kind modelled slightly wrong here cannot make
