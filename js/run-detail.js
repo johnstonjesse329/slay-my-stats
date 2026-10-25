@@ -645,23 +645,33 @@ const ACT_COLOUR = "#e6e2f2";
 // legend at the bottom.
 const ACT_BAND = 34;
 
-// Each floor's point on the HP and Gold lines is the floor map's own icon
-// (fight, rest, shop, ...), so the line says what happened where. Images are
-// shared between charts and redraw the chart once they decode.
+// The floors behind each chart's big swings get the floor map's own icon as
+// their point: elites, bosses and rest sites on HP, shops and events on Gold. Every other
+// floor has no point, just a small dot on hover, so those few stand out.
+// Images are shared between charts and redraw the chart once they decode.
+const HP_ICON_KEYS   = new Set(["elite", "unknown_elite", "rest_site"]);  // + any boss
+const GOLD_ICON_KEYS = new Set(["shop", "unknown_shop", "event"]);
 const nodePointImages = new Map();  // icon src -> Image
-function nodePointStyles(nodes, getChart) {
-  return nodes.map(n => {
-    const src = DATA.nodeIcons && DATA.nodeIcons[nodeIconKey(n)];
-    if (!src) return "circle";
-    let img = nodePointImages.get(src);
-    if (!img) {
-      img = new Image(NODE_POINT, NODE_POINT);
-      img.src = src;
-      nodePointImages.set(src, img);
-    }
-    if (!img.complete) img.addEventListener("load", () => getChart()?.update("none"), { once: true });
-    return img;
+function nodePoints(nodes, getChart, highlight) {
+  const srcs = nodes.map(n => {
+    const key = nodeIconKey(n);
+    return highlight(n, key) && DATA.nodeIcons ? DATA.nodeIcons[key] : null;
   });
+  return {
+    pointStyle: srcs.map(src => {
+      if (!src) return "circle";
+      let img = nodePointImages.get(src);
+      if (!img) {
+        img = new Image(NODE_POINT, NODE_POINT);
+        img.src = src;
+        nodePointImages.set(src, img);
+      }
+      if (!img.complete) img.addEventListener("load", () => getChart()?.update("none"), { once: true });
+      return img;
+    }),
+    pointRadius: srcs.map(src => src ? NODE_POINT / 2 : 0),
+    pointHoverRadius: srcs.map(src => src ? NODE_POINT / 2 : 4),
+  };
 }
 const NODE_POINT = 30;
 
@@ -749,9 +759,8 @@ function renderDetailHpChart(run) {
           borderColor: color,
           backgroundColor: color + "33",
           borderWidth: 2,
-          pointStyle: nodePointStyles(nodes, () => detailHpChart),
-          pointRadius: NODE_POINT / 2,
-          pointHoverRadius: NODE_POINT / 2,
+          pointBackgroundColor: color,
+          ...nodePoints(nodes, () => detailHpChart, (n, key) => n.type === "boss" || HP_ICON_KEYS.has(key)),
           fill: true,
           cubicInterpolationMode: "monotone",
         },
@@ -779,10 +788,12 @@ function renderDetailHpChart(run) {
             color: "#ccc",
             // Max HP's key is a short dashed line like the one on the chart,
             // not the default box, which drew a dashed line as a faint square.
+            // HP's box keeps the area's own fill, not the solid point colour.
             usePointStyle: true,
             pointStyleWidth: 22,
             generateLabels: chart => Chart.defaults.plugins.legend.labels.generateLabels(chart)
-              .map(item => ({ ...item, pointStyle: item.text === "Max HP" ? "line" : "rect" })),
+              .map(item => item.text === "Max HP" ? { ...item, pointStyle: "line" }
+                : { ...item, pointStyle: "rect", fillStyle: chart.data.datasets[item.datasetIndex].backgroundColor }),
           },
         },
         tooltip: {
@@ -843,9 +854,8 @@ function renderDetailGoldChart(run) {
         borderColor: "#e0c468",
         backgroundColor: "#e0c46833",
         borderWidth: 2,
-        pointStyle: nodePointStyles(nodes, () => detailGoldChart),
-        pointRadius: NODE_POINT / 2,
-        pointHoverRadius: NODE_POINT / 2,
+        pointBackgroundColor: "#e0c468",
+        ...nodePoints(nodes, () => detailGoldChart, (n, key) => GOLD_ICON_KEYS.has(key)),
         fill: true,
         cubicInterpolationMode: "monotone",
       }],
