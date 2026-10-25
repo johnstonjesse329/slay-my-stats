@@ -669,9 +669,45 @@ function nodePoints(nodes, getChart, highlight) {
     }),
     pointRadius: srcs.map(src => src ? NODE_POINT / 2 : 0),
     pointHoverRadius: srcs.map(src => src ? NODE_POINT / 2 : 4),
+    // An icon on the first or last floor overhangs the plot's side edge.
+    clip: false,
   };
 }
 const NODE_POINT = 30;
+
+// The y axis for a chart with floor icons: stretched past the data by an
+// icon's height, so one on a peak or down at zero isn't cut off by the top or
+// bottom of the plot. Always on top, for the same air over every peak; at the
+// bottom only when an icon sits near zero. bounds "data" keeps the stretch from
+// rounding up to the next tick, and the stretched ends get no label.
+function iconAxis(extra = {}) {
+  return {
+    ...extra,
+    bounds: "data",
+    ticks: { color: "#ccc", includeBounds: false },
+    grid: { color: "#2e3035" },
+    afterDataLimits(scale) {
+      // The plot's height isn't laid out yet: the canvas less the act band,
+      // floor axis and legend is close enough.
+      const pad = (NODE_POINT / 2 + 3) / Math.max(100, scale.chart.height - ACT_BAND - 80);
+      const range = (scale.max - scale.min) || 1, grow = range * pad / (1 - pad);
+      const icons = scale.chart.data.datasets.flatMap(ds =>
+        Array.isArray(ds.pointRadius) ? ds.data.filter((_, i) => ds.pointRadius[i] > 0) : []);
+      scale.max += grow;
+      if (icons.some(v => v < scale.min + range * pad)) scale.min -= grow;
+    },
+    // Chart.js counts its steps from the stretched bottom (2, 12, 22...);
+    // put them back on round numbers from zero, none below it.
+    afterBuildTicks(scale) {
+      const step = scale.ticks.length > 1 ? scale.ticks[1].value - scale.ticks[0].value : 0;
+      if (!step) return;
+      const nice = Math.pow(10, Math.floor(Math.log10(step)));
+      const s = [1, 2, 2.5, 5, 10].map(m => m * nice).find(m => m >= step - 1e-9);
+      scale.ticks = [];
+      for (let v = Math.max(0, Math.ceil(scale.min / s) * s); v <= scale.max; v += s) scale.ticks.push({ value: v });
+    },
+  };
+}
 
 // Floor numbers on the x axis: 1 and every fifth floor, so the ticks land
 // on round numbers rather than wherever Chart.js's auto-skip puts them.
@@ -776,7 +812,9 @@ function renderDetailHpChart(run) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: ACT_BAND } },
+      // Right: room for an icon on the last floor, and the same plot edge
+      // as the deck and relic charts below.
+      layout: { padding: { top: ACT_BAND, right: 24 } },
       interaction: { mode: "index", intersect: false },
       plugins: {
         // At the bottom, to leave the top band to the act names.
@@ -813,11 +851,7 @@ function renderDetailHpChart(run) {
       },
       scales: {
         x: floorAxis({ grid: { color: "#2e3035" } }),
-        y: {
-          ticks: { color: "#ccc" },
-          grid:  { color: "#2e3035" },
-          min: 0,
-        },
+        y: iconAxis({ min: 0 }),
       },
     },
   });
@@ -861,7 +895,9 @@ function renderDetailGoldChart(run) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { top: ACT_BAND } },
+      // Right: room for an icon on the last floor, and the same plot edge
+      // as the deck and relic charts below.
+      layout: { padding: { top: ACT_BAND, right: 24 } },
       interaction: { mode: "index", intersect: false },
       plugins: {
         // At the bottom, to leave the top band to the act names.
@@ -880,7 +916,7 @@ function renderDetailGoldChart(run) {
       },
       scales: {
         x: floorAxis({ grid: { color: "#2e3035" } }),
-        y: { ticks: { color: "#ccc" }, grid: { color: "#2e3035" }, min: 0 },
+        y: iconAxis({ min: 0 }),
       },
     },
   });
