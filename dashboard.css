@@ -945,6 +945,19 @@ h1 {
   top: 0;
   background: var(--panel-2);
 }
+/* Clickable column headers that sort the list; the sorted one is gold with
+   an arrow. The arrow sits in the gap before the label (after "Char"), so
+   it doesn't widen the column. */
+.detail-run-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.detail-run-sort:hover { color: var(--text); }
+.detail-run-sort.asc, .detail-run-sort.desc { color: var(--gold); }
+.detail-run-sort > span { position: relative; }
+.detail-run-sort.asc > span::after, .detail-run-sort.desc > span::after {
+  position: absolute; right: 100%; padding-right: 1px; font-size: 0.5em; top: 0.5em;
+}
+.detail-run-sort.asc > span::after { content: "▲"; }
+.detail-run-sort.desc > span::after { content: "▼"; }
+.detail-run-char.detail-run-sort > span::after { right: auto; left: 100%; padding: 0 0 0 1px; }
 .detail-run-item > :not(:first-child, :empty),
 .detail-run-header-row > :not(:first-child, :empty) { padding-left: 0.5rem; }
 .detail-run-char { font-weight: 600; }

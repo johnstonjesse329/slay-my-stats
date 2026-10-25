@@ -69,8 +69,21 @@ function nodeIconKey(node) {
 let detailSelectedTs  = null;
 let detailHpChart     = null;
 
+// Run list sort, set by clicking a column header (like the seeds table).
+// Ties fall back to newest first.
+let detailSortCol = "date";
+let detailSortAsc = false;
+const DETAIL_SORT_FNS = {
+  char:  (a, b) => fmtCharName(a.char).localeCompare(fmtCharName(b.char)),
+  asc:   (a, b) => a.asc - b.asc,
+  won:   (a, b) => a.won - b.won,
+  floor: (a, b) => a.floor - b.floor,
+  date:  (a, b) => a.ts - b.ts,
+};
+
 function getDetailRuns() {
-  return filterRuns().sort((a, b) => b.ts - a.ts);
+  const fn = DETAIL_SORT_FNS[detailSortCol];
+  return filterRuns().sort((a, b) => (detailSortAsc ? fn(a, b) : fn(b, a)) || b.ts - a.ts);
 }
 
 // "Modded" tag for a run the game mod reported loaded mods for (run.mods, from
@@ -119,13 +132,20 @@ function renderDetailRunList() {
 
   const fmtDate = ts => { const d = new Date(ts * 1000); return `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`; };
 
+  // A first click sorts A-Z for characters and high-to-low (wins first,
+  // newest first) for the rest; a second click flips it.
+  const sortHead = (col, label) => {
+    const on = col === detailSortCol;
+    const dir = on ? (detailSortAsc ? " asc" : " desc") : "";
+    return `<span class="detail-run-${col} detail-run-sort${dir}" data-col="${col}" tabindex="0" role="button"><span>${label}</span></span>`;
+  };
   container.innerHTML = `<div class="detail-run-header-row">
-    <span class="detail-run-char">Char</span>
-    <span class="detail-run-asc">Asc</span>
-    <span class="detail-run-won">W/L</span>
-    <span class="detail-run-floor">Floor</span>
+    ${sortHead("char", "Char")}
+    ${sortHead("asc", "Asc")}
+    ${sortHead("won", "W/L")}
+    ${sortHead("floor", "Floor")}
     <span></span>
-    <span class="detail-run-date">Date</span>
+    ${sortHead("date", "Date")}
   </div>` + runs.map((run, i) => {
     const won    = run.won;
     const label  = fmtCharName(run.char);
@@ -139,6 +159,15 @@ function renderDetailRunList() {
       <span class="detail-run-date" style="color:#8a8aa0">${fmtDate(run.ts)}</span>
     </div>`;
   }).join("");
+
+  container.querySelectorAll(".detail-run-sort").forEach(el => {
+    el.addEventListener("click", () => {
+      if (detailSortCol === el.dataset.col) detailSortAsc = !detailSortAsc;
+      else { detailSortCol = el.dataset.col; detailSortAsc = detailSortCol === "char"; }
+      renderDetailRunList();
+    });
+    bindEnterSpace(el);
+  });
 
   container.querySelectorAll(".detail-run-item").forEach(el => {
     el.addEventListener("click", () => {
