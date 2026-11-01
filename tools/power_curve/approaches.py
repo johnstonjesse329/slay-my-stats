@@ -81,7 +81,20 @@ def relic_bits(rel, turns, steady=False):
     stats = Counter()
     energy = [e + len(rel["max_energy"]) for e in energy]
     for e, v in rel["turn"]:
-        amt = next((float(x) for k, x in v.items() if isinstance(x, (int, float)) and k not in ("Turns", "EnergyGlyph")), 0)
+        # The amount a buff grants: a relic that hits both sides carries a var for
+        # each (Brimstone: SelfStrength 2, EnemyStrength 1), and the one that counts
+        # for us is ours.
+        def amount():
+            nums = [(k, float(x)) for k, x in v.items()
+                    if isinstance(x, (int, float)) and k not in ("Turns", "EnergyGlyph")]
+            if not nums:
+                return 0.0
+            if e.get("side") == "both":
+                ours = [(k, x) for k, x in nums if "self" in k.lower()]
+                if ours:
+                    return ours[0][1]
+            return nums[0][1]
+        amt = amount()
         if steady and (e.get("until") or (e.get("on") and not e.get("power"))):
             continue
         on = [t for t in range(turns) if (not e.get("on") or t + 1 == pc.bound(e["on"], v)) and (not e.get("until") or t < pc.bound(e["until"], v))
@@ -92,8 +105,14 @@ def relic_bits(rel, turns, steady=False):
         elif e.get("block"):
             for t in on:
                 block[t] += amt
-        elif e.get("power") in ("Strength", "Dexterity", "Focus") and e.get("on") == 1:
-            stats[e["power"]] += amt
+        elif e.get("power") in ("Strength", "Dexterity", "Focus"):
+            if e.get("on") == 1:
+                stats[e["power"]] += amt
+            elif not e.get("on") and not e.get("until"):
+                # Every turn, so it accumulates: +2 a turn is +2, then +4, then +6.
+                # What the damage line wants is the average bonus over a fight, which
+                # is amt x (turns + 1) / 2 -- not amt, and not nothing.
+                stats[e["power"]] += amt * (turns + 1) / 2
     for e, v in rel["hand"]:
         if steady and e.get("until"):
             continue

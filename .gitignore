@@ -9,6 +9,11 @@ cdk.out/
 dist/
 local_data/
 
+# S3 synced copies of players' runs and event logs, pulled down by the power_curve
+# tools to measure against. Other people's play data: never committed.
+tools/power_curve/telemetry_raw/
+tools/power_curve/gamma_raw/
+
 # Full-resolution game asset extractions — too large for git
 # Run the GDRE extraction + python downscale_portraits.py to regenerate locally
 pck_recover/
@@ -55,3 +60,7 @@ TODO.md
 ATTENTION.md
 enchantments_data.json
 enchantment_images/
+
+# Per-floor numbers from runs that carry an event log, exported for the site
+# (tools/power_curve/export_measured.py). Player data: never committed.
+measured_runs.json

@@ -219,6 +219,20 @@ def stack_amount(body: str, effect: dict) -> bool:
     return any(k in effect and re.search(pat, body) for k, pat in call.items())
 
 
+# Relics whose condition lives outside the call the reader inspects, so the turn
+# bound has to be stated here. Only established over-reads belong in this table:
+# each is checked against relic_data.json's description and, where a run held the
+# relic, against the energy a turn actually got.
+RELIC_TURN_OVERRIDES = {
+    # "Whenever you enter a Rest Site, start the next combat with an additional
+    # 2 energy": a saved flag (GainEnergyInNextCombat) consumed in one combat, not
+    # a per-turn gain. Unbounded it credited 2 energy every turn, and a real run
+    # measured base energy in every fight that held it.
+    "RELIC.VENERABLE_TEA_SET": {"until": 1},
+    "RELIC.FAKE_VENERABLE_TEA_SET": {"until": 1},
+}
+
+
 def turn_effects(src: str, power: bool = False) -> list[dict]:
     """What a relic does at the start (`at: start`) or end of a turn: powers
     it applies, damage it deals (`aoe` when it hits every enemy), block it
@@ -1379,6 +1393,14 @@ def power_rules(src: str, parent: str) -> dict:
     vm = re.search(r"\bModifyVulnerableMultiplier\(", src)  # a plain method, not an override
     if vm and "base.Amount / 100m" in braced(src, vm.end()):
         out["vulnBonus"] = True
+    # Debilitate: the multiplier comes back as amount + (amount - 1), which doubles
+    # the bonus rather than adding to it (1.5 -> 2.0). Its text is "Vulnerable and
+    # Weak are twice as effective", and without this flag nothing carried it.
+    if vm and re.search(r"amount \+ \(amount - 1m?\)", braced(src, vm.end())):
+        out["debuffDouble"] = True
+    wm = re.search(r"\bModifyWeakMultiplier\(", src)
+    if wm and re.search(r"amount \+ \(amount - 1m?\)", braced(src, wm.end())):
+        out["debuffDouble"] = True
     body = method_bodies(src, "ModifyCardPlayCount")
     if "playCount + 1" in body:
         t = re.search(r"card\.Type != CardType\.(\w+)", body)
@@ -1789,6 +1811,14 @@ def main():
         if mods:
             relic["mods"] = mods
         turns = turn_effects(src)
+        # A relic whose condition the reader can't see in the call. Venerable Tea
+        # Set gains energy "in the next combat" after a Rest Site, held in a saved
+        # flag -- so it is one shot, not every turn, and the generic reader saw only
+        # "gain energy at turn start". Left unmarked it credited 2 energy a turn,
+        # and a real run measured base energy in every fight that held it.
+        bound = RELIC_TURN_OVERRIDES.get(rid)
+        if bound:
+            turns = [{**t, **bound} for t in turns] if turns else [{"at": "start", "energy": True, **bound}]
         if turns:
             relic["turnEffects"] = turns
         # Turn economy; the amounts are the relic's Energy / Cards vars, and

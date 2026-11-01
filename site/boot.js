@@ -207,6 +207,7 @@
       cardChar: catalog.cardChar,
       cardVariants: catalog.cardVariants,
       deckStrength: catalog.deckStrength,
+      measuredRuns: catalog.measuredRuns,
       relicData: catalog.relicData,
       potionData: catalog.potionData,
       enchantmentData: catalog.enchantmentData,

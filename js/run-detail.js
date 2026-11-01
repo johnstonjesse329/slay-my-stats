@@ -1423,6 +1423,12 @@ function renderDetailRelicChart(run) {
 // deckStrengthByFloor's four per-turn numbers in two charts, one per unit:
 // damage and block (HP), energy and cards drawn. The hover box gives all four,
 // how far the floor moved them, and what it added or removed.
+//
+// For a run the mod has been in, the same chart also draws what the fights actually
+// did (DATA.measuredRuns, tools/power_curve/export_measured.py). The projection is
+// an estimate of what a deck could do; the measured line is what this deck did, and
+// where they disagree the measured one is right -- a Shiv deck's whole output is
+// cards the formula cannot see it drawing.
 const STRENGTH_LINES = {
   damage: { label: "Damage", color: "#e0604f", chart: "hp" },
   block:  { label: "Block",  color: "#4087de", chart: "hp" },
@@ -1430,6 +1436,15 @@ const STRENGTH_LINES = {
   draw:   { label: "Cards",  color: "#9b7fe0", chart: "play" },
 };
 let detailStrengthCharts = [];
+
+// The measured series for this run, aligned to the chart's nodes by floor number.
+// Null when the run has no event log, which is most of them.
+function measuredStrengthByNode(run, nodes) {
+  const rows = (DATA.measuredRuns || {})[run.ts];
+  if (!rows || !rows.length) return null;
+  const byFloor = new Map(rows.map(r => [r.floor, r]));
+  return nodes.map(n => byFloor.get(n.floor + 1) || null);
+}
 
 function renderDetailStrengthCharts(run) {
   const nodes = run.timeline || [];
@@ -1443,29 +1458,40 @@ function renderDetailStrengthCharts(run) {
   box.style.display = "";
 
   const keys = Object.keys(STRENGTH_LINES);
+  const measured = measuredStrengthByNode(run, nodes);
   const change = d => +d.toFixed(1) === 0 ? "" : `${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(1)} this floor`;
   const name = ([id], relic) => relic ? relicInfo(id)?.title || fmtRelicLabel(id) : cardInfo(id)?.title || fmtCardLabel(id);
   const chips = (list, relic) => list.map(c =>
     `<span class="strength-chip ${c[2] > 0 ? "gain" : "loss"}">${c[2] > 0 ? "+" : "−"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`).join("");
   const tip = context => showFloorTip(context, i => {
-    const s = floors[i], p = floors[i - 1];
+    const s = floors[i], p = floors[i - 1], m = measured && measured[i];
     const rows = keys.map(k => `<tr><td><span class="strength-key" style="background:${STRENGTH_LINES[k].color}"></span>` +
-      `${STRENGTH_LINES[k].label}</td><td><b>${s[k].toFixed(1)}</b></td><td>${p ? change(s[k] - p[k]) : ""}</td></tr>`).join("");
+      `${STRENGTH_LINES[k].label}</td><td><b>${s[k].toFixed(1)}</b></td><td>${p ? change(s[k] - p[k]) : ""}</td>` +
+      (m ? `<td class="strength-measured">${m[k].toFixed(1)} did</td>` : "") + `</tr>`).join("");
     const changed = p && (s.cards.length || s.relics.length)
       ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div>` : "";
-    return `${floorTipHead(nodes[i])}<table>${rows}</table>${changed}`;
+    const fought = m ? `<div class="strength-chips">fought in ${m.turns} turns, ${m.taken} HP taken, ` +
+      `${m.intent.toFixed(1)} a turn aimed at you${m.junk ? `, ${m.junk} junk` : ""}</div>` : "";
+    return `${floorTipHead(nodes[i])}<table>${rows}</table>${fought}${changed}`;
   });
 
   ["hp", "play"].forEach(id => {
     const lines = keys.filter(k => STRENGTH_LINES[k].chart === id);
-    document.getElementById(`detail-strength-${id}-legend`).innerHTML = `<div class="fl-items">${lines.map(k =>
-      `<span class="fl-item"><span class="strength-key" style="background:${STRENGTH_LINES[k].color}"></span>${STRENGTH_LINES[k].label}</span>`).join("")}</div>`;
+    const legend = lines.map(k =>
+      `<span class="fl-item"><span class="strength-key" style="background:${STRENGTH_LINES[k].color}"></span>${STRENGTH_LINES[k].label}</span>`).join("")
+      + (measured ? `<span class="fl-item fl-measured">dashed: what the fights did</span>` : "");
+    document.getElementById(`detail-strength-${id}-legend`).innerHTML = `<div class="fl-items">${legend}</div>`;
+    const series = lines.map(k => ({
+      label: STRENGTH_LINES[k].label, data: floors.map(f => f[k]), borderColor: STRENGTH_LINES[k].color,
+      pointHoverBackgroundColor: STRENGTH_LINES[k].color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
+      cubicInterpolationMode: "monotone",
+    })).concat(measured ? lines.map(k => ({
+      label: `${STRENGTH_LINES[k].label} (measured)`, data: measured.map(m => m ? m[k] : null),
+      borderColor: STRENGTH_LINES[k].color, borderWidth: 2, borderDash: [4, 3], pointRadius: 0,
+      pointHoverRadius: 4, pointHoverBackgroundColor: STRENGTH_LINES[k].color, spanGaps: true,
+    })) : []);
     detailStrengthCharts.push(new Chart(document.getElementById(`detail-strength-${id}-chart`).getContext("2d"),
-      floorChartConfig(nodes, [], tip, { stacked: false, min: 0, ticks: { maxTicksLimit: 5 } }, lines.map(k => ({
-        label: STRENGTH_LINES[k].label, data: floors.map(f => f[k]), borderColor: STRENGTH_LINES[k].color,
-        pointHoverBackgroundColor: STRENGTH_LINES[k].color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
-        cubicInterpolationMode: "monotone",
-      })))));
+      floorChartConfig(nodes, [], tip, { stacked: false, min: 0, ticks: { maxTicksLimit: 5 } }, series)));
   });
 }
 

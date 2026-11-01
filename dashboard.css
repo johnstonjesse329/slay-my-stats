@@ -1185,6 +1185,8 @@ h1 {
 .floor-tip .strength-chip { padding: 0 6px; border-radius: 9px; border: 1px solid; white-space: nowrap; }
 .floor-tip .strength-chip.gain { border-color: #4087de; }
 .floor-tip .strength-chip.loss { border-color: #d97230; }
+.floor-tip .strength-measured { color: var(--muted, #8a8aa0); font-variant-numeric: tabular-nums; }
+.fl-items .fl-measured { color: var(--muted, #8a8aa0); font-style: italic; }
 .strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 .floor-legend {
   display: grid;

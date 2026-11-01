@@ -996,6 +996,8 @@ _CARD_FINAL_DIR = _HERE / "card_final"
 _CARD_VARIANTS_FILE = _HERE / "card_variants.json"
 # The deck-strength formula's per-card and relic numbers (tools/power_curve/export_strength.py).
 _DECK_STRENGTH_FILE = _HERE / "deck_strength.json"
+# What runs with an event log actually did, floor by floor (tools/power_curve/export_measured.py).
+_MEASURED_FILE = _HERE / "measured_runs.json"
 
 
 def build_card_final_images(url_for=Path.as_uri) -> dict[str, str]:
@@ -1508,7 +1510,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-strength-box" style="margin-top:16px">
         <h2>Deck Strength by Floor</h2>
-        <p class="chart-caption">What the deck could do in a turn after each floor: damage, block, energy and cards drawn. A skipped card leaves them flat; a card that does little thins out every hand and pulls them down.</p>
+        <p class="chart-caption">What the deck could do in a turn after each floor: damage, block, energy and cards drawn. Damage and block are what the whole turn could be spent on that one job. Measured against played runs, real fights land near the damage line — poison, relic triggers and statuses add what the formula can't see — and use about two thirds of the block line. A skipped card leaves them flat; a card that does little thins out every hand and pulls them down.</p>
         <h3 class="strength-label">Damage and block per turn</h3>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-strength-hp-chart"></canvas></div>
         <div class="floor-legend" id="detail-strength-hp-legend"></div>
@@ -1602,6 +1604,10 @@ def build_html(runs: list[dict]) -> str:
         json.loads(_DECK_STRENGTH_FILE.read_text(encoding="utf-8"))
         if _DECK_STRENGTH_FILE.exists() else None
     )
+    measured_runs = (
+        json.loads(_MEASURED_FILE.read_text(encoding="utf-8"))
+        if _MEASURED_FILE.exists() else None
+    )
 
     chart_data = json.dumps({
         "characters":      characters,
@@ -1619,6 +1625,7 @@ def build_html(runs: list[dict]) -> str:
         "cardVariants":       card_variants,
     "enchantmentData":    enchantment_data,
         "deckStrength":       deck_strength,
+        "measuredRuns":       measured_runs,
         "relicData":          relic_data,
         "potionData":         potion_data,
         "nodeIcons":          node_icons,

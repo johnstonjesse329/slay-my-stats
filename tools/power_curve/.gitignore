@@ -1,5 +1,7 @@
 gamma_raw/
+telemetry_raw/
 pcs/
 approaches/
 __pycache__/
 local.json
+live/

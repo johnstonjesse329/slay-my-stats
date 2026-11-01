@@ -143,6 +143,12 @@ def build_catalog() -> dict:
             json.loads(run._DECK_STRENGTH_FILE.read_text(encoding="utf-8"))
             if run._DECK_STRENGTH_FILE.exists() else None
         ),
+        # What the runs that carry an event log actually did, floor by floor
+        # (tools/power_curve/export_measured.py); null for runs with no telemetry.
+        "measuredRuns":       (
+            json.loads(run._MEASURED_FILE.read_text(encoding="utf-8"))
+            if run._MEASURED_FILE.exists() else None
+        ),
         "relicData":          relic_data,
         "potionData":         potion_data,
         "enchantmentData":    enchantment_data,
