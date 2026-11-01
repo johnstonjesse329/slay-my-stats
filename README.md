@@ -394,8 +394,10 @@ run without the tag isn't known to be unmodded.
 The home page shows stats across every player's runs, solo and multiplayer side by side (solo leaves out
 daily runs, matching the dashboard's Solo filter): win rate for each and by character; the uncommon and
 rarer cards and the relics with the best win rates (at least 10 runs each); and the fights that end the most
-runs. It shows everybody's totals only, never one player's record. The rankings are drawn as the same bar
-lanes as a player's Overview.
+runs. A card, relic or fight carries a Solo lane and a striped Multi lane under its name -- the two are
+judged apart, since what a card or relic is worth differs between them -- while its place in the list is
+the two modes together. It shows everybody's totals only, never one player's record. The rankings are drawn
+as the same bar lanes as a player's Overview.
 
 Every figure is a running total: `[runs, wins]` pairs, counts, minutes, and best-so-far records. The process
 Lambda tallies just the runs an upload added and adds that onto `users/_stats.json.gz` with a conditional

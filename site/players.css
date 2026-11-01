@@ -215,9 +215,6 @@
 /* The lanes are dashboard.css's .fl-* (the player pages' fight lanes). On the home page
    the character card and the three lists share a 2×2 grid, so a list's name column is
    narrower and the lane keeps the room the value needs. */
-.site-lanes { grid-template-columns: 26px 7.5rem minmax(0, 1fr); }
-.site-lanes.no-icons { grid-template-columns: 7.5rem minmax(0, 1fr); }
-.site-lanes .fl-lane { margin-right: 6.5rem; }
 /* The character card: each name beside its Solo lane over its striped Multi lane. */
 .site-chars-rows { display: grid; grid-template-columns: 7.5rem 3.2rem minmax(0, 1fr); gap: 0.1rem 0.6rem; align-items: center; font-size: var(--fs-sm); }
 .site-chars-rows .fl-name { grid-row: span 2; }
@@ -225,6 +222,15 @@
 .site-chars-rows .multi .fl-fill { background-image: repeating-linear-gradient(135deg, rgba(13,12,26,0.55) 0 3px, transparent 3px 6px); }
 .site-chars-mode { font-size: var(--fs-xs); color: var(--text-dim); }
 .site-chars-gap { grid-column: 1 / -1; height: 0.35rem; }
+/* The three lists' rows are that same pair, item by item (boot.js's list()). */
+.site-modes { display: grid; grid-template-columns: 26px 7.5rem 3.2rem minmax(0, 1fr); gap: 0.1rem 0.6rem; align-items: center; font-size: var(--fs-sm); }
+.site-modes.no-icons { grid-template-columns: 7.5rem 3.2rem minmax(0, 1fr); }
+.site-modes img, .site-modes .fl-name { grid-row: span 2; }
+.site-modes img { width: 26px; height: 26px; object-fit: contain; }
+.site-modes .fl-lane { margin-right: 5rem; }
+.site-modes .fl-axis { grid-column: -2; }
+.site-modes .multi .fl-fill { background-image: repeating-linear-gradient(135deg, rgba(13,12,26,0.55) 0 3px, transparent 3px 6px); }
+.site-modes-gap { grid-column: 1 / -1; height: 0.35rem; }
 .site-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 
 /* Recent uploads (boot.js showRecentUploads): the front door's list of who
@@ -266,5 +272,17 @@
   .site-chars-rows { grid-template-columns: 3.2rem minmax(0, 1fr); }
   .site-chars-rows .fl-name { grid-row: auto; grid-column: 1 / -1; }
   .site-chars-rows .fl-lane { margin-right: 4.8rem; }
+  /* A list's rows: the name and its icon over the two mode lanes. Each part
+     names its column and lets the rows flow, so item N's lanes can't land in
+     item N-1's cells. */
+  .site-modes, .site-modes.no-icons { grid-template-columns: 26px 3.2rem minmax(0, 1fr); }
+  .site-modes.no-icons { grid-template-columns: 3.2rem minmax(0, 1fr); }
+  .site-modes img { grid-row: auto; grid-column: 1; }
+  .site-modes .fl-name { grid-row: auto; grid-column: 2 / -1; }
+  .site-modes.no-icons .fl-name { grid-column: 1 / -1; }
+  .site-modes .site-chars-mode { grid-column: 2; }
+  .site-modes .fl-lane { grid-column: 3; margin-right: 4.8rem; }
+  .site-modes.no-icons .site-chars-mode { grid-column: 1; }
+  .site-modes.no-icons .fl-lane { grid-column: 2; }
   .site-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

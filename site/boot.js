@@ -539,24 +539,35 @@
       node.addEventListener("blur", hideFloatingHtmlTooltip);
       return node;
     };
-    // rows: [icon src or "", name, lane element, popout html maker or null];
+    // Each list's row is the character card's, item by item: the item's icon and
+    // name beside its Solo lane over its striped Multi lane. rows are
+    // [icon src or "", name, [[label, lane element], ...], popout maker or null];
     // the axis runs 0..max.
     const list = (title, note, rows, max) => {
       const icons = rows.some(r => r[0]);
       return el("section", { className: "site-list" }, [
       el("h3", { textContent: title }),
       el("p", { className: "site-note", textContent: note }),
-      el("div", { className: "fl-rows site-lanes" + (icons ? "" : " no-icons") }, [
-        ...rows.flatMap(([icon, name, laneEl, tip]) => [
+      el("div", { className: "site-modes" + (icons ? "" : " no-icons") }, [
+        ...rows.flatMap(([icon, name, lanes, tip], i) => [
+          ...(i ? [el("div", { className: "site-modes-gap" })] : []),
           ...(icons ? [icon ? withTip(el("img", { src: icon, alt: "" }), tip) : el("span")] : []),
           withTip(el("div", { className: "fl-name", textContent: name }), tip, true),
-          laneEl,
+          ...lanes.flatMap(([label, laneEl]) => [
+            el("div", { className: "site-chars-mode", textContent: label }),
+            laneEl,
+          ]),
         ]),
         ...(icons ? [el("span")] : []), el("span"), axis(max),
       ]),
     ]); };
-    const winRows = (pairs, name, icon, tip) => pairs.map(([id, [n, w]]) =>
-      [icon ? icon(id) : "", name(id), winLane(n, w), tip ? () => tip(id) : null]);
+    // A card's or relic's win rate in each mode. The list is ranked on the two
+    // modes together -- one order, with each row showing the two apart.
+    const modeRows = (pairs, name, icon, tip, maps) => pairs.map(([id]) =>
+      [icon ? icon(id) : "", name(id), modes.map(([label, m, cls]) => {
+        const [n, w] = (m === solo ? maps.solo : maps.multi)[id] || [0, 0];
+        return [label, winLane(n, w, null, 100, cls)];
+      }), tip ? () => tip(id) : null]);
     // The face the dashboard's hover preview shows (buildCardTooltip in
     // js/card-face.js); these are unupgraded cards, so always the base face.
     const cardTip = id => {
@@ -569,10 +580,13 @@
     const relicIcon = id => (catalog.relicData[id] || {}).imagePath || "";
     const fightIcon = enc => catalog.nodeIcons[enc]
       || (/_ELITE$/.test(enc) ? catalog.nodeIcons.elite : catalog.nodeIcons.monster) || "";
-    const losses = (solo.runs - solo.wins) + (multi.runs - multi.wins);
+    const lossesOf = m => Math.max(0, (m.runs || 0) - (m.wins || 0));
     const killers = Object.entries(pooled(solo.killers, multi.killers)).sort((a, b) => b[1] - a[1]).slice(0, TOP_N);
-    const killMax = Math.max(5, Math.ceil(100 * (killers[0] ? killers[0][1] / losses : 0) / 5) * 5);
-    const both = "solo and multiplayer";
+    // Each mode's own share of its losses, so a fight that only ends multiplayer
+    // runs shows as such.
+    const killShare = (m, enc) => lossesOf(m) ? 100 * ((m.killers || {})[enc] || 0) / lossesOf(m) : 0;
+    const killMax = Math.max(5, Math.ceil(Math.max(0, ...killers.flatMap(([enc]) =>
+      modes.map(([, m]) => killShare(m, enc)))) / 5) * 5);
 
     main.append(el("section", { className: "site-stats" }, [
       el("h2", { textContent: "Across all players" }),
@@ -583,14 +597,17 @@
           el("div", { className: "site-chars-rows" }, [...charRows, axis(charMax)]),
         ]),
         list("Cards in winning decks",
-          `Highest win rate when in the final deck, ${both}. Uncommon and rarer cards in at least ${MIN_RUNS} runs.`,
-          winRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)), cardName, cardIcon, cardTip), 100),
+          `Highest win rate when in the final deck, solo and multiplayer apart. Uncommon and rarer cards in at least ${MIN_RUNS} runs, ranked by the two modes together.`,
+          modeRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)),
+            cardName, cardIcon, cardTip, { solo: solo.cards || {}, multi: multi.cards || {} }), 100),
         list("Relics in winning runs",
-          `Highest win rate when held at the end, ${both}. Relics in at least ${MIN_RUNS} runs.`,
-          winRows(ranked(pooled(solo.relics, multi.relics)), relicName, relicIcon, buildRelicTooltip), 100),
-        list("Deadliest fights", `The fight that ended the run, as a share of all losses, ${both}.`,
-          killers.map(([enc, n]) => [fightIcon(enc), fmtEncounter(enc).replace(/ (Boss|Elite)$/, ""),
-            lane(100 * n / losses, killMax, "#e05c5c", pct(n, losses))]), killMax),
+          `Highest win rate when held at the end, solo and multiplayer apart. Relics in at least ${MIN_RUNS} runs, ranked by the two modes together.`,
+          modeRows(ranked(pooled(solo.relics, multi.relics)), relicName, relicIcon, buildRelicTooltip,
+            { solo: solo.relics || {}, multi: multi.relics || {} }), 100),
+        list("Deadliest fights", "The fight that ended the run, as a share of that mode's losses, ranked by the two together.",
+          killers.map(([enc]) => [fightIcon(enc), fmtEncounter(enc).replace(/ (Boss|Elite)$/, ""),
+            modes.map(([label, m, cls]) => [label,
+              lane(killShare(m, enc), killMax, "#e05c5c", pct((m.killers || {})[enc] || 0, lossesOf(m)), cls)])]), killMax),
       ]),
     ]));
   }
