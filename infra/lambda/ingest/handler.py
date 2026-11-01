@@ -445,6 +445,15 @@ class Spool:
         self._dir = tempfile.TemporaryDirectory()
         self._files = {}
         self.ts = set()
+        self._telemetry = {}
+
+    def add_telemetry(self, ts: int, telemetry: dict) -> None:
+        """A run's cleaned per-turn log, held until the merge has a store to put
+        it in. Small by construction (clean_telemetry caps it), and one per run."""
+        self._telemetry[ts] = telemetry
+
+    def telemetry(self) -> dict:
+        return self._telemetry
 
     def __enter__(self):
         return self
@@ -489,6 +498,9 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool) -> tuple[int, int, in
             data = json.loads(line, parse_constant=lambda c: None)
             if not isinstance(data, dict):
                 raise ValueError("not an object")
+            # The mod's own account of the run, kept apart from the history the
+            # parser rebuilds: never merged into a profile, never counted.
+            telemetry = data.pop("telemetry", None)
             if "start_time" in data and "players" in data:
                 run_shaped += 1
             parsed = run.parse_run_data(data, steam_id=steam_id)
@@ -500,6 +512,9 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool) -> tuple[int, int, in
             ok = False
         if ok:
             spool.add(parsed)
+            cleaned = clean_telemetry(telemetry)
+            if cleaned:
+                spool.add_telemetry(ts, cleaned)
             good += 1
         else:
             rejected += 1
@@ -529,6 +544,141 @@ def raw_key(steam_id: str, upload_id: str, now: float) -> str:
 
 def result_key(upload_id: str) -> str:
     return f"users/_uploads/{upload_id}.json.gz"
+
+
+def telemetry_key(steam_id: str, ts: int) -> str:
+    """A run's per-turn telemetry, kept away from the profile: it is only wanted
+    when someone opens that run, and it is the mod's own account of what
+    happened, so it never has to be part of the history the site rebuilds."""
+    return f"telemetry/{steam_id}/{ts}.json.gz"
+
+
+TELEMETRY_MAX_FIGHTS = 80
+TELEMETRY_MAX_TURNS = 40
+TELEMETRY_MAX_CARDS = 40
+TELEMETRY_MAX_POWERS = 40
+TELEMETRY_MAX_NAME = 64
+TELEMETRY_MAX_EVENTS = 100_000
+TELEMETRY_MAX_ARGS = 32
+TELEMETRY_MAX_LIST = 240
+TELEMETRY_MAX_DEPTH = 6
+
+
+def _sanitize(value, depth: int = 0):
+    """Any JSON the mod sends, bounded. Deep because a turn snapshot is objects
+    inside objects, but bounded at every level: this arrives from a game process."""
+    if depth > TELEMETRY_MAX_DEPTH:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value if abs(value) < 2 ** 53 else 0
+    if isinstance(value, float):
+        return value if math.isfinite(value) and abs(value) < 1e9 else 0
+    if isinstance(value, str):
+        return value[:TELEMETRY_MAX_NAME]
+    if isinstance(value, list):
+        return [v for v in (_sanitize(x, depth + 1) for x in value[:TELEMETRY_MAX_LIST])
+                if v is not None]
+    if isinstance(value, dict):
+        out = {}
+        for k, v in list(value.items())[:TELEMETRY_MAX_ARGS]:
+            clean = _sanitize(v, depth + 1)
+            if clean is not None:
+                out[str(k)[:TELEMETRY_MAX_NAME]] = clean
+        return out
+    return None
+
+
+def clean_event_log(obj) -> dict | None:
+    """
+    The mod's v3 telemetry: every event a run produced, kept whole because the
+    reading of an event is decided later, outside the game. Only the shape is
+    checked and the values are bounded -- this arrives from a game process, so it
+    is untrusted input like the rest of the upload -- and nothing is summed or
+    interpreted here, so a wrong reading later costs a re-derive, not another run.
+    """
+    if not isinstance(obj, dict) or obj.get("v") != 3:
+        return None
+    log = obj.get("log")
+    if not isinstance(log, list):
+        return None
+
+    def num(v) -> int:
+        return v if isinstance(v, int) and not isinstance(v, bool) else 0
+
+    def name(v) -> str:
+        return v[:TELEMETRY_MAX_NAME] if isinstance(v, str) else ""
+
+    out = []
+    for e in log[:TELEMETRY_MAX_EVENTS]:
+        if not isinstance(e, dict):
+            continue
+        kind = name(e.get("k"))
+        if not kind:
+            continue
+        args = _sanitize(e.get("a")) or {}
+        out.append({"q": num(e.get("q")), "f": num(e.get("f")), "t": num(e.get("t")),
+                    "k": kind, "a": args if isinstance(args, dict) else {}})
+    if not out:
+        return None
+    return {"v": 3, "log": out, "truncated": bool(obj.get("truncated")) or len(log) > len(out)}
+
+
+def clean_telemetry(obj) -> dict | None:
+    """
+    Either kind of telemetry the mod has sent: the v3 event log, or the v1/v2
+    per-turn summary. The summaries are still accepted and still readable, but
+    they carry a reading baked in at capture time (v1's damage taken is a third of
+    what was really taken), so the log is what new runs send.
+    """
+    if isinstance(obj, dict) and obj.get("v") == 3:
+        return clean_event_log(obj)
+    return clean_telemetry_summary(obj)
+
+
+def clean_telemetry_summary(obj) -> dict | None:
+    """
+    The mod's older per-turn telemetry, cut down to the shape the reports read:
+    fights, each with its encounter, HP and turns; each turn with its counters,
+    the cards it held and drew, its powers. Anything else is dropped, and
+    anything that isn't that shape is refused -- it arrives from a game process,
+    so it is untrusted input like any other. A fight keeps its place even when it
+    has no turns, because these are read alongside the run's own fight list.
+    """
+    if not isinstance(obj, dict) or obj.get("v") not in (1, 2):
+        return None
+    fights = obj.get("fights")
+    if not isinstance(fights, list):
+        return None
+
+    def num(v) -> int:
+        return v if isinstance(v, int) and not isinstance(v, bool) else 0
+
+    def name(v) -> str:
+        return v[:TELEMETRY_MAX_NAME] if isinstance(v, str) else ""
+
+    def names(v) -> list[str]:
+        return [name(x) for x in v[:TELEMETRY_MAX_CARDS]] if isinstance(v, list) else []
+
+    out = []
+    for f in fights[:TELEMETRY_MAX_FIGHTS]:
+        if not isinstance(f, dict):
+            continue
+        turns = []
+        for t in (f.get("turns") or [])[:TELEMETRY_MAX_TURNS]:
+            if not isinstance(t, dict):
+                continue
+            powers = t.get("powers") if isinstance(t.get("powers"), dict) else {}
+            turns.append({
+                "n": num(t.get("n")), "e": num(t.get("e")), "es": num(t.get("es")), "star": num(t.get("star")),
+                "dmg": num(t.get("dmg")), "taken": num(t.get("taken")), "blk": num(t.get("blk")),
+                "bgn": num(t.get("bgn")), "orbs": num(t.get("orbs")), "ee": num(t.get("ee")),
+                "drawn": names(t.get("drawn")), "played": names(t.get("played")), "hand": names(t.get("hand")),
+                "powers": {name(k): num(v) for k, v in list(powers.items())[:TELEMETRY_MAX_POWERS]},
+            })
+        out.append({"enc": name(f.get("enc")), "hp0": num(f.get("hp0")), "hp1": num(f.get("hp1")), "turns": turns})
+    return {"v": obj["v"], "fights": out} if out else None
 
 
 def steam_limit_key(steam_id: str) -> str:
@@ -983,6 +1133,11 @@ def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) ->
         if not changed and doc is not None and not (_no_raw(doc) & spool.ts):
             return result
         name = name or clean_name(lookup_name(steam_id)) or doc["name"]
+
+        # What each run's deck actually did, one small object per run, so the
+        # site only pays for it when someone opens that run.
+        for ts, telemetry in spool.telemetry().items():
+            _put_over(store, telemetry_key(steam_id, ts), _pack(telemetry))
 
         # The summary last. Another upload may have added to the same months
         # meanwhile; runs are never taken away here, so the ts lists are

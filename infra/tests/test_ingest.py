@@ -1232,5 +1232,127 @@ class RealHistoryTests(unittest.TestCase):
         self.assertEqual(store.runs(steam_id), json.loads(json.dumps(expected)))
 
 
+class TelemetryTests(Uploads, unittest.TestCase):
+    """The mod's per-turn log: stored on its own, kept out of the profile, and
+    treated as the untrusted input it is."""
+
+    TELEMETRY = {
+        "v": 1,
+        "fights": [{
+            "enc": "ENCOUNTER.BYGONE_EFFIGY_ELITE", "hp0": 80, "hp1": 60,
+            "turns": [{"n": 1, "e": 3, "ee": 1, "es": 3, "star": 0, "dmg": 12, "taken": 5, "blk": 4, "bgn": 6,
+                       "orbs": 0, "hand": ["CARD.STRIKE_IRONCLAD"], "drawn": ["CARD.BASH"], "played": ["CARD.BASH"],
+                       "powers": {"POWER.VULNERABLE": 2}}],
+        }],
+    }
+
+    def test_stored_apart_from_the_profile(self):
+        self.ingest(body_of(minimal_run(1700000001, telemetry=self.TELEMETRY)))
+        stored = self.store.json(handler.telemetry_key(STEAM_ID, 1700000001))
+        self.assertEqual(stored["v"], 1)
+        self.assertEqual(stored["fights"][0]["enc"], "ENCOUNTER.BYGONE_EFFIGY_ELITE")
+        turn = stored["fights"][0]["turns"][0]
+        self.assertEqual(turn["played"], ["CARD.BASH"])
+        self.assertEqual(turn["hand"], ["CARD.STRIKE_IRONCLAD"])
+        self.assertEqual(turn["ee"], 1)
+        month = handler.month_key("mrbean", handler.month_of(1700000001))
+        self.assertNotIn("telemetry", json.dumps(self.store.json(month)))
+
+    def test_a_run_without_it_is_unchanged(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        self.assertIsNone(self.store.get(handler.telemetry_key(STEAM_ID, 1700000001)))
+        self.assertIn("mrbean", handler.blob_key("mrbean"))
+
+    def test_junk_is_refused(self):
+        for junk in ({"v": 99, "fights": []}, {"v": 1, "fights": "nope"}, "telemetry", [1, 2]):
+            with self.subTest(junk=junk):
+                self.store = MemStore()
+                self.ingest(body_of(minimal_run(1700000001, telemetry=junk)))
+                self.assertIsNone(self.store.get(handler.telemetry_key(STEAM_ID, 1700000001)))
+
+    def test_capped(self):
+        fights = [{"enc": "E", "turns": [{"n": i, "drawn": ["X"] * 100} for i in range(100)]}
+                  for _ in range(200)]
+        cleaned = handler.clean_telemetry({"v": 1, "fights": fights})
+        self.assertEqual(len(cleaned["fights"]), handler.TELEMETRY_MAX_FIGHTS)
+        self.assertEqual(len(cleaned["fights"][0]["turns"]), handler.TELEMETRY_MAX_TURNS)
+        self.assertEqual(len(cleaned["fights"][0]["turns"][0]["drawn"]), handler.TELEMETRY_MAX_CARDS)
+
+    def test_fights_keep_their_place(self):
+        # A fight with no turns still keeps its slot: telemetry fights are read
+        # alongside the run's own fight list, so dropping one would shift the rest.
+        cleaned = handler.clean_telemetry({"v": 1, "fights": [{"enc": "E"}, "junk", {"enc": "F", "turns": [{"n": 1}]}]})
+        self.assertEqual([f["enc"] for f in cleaned["fights"]], ["E", "F"])
+
+
+class EventLogTests(Uploads, unittest.TestCase):
+    """The v3 event log: stored whole, bounded, and never read at ingest."""
+
+    LOG = {"v": 3, "log": [
+        {"q": 1, "f": 0, "t": 0, "k": "fight0", "a": {"enc": "ENCOUNTER.X", "hp": 80, "round": 1, "deck": 12}},
+        {"q": 2, "f": 0, "t": 1, "k": "draw0", "a": {"turn": 1, "energy": 3, "hand": 0, "max": 10}},
+        {"q": 3, "f": 0, "t": 1, "k": "hp", "a": {"c": "P", "d": -9, "hp": 71}},
+        {"q": 4, "f": 0, "t": 1, "k": "play1", "a": {"card": "CARD.BASH"}},
+        {"q": 5, "f": 0, "t": 1, "k": "hit", "a": {"by": "P", "t": "E0", "total": 12}},
+    ], "truncated": False}
+
+    def test_stored_whole(self):
+        self.ingest(body_of(minimal_run(1700000001, telemetry=self.LOG)))
+        stored = self.store.json(handler.telemetry_key(STEAM_ID, 1700000001))
+        self.assertEqual(stored["v"], 3)
+        self.assertEqual(len(stored["log"]), 5)
+        self.assertEqual(stored["log"][2]["a"]["d"], -9)
+        self.assertFalse(stored["truncated"])
+
+    def test_a_summary_and_a_log_can_both_be_stored(self):
+        for telemetry, version in ((self.LOG, 3), (TelemetryTests.TELEMETRY, 1)):
+            with self.subTest(version=version):
+                self.store = MemStore()
+                self.ingest(body_of(minimal_run(1700000001, telemetry=telemetry)))
+                stored = self.store.json(handler.telemetry_key(STEAM_ID, 1700000001))
+                self.assertEqual(stored["v"], version)
+
+    def test_junk_events_are_dropped_not_the_log(self):
+        log = {"v": 3, "log": ["junk", {"q": 1}, {"q": 2, "k": "hp", "a": "nope"},
+                               {"q": 3, "k": "hit", "a": {"by": "P", "weird": object()}}]}
+        cleaned = handler.clean_event_log(log)
+        self.assertEqual([e["k"] for e in cleaned["log"]], ["hp", "hit"])
+        self.assertEqual(cleaned["log"][1]["a"], {"by": "P"})
+
+    def test_a_turn_snapshot_survives_whole(self):
+        snap = {"why": "turn0", "round": 1,
+                "creatures": [{"c": "E0", "you": False, "hp": 44, "max": 44, "blk": 6,
+                               "pow": {"POWER.VULNERABLE": 2}, "move": "MOVE.BITE", "atk": True}],
+                "you": [{"en": 3, "st": 0, "gold": 120, "hand": ["CARD.A"], "draw": 5,
+                         "disc": 0, "exh": 0, "orbs": ["ORB.FROST"],
+                         "relics": [{"id": "RELIC.PEN_NIB", "n": 7, "used": False, "state": "Active"}],
+                         "potions": ["POTION.FIRE"]}]}
+        cleaned = handler.clean_event_log({"v": 3, "log": [{"q": 1, "f": 0, "t": 1, "k": "snap", "a": snap}]})
+        got = cleaned["log"][0]["a"]
+        self.assertEqual(got["creatures"][0]["pow"], {"POWER.VULNERABLE": 2})
+        self.assertEqual(got["creatures"][0]["move"], "MOVE.BITE")
+        self.assertEqual(got["you"][0]["relics"][0]["n"], 7)
+        self.assertEqual(got["you"][0]["hand"], ["CARD.A"])
+
+    def test_a_snapshot_is_bounded_at_every_level(self):
+        deep = {"a": {"b": {"c": {"d": {"e": {"f": {"g": {"h": 1}}}}}}}}
+        cleaned = handler.clean_event_log({"v": 3, "log": [{"q": 1, "k": "snap", "a": deep}]})
+        self.assertNotIn('"h"', json.dumps(cleaned["log"][0]["a"]), "depth is capped")
+        wide = {"cards": [f"CARD.{i}" for i in range(handler.TELEMETRY_MAX_LIST + 50)]}
+        cleaned = handler.clean_event_log({"v": 3, "log": [{"q": 1, "k": "snap", "a": wide}]})
+        self.assertEqual(len(cleaned["log"][0]["a"]["cards"]), handler.TELEMETRY_MAX_LIST)
+
+    def test_capped_and_marked(self):
+        log = {"v": 3, "log": [{"q": i, "k": "hp", "a": {"d": -1}} for i in range(handler.TELEMETRY_MAX_EVENTS + 10)]}
+        cleaned = handler.clean_event_log(log)
+        self.assertEqual(len(cleaned["log"]), handler.TELEMETRY_MAX_EVENTS)
+        self.assertTrue(cleaned["truncated"])
+
+    def test_a_log_with_no_usable_events_is_refused(self):
+        self.assertIsNone(handler.clean_event_log({"v": 3, "log": []}))
+        self.assertIsNone(handler.clean_event_log({"v": 3, "log": "nope"}))
+        self.assertIsNone(handler.clean_event_log({"v": 4, "log": [{"q": 1, "k": "hp"}]}))
+
+
 if __name__ == "__main__":
     unittest.main()
