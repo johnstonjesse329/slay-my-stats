@@ -138,6 +138,11 @@ def build_catalog() -> dict:
         "cardData":           card_data,
         "cardChar":           run.build_card_char(card_data),
         "cardVariants":       card_variants,
+        # The deck-strength formula (tools/power_curve/export_strength.py); null hides its charts.
+        "deckStrength":       (
+            json.loads(run._DECK_STRENGTH_FILE.read_text(encoding="utf-8"))
+            if run._DECK_STRENGTH_FILE.exists() else None
+        ),
         "relicData":          relic_data,
         "potionData":         potion_data,
         "enchantmentData":    enchantment_data,

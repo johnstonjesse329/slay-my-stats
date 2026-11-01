@@ -933,6 +933,7 @@ _JS_MODULES = [
     "page-nav.js",
     "cards-page.js",
     "seeds.js",
+    "deck-strength.js",
     "run-detail.js",
     "card-face.js",
     "map-bg.js",
@@ -993,6 +994,8 @@ _CARD_FINAL_DIR = _HERE / "card_final"
 
 
 _CARD_VARIANTS_FILE = _HERE / "card_variants.json"
+# The deck-strength formula's per-card and relic numbers (tools/power_curve/export_strength.py).
+_DECK_STRENGTH_FILE = _HERE / "deck_strength.json"
 
 
 def build_card_final_images(url_for=Path.as_uri) -> dict[str, str]:
@@ -1503,6 +1506,16 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="chart-wrap"><canvas id="detail-relic-chart"></canvas></div>
         <div class="floor-legend" id="detail-relic-legend"></div>
       </div>
+      <div class="chart-box" id="detail-strength-box" style="margin-top:16px">
+        <h2>Deck Strength by Floor</h2>
+        <p class="chart-caption">What the deck could do in a turn after each floor: damage, block, energy and cards drawn. A skipped card leaves them flat; a card that does little thins out every hand and pulls them down.</p>
+        <h3 class="strength-label">Damage and block per turn</h3>
+        <div class="chart-wrap chart-wrap-short"><canvas id="detail-strength-hp-chart"></canvas></div>
+        <div class="floor-legend" id="detail-strength-hp-legend"></div>
+        <h3 class="strength-label">Energy and cards per turn</h3>
+        <div class="chart-wrap chart-wrap-short"><canvas id="detail-strength-play-chart"></canvas></div>
+        <div class="floor-legend" id="detail-strength-play-legend"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1585,6 +1598,10 @@ def build_html(runs: list[dict]) -> str:
         json.loads(_ENCHANT_DATA_FILE.read_text(encoding="utf-8"))
         if _ENCHANT_DATA_FILE.exists() else {}
     )
+    deck_strength = (
+        json.loads(_DECK_STRENGTH_FILE.read_text(encoding="utf-8"))
+        if _DECK_STRENGTH_FILE.exists() else None
+    )
 
     chart_data = json.dumps({
         "characters":      characters,
@@ -1601,6 +1618,7 @@ def build_html(runs: list[dict]) -> str:
         "cardChar":           card_char,
         "cardVariants":       card_variants,
     "enchantmentData":    enchantment_data,
+        "deckStrength":       deck_strength,
         "relicData":          relic_data,
         "potionData":         potion_data,
         "nodeIcons":          node_icons,

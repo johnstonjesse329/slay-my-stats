@@ -44,6 +44,8 @@ card_variants.json
 relic_data.json
 potion_data.json
 data_provenance.json
+deck_strength.json
+power_data.json
 
 # Account-specific CDK context (certificate ARN, hosted zone ID)
 infra/cdk.context.json

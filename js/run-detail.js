@@ -349,6 +349,7 @@ function renderDetailRun(run) {
   renderDetailGoldChart(run);
   renderDetailDeckChart(run);
   renderDetailRelicChart(run);
+  renderDetailStrengthCharts(run);
   renderDetailDeckRelics(run);
 }
 
@@ -660,6 +661,11 @@ const ACT_COLOUR = "#e6e2f2";
 // legend at the bottom.
 const ACT_BAND = 34;
 
+// The HP line's colour, in every run whatever the character. The character
+// colours put the Regent's HP line a shade off the gold chart's, and HP reads
+// as green at a glance. #5cba7d is the dashboard's own "good" green.
+const HP_LINE = "#5cba7d";
+
 // The floors behind each chart's big swings get the floor map's own icon as
 // their point: elites, bosses, rest sites and events on HP, shops and events
 // on Gold. Every other floor has no point, just a small dot on hover, so
@@ -827,7 +833,9 @@ function renderDetailHpChart(run) {
   }
   document.getElementById("detail-hp-box").style.display = "";
 
-  const color = CHAR_COLOR_MAP[run.char] || "#a0a0b8";
+  // Not the character's colour: Regent's is gold, which sat too close to the
+  // gold chart under it, and the Silent's green reads as HP anyway.
+  const color = HP_LINE;
   const labels = nodes.map(n => n.floor + 1);
   const hpData = nodes.map(n => n.hpAfter);
   const maxHpData = nodes.map(n => n.maxHp);
@@ -1054,12 +1062,10 @@ function hatchPattern(color) {
 const hatchCss = color => `repeating-linear-gradient(-45deg, ${color}99 0 1.5px, transparent 1.5px 4px)`;
 
 // Only the notable gains get a marker over their floor: Uncommon and Rare
-// cards, any Rare card upgraded, and Uncommon, Rare and Ancient relics. Rarer
-// is bigger.
+// cards, and Uncommon, Rare and Ancient relics. Rarer is bigger.
 const CARD_MARK  = new Set(["Uncommon", "Rare"]);
 const RELIC_MARK = new Set(["Uncommon", "Rare", "Ancient"]);
 const MARK_SIZE  = { Uncommon: 30, Rare: 38, Ancient: 38 };
-const UPGRADE_GREEN = "#3fbf5f";
 
 let detailDeckChart  = null;
 let detailRelicChart = null;
@@ -1089,23 +1095,21 @@ function countsByFloor(nodes, items, group) {
 const floorTotals = (nodes, counts, order) => nodes.map((_, i) => order.reduce((s, k) => s + counts[k][i], 0));
 const usedKeys = (counts, order) => order.filter(k => counts[k].some(v => v > 0));
 
-// Per node, the notable gains made there: [{id, rarity, src, name, upgrade, count}].
+// Per node, the notable gains made there: [{id, rarity, src, name, count}].
 // The same card several times on one floor (a Rare that copies itself) is one
 // marker with a count, so it can't build a tower.
-function floorMarks(nodes, items, group, marked, imgSrc, name, extra = () => []) {
+function floorMarks(nodes, items, group, marked, imgSrc, name) {
   const lists = nodes.map(() => []);
   items.forEach(it => {
     const rarity = group.of(it);
     const i = nodes.findIndex(n => n.floor + 1 === it.added);
     if (i >= 0 && marked.has(rarity)) lists[i].push({ id: it.id, rarity, src: imgSrc(it.id), name: name(it.id) });
   });
-  nodes.forEach((n, i) => lists[i].push(...extra(n)));
   return lists.map(list => {
     const merged = new Map();
     list.forEach(m => {
-      const k = m.id + (m.upgrade ? "+" : "");
-      if (merged.has(k)) merged.get(k).count++;
-      else merged.set(k, { ...m, count: 1 });
+      if (merged.has(m.id)) merged.get(m.id).count++;
+      else merged.set(m.id, { ...m, count: 1 });
     });
     return [...merged.values()].sort((a, b) => MARK_SIZE[a.rarity] - MARK_SIZE[b.rarity]);
   });
@@ -1158,17 +1162,6 @@ function makeMarkPlugin(marks, totals, colors) {
           ctx.lineWidth = 2.5;
           ctx.strokeStyle = colors[m.rarity];
           ctx.stroke();
-          if (m.upgrade) {  // a green "+", as the game marks an upgraded card
-            ctx.beginPath();
-            ctx.arc(cx + r - 3, cy - r + 3, 6, 0, Math.PI * 2);
-            ctx.fillStyle = UPGRADE_GREEN;
-            ctx.fill();
-            ctx.fillStyle = "#0c0b14";
-            ctx.font = font;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("+", cx + r - 3, cy - r + 3.5);
-          }
           ctx.restore();
           if (m.count > 1) badges.push(() => {
             ctx.font = font;
@@ -1247,10 +1240,10 @@ function showFloorTip(context, html) {
 
 const floorTipHead = (node, total, unit) => {
   const enc = node.enc ? fmtNodeLabel(node.enc) : (node.type || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-  return `<div class="ft-head"><b>Floor ${node.floor + 1}</b> — ${enc} · ${total} ${unit}</div>`;
+  return `<div class="ft-head"><b>Floor ${node.floor + 1}</b> — ${enc}${total == null ? "" : ` · ${total} ${unit}`}</div>`;
 };
 const floorTipCaption = (m, colors) =>
-  `<div class="ft-cap">${m.upgrade ? "Upgraded" : "Gained"}${m.count > 1 ? " ×" + m.count : ""} · ` +
+  `<div class="ft-cap">Gained${m.count > 1 ? " ×" + m.count : ""} · ` +
   `<span style="color:${colors[m.rarity]}">${m.rarity}</span></div>`;
 
 // The y axis's afterDataLimits for a chart with markers: raises the top (in
@@ -1304,11 +1297,11 @@ function floorLegendRow(head, keys, colors) {
     return `<span class="fl-item"><span class="fl-swatch" style="background:${fill};border:2px ${isStarter(k) ? "dashed" : "solid"} ${colors[k]}"></span>${rarityName(k)}</span>`;
   }).join("")}</div>`;
 }
-function floorMarkerRow(keys, colors, extra = "") {
+function floorMarkerRow(keys, colors) {
   return `<div class="fl-head">Markers</div><div class="fl-items">${keys.map(k => {
     const d = MARK_SIZE[k] * 0.6;
     return `<span class="fl-item"><span class="fl-ring" style="border-color:${colors[k]};width:${d}px;height:${d}px"></span>${k} gained</span>`;
-  }).join("")}${extra}</div>`;
+  }).join("")}</div>`;
 }
 
 function renderDetailDeckChart(run) {
@@ -1327,9 +1320,7 @@ function renderDetailDeckChart(run) {
   });
   const totals = floorTotals(nodes, byR, R.order);
   const cardName = id => cardInfo(id)?.title || fmtCardLabel(id);
-  const marks = floorMarks(nodes, items, R, CARD_MARK, cardImgSrc, cardName, n =>
-    (n.upgradedCards || []).filter(id => cardInfo(id)?.rarity === "Rare")
-      .map(id => ({ id, rarity: "Rare", src: cardImgSrc(id), name: cardName(id), upgrade: true })));
+  const marks = floorMarks(nodes, items, R, CARD_MARK, cardImgSrc, cardName);
   const tKeys = usedKeys(byT, T.order), rKeys = usedKeys(byR, R.order);
 
   // The breakdown is a type × rarity table; the floor's marked cards follow it
@@ -1341,7 +1332,7 @@ function renderDetailDeckChart(run) {
       rows.map(t => `<tr><td style="color:${T.color[t]}">${t}</td>${cols.map(c => `<td>${byTR[t + "|" + c][i] || ""}</td>`).join("")}<td><b>${byT[t][i]}</b></td></tr>`).join("") +
       `</table>`;
     const big = marks[i].length ? `<div class="ft-big">${marks[i].map(m =>
-      `<div class="ft-card">${renderCardFace(m.id, m.upgrade ? 1 : 0, 190) || `<b>${m.name}</b>`}${floorTipCaption(m, R.color)}</div>`).join("")}</div>` : "";
+      `<div class="ft-card">${renderCardFace(m.id, 0, 190) || `<b>${m.name}</b>`}${floorTipCaption(m, R.color)}</div>`).join("")}</div>` : "";
     return `<div class="ft-row"><div>${floorTipHead(nodes[i], totals[i], "cards")}${table}</div>${big}</div>`;
   });
 
@@ -1384,11 +1375,10 @@ function renderDetailDeckChart(run) {
       ...rKeys.map(k => ({ key: k, data: byR[k].map(v => -v), color: R.color[k], stack: "rarity" })),
     ])));
 
-  const upgraded = `<span class="fl-item"><span class="fl-ring fl-ring-up" style="border-color:${R.color.Rare}"></span>Rare upgraded</span>`;
   document.getElementById("detail-deck-legend").innerHTML =
     floorLegendRow("▲ Type", tKeys, T.color) +
     floorLegendRow("▼ Rarity", rKeys, R.color) +
-    floorMarkerRow(["Uncommon", "Rare"], R.color, upgraded);
+    floorMarkerRow(["Uncommon", "Rare"], R.color);
 }
 
 function renderDetailRelicChart(run) {
@@ -1426,6 +1416,57 @@ function renderDetailRelicChart(run) {
   document.getElementById("detail-relic-legend").innerHTML =
     floorLegendRow("Rarity", keys, G.color) +
     floorMarkerRow(["Uncommon", "Rare", "Ancient"], G.color);
+}
+
+// ---- Deck strength by floor ----
+
+// deckStrengthByFloor's four per-turn numbers in two charts, one per unit:
+// damage and block (HP), energy and cards drawn. The hover box gives all four,
+// how far the floor moved them, and what it added or removed.
+const STRENGTH_LINES = {
+  damage: { label: "Damage", color: "#e0604f", chart: "hp" },
+  block:  { label: "Block",  color: "#4087de", chart: "hp" },
+  energy: { label: "Energy", color: "#b5861a", chart: "play" },
+  draw:   { label: "Cards",  color: "#9b7fe0", chart: "play" },
+};
+let detailStrengthCharts = [];
+
+function renderDetailStrengthCharts(run) {
+  const nodes = run.timeline || [];
+  const box = document.getElementById("detail-strength-box");
+  detailStrengthCharts.forEach(c => c.destroy());
+  detailStrengthCharts = [];
+  const floors = nodes.length && run.deckAdded && run.relicsAdded ? deckStrengthByFloor(nodes,
+    heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []),
+    heldItems(run.finalRelics || [], run.relicsAdded, run.relicsLost || [])) : null;
+  if (!floors) { box.style.display = "none"; return; }
+  box.style.display = "";
+
+  const keys = Object.keys(STRENGTH_LINES);
+  const change = d => +d.toFixed(1) === 0 ? "" : `${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(1)} this floor`;
+  const name = ([id], relic) => relic ? relicInfo(id)?.title || fmtRelicLabel(id) : cardInfo(id)?.title || fmtCardLabel(id);
+  const chips = (list, relic) => list.map(c =>
+    `<span class="strength-chip ${c[2] > 0 ? "gain" : "loss"}">${c[2] > 0 ? "+" : "−"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`).join("");
+  const tip = context => showFloorTip(context, i => {
+    const s = floors[i], p = floors[i - 1];
+    const rows = keys.map(k => `<tr><td><span class="strength-key" style="background:${STRENGTH_LINES[k].color}"></span>` +
+      `${STRENGTH_LINES[k].label}</td><td><b>${s[k].toFixed(1)}</b></td><td>${p ? change(s[k] - p[k]) : ""}</td></tr>`).join("");
+    const changed = p && (s.cards.length || s.relics.length)
+      ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div>` : "";
+    return `${floorTipHead(nodes[i])}<table>${rows}</table>${changed}`;
+  });
+
+  ["hp", "play"].forEach(id => {
+    const lines = keys.filter(k => STRENGTH_LINES[k].chart === id);
+    document.getElementById(`detail-strength-${id}-legend`).innerHTML = `<div class="fl-items">${lines.map(k =>
+      `<span class="fl-item"><span class="strength-key" style="background:${STRENGTH_LINES[k].color}"></span>${STRENGTH_LINES[k].label}</span>`).join("")}</div>`;
+    detailStrengthCharts.push(new Chart(document.getElementById(`detail-strength-${id}-chart`).getContext("2d"),
+      floorChartConfig(nodes, [], tip, { stacked: false, min: 0, ticks: { maxTicksLimit: 5 } }, lines.map(k => ({
+        label: STRENGTH_LINES[k].label, data: floors.map(f => f[k]), borderColor: STRENGTH_LINES[k].color,
+        pointHoverBackgroundColor: STRENGTH_LINES[k].color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
+        cubicInterpolationMode: "monotone",
+      })))));
+  });
 }
 
 // ---- Final deck + relics ----

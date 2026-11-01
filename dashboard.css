@@ -1179,6 +1179,13 @@ h1 {
 /* Deck / Relics by Floor: the HTML legend under each chart and the hover
    box, which holds the floor's notable gains at full size. */
 .chart-wrap-tall { height: 480px; }
+.chart-wrap-short { height: 250px; }
+.strength-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim); margin: 0.6rem 0 0.2rem; }
+.floor-tip .strength-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; max-width: 320px; }
+.floor-tip .strength-chip { padding: 0 6px; border-radius: 9px; border: 1px solid; white-space: nowrap; }
+.floor-tip .strength-chip.gain { border-color: #4087de; }
+.floor-tip .strength-chip.loss { border-color: #d97230; }
+.strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 .floor-legend {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1192,17 +1199,6 @@ h1 {
 .fl-item { display: inline-flex; align-items: center; gap: 0.4rem; }
 .fl-swatch { width: 14px; height: 10px; border-radius: 2px; box-sizing: border-box; }
 .fl-ring { border: 2px solid; border-radius: 50%; box-sizing: border-box; display: inline-block; }
-.fl-ring-up { width: 23px; height: 23px; position: relative; }
-.fl-ring-up::after {
-  content: "";
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #3fbf5f;
-}
 
 .floor-tip {
   position: fixed;

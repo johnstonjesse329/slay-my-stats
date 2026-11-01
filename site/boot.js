@@ -206,6 +206,7 @@
       cardData: catalog.cardData,
       cardChar: catalog.cardChar,
       cardVariants: catalog.cardVariants,
+      deckStrength: catalog.deckStrength,
       relicData: catalog.relicData,
       potionData: catalog.potionData,
       enchantmentData: catalog.enchantmentData,

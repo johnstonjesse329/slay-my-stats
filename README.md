@@ -47,6 +47,7 @@ slay-my-stats/
 │   ├── page-nav.js          tabs and the shared filter bar
 │   ├── fight-tables.js      Overview page: per-boss and per-elite fight lanes
 │   ├── run-detail.js        Runs page
+│   ├── deck-strength.js     a run's damage, block, energy and cards per turn, floor by floor
 │   ├── cards-page.js        Cards page
 │   ├── seeds.js             Seeds page
 │   ├── charts.js            Chart.js setup
@@ -80,6 +81,8 @@ slay-my-stats/
 │   ├── export_game_data.py  drives the game to export its data and render every card face
 │   ├── import_game_data.py  folds that export into the site's data files
 │   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
+│   ├── extract_power_data.py  power_data.json, from the game DLL
+│   ├── power_curve/         offline deck-strength tools: the sim, the formula and its fit (see its README)
 │   └── requirements.txt     pipeline requirements
 ├── githooks/pre-push        runs tools/deploy.py when main or gamma is pushed
 ├── docs/                    architecture diagram source (draw.io)
@@ -99,6 +102,8 @@ paths:
 ├── potion_data.json         potion metadata
 ├── card_variants.json       what a card's saved per-instance state makes it (e.g. Mad Science's roll)
 ├── enchantments_data.json   enchantment titles and per-amount text
+├── power_data.json          what each power does, for the deck-strength formula
+├── deck_strength.json       every card's and relic's numbers for the Runs page's Deck Strength charts
 ├── data_provenance.json     which game build produced the data and art
 ├── card_final/              finished card images, base and upgraded (served)
 ├── card_portraits/          card art thumbnails (served)
@@ -655,6 +660,10 @@ It recovers the game's `.pck` with [GDRE Tools](https://github.com/GDRETools/gds
 re-extracts card, relic and potion data from the game DLL. Next it re-bakes card art and chrome, and checks
 that everything came from the same build. The map background (`ui_icons/map_scroll.webp`) is baked
 separately by `tools/bake_map_background.py`.
+
+The Runs page's Deck Strength charts need two more files, made after the refresh:
+`python tools/extract_power_data.py`, then `python tools/power_curve/export_strength.py` (writes
+`deck_strength.json`). Without it the charts are hidden.
 
 Text and images are not re-derived, though — that was measurably wrong. Earlier versions re-implemented the
 game's text grammar and composited each card in Pillow, which read Tank's 1.5x damage multiplier as an int

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Power Curve Prototype</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+<style>
+  :root {
+    --bg: #0d0c1a; --panel: #211e36; --border: #4a3f6e; --hair: #3a3460;
+    --text: #e6e2f2; --dim: #a8a2c4; --gold: #e0c468; --teal: #6fd6c6; --ember: #d97a3a;
+  }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--gold); }
+  h2 { font-size: 1.05rem; margin: 28px 0 10px; color: var(--gold); }
+  .sub { color: var(--dim); margin: 0 0 16px; }
+  .picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+  .picker select, .picker button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 8px; font: inherit; }
+  .picker button { cursor: pointer; }
+  .picker #run { flex: 1 1 320px; min-width: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .card h3 { margin: 0 0 2px; font-size: 0.95rem; }
+  .card p { margin: 0 0 6px; color: var(--dim); font-size: 0.8rem; }
+  .chart { position: relative; height: 170px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th, td { padding: 5px 8px; border-bottom: 1px solid var(--hair); text-align: left; vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .wrap { overflow-x: auto; }
+  .tag { display: inline-block; margin: 1px 3px 1px 0; padding: 0 6px; border: 1px solid var(--hair); border-radius: 10px; white-space: nowrap; }
+  .tag i { color: var(--dim); font-style: normal; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Power curve: prototype</h1>
+  <div class="picker">
+    <select id="player" aria-label="Player"></select>
+    <select id="result" aria-label="Result">
+      <option value="">All results</option><option value="win">Wins</option><option value="loss">Losses</option>
+    </select>
+    <select id="char" aria-label="Character"></select>
+    <select id="arch" aria-label="Archetype"></select>
+    <button id="prev" aria-label="Previous run">‹</button>
+    <select id="run" aria-label="Run"></select>
+    <button id="next" aria-label="Next run">›</button>
+  </div>
+  <p class="sub" id="sub"></p>
+  <div class="grid" id="charts"></div>
+  <h2>Deck changes</h2>
+  <p class="sub">Every floor the deck or relics changed, and how far that moved the expected damage taken and turns. Negative is stronger.</p>
+  <div class="wrap card"><table id="changes"></table></div>
+  <h2>Fights</h2>
+  <p class="sub">Each encounter's HP and attack pattern beside what happened. Set them against the curve above: damage per turn against total HP, block per turn against damage per turn.</p>
+  <div class="wrap card"><table id="fights"></table></div>
+  <h2>Synergy links (final deck)</h2>
+  <p class="sub">A feeder produces something (discards, shivs, poison...) that a user reacts to. The number is the floor each card or relic joined.</p>
+  <div class="wrap card"><table id="syn"></table></div>
+</main>
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+Chart.defaults.color = css("--dim");
+Chart.defaults.borderColor = css("--hair");
+Chart.defaults.font.size = 11;
+const titleCase = s => s ? s[0] + s.slice(1).toLowerCase() : "";
+const date = ts => new Date(ts * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+let charts = [];
+
+function actLines(acts) {
+  const bounds = [];
+  acts.reduce((sum, n) => { bounds.push(sum + n + 0.5); return sum + n; }, 0);
+  bounds.pop();
+  return {
+    id: "acts",
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea: a, scales: { x } } = chart;
+      ctx.save();
+      ctx.strokeStyle = css("--border");
+      ctx.setLineDash([3, 3]);
+      for (const b of bounds) {
+        const px = x.getPixelForValue(b);
+        ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+      }
+      ctx.restore();
+    },
+  };
+}
+
+function small(d, title, note, series, opt = {}) {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.innerHTML = `<h3>${title}</h3><p>${note}</p><div class="chart"><canvas></canvas></div>`;
+  document.getElementById("charts").append(el);
+  charts.push(new Chart(el.querySelector("canvas"), {
+    type: "line",
+    data: {
+      datasets: series.map(s => ({
+        label: s.label, data: d.floors.map(f => ({ x: f.floor, y: s.get(f) })),
+        borderColor: s.color, backgroundColor: s.color, borderWidth: 2, pointRadius: 0,
+        pointHoverRadius: 4, tension: 0.25, stepped: s.stepped || false,
+      })),
+    },
+    options: {
+      maintainAspectRatio: false, animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: series.length > 1, labels: { boxWidth: 10, boxHeight: 2 } },
+        tooltip: { callbacks: {
+          title: items => `Floor ${items[0].parsed.x} · ${d.floors[items[0].dataIndex].type.replace("_", " ")}`,
+          footer: items => opt.changes ? (d.floors[items[0].dataIndex].changes || []).slice(0, 12) : [],
+        } },
+      },
+      scales: {
+        x: { type: "linear", min: 1, max: d.floors.length, ticks: { stepSize: 8 }, grid: { display: false } },
+        y: { beginAtZero: opt.zero !== false, ticks: { maxTicksLimit: 5 },
+          grid: { color: c => opt.zero === false && c.tick.value === 0 ? css("--dim") : css("--hair") } },
+      },
+    },
+    plugins: [actLines(d.acts)],
+  }));
+}
+
+function render(d, e) {
+  charts.forEach(c => c.destroy());
+  charts = [];
+  document.getElementById("charts").replaceChildren();
+  document.getElementById("sub").textContent =
+    `${e.player} · ${date(e.ts)} · ${titleCase(e.character)} A${e.ascension} · ${e.win ? "win" : e.abandoned ? "abandoned" : "loss"}` +
+    `${e.coop ? " · co-op" : ""} · ${e.build || ""} — the deck after each floor, played against a training dummy for 5 turns, once all-in on damage and once all-in on block. Dashed lines are act boundaries.`;
+  const G = css("--gold"), T = css("--teal"), E = css("--ember");
+  if (d.floors[0].fTaken !== undefined) {
+    small(d, "Damage taken vs an average deck", "What the formula fitted to real fights expects this deck to lose in a fight, against an average deck going into the same fight. Lower is better; a skip leaves it flat.", [
+      { label: "HP", color: E, get: f => f.fTaken },
+    ], { zero: false, changes: true });
+    small(d, "Turns vs an average deck", "Turns the same fight is expected to take. Lower is better.", [
+      { label: "Turns", color: G, get: f => f.fTurns },
+    ], { zero: false, changes: true });
+  }
+  small(d, "Damage per turn", "Average over turns 1–5, playing every card that adds damage. Against three enemies, AoE and poison-to-all count once per enemy.", [
+    { label: "One enemy", color: G, get: f => f.dmg },
+    { label: "Three enemies (total)", color: T, get: f => f.dmg3 },
+  ]);
+  small(d, "Block per turn", "Average over turns 1–5, playing every card that adds block. Relics that fire on one turn (Anchor 1, Horn Cleat 2, Captain's Wheel 3) count on that turn only.", [
+    { label: "Block", color: T, get: f => f.block },
+    { label: "From relics", color: E, get: f => f.relicBlock },
+  ]);
+  small(d, "Scaling", "How much more each turn puts out than the one before, over an 8-turn game: Strength, Demon Form, Plating, poison stacking. One-turn relic block and energy are left out so they don't skew it.", [
+    { label: "Damage", color: G, get: f => f.dmgGrowth },
+    { label: "Block", color: T, get: f => f.blockGrowth },
+  ]);
+  small(d, "Energy per turn", "Base energy, relics, and energy cards played. Candelabra (turn 2), Chandelier (turn 3) and Pael's Flesh (turn 3 on) count on their turns.", [
+    { label: "Energy", color: G, get: f => f.energy },
+    { label: "From relics", color: E, get: f => f.relicEnergy },
+  ]);
+  small(d, "Cards seen per turn", "Hand draw plus card draw played.", [
+    { label: "Cards seen", color: G, get: f => f.seen },
+    { label: "Cards played", color: E, get: f => f.played },
+  ]);
+  small(d, "Synergy links", "Distinct things in the deck with both a feeder and a user (discard → Sly, shivs → Accuracy...).", [
+    { label: "Links", color: E, get: f => f.links, stepped: true },
+  ]);
+
+  const rows = d.fights.map(f => {
+    return `<tr><td class="n">${f.floor}</td><td>${f.encounter.replace(/_/g, " ").toLowerCase()}</td>
+      <td class="n">${f.monsters.length}</td><td class="n">${f.hp}</td>
+      <td class="n">${f.dmgPerTurn}</td><td class="n">${f.hitsPerTurn}</td><td class="n">${f.avgHit}</td><td class="n">${f.maxHit}</td>
+      <td class="n">${f.turns}</td><td class="n">${f.taken}</td>
+      <td>${f.potions.map(p => p.replace(/_/g, " ").toLowerCase()).join(", ")}</td></tr>`;
+  }).join("");
+  document.getElementById("fights").innerHTML = `<tr><th>Floor</th><th>Encounter</th><th>Enemies</th><th>Total HP</th>
+    <th>Dmg / turn</th><th>Hits / turn</th><th>Avg hit</th><th>Biggest hit</th><th>Turns</th><th>Taken</th><th>Potions used</th></tr>${rows}`;
+
+  const sign = v => (v > 0 ? "+" : "") + v;
+  const changed = d.floors.map((f, i) => ({ f, prev: d.floors[i - 1] })).filter(({ f, prev }) => prev && f.changes && f.changes.length);
+  document.getElementById("changes").innerHTML = changed.length ? `<tr><th>Floor</th><th>Room</th><th>Δ HP taken</th><th>Δ turns</th><th>Changes</th></tr>` +
+    changed.map(({ f, prev }) => `<tr><td class="n">${f.floor}</td><td>${f.type.replace("_", " ")}</td>
+      <td class="n">${sign(+(f.fTaken - prev.fTaken).toFixed(2))}</td><td class="n">${sign(+(f.fTurns - prev.fTurns).toFixed(2))}</td>
+      <td>${f.changes.map(c => `<span class="tag">${c}</span>`).join("")}</td></tr>`).join("") : "<tr><td>Run formula_curves.py to fill this in.</td></tr>";
+
+  const tags = list => list.map(([n, f]) => `<span class="tag">${n} <i>F${f}</i></span>`).join("");
+  document.getElementById("syn").innerHTML = `<tr><th>Link</th><th>Active from</th><th>Feeders</th><th>Users</th></tr>` +
+    d.synergies.map(s => `<tr><td>${s.key.replace("power:", "")}</td><td class="n">F${s.active}</td>
+      <td>${tags(s.feeders)}</td><td>${tags(s.users)}</td></tr>`).join("");
+}
+
+// Run data comes from players' uploads and goes into innerHTML: escape every string once, on load.
+const esc = s => s.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+const clean = v => typeof v === "string" ? esc(v) : Array.isArray(v) ? v.map(clean)
+  : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clean(x)])) : v;
+fetch("pcs/index.json").then(r => r.json()).then(clean).then(index => {
+  const $ = id => document.getElementById(id);
+  const opts = (sel, first, values) => sel.innerHTML = `<option value="">${first}</option>` +
+    values.map(v => `<option value="${v}">${titleCase(v)}</option>`).join("");
+  opts($("player"), "All players", [...new Set(index.map(e => e.player))].sort());
+  opts($("char"), "All characters", [...new Set(index.map(e => e.character))].sort());
+  [...$("player").options].forEach(o => { if (o.value) o.textContent = o.value; });
+  const archs = () => {  // the chosen character's archetypes (archetypes.py), or every one
+    const c = $("char").value, keep = $("arch").value;
+    $("arch").innerHTML = `<option value="">All archetypes</option>` + [...new Set(index.filter(e => e.archetype && (!c || e.character === c))
+      .map(e => e.archetype))].sort().map(v => `<option value="${v}">${v}</option>`).join("");
+    $("arch").value = keep;
+  };
+  archs();
+
+  let shown = [];
+  const fill = keep => {
+    const p = $("player").value, r = $("result").value, c = $("char").value, a = $("arch").value;
+    shown = index.filter(e => !e.error && (!p || e.player === p) && (!c || e.character === c)
+      && (!r || (r === "win") === e.win) && (!a || e.archetype === a));
+    $("run").innerHTML = shown.map(e => `<option value="${e.id}">${date(e.ts)} · ${e.player} · ${titleCase(e.character)} A${e.ascension} · ` +
+      `${e.win ? "Win" : e.abandoned ? "Abandoned" : "Loss"} · ${e.floors} floors${e.archetype ? " · " + e.archetype : ""}${e.coop ? " · co-op" : ""}</option>`).join("");
+    if (keep && shown.some(e => e.id === keep)) $("run").value = keep;
+    load();
+  };
+  const load = () => {
+    const e = shown.find(x => x.id === $("run").value);
+    if (!e) return;
+    history.replaceState(null, "", "#" + e.id);
+    fetch(`pcs/${e.id}.json`).then(r => r.json()).then(clean).then(d => render(d, e));
+  };
+  const step = n => {
+    const i = $("run").selectedIndex + n;
+    if (i >= 0 && i < shown.length) { $("run").selectedIndex = i; load(); }
+  };
+  $("char").addEventListener("change", archs);
+  ["player", "result", "char", "arch"].forEach(id => $(id).addEventListener("change", () => fill($("run").value)));
+  $("run").addEventListener("change", load);
+  $("prev").addEventListener("click", () => step(-1));
+  $("next").addEventListener("click", () => step(1));
+  const linked = location.hash.slice(1);  // a linked run opens even if the filters the browser kept would hide it
+  if (linked && index.some(e => e.id === linked)) ["player", "result", "char", "arch"].forEach(id => $(id).value = "");
+  archs();
+  fill(linked);
+});
+</script>
+</body>
+</html>
