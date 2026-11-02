@@ -1663,6 +1663,12 @@ def resolve_values(src: str) -> dict[str, tuple]:
     for name, level, raised, base in re.findall(
             r"int (\w+) => AscensionHelper\.GetValueIfAscension\(AscensionLevel\.(\w+), (-?\d+), (-?\d+)\)", src):
         vals.setdefault(name, (int(base), int(raised), level))
+    # The same call inside a getter, with something added on at run time: the listed
+    # figure is the part before that (The Forgotten's Dread, before Dexterity).
+    for name, level, raised, base in re.findall(
+            r"int (\w+)\s*\{\s*get\s*\{\s*int \w+ = AscensionHelper\.GetValueIfAscension"
+            r"\(AscensionLevel\.(\w+), (-?\d+), (-?\d+)\)", src):
+        vals.setdefault(name, (int(base), int(raised), level))
     for name, v in re.findall(r"int (\w+) => (-?\d+);", src):
         vals.setdefault(name, (int(v), None, None))
     for name, v in re.findall(r"const int (\w+) = (-?\d+);", src):
@@ -1674,8 +1680,10 @@ def value(token: str, vals: dict) -> tuple:
     token = re.sub(r"^\(\)\s*=>\s*", "", token.strip())
     if re.fullmatch(r"-?\d+", token):
         return (int(token), None, None)
-    # Attacks that ramp keep the running figure in CurrentX, seeded from BaseX.
-    return vals.get(token) or vals.get(re.sub(r"^Current", "Base", token), (None, None, None))
+    # Attacks that ramp keep the running figure in CurrentX, seeded from BaseX, and a
+    # hit count that ramps is XTotalCount, starting from BaseXCount.
+    return (vals.get(token) or vals.get(re.sub(r"^Current", "Base", token))
+            or vals.get(re.sub(r"^(\w+)TotalCount$", r"Base\1Count", token), (None, None, None)))
 
 
 INTENT = re.compile(r"new (\w+)Intent\(([^()]*(?:\([^()]*\)[^()]*)*)\)")

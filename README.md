@@ -47,7 +47,6 @@ slay-my-stats/
 │   ├── page-nav.js          tabs and the shared filter bar
 │   ├── fight-tables.js      Overview page: per-boss and per-elite fight lanes
 │   ├── run-detail.js        Runs page
-│   ├── deck-strength.js     a run's damage, block, energy and cards per turn, floor by floor
 │   ├── cards-page.js        Cards page
 │   ├── seeds.js             Seeds page
 │   ├── charts.js            Chart.js setup
@@ -102,8 +101,10 @@ paths:
 ├── potion_data.json         potion metadata
 ├── card_variants.json       what a card's saved per-instance state makes it (e.g. Mad Science's roll)
 ├── enchantments_data.json   enchantment titles and per-amount text
-├── power_data.json          what each power does, for the deck-strength formula
-├── deck_strength.json       every card's and relic's numbers for the Runs page's Deck Strength charts
+├── power_data.json          what each power does, for the offline deck-strength formula
+├── deck_strength.json       every card's and relic's numbers, for the offline tools; the site doesn't read it
+├── fight_demand.json        each encounter's HP and what winning runs did on it, per ascension tier, for the Runs page's Keeping Up section
+├── measured_runs.json       what the runs with an event log actually did, for the same charts
 ├── data_provenance.json     which game build produced the data and art
 ├── card_final/              finished card images, base and upgraded (served)
 ├── card_portraits/          card art thumbnails (served)
@@ -663,9 +664,12 @@ re-extracts card, relic and potion data from the game DLL. Next it re-bakes card
 that everything came from the same build. The map background (`ui_icons/map_scroll.webp`) is baked
 separately by `tools/bake_map_background.py`.
 
-The Runs page's Deck Strength charts need two more files, made after the refresh:
-`python tools/extract_power_data.py`, then `python tools/power_curve/export_strength.py` (writes
-`deck_strength.json`). Without it the charts are hidden.
+The Runs page's Keeping Up charts need one more file, made after the refresh:
+`python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in
+`tools/power_curve/gamma_raw/`. Without it the charts are hidden. Their energy and cards chart also needs
+`python tools/power_curve/export_measured.py` (writes `measured_runs.json`), and shows only on runs with an
+event log. The offline deck-strength tools need `python tools/extract_power_data.py`, then
+`python tools/power_curve/export_strength.py` (writes `deck_strength.json`); nothing on the site reads those.
 
 Text and images are not re-derived, though — that was measurably wrong. Earlier versions re-implemented the
 game's text grammar and composited each card in Pillow, which read Tank's 1.5x damage multiplier as an int

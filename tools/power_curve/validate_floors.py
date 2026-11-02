@@ -1,10 +1,10 @@
-"""Do the Runs page's deck-strength lines track what actually happened?
+"""Do the formula's deck-strength lines track what actually happened?
 
 Walks gamma's runs fight by fight. For every fight, the deck that walked in (the
-floor before) is scored with predict_fights.formula, and the four numbers the
-Runs page charts -- damage, block, energy and cards a turn -- are set against
-that fight's real damage taken and turns. Each encounter's own average is taken
-out first, so a boss doesn't read as a bad deck.
+floor before) is scored with predict_fights.formula, and its four numbers --
+damage, block, energy and cards a turn -- are set against that fight's real
+damage taken and turns. Each encounter's own average is taken out first, so a
+boss doesn't read as a bad deck.
 
 Walk-forward on purpose: the deck is the one the player actually had, not the
 finished deck read backwards, which is the claim the chart makes.
@@ -62,7 +62,7 @@ def relic_blind(rid):
 
 
 def buckets(feat, size):
-    """What js/deck-strength.js draws, in Python: the four per-turn numbers.
+    """The formula's four per-turn numbers.
     Vulnerable lifts the damage line and Weak the block line, since neither is
     throughput of its own."""
     damage = ((feat["f_dmg"] + feat["f_str"] + feat["f_dot"])
@@ -92,7 +92,8 @@ def fights():
             continue
         for node in parsed.get("timeline") or []:
             floor = node["floor"] + 1
-            if not node.get("enc") or not node.get("turns") or floor < 2 or floor - 2 >= len(st):
+            enc = node.get("fight") or node.get("enc")
+            if not enc or not node.get("turns") or floor < 2 or floor - 2 >= len(st):
                 continue
             _, deck, rids, _ = st[floor - 2]  # the deck that walked into the fight
             key = (tuple(sorted((c["id"], c["up"]) for c in deck)), tuple(sorted(rids)))
@@ -104,7 +105,7 @@ def fights():
             synergy = (sum(1 for r in rids if pf.relic_triggers(r))
                        + sum(1 for c in deck if any(k in pf.card_row(c) for k in pf.TRIGGERS.values())))
             out.append({
-                "enc": node["enc"], "act": node.get("act", 0), "player": sid, "run": f"{sid}-{ts}",
+                "enc": enc, "act": node.get("act", 0), "player": sid, "run": f"{sid}-{ts}",
                 "floor": floor, "taken": node["dmg"], "turns": node["turns"],
                 "asc": parsed.get("ascension", 0), "size": len(deck), "synergy": synergy,
                 "blind_cards": blind_cards, "blind_relics": blind_relics,

@@ -24,9 +24,19 @@ from pathlib import Path
 PLAYER = "P"
 
 # A single HP delta this large is the game saying "infinite", not damage. Waterfall
-# Giant logs a billion when it does whatever it does; averaging that into a fight's
-# damage would bury every real number in it.
+# Giant's HP is set to a billion when it dies, for the turn it stays up before it
+# explodes; averaging that into a fight's damage would bury every real number in it.
 HP_SENTINEL = 1_000_000
+
+ERUPTION = "POWER.STEAM_ERUPTION_POWER"
+EXPLODE = "EXPLODE_MOVE"
+STRENGTH = "POWER.STRENGTH_POWER"
+# On you, from each Skill you play against an Infested Prism: added to every hit you
+# take, until the enemies' side ends.
+TAINTED = "POWER.TAINTED_POWER"
+# Moves that grow each time they land, and by what: (damage a hit, hits). The move
+# list has the first use; a Test Subject's Claw is 3 hits, then 4, then 5.
+GROWS = {"PRESSURE_GUN_MOVE": (5, 0), "MULTI_CLAW_MOVE": (0, 1)}
 
 
 def _junk_ids():
@@ -66,10 +76,10 @@ def _new_turn(number, reason):
         "discarded": [], "exhausted": [], "generated": [], "powers": {}, "stars": 0,
         "events": 0, "snap0": None, "snap1": None,
         "hand_by_pile": [], "hand_left": [], "hand_at_open": None, "hand_at_end": None,
-        "auto_played": [], "from_draw": [], "targets": [],
+        "from_draw": [], "targets": [],
         "enemy_powers": [], "vuln": 0, "weak": 0, "vuln_dmg": 0,
         "intent": 0, "expected": 0, "alive": 0, "enemy_lost": 0,
-        "self_taken": 0, "self_blocked": 0,
+        "self_taken": 0, "self_blocked": 0, "enemy_side": False,
     }
 
 
@@ -81,9 +91,9 @@ def _new_fight(fight, first):
         # The demand side: what there was to kill, and what killing it cost.
         # `pool` is the enemies' HP when the fight opened; `enemy_lost` and
         # `enemy_healed` are read off the HP deltas themselves, because those are
-        # the ground truth -- `hit` events miss damage over time (in one fight 27
-        # of 112 HP removed arrived with no attacker attached) and carry a sentinel
-        # when the game means "infinite" (Waterfall Giant logged a billion).
+        # the ground truth -- an enemy can lose HP with no hit at all (Living Fog's
+        # bomb dies with the Fog) and a delta can be a sentinel when the game means
+        # "infinite" (Waterfall Giant logged a billion).
         "pool": None, "enemy_lost": 0, "enemy_healed": 0, "enemy_sentinel": 0,
         # Damage to enemies that did not come from one of our attacks: poison and
         # other damage over time log with an empty attacker.
@@ -94,11 +104,13 @@ def _new_fight(fight, first):
 def derive(log, moves=None):
     """{"fights": [...], "checks": [...]} for one run's log object.
 
-    `moves` maps a move id to (hits, cycle): the hits it will land as [(damage per
-    hit, hits)], and what the monster that owns the move averages a turn across its
-    whole move list. The demand side -- what the enemies were about to do, and what
-    the encounter could do given enough turns. It is game data, passed in by the
-    caller; without it the intent fields stay zero rather than being guessed.
+    `moves` maps (encounter, move id) to (hits, cycle): the hits it will land as
+    [(damage per hit, hits)], and what the monster that owns the move averages a turn
+    across its whole move list. The plain move id is the fallback, for a summoned
+    monster the encounter does not list. The demand side -- what the enemies were
+    about to do, and what the encounter could do given enough turns. It is game data,
+    passed in by the caller; without it the intent fields stay zero rather than being
+    guessed.
     """
     moves = moves or {}
     events = log.get("log") or []
@@ -112,6 +124,16 @@ def derive(log, moves=None):
     # actually landed at +50%. Counting turns where it happened to be up at turn start
     # missed every debuff applied during a turn -- exactly the turns it pays on.
     vuln = {}
+    # What a Waterfall Giant has built so far, by creature.
+    eruption = {}
+    # The turns each GROWS move landed on, by (creature, move).
+    fired = {}
+    # This turn's enemies and what they're aiming, kept apart from `intent` because
+    # the opening state is too early to be the final word: Brimstone, Tainted and
+    # Enrage all land on your turn, before the enemies swing.
+    aiming = []
+    tainted = 0
+    vulnerable = 1
     # The hand, followed card by card. It has to survive the turn boundary: a
     # retained card (SNAKEBITE among them) is never re-drawn, so the opening hand
     # of a turn is the arrivals of this turn plus whatever the last one left.
@@ -122,6 +144,11 @@ def derive(log, moves=None):
         if turn is not None and fight is not None:
             fight["turns"].append(turn)
         turn = None
+        aiming.clear()
+
+    def aim():
+        turn["intent"] = sum(int((dmg + enemy["strength"] + tainted) * vulnerable) * count
+                             for enemy in aiming for dmg, count in enemy["hits"])
 
     def open_turn(number, reason):
         nonlocal turn, seen_openers
@@ -139,6 +166,8 @@ def derive(log, moves=None):
             fight = _new_fight(e.get("f", 0), a)
             fights.append(fight)
             hand_now.clear()
+            eruption.clear()
+            fired.clear()
             continue
         if fight is None:
             continue
@@ -183,20 +212,44 @@ def derive(log, moves=None):
                     #
                     # Strength counts here: a Knowledge Demon that buffs to +4 hits
                     # harder than its move list says, and reading the base numbers
-                    # alone made 175 damage of hits look like 121 of intent.
+                    # alone made 175 damage of hits look like 121 of intent. So does
+                    # Vulnerable on you, which is the enemy's doing: a 16 lands as 24.
+                    # Weak on them does not: that is your deck stopping the damage.
+                    you = next((c for c in a.get("creatures") or [] if c.get("you")), {})
+                    vulnerable = 1.5 if any(name.endswith("VULNERABLE_POWER")
+                                            for name in you.get("pow") or {}) else 1
+                    tainted = (you.get("pow") or {}).get(TAINTED, 0) or 0
+                    aiming.clear()
                     for c in a.get("creatures") or []:
                         if c.get("you") or not c.get("hp"):
                             continue
                         turn["alive"] += 1
-                        strength = (c.get("pow") or {}).get("POWER.STRENGTH_POWER", 0) or 0
-                        hits, cycle = moves.get(c.get("move") or "", ((), 0))
-                        for dmg, count in hits:
-                            turn["intent"] += (dmg + strength) * count
+                        # Keyed by encounter because a move id is not unique: 21
+                        # of them mean different damage on different monsters. Two
+                        # in one encounter are told apart by their max HP.
+                        move = c.get("move") or ""
+                        hits, cycle = (moves.get((fight["enc"], move, c.get("max")))
+                                       or moves.get((fight["enc"], move)) or moves.get(move, ((), 0)))
+                        # Waterfall Giant builds this every turn and deals it the turn
+                        # after it dies. No move list has a number for that, and by
+                        # then the power is gone, so it's what the last turn showed.
+                        built = (c.get("pow") or {}).get(ERUPTION)
+                        if built:
+                            eruption[c.get("c")] = built
+                        elif move == EXPLODE and c.get("c") in eruption:
+                            hits = ((eruption[c.get("c")], 1),)
+                        more, extra = GROWS.get(move, (0, 0))
+                        landed = len(fired.get((c.get("c"), move), ()))
+                        aiming.append({"c": c.get("c"), "move": move,
+                                       "strength": (c.get("pow") or {}).get(STRENGTH, 0) or 0,
+                                       "hits": [(dmg + more * landed, count + extra * landed)
+                                                for dmg, count in hits]})
                         # And what this monster would average a turn if the fight ran
                         # long enough for its whole move list to come round. The
                         # recorded moves stop when the fight does: kill it on turn 3
                         # and turns 4 to 6 never happen.
                         turn["expected"] += cycle
+                    aim()
                     # The debuffs standing on the enemies at the turn's start. Called
                     # out because it is the number the formula guesses at and telemetry
                     # is supposed to replace.
@@ -221,7 +274,12 @@ def derive(log, moves=None):
         if kind in OPENERS:
             side = a.get("side")
             if kind == "side0" and side not in (None, "Player"):
-                continue  # an enemy turn start is not the player's turn beginning
+                # Not the player's turn beginning, but it is what says the enemies
+                # got to act: a fight you win on your own turn never reaches here,
+                # one won during theirs does (Waterfall Giant explodes as it dies).
+                if turn is not None:
+                    turn["enemy_side"] = True
+                continue
             number = a.get("turn") or ts_turn
             if kind not in seen_openers:
                 if turn is None:
@@ -252,9 +310,16 @@ def derive(log, moves=None):
                 continue
         turn["events"] += 1
 
+        if kind == "hit" and turn["enemy_side"]:
+            for enemy in aiming:
+                if enemy["c"] == a.get("by") and enemy["move"] in GROWS:
+                    fired.setdefault((enemy["c"], enemy["move"]), set()).add(turn["n"])
+
         if kind == "hit" and a.get("by") == PLAYER and (a.get("t") or "") != PLAYER:
             turn["dmg"] += a.get("total") or 0
-            fight["dmg_hit"] += (a.get("unb") or 0) - (a.get("ovk") or 0)
+            # `unb` is the HP the hit really took, overkill already left out: it equals
+            # the HP delta beside it on every hit of both logged runs.
+            fight["dmg_hit"] += a.get("unb") or 0
             target = a.get("t") or ""
             if target and target not in turn["targets"]:
                 turn["targets"].append(target)
@@ -267,7 +332,7 @@ def derive(log, moves=None):
             # poison and other damage over time log with no attacker. It is damage
             # the deck caused, so it counts -- but it is not a card being played,
             # and calling it one is how a poison deck reads as a Withering deck.
-            amount = (a.get("unb") or 0) - (a.get("ovk") or 0)
+            amount = a.get("unb") or 0
             turn["dmg_other"] += amount
             fight["dmg_other"] += amount
         elif kind == "recv" and a.get("t") == PLAYER:
@@ -309,9 +374,9 @@ def derive(log, moves=None):
         elif kind == "eps":
             turn["spent"] += a.get("n") or 0
         elif kind == "enter":
-            # A card arriving in hand. Only the statuses and curses are counted:
-            # a card the enemy slipped into the deck is a draw you did not get, and
-            # counting it separately keeps "the deck was weak" apart from "the deck
+            # A card joining the fight, into any pile. Only the statuses and curses are
+            # counted: a card the enemy slipped into the deck is a draw you did not get,
+            # and counting it separately keeps "the deck was weak" apart from "the deck
             # was full of junk this fight".
             if (a.get("card") or "") in JUNK:
                 turn["junk"] += 1
@@ -344,6 +409,18 @@ def derive(log, moves=None):
             turn["generated"].append(a.get("card"))
         elif kind == "pow":
             power = a.get("p") or ""
+            # What lifts the enemies' hits before they swing counts as aimed. What your
+            # deck takes off them does not, like Weak: that's damage it stopped. A cut
+            # given back comes after they've swung, so it never shows as a rise here.
+            if not turn["enemy_side"]:
+                if power == STRENGTH and (a.get("d") or 0) > 0:
+                    for enemy in aiming:
+                        if enemy["c"] == a.get("c"):
+                            enemy["strength"] += a.get("d")
+                    aim()
+                elif power == TAINTED and a.get("c") == PLAYER:
+                    tainted = a.get("n") or 0
+                    aim()
             if a.get("c") == PLAYER:
                 turn["powers"][power] = a.get("n")
             else:
@@ -404,14 +481,17 @@ def derive(log, moves=None):
         # mid-fight (Axebots respawn, Ovicopter hatches eggs) or healed itself.
         f["enemy_net"] = f["enemy_lost"] - f["enemy_healed"]
         f["dealt_removed"] = f["dmg_hit"] + f["dmg_other"]
-        # Everything else that took HP off an enemy: damage with no hit behind it at
+        # Everything else that took HP off an enemy: HP gone with no hit behind it at
         # all. Poison and Burn still log a hit with an empty attacker; this is the
-        # bucket for the effects that are not damage at all -- Doom's countdown to
-        # the enemy's own HP, an HP-loss effect, anything the game resolves without an
-        # attack. It is not "damage the deck dealt" and must not be counted as such,
-        # which is why it is named rather than folded in.
-        f["enemy_unexplained"] = max(0, f["enemy_net"] - f["dealt_removed"])
-        f["spawned"] = max(0, f["enemy_net"] - (f["pool"] or 0))
+        # bucket for what does not. So far that is Living Fog's bomb dying with the Fog,
+        # 4 HP across both logged runs. It is off the gross figure, because a healing
+        # boss's healing would hide it in the net one. It is not "damage the deck
+        # dealt" and must not be counted as such, which is why it is named rather
+        # than folded in.
+        f["enemy_unexplained"] = max(0, f["enemy_lost"] - f["dealt_removed"])
+        # Off the gross figure: a boss that revives (Test Subject heals 500) has more to
+        # chew through than stood there, however much of it was healing.
+        f["spawned"] = max(0, f["enemy_lost"] - (f["pool"] or 0))
         # HP paid that no incoming hit explains: the deck's own costs (Bloodletting,
         # Offering, potions). A fact about the deck, not a hole in the log.
         f["self_dmg"] = max(0, f["hp_in"] - f["taken"])
@@ -495,7 +575,7 @@ def check(derived):
             have = []
             for t in f["turns"]:
                 have += (t["hand"] + t["drawn"] + t["generated"] + t["hand_by_pile"]
-                         + t["auto_played"] + t["from_draw"])
+                         + t["from_draw"])
             for card in (c for t in f["turns"] for c in t["played"]):
                 if card in have:
                     have.remove(card)

@@ -936,6 +936,17 @@ class ProcessTests(Uploads, unittest.TestCase):
                              (None, [], []))
         self.assertEqual(rest_node["restChoice"], "CLONE")
 
+    def test_an_event_fight_stays_the_event_on_the_map(self):
+        # The fight is a second room behind the event's own. The map keeps showing the
+        # event; the fight's turns and encounter sit beside it.
+        event = {"model_id": "EVENT.X", "turns_taken": 0}
+        fight = {"model_id": "ENCOUNTER.Y", "monster_ids": ["MONSTER.Z"], "turns_taken": 3}
+        node = {"map_point_type": "unknown", "rooms": [event, fight], "player_stats": [{}]}
+        got = handler.run.extract_timeline({"map_point_history": [[node]]})[0]
+        self.assertEqual((got["enc"], got["fight"], got["turns"]), ("EVENT.X", "ENCOUNTER.Y", 3))
+        plain = {"map_point_type": "monster", "rooms": [fight], "player_stats": [{}]}
+        self.assertNotIn("fight", handler.run.extract_timeline({"map_point_history": [[plain]]})[0])
+
     def test_multiplayer_matches_float_rounded_steam_ids(self):
         # Some game builds write the Steam ID as a float64, which rounds the
         # last digits (76561198012345678 -> 76561198012345680). The uploader

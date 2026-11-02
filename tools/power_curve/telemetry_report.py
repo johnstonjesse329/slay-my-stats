@@ -38,50 +38,82 @@ import run  # noqa: E402
 TELEMETRY = HERE / "telemetry_raw"
 RAW = HERE / "gamma_raw"
 FROST = pc.ORB_PASSIVE["Frost"]
+# Deadly Enemies: the ascension enemy damage goes up at.
+DEADLY = 9
 
 
-def cycle_table():
+def cycle_table(key="dmg"):
     """{monster: damage a turn its move list averages} -- the smooth expectation.
 
     A fight's recorded moves are exact but bounded by how long the fight lasted: kill
     the enemy on turn 3 and it never shows you turns 4 to 6. This is what the same
     monster averages if its moves come round evenly, so a short fight can still be
     read against what the encounter was capable of. Moves that deal no damage count
-    as zero, which is what they are.
+    as zero, which is what they are. `key` picks the column: "dmgAsc" is Deadly Enemies,
+    ascension 9 and up.
     """
     out = {}
     for name, record in pc.PD["monsters"].items():
         moves = record.get("moves") or []
         if not moves:
             continue
-        per_move = [sum((i.get("dmg") or 0) * (i.get("hits") or 1)
+        per_move = [sum((i.get(key) or i.get("dmg") or 0) * (i.get("hits") or 1)
                         for i in move.get("intents") or []) for move in moves]
         out[name] = sum(per_move) / len(per_move)
     return out
 
 
-def move_table():
-    """{move id: ([(damage per hit, hits)], what its monster averages a turn)}.
+def move_table(key="dmg"):
+    """{(encounter, move id, max HP), (encounter, move id) or move id: ([(damage per
+    hit, hits)], what its monster averages a turn)}. `key` picks the column, as in
+    cycle_table.
 
     Damage per hit is kept separate from hits because an enemy's Strength lifts each
     hit, not the total, and the owner's cycle average rides along so a fight that
     ended early can be read against the whole move list.
+
+    A move id is not unique: 39 are shared between monsters and 21 of those differ in
+    damage. BITE_MOVE is 5 on a Phantasmal Gardener and 13 on a Tunneler, and a logged
+    creature only names its encounter slot ("first"), so the encounter is what says
+    whose move it was. The plain id stays as the fallback for a summoned monster the
+    encounter does not list. Six encounters hold two monsters sharing an id with
+    different numbers (Flail Knight's RAM_MOVE is 15, Magi Knight's 10). There a
+    creature's max HP says which it is, so those moves get a key for each HP the
+    monster can have. Where the bands touch (small Slimes, 11 and 12) and in co-op,
+    where HP is scaled, the first monster listed wins.
     """
-    cycles = cycle_table()
-    out = {}
+    cycles = cycle_table(key)
+    entries = {}
     for name, record in pc.PD["monsters"].items():
-        for move in record.get("moves") or []:
-            out[move["id"]] = ([(i.get("dmg") or 0, i.get("hits") or 1)
-                                for i in move.get("intents") or [] if i.get("dmg")],
-                               cycles.get(name, 0))
+        entries[name] = {move["id"]: ([(i.get(key) or i.get("dmg") or 0, i.get("hits") or 1)
+                                       for i in move.get("intents") or [] if i.get("dmg")],
+                                      cycles.get(name, 0))
+                         for move in record.get("moves") or []}
+    out = {}
+    for own in entries.values():
+        out.update(own)
+    for enc, record in pc.PD["encounters"].items():
+        owners = {}
+        for name in record.get("monsters") or []:
+            for move, entry in entries.get(name, {}).items():
+                out.setdefault((enc, move), entry)
+                owners.setdefault(move, []).append(name)
+        for move, names in owners.items():
+            if len({tuple(entries[name][move][0]) for name in names}) > 1:
+                for name in names:
+                    monster = pc.PD["monsters"][name]
+                    for hp in range(min(monster.get("hpMin") or [0]), max(monster.get("hpMax") or [0]) + 1):
+                        out.setdefault((enc, move, hp), entries[name][move])
     return out
 
 
-def load_logs():
+def load_logs(runs=None):
     """{(steam id, run start time): derived run} for every v3 log on disk.
-    Older per-turn summaries are counted and set aside: they carry v1's reading."""
+    Older per-turn summaries are counted and set aside: they carry v1's reading.
+    A log does not carry its ascension, so the run file says which moves it faced."""
+    runs = load_runs() if runs is None else runs
     out, older = {}, 0
-    moves = move_table()
+    base, deadly = move_table(), move_table("dmgAsc")
     for f in sorted(TELEMETRY.rglob("*.json.gz")):
         try:
             with gzip.open(f, "rt", encoding="utf-8") as fh:
@@ -92,7 +124,9 @@ def load_logs():
             older += 1
             continue
         try:
-            out[(f.parent.name, int(f.name.split(".")[0]))] = dt.derive(log, moves)
+            key = (f.parent.name, int(f.name.split(".")[0]))
+            asc = runs.get(key, {}).get("ascension") or 0
+            out[key] = dt.derive(log, deadly if asc >= DEADLY else base)
         except (ValueError, TypeError, KeyError):
             continue
     return out, older
@@ -110,15 +144,14 @@ def load_runs():
 def align(fights, timeline):
     """Pairs the log's fights with the run's combat nodes by encounter id, in order.
 
-    A fight can exist in one list and not the other -- the mod sees an event
-    encounter the run file records as an event, and a run written by an older
+    A fight can exist in one list and not the other -- a run written by an older
     parser may lack a fight the log has -- so this aligns on content rather than
     assuming the two lists line up. Sequence alignment keeps the order and skips
     whichever side is missing an entry.
     """
     combats = [n for n in timeline if n.get("turns") or str(n.get("enc") or "").startswith("ENCOUNTER.")]
     a = [f.get("enc") or "" for f in fights]
-    b = [n.get("enc") or "" for n in combats]
+    b = [n.get("fight") or n.get("enc") or "" for n in combats]
 
     # Longest common subsequence on the encounter ids: O(len(a)*len(b)), and both
     # lists are under a few hundred.
@@ -151,6 +184,18 @@ def costs_of(deck):
     return out
 
 
+def card_costs():
+    """{card id: energy cost, "X", or None for one that cannot be played}, for every
+    card in the game: throughput has to price what a turn played, which is not only the
+    deck (Shivs, generated cards)."""
+    out = {}
+    for cid, card in pc.CD.items():
+        dead = (cid in dt.JUNK or card.get("type") in ("Status", "Curse")
+                or "Unplayable" in (card.get("keywords") or []))
+        out[cid] = None if dead else "X" if card.get("costsX") else max(card.get("energy") or 0, 0)
+    return out
+
+
 def throughput(fight, costs):
     """What a fight's turns put out, measured the way the deck is actually judged.
 
@@ -164,10 +209,9 @@ def throughput(fight, costs):
     if not turns:
         return None
     played = statistics.mean(len(t["played"]) for t in turns)
-    free = statistics.mean(len(t["auto_played"]) for t in turns)
     equiv = statistics.mean(sum(costs.get(c, 0) for c in t["played"]) for t in turns)
     spent = statistics.mean(t["spent"] for t in turns)
-    return {"played": played, "free": free, "equiv": equiv, "spent": spent}
+    return {"played": played, "equiv": equiv, "spent": spent}
 
 
 def measured(derived):
@@ -207,7 +251,7 @@ def measured(derived):
 
 
 def projected(deck, rids):
-    """The Runs page's four lines for that deck, in the same units."""
+    """The formula's four lines for that deck, in the same units."""
     f = pf.formula(deck, rids)
     return {
         "damage": (f["f_dmg"] + f["f_str"] + f["f_dot"])
@@ -258,7 +302,7 @@ def encounter_baseline(runs):
         except Exception:
             continue
         for node in parsed.get("timeline") or []:
-            enc = node.get("enc")
+            enc = node.get("fight") or node.get("enc")
             if not enc or not node.get("turns"):
                 continue
             seen.setdefault(enc, []).append((node.get("turns") or 0, node.get("dmg") or 0))
@@ -270,8 +314,8 @@ def main():
     only = None
     if "--run" in sys.argv:
         only = int(sys.argv[sys.argv.index("--run") + 1])
-    logs, older = load_logs()
     runs = load_runs()
+    logs, older = load_logs(runs)
     if not logs:
         print(f"No v3 event logs in {TELEMETRY}"
               + (f" ({older} older summaries, which carry v1's reading)" if older else "")
@@ -360,8 +404,7 @@ def main():
     if thru:
         p_cards = statistics.mean(r["p"]["drawn"] for r in rows)
         print(f"\n   throughput per turn (what the deck actually put out)")
-        print(f"     cards played   measured {statistics.mean(t['played'] for t in thru):5.2f}"
-              f"   of which free {statistics.mean(t['free'] for t in thru):4.2f}")
+        print(f"     cards played   measured {statistics.mean(t['played'] for t in thru):5.2f}")
         print(f"     energy spent   measured {statistics.mean(t['spent'] for t in thru):5.2f}")
         print(f"     their list price       {statistics.mean(t['equiv'] for t in thru):5.2f}"
               f"   (energy-equivalent, so free plays count)")
@@ -429,7 +472,7 @@ def main():
             faced = (f["blocked"] + f["taken"]) / f["turns_n"]
             selfhurt = (f["self_blocked"] + f["self_taken"]) / f["turns_n"]
             print(f"   {f['i']:>3} {f['enc'].replace('ENCOUNTER.', '')[:32]:<32} {f['turns_n']:>5} "
-                  f"{f['pool'] or 0:>5} {f['enemy_net']:>7} {f['enemy_net'] / f['turns_n']:>6.1f} "
+                  f"{f['pool'] or 0:>5} {f['enemy_lost']:>7} {f['enemy_lost'] / f['turns_n']:>6.1f} "
                   f"{f.get('lost_median', 0):>6} {f.get('lost_peak', 0):>5} {f.get('idle_turns', 0):>4} "
                   f"{f['intent_total'] / f['turns_n']:>6.1f} {faced:>6.1f} "
                   f"{f['expected_total'] / f['turns_n']:>6.1f} {f['blocked']:>7} {f['taken']:>5} "
@@ -452,8 +495,9 @@ def main():
         unattributed = sum(f.get("enemy_unexplained", 0) for f in derived["fights"])
         if unattributed:
             total = sum(f["enemy_net"] for f in derived["fights"]) or 1
-            print(f"   HP taken off enemies with no hit behind it (Doom's countdown, HP-loss "
-                  f"effects): {unattributed} of {total} removed, {unattributed / total:.0%}")
+            print(f"   HP enemies lost with no hit behind it (minions dying with their owner, "
+                  f"as Living Fog's bomb does): {unattributed} of {total} removed, "
+                  f"{unattributed / total:.0%}")
 
     # 5. Floor by floor, against your own history of that encounter. The run files
     # make this possible for every run, so the anchor is "how long this fight usually
@@ -484,7 +528,7 @@ def main():
                 usual.append(stats[1])
                 print(f"   {node['floor'] + 1:>5} {(node.get('enc') or '').replace('ENCOUNTER.', '')[:32]:<32} "
                       f"{fight['turns_n']:>5} {stats[1]:>5.0f} {fight['taken']:>5} {stats[2]:>5.0f} "
-                      f"{fight['enemy_net'] / fight['turns_n']:>6.1f}")
+                      f"{fight['enemy_lost'] / fight['turns_n']:>6.1f}")
             if mine:
                 print(f"   {'':>5} {'all matched floors':<32} {sum(mine):>5} {sum(usual):>5.0f}")
 

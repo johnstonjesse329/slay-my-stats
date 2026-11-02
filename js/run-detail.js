@@ -78,6 +78,7 @@ const DETAIL_SORT_FNS = {
   asc:   (a, b) => a.asc - b.asc,
   won:   (a, b) => a.won - b.won,
   floor: (a, b) => a.floor - b.floor,
+  read:  (a, b) => runReadingRank(a) - runReadingRank(b),
   date:  (a, b) => a.ts - b.ts,
 };
 
@@ -134,16 +135,17 @@ function renderDetailRunList() {
 
   // A first click sorts A-Z for characters and high-to-low (wins first,
   // newest first) for the rest; a second click flips it.
-  const sortHead = (col, label) => {
+  const sortHead = (col, label, tip) => {
     const on = col === detailSortCol;
     const dir = on ? (detailSortAsc ? " asc" : " desc") : "";
-    return `<span class="detail-run-${col} detail-run-sort${dir}" data-col="${col}" tabindex="0" role="button"><span>${label}</span></span>`;
+    return `<span class="detail-run-${col} detail-run-sort${dir}" data-col="${col}" tabindex="0" role="button"${tip ? ` data-tip="${tip}"` : ""}><span>${label}</span></span>`;
   };
   container.innerHTML = `<div class="detail-run-header-row">
     ${sortHead("char", "Char")}
     ${sortHead("asc", "Asc")}
     ${sortHead("won", "W/L")}
     ${sortHead("floor", "Floor")}
+    ${sortHead("read", "+/–", `Ahead of, meeting or behind winners on this run's fights.\nOP: ahead in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
     <span></span>
     ${sortHead("date", "Date")}
   </div>` + runs.map((run, i) => {
@@ -155,8 +157,9 @@ function renderDetailRunList() {
       <span class="detail-run-asc" style="color:#bcbcd0">A${run.asc}</span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:#bcbcd0">F${run.floor}</span>
-      <span>${moddedTagHtml(run, false, true)}</span>
-      <span class="detail-run-date" style="color:#8a8aa0">${fmtDate(run.ts)}</span>
+      <span class="detail-run-read">${runReadingHtml(run, true)}</span>
+      <span class="detail-run-mod">${moddedTagHtml(run, false, true)}</span>
+      <span class="detail-run-date" style="color:#8a8aa0">${fmtDate(run.ts).replace(/\/\d+$/, `<span class="detail-run-year">$&</span>`)}</span>
     </div>`;
   }).join("");
 
@@ -327,6 +330,7 @@ function renderDetailRun(run) {
       <span style="font-weight:700;font-size:1.1rem">${label}</span>
       <span style="color:#bcbcd0">A${run.asc}</span>
       <span style="color:${won ? "#5cba7d" : "#e05c5c"};font-weight:600">${won ? "Victory" : "Defeat"}</span>
+      ${runReadingHtml(run)}
       <span style="color:#bcbcd0">Floor ${run.floor}</span>
       <span style="color:#bcbcd0">${fmtHrsMin(run.mins)}</span>
       <span class="rh-date">${fmtDate(run.ts)}</span>
@@ -349,7 +353,7 @@ function renderDetailRun(run) {
   renderDetailGoldChart(run);
   renderDetailDeckChart(run);
   renderDetailRelicChart(run);
-  renderDetailStrengthCharts(run);
+  renderDetailKeepCharts(run);
   renderDetailDeckRelics(run);
 }
 
@@ -380,7 +384,7 @@ const _encAvgDmg = (() => {
 function fmtNodeLabel(id) {
   if (!id) return "";
   if (DATA.encLabels && DATA.encLabels[id]) return DATA.encLabels[id];
-  return id.replace(/^[A-Z]+\./, "").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return id.replace(/^[A-Z]+\./, "").replace(/_EVENT(_V\d)?_ENCOUNTER$/, "").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function cardImgSrc(id) {
@@ -673,26 +677,27 @@ const HP_LINE = "#5cba7d";
 // Images are shared between charts and redraw the chart once they decode.
 const HP_ICON_KEYS   = new Set(["elite", "unknown_elite", "rest_site", "event"]);  // + any boss
 const GOLD_ICON_KEYS = new Set(["shop", "unknown_shop", "event"]);
-const nodePointImages = new Map();  // icon src -> Image
-function nodePoints(nodes, getChart, highlight) {
-  const srcs = nodes.map(n => {
-    const key = nodeIconKey(n);
-    return highlight(n, key) && DATA.nodeIcons ? DATA.nodeIcons[key] : null;
+const nodePointImages = new Map();  // "size src" -> Image
+function nodePoints(nodes, getChart, highlight, size = NODE_POINT, keyOf = nodeIconKey) {
+  const srcs = nodes.map((n, i) => {
+    const key = keyOf(n);
+    return highlight(n, key, i) && DATA.nodeIcons ? DATA.nodeIcons[key] : null;
   });
   return {
     pointStyle: srcs.map(src => {
       if (!src) return "circle";
-      let img = nodePointImages.get(src);
+      const sized = `${size} ${src}`;
+      let img = nodePointImages.get(sized);
       if (!img) {
-        img = new Image(NODE_POINT, NODE_POINT);
+        img = new Image(size, size);
         img.src = src;
-        nodePointImages.set(src, img);
+        nodePointImages.set(sized, img);
       }
       if (!img.complete) img.addEventListener("load", () => getChart()?.update("none"), { once: true });
       return img;
     }),
-    pointRadius: srcs.map(src => src ? NODE_POINT / 2 : 0),
-    pointHoverRadius: srcs.map(src => src ? NODE_POINT / 2 : 4),
+    pointRadius: srcs.map(src => src ? size / 2 : 0),
+    pointHoverRadius: srcs.map(src => src ? size / 2 : 4),
     // An icon on the first or last floor overhangs the plot's side edge.
     clip: false,
   };
@@ -1210,7 +1215,7 @@ function floorBands(bands) {
 
 // The hover box is plain HTML rather than Chart.js's canvas tooltip, so it can
 // hold the floor's gains at full size: real card faces and relic text.
-// One box serves both charts; it is rebuilt only when the floor changes.
+// One box serves every floor chart; it is rebuilt only when the floor changes.
 let floorTip = null;
 function showFloorTip(context, html) {
   if (!floorTip) {
@@ -1418,24 +1423,45 @@ function renderDetailRelicChart(run) {
     floorMarkerRow(["Uncommon", "Rare", "Ancient"], G.color);
 }
 
-// ---- Deck strength by floor ----
+// ---- Keeping up by floor ----
 
-// deckStrengthByFloor's four per-turn numbers in two charts, one per unit:
-// damage and block (HP), energy and cards drawn. The hover box gives all four,
-// how far the floor moved them, and what it added or removed.
-//
-// For a run the mod has been in, the same chart also draws what the fights actually
-// did (DATA.measuredRuns, tools/power_curve/export_measured.py). The projection is
-// an estimate of what a deck could do; the measured line is what this deck did, and
-// where they disagree the measured one is right -- a Shiv deck's whole output is
-// cards the formula cannot see it drawing.
-const STRENGTH_LINES = {
-  damage: { label: "Damage", color: "#e0604f", chart: "hp" },
-  block:  { label: "Block",  color: "#4087de", chart: "hp" },
-  energy: { label: "Energy", color: "#b5861a", chart: "play" },
-  draw:   { label: "Cards",  color: "#9b7fe0", chart: "play" },
+// Three charts, each with its own hover box, and every point is the fight on that floor:
+// nothing is averaged across different monsters. An icon marks what winners did on that
+// fight, and shows what kind of fight it was. Above them each act is read the same way,
+// its fights summed against what winners did on each. DATA.fightDemand
+// (tools/power_curve/fight_demand.py) is the fight's side: its HP, and the average turns
+// and damage taken of runs that won it with the monsters tuned the same, whoever played
+// them. A run the mod has been in also has what the fight did inside (DATA.measuredRuns,
+// tools/power_curve/export_measured.py), and only those runs can show energy and cards:
+// a run file doesn't say.
+const KEEP_LINES = {
+  damage: { label: "Damage done", color: "#e0604f" },
+  taken:  { label: "Damage taken", color: "#4087de" },
+  drawn:  { label: "Cards drawn", color: "#9b7fe0" },
+  played: { label: "Cards played", color: "#2fa384" },
+  energy: { label: "Energy played", color: "#b5861a" },
 };
-let detailStrengthCharts = [];
+const KEEP_DEMAND_COLOR = "#c4c4d4";
+// Fights an act takes before it gets a reading: fight_demand.py's ACT_MIN.
+const KEEP_ACT_MIN = 3;
+// Winners' damage taken over yours, where behind ends and ahead starts: fight_demand.py's
+// EDGES.
+const KEEP_EDGES = [0.67, 1.5];
+// Winners' turns over yours: fight_demand.py's SLOW and FAST.
+const KEEP_TURN_EDGES = [0.8, 1.25];
+// The acts a run has to read ahead in to be OP: fight_demand.py's OP_ACTS, counted from 1.
+const KEEP_OP_ACTS = [2, 3];
+// A reading's mark: the shape says it as well as the colour.
+const KEEP_SIGNS = { ahead: "▲", meeting: "–", behind: "▼" };
+// Fight icons on a chart, in px: about a floor's width, and still readable on a phone.
+const KEEP_ICON = { min: 12, max: 22 };
+// The kinds of fight, in the order an act card lists them.
+const KEEP_KINDS = { monster: "Normal", elite: "Elites", boss: "Boss" };
+// How each tier is named on the page: fight_demand.py's TIER_NAMES, for a reader.
+const KEEP_TIER_NAMES = ["ascension 7 and under", "ascension 8", "ascension 9 and up"];
+// What a turn starts with before the deck adds anything.
+const KEEP_BASE = { energy: 3, cards: 5 };
+let detailKeepCharts = [];
 
 // The measured series for this run, aligned to the chart's nodes by floor number.
 // Null when the run has no event log, which is most of them.
@@ -1446,53 +1472,328 @@ function measuredStrengthByNode(run, nodes) {
   return nodes.map(n => byFloor.get(n.floor + 1) || null);
 }
 
-function renderDetailStrengthCharts(run) {
+// One player's share of a co-op enemy's HP, over its solo HP: fight_demand.py's hp_share.
+const keepShare = (run, node) => !run.mp ? 1 : node.act === 1 ? 1.1 : node.act === 3 && node.type === "boss" ? 1.3 : 1.2;
+
+// How an ascension's monsters are tuned: fight_demand.py's tier.
+const keepTier = asc => (asc >= 8) + (asc >= 9);
+
+// A floor's damage taken with what it healed off it, down to 0: fight_demand.py's net_taken.
+const keepTaken = n => Math.max(0, (n.dmg || 0) - (n.healed || 0));
+
+// Which of an encounter's lines this run reads against, or null if too few have won it
+// with the monsters tuned the same: fight_demand.py's winners_of.
+const keepWinners = (run, d) => {
+  const line = d.tiers[keepTier(run.asc)];
+  const how = (run.mp && line.coop) || line;
+  return how.turns ? how : null;
+};
+
+// What was fought on a node, if anything. An event's fight names the fight apart from
+// the event, because the map still shows it as the event.
+const keepFight = n => n.turns ? n.fight || n.enc : "";
+
+// Whatever the map called the room: a "?" room or an event can hide a fight of either kind.
+const keepRank = n => n.type === "boss" ? "Boss" : /_ELITE$/.test(keepFight(n)) ? "Elite" : "";
+
+// A fight's map icon: fight, elite, or the boss's own portrait.
+const keepIconKey = n => n.type === "boss" ? nodeIconKey(n) : keepRank(n) ? "elite" : "monster";
+
+// fight_demand.py's readings, floor by floor: keep the two together. A logged fight's HP
+// is what the log saw come off, respawns and all, because an enemy's HP rolls per run and
+// the table only has its middle. A logged loss can't have left more than was there. Not
+// in co-op, until a log has shown whose numbers it carries with a party in the fight.
+// A lost fight has no damage figure without a log: the run file doesn't say how much HP
+// came off. A death is a death, so the line drops to 0 on that floor instead of stopping
+// short, and the hover box says there is no figure. That floor gets a row even when the
+// data has no HP for the fight. Damage taken is the run file's on every run, because
+// winners' is: all of it, whatever its source, with what the floor healed off it.
+function fightReadings(run, nodes, measured) {
+  if (!DATA.fightDemand) return null;
+  const demand = DATA.fightDemand.encounters;
+  const tough = +(run.asc >= 8);
+  const lastFight = nodes.findLastIndex(keepFight);
+  const rows = nodes.map((n, i) => {
+    const d = demand[keepFight(n)];
+    const table = d ? d.pool[tough] * keepShare(run, n) : 0;
+    const lost = !run.won && i === lastFight;
+    if (!table && !lost) return null;
+    const how = d && keepWinners(run, d);
+    const m = !run.mp && measured && measured[i];
+    const pool = !m ? table : lost ? Math.max(table, m.removed) : m.removed;
+    const row = { pool, lost, turns: n.turns, many: d?.many };
+    if (how) { row.winTurns = how.turns; row.winN = how.n; if (pool) row.ask = pool / how.turns; }
+    if (m || !lost) row.doing = (m ? m.removed : pool) / n.turns;
+    // Enemies act after you, so a fight you won gives them a turn less.
+    const enemyTurns = m ? m.enemyTurns : n.turns - (lost ? 0 : 1);
+    if (enemyTurns) {
+      row.total = keepTaken(n);
+      row.taken = row.total / enemyTurns;
+      row.healedOff = (n.dmg || 0) - row.total;
+      row.healedAll = n.healed || 0;
+      row.healed = row.healedOff / enemyTurns;
+      if (how) { row.winRate = how.rate; row.winTotal = how.taken; }
+      // What the log blocked, and what arrived is that and all of what got through, so
+      // the hover box adds up.
+      if (m) { row.blocked = m.arrived - m.taken / enemyTurns; row.arrived = row.blocked + row.healed + row.taken; }
+    }
+    if (m) row.play = { drawn: m.draw, played: m.played, energy: m.listPrice, spent: m.spent, junk: m.junk };
+    return row;
+  });
+  return rows.some(r => r) ? rows : null;
+}
+
+const keepMark = (value, [low, high]) => value < low ? "behind" : value > high ? "ahead" : "meeting";
+
+// fight_demand.py's verdict.
+const keepVerdict = (pace, guard) => {
+  const held = keepMark(guard, KEEP_EDGES);
+  return held === "meeting" && pace > KEEP_TURN_EDGES[1] && guard >= 1 ? "ahead" : held;
+};
+
+// fight_demand.py's act_readings and lacking: keep them together. Turns and damage taken
+// are the run file's on every run, logged or not, because winners' averages are built
+// from them. A log adds what a run file can't say.
+function actReadings(run, nodes, measured) {
+  if (!DATA.fightDemand) return [];
+  const demand = DATA.fightDemand.encounters;
+  const lastFight = nodes.findLastIndex(keepFight);
+  const acts = new Map();
+  nodes.forEach((n, i) => {
+    const d = demand[keepFight(n)];
+    const how = d && keepWinners(run, d);
+    if (!how || (!run.won && i === lastFight)) return;
+    if (!acts.has(n.act)) acts.set(n.act, { act: n.act, fights: 0, kinds: {}, turns: 0, winTurns: 0, taken: 0, healed: 0, winTaken: 0, log: null });
+    const a = acts.get(n.act);
+    a.fights++;
+    const key = keepIconKey(n);
+    a.kinds[key] = (a.kinds[key] || 0) + 1;
+    a.turns += n.turns;
+    a.winTurns += how.turns;
+    a.taken += keepTaken(n);
+    a.healed += (n.dmg || 0) - keepTaken(n);
+    a.winTaken += how.taken;
+    const m = !run.mp && measured && measured[i];
+    if (!m) return;
+    a.log = a.log || { turns: 0, removed: 0, drawn: 0, played: 0, energy: 0, spent: 0 };
+    a.log.turns += n.turns;
+    a.log.removed += m.removed;
+    a.log.drawn += m.draw * n.turns;
+    a.log.played += m.played * n.turns;
+    a.log.energy += m.listPrice * n.turns;
+    a.log.spent += m.spent * n.turns;
+  });
+  const short = (pace, each) => pace < each ? "damage" : "block";
+  return [...acts.values()].filter(a => a.fights >= KEEP_ACT_MIN).map(a => {
+    const pace = a.winTurns / a.turns, guard = (a.winTaken + 1) / (a.taken + 1), each = guard / pace;
+    const speed = keepMark(pace, KEEP_TURN_EDGES), held = keepMark(guard, KEEP_EDGES);
+    const verdict = keepVerdict(pace, guard);
+    return { ...a, pace, guard, each, speed, held, verdict, lacking: verdict === "behind" ? short(pace, each) : null };
+  });
+}
+
+// fight_demand.py's run_reading: keep them together. A run as a whole, its acts' totals
+// through the same verdict, so it follows from the act cards. OP is both of the late acts
+// reading ahead, and takes no win.
+function runReading(acts) {
+  if (!acts.length) return null;
+  const sum = key => acts.reduce((total, a) => total + a[key], 0);
+  const turns = sum("turns"), winTurns = sum("winTurns"), taken = sum("taken"), winTaken = sum("winTaken");
+  const pace = winTurns / turns, guard = (winTaken + 1) / (taken + 1);
+  const op = KEEP_OP_ACTS.every(act => acts.some(a => a.act === act && a.verdict === "ahead"));
+  return { turns, winTurns, taken, winTaken, pace, guard, verdict: keepVerdict(pace, guard), op };
+}
+
+// The run list reads every run to fill a column and sort by it, so each is read once.
+// Only what a run file says: the log's figures make no difference to a verdict.
+const keepRunReadings = new WeakMap();
+function runReadingOf(run) {
+  if (!keepRunReadings.has(run)) keepRunReadings.set(run, runReading(actReadings(run, run.timeline || [], null)));
+  return keepRunReadings.get(run);
+}
+
+// OP, then ahead down to behind, then runs with no reading.
+function runReadingRank(run) {
+  const r = runReadingOf(run);
+  return !r ? 0 : r.op ? 4 : ["behind", "meeting", "ahead"].indexOf(r.verdict) + 1;
+}
+
+const keepSignal = (tone, what) => `<span class="keep-signal ${tone}" role="img" aria-label="${what}" title="${what}">${KEEP_SIGNS[tone]}</span>`;
+
+// A run's reading on its header, or just its mark in the run list (short). The numbers
+// are on hover, as they are on an act's mark.
+function runReadingHtml(run, short = false) {
+  const r = runReadingOf(run);
+  if (!r) return "";
+  const word = r.verdict[0].toUpperCase() + r.verdict.slice(1);
+  const tip = [
+    r.op ? `OP: ahead in Acts ${KEEP_OP_ACTS.join(" and ")}` : `${word}${r.verdict === "ahead" ? " of" : ""} winners on this run's fights`,
+    `Turns to kill: ${r.turns}, winners ${+r.winTurns.toFixed(1)}`,
+    `Damage taken: ${Math.round(r.taken)}, winners ${Math.round(r.winTaken)}`,
+    ...(run.won ? [] : ["Not counting the fight that ended it"]),
+  ].join("\n");
+  const focus = short ? "" : ` tabindex="0"`;
+  if (r.op) return `<span class="run-reading op" data-tip="${tip}"${focus}>${short ? "" : `<span aria-hidden="true">▲▲</span>`}OP</span>`;
+  if (short) return `<span class="keep-signal ${r.verdict}" role="img" aria-label="${word}" data-tip="${tip}">${KEEP_SIGNS[r.verdict]}</span>`;
+  return `<span class="run-reading ${r.verdict}" data-tip="${tip}"${focus}><span class="keep-signal ${r.verdict}" aria-hidden="true">${KEEP_SIGNS[r.verdict]}</span>${word}</span>`;
+}
+
+function renderKeepActs(run, nodes, measured) {
+  const box = document.getElementById("detail-keep-acts");
+  const acts = actReadings(run, nodes, measured);
+  box.style.display = acts.length ? "" : "none";
+  const row = (label, value, ...notes) => `<div class="keep-act-row"><span>${label}</span>${value}` +
+    notes.filter(Boolean).map(n => `<span class="keep-act-note">${n}</span>`).join("") + `</div>`;
+  const whole = v => +v.toFixed(1);
+  // The fights an act's numbers cover, by kind: normal, elites, boss.
+  const kindOf = key => key in KEEP_KINDS ? key : "boss";
+  const order = Object.keys(KEEP_KINDS);
+  const kinds = a => Object.entries(a.kinds).sort(([x], [y]) => order.indexOf(kindOf(x)) - order.indexOf(kindOf(y))).map(([key, n]) =>
+    `<span class="keep-kind" title="${KEEP_KINDS[kindOf(key)]}: ${n}">${nodeIconHtml(key, 18, kindOf(key))}${n}</span>`).join("");
+  box.innerHTML = acts.map(a => {
+    const log = a.log;
+    const perTurn = v => (v / log.turns).toFixed(1);
+    const verdict = a.verdict[0].toUpperCase() + a.verdict.slice(1) + (a.lacking ? `: lacking ${a.lacking}` : "");
+    return `<div class="keep-act"><h3>Act ${a.act}${keepSignal(a.verdict, verdict)}</h3><div class="keep-kinds">${kinds(a)}</div>` +
+      row("Turns to kill", `<b>${a.turns} ${keepSignal(a.speed, `Turns to kill: ${a.speed}`)}</b>`, `winners ${whole(a.winTurns)}`,
+        log && `${perTurn(log.removed)} damage done a turn, ${(log.removed / log.played).toFixed(1)} a card played`) +
+      row("Damage taken", `<b>${Math.round(a.taken)} ${keepSignal(a.held, `Damage taken: ${a.held}`)}</b>`,
+        a.healed && `after ${Math.round(a.healed)} healed`, `winners ${Math.round(a.winTaken)}`) +
+      (log ? row("Energy", `<b>${perTurn(log.energy)} a turn</b>`, `${perTurn(log.spent)} actually spent, base ${KEEP_BASE.energy}`) +
+        row("Card draw", `<b>${perTurn(log.drawn)} a turn</b>`, `${perTurn(log.played)} played, base ${KEEP_BASE.cards}`) : "") +
+      `</div>`;
+  }).join("");
+}
+
+// What each floor added and removed, per timeline node, as { cards, relics } lists of
+// [id, upgraded, +1/-1]. cards and relics are heldItems() lists; a card counts as upgraded
+// once a Smith or event has upgraded that many copies of it, as approaches.states does.
+function floorChanges(nodes, cards, relics) {
+  const order = [...cards].sort((a, b) => a.added - b.added);
+  const ups = {};
+  let prevCards = {}, prevRelics = new Set();
+  return nodes.map(node => {
+    const f = node.floor + 1;
+    (node.upgradedCards || []).forEach(id => { ups[id] = (ups[id] || 0) + 1; });
+    const left = { ...ups }, deck = {};
+    order.forEach(c => {
+      if (c.added > f || c.removed <= f) return;
+      const up = (left[c.id] || 0) > 0;
+      left[c.id] = (left[c.id] || 0) - 1;
+      const key = c.id + (up ? "+" : "");
+      deck[key] = (deck[key] || 0) + 1;
+    });
+    const held = new Set(relics.filter(r => r.added <= f && r.removed > f).map(r => r.id));
+    const change = [];
+    new Set([...Object.keys(deck), ...Object.keys(prevCards)]).forEach(key => {
+      const d = (deck[key] || 0) - (prevCards[key] || 0);
+      for (let i = 0; i < Math.abs(d); i++) change.push([key.replace(/\+$/, ""), key.endsWith("+"), Math.sign(d)]);
+    });
+    const relicChange = [...held].filter(id => !prevRelics.has(id)).map(id => [id, false, 1])
+      .concat([...prevRelics].filter(id => !held.has(id)).map(id => [id, false, -1]));
+    prevCards = deck; prevRelics = held;
+    return { cards: change, relics: relicChange };
+  });
+}
+
+function renderDetailKeepCharts(run) {
   const nodes = run.timeline || [];
-  const box = document.getElementById("detail-strength-box");
-  detailStrengthCharts.forEach(c => c.destroy());
-  detailStrengthCharts = [];
-  const floors = nodes.length && run.deckAdded && run.relicsAdded ? deckStrengthByFloor(nodes,
+  const box = document.getElementById("detail-keep-box");
+  detailKeepCharts.forEach(c => c.destroy());
+  detailKeepCharts = [];
+  const measured = measuredStrengthByNode(run, nodes);
+  const rows = fightReadings(run, nodes, measured);
+  if (!rows) { box.style.display = "none"; return; }
+  box.style.display = "";
+  document.getElementById("detail-keep-tier").textContent = KEEP_TIER_NAMES[keepTier(run.asc)];
+  renderKeepActs(run, nodes, measured);
+
+  const changes = nodes.length && run.deckAdded && run.relicsAdded ? floorChanges(nodes,
     heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []),
     heldItems(run.finalRelics || [], run.relicsAdded, run.relicsLost || [])) : null;
-  if (!floors) { box.style.display = "none"; return; }
-  box.style.display = "";
-
-  const keys = Object.keys(STRENGTH_LINES);
-  const measured = measuredStrengthByNode(run, nodes);
-  const change = d => +d.toFixed(1) === 0 ? "" : `${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(1)} this floor`;
   const name = ([id], relic) => relic ? relicInfo(id)?.title || fmtRelicLabel(id) : cardInfo(id)?.title || fmtCardLabel(id);
   const chips = (list, relic) => list.map(c =>
     `<span class="strength-chip ${c[2] > 0 ? "gain" : "loss"}">${c[2] > 0 ? "+" : "−"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`).join("");
-  const tip = context => showFloorTip(context, i => {
-    const s = floors[i], p = floors[i - 1], m = measured && measured[i];
-    const rows = keys.map(k => `<tr><td><span class="strength-key" style="background:${STRENGTH_LINES[k].color}"></span>` +
-      `${STRENGTH_LINES[k].label}</td><td><b>${s[k].toFixed(1)}</b></td><td>${p ? change(s[k] - p[k]) : ""}</td>` +
-      (m ? `<td class="strength-measured">${m[k].toFixed(1)} did</td>` : "") + `</tr>`).join("");
-    const changed = p && (s.cards.length || s.relics.length)
+  const changed = i => {
+    const s = changes && i ? changes[i] : null;
+    return s && (s.cards.length || s.relics.length)
       ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div>` : "";
-    const fought = m ? `<div class="strength-chips">fought in ${m.turns} turns, ${m.taken} HP taken, ` +
-      `${m.intent.toFixed(1)} a turn aimed at you${m.junk ? `, ${m.junk} junk` : ""}</div>` : "";
-    return `${floorTipHead(nodes[i])}<table>${rows}</table>${fought}${changed}`;
+  };
+
+  const row = (label, color, value, note) => `<tr><td><span class="strength-key" style="background:${color}"></span>` +
+    `${label}</td><td><b>${value}</b></td><td class="strength-measured">${note || ""}</td></tr>`;
+  const aTurn = v => `${v.toFixed(1)} a turn`;
+  // What sort of fight it was, so a bad one can be read as a lack of damage to many targets.
+  const fightKind = (n, r) => r && r.many !== undefined ? `<div class="ft-cap">${[keepRank(n), r.many ? "Multi-enemy" : "Single enemy"].filter(Boolean).join(" · ")}</div>` : "";
+  // Each chart's hover box: the floor, that chart's own numbers, what the floor changed.
+  const tip = lines => context => showFloorTip(context, i => {
+    const list = rows[i] ? lines(rows[i]) : [];
+    const head = floorTipHead({ ...nodes[i], enc: nodes[i].fight || nodes[i].enc });
+    return `${head}${fightKind(nodes[i], rows[i])}${list.length ? `<table>${list.join("")}</table>` : ""}${changed(i)}`;
   });
 
-  ["hp", "play"].forEach(id => {
-    const lines = keys.filter(k => STRENGTH_LINES[k].chart === id);
-    const legend = lines.map(k =>
-      `<span class="fl-item"><span class="strength-key" style="background:${STRENGTH_LINES[k].color}"></span>${STRENGTH_LINES[k].label}</span>`).join("")
-      + (measured ? `<span class="fl-item fl-measured">dashed: what the fights did</span>` : "");
-    document.getElementById(`detail-strength-${id}-legend`).innerHTML = `<div class="fl-items">${legend}</div>`;
-    const series = lines.map(k => ({
-      label: STRENGTH_LINES[k].label, data: floors.map(f => f[k]), borderColor: STRENGTH_LINES[k].color,
-      pointHoverBackgroundColor: STRENGTH_LINES[k].color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
-      cubicInterpolationMode: "monotone",
-    })).concat(measured ? lines.map(k => ({
-      label: `${STRENGTH_LINES[k].label} (measured)`, data: measured.map(m => m ? m[k] : null),
-      borderColor: STRENGTH_LINES[k].color, borderWidth: 2, borderDash: [4, 3], pointRadius: 0,
-      pointHoverRadius: 4, pointHoverBackgroundColor: STRENGTH_LINES[k].color, spanGaps: true,
-    })) : []);
-    detailStrengthCharts.push(new Chart(document.getElementById(`detail-strength-${id}-chart`).getContext("2d"),
-      floorChartConfig(nodes, [], tip, { stacked: false, min: 0, ticks: { maxTicksLimit: 5 } }, series)));
+  const damageTip = tip(r => {
+    const lines = [
+      ...(r.pool ? [row("Enemy HP", KEEP_DEMAND_COLOR, `${Math.round(r.pool)}${run.mp ? " a player" : ""}`)] : []),
+      row("Turns", KEEP_DEMAND_COLOR, r.turns, r.ask === undefined ? "" : `winners ${+r.winTurns.toFixed(1)}, ${r.winN} wins`),
+    ];
+    if (r.doing === undefined) return [...lines, row("Damage done", KEEP_LINES.damage.color, "—", "lost here, no log to say")];
+    return [...lines, row("Damage done", KEEP_LINES.damage.color, aTurn(r.doing), r.ask === undefined ? "" : `winners ${aTurn(r.ask)}`)];
   });
+  const inTip = tip(r => {
+    if (r.taken === undefined) return [];
+    const lines = [];
+    if (r.arrived !== undefined) lines.push(
+      row("Arrived", KEEP_DEMAND_COLOR, aTurn(r.arrived)),
+      row("Blocked", KEEP_LINES.taken.color, aTurn(r.blocked)));
+    if (r.healedOff) lines.push(row("Healed", KEEP_LINES.taken.color, aTurn(r.healed),
+      r.healedOff < r.healedAll ? `${r.healedOff} of ${r.healedAll} in the fight` : `${r.healedOff} in the fight`));
+    lines.push(row("Damage taken", KEEP_LINES.taken.color, aTurn(r.taken), `${Math.round(r.total)} in the fight`));
+    if (r.winRate !== undefined) lines.push(row("Winners took", KEEP_DEMAND_COLOR, aTurn(r.winRate), `${Math.round(r.winTotal)} in the fight`));
+    return lines;
+  });
+  const playTip = tip(r => r.play ? [
+    row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
+    row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),
+    row("Energy played", KEEP_LINES.energy.color, aTurn(r.play.energy), `${r.play.spent.toFixed(1)} actually spent`),
+    ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
+  ] : []);
+
+  const line = ({ label, color }, pick) => ({
+    label, data: rows.map(r => { const v = r ? pick(r) : null; return v === undefined ? null : v; }),
+    borderColor: color, pointHoverBackgroundColor: color,
+    borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, spanGaps: true,
+    cubicInterpolationMode: "monotone",
+  });
+  const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, box.clientWidth / nodes.length)));
+  const winners = (id, pick) => {
+    const has = i => rows[i] && pick(rows[i]) !== undefined;
+    return {
+      label: "Winners' average", showLine: false,
+      data: rows.map((r, i) => has(i) ? pick(r) : null),
+      ...nodePoints(nodes, () => detailKeepCharts.find(c => c.canvas.id === `detail-keep-${id}-chart`),
+        (n, key, i) => has(i), iconSize, keepIconKey),
+    };
+  };
+  const chart = (id, series, tipFor) => {
+    // Only the lines: the winners' icons explain themselves, and the caption says what they are.
+    document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(s =>
+      `<span class="fl-item"><span class="strength-key" style="background:${s.borderColor}"></span>${s.label}</span>`
+    ).join("")}</div>`;
+    detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
+      floorChartConfig(nodes, [], tipFor, { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 } }, series)));
+  };
+
+  chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0), winners("damage", r => r.ask)], damageTip);
+  chart("in", [line(KEEP_LINES.taken, r => r.taken), winners("in", r => r.winRate)], inTip);
+
+  const played = rows.some(r => r && r.play);
+  document.getElementById("detail-keep-play").style.display = played ? "" : "none";
+  if (played) chart("play", [
+    line(KEEP_LINES.drawn, r => r.play && r.play.drawn),
+    line(KEEP_LINES.played, r => r.play && r.play.played),
+    line(KEEP_LINES.energy, r => r.play && r.play.energy),
+  ], playTip);
 }
 
 // ---- Final deck + relics ----

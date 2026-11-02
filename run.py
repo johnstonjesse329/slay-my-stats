@@ -447,7 +447,10 @@ def extract_timeline(data: dict, local_idx: int = 0) -> list[dict]:
             ntype = node.get("map_point_type", "unknown")
             rooms = node.get("rooms", [])
             enc_id = rooms[0].get("model_id", "") if rooms else ""
-            turns  = rooms[0].get("turns_taken", 0) if rooms else 0
+            # An event's fight is a second room behind the event's own. `enc` stays the
+            # event, which is what the map shows; `fight` is added only for these.
+            fight  = next((r for r in rooms if r.get("monster_ids")), rooms[0] if rooms else {})
+            turns  = fight.get("turns_taken", 0)
             ps = player_stats_at(node, local_idx)
 
             hp_after = ps.get("current_hp",   0)
@@ -560,6 +563,8 @@ def extract_timeline(data: dict, local_idx: int = 0) -> list[dict]:
                 "goldGained":     gold_gained,
                 "turns":          turns,
             })
+            if fight.get("model_id", enc_id) != enc_id:
+                nodes[-1]["fight"] = fight["model_id"]
             floor_idx += 1
     return nodes
 
@@ -661,7 +666,9 @@ def parse_run(path: Path) -> dict:
 # Mad Science is, so it fell back to the canonical model: type None and "??????".
 # v5: deckAdded / relicsAdded / cardsLost / relicsLost (extract_deck_history),
 # when each card and relic entered and left, for Run Detail's deck-by-floor charts.
-PARSER_VERSION = 5
+# v6: timeline nodes name the `fight` behind an event, and `turns` is that fight's,
+# so a fight an event started reads against the winners of the same fight.
+PARSER_VERSION = 6
 
 
 def _card_props(card: dict) -> dict:
@@ -933,7 +940,6 @@ _JS_MODULES = [
     "page-nav.js",
     "cards-page.js",
     "seeds.js",
-    "deck-strength.js",
     "run-detail.js",
     "card-face.js",
     "map-bg.js",
@@ -994,10 +1000,10 @@ _CARD_FINAL_DIR = _HERE / "card_final"
 
 
 _CARD_VARIANTS_FILE = _HERE / "card_variants.json"
-# The deck-strength formula's per-card and relic numbers (tools/power_curve/export_strength.py).
-_DECK_STRENGTH_FILE = _HERE / "deck_strength.json"
 # What runs with an event log actually did, floor by floor (tools/power_curve/export_measured.py).
 _MEASURED_FILE = _HERE / "measured_runs.json"
+# What winning runs did on each encounter (tools/power_curve/fight_demand.py).
+_FIGHT_DEMAND_FILE = _HERE / "fight_demand.json"
 
 
 def build_card_final_images(url_for=Path.as_uri) -> dict[str, str]:
@@ -1508,15 +1514,22 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="chart-wrap"><canvas id="detail-relic-chart"></canvas></div>
         <div class="floor-legend" id="detail-relic-legend"></div>
       </div>
-      <div class="chart-box" id="detail-strength-box" style="margin-top:16px">
-        <h2>Deck Strength by Floor</h2>
-        <p class="chart-caption">What the deck could do in a turn after each floor: damage, block, energy and cards drawn. Damage and block are what the whole turn could be spent on that one job. Measured against played runs, real fights land near the damage line — poison, relic triggers and statuses add what the formula can't see — and use about two thirds of the block line. A skipped card leaves them flat; a card that does little thins out every hand and pulls them down.</p>
-        <h3 class="strength-label">Damage and block per turn</h3>
-        <div class="chart-wrap chart-wrap-short"><canvas id="detail-strength-hp-chart"></canvas></div>
-        <div class="floor-legend" id="detail-strength-hp-legend"></div>
-        <h3 class="strength-label">Energy and cards per turn</h3>
-        <div class="chart-wrap chart-wrap-short"><canvas id="detail-strength-play-chart"></canvas></div>
-        <div class="floor-legend" id="detail-strength-play-legend"></div>
+      <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
+        <h2>Keeping Up by Floor</h2>
+        <p class="chart-caption">Compared with the average of winning runs on these same fights, any character, at <span id="detail-keep-tier"></span>, where the monsters are tuned the same. <span class="keep-signal ahead">▲</span> ahead, <span class="keep-signal meeting">–</span> meeting and <span class="keep-signal behind">▼</span> behind, on each row and for the act. An act is behind on damage taken, less what the fight healed back: more turns than winners is fine so long as that holds. It's ahead on much less damage taken, or on killing much faster without taking more. Energy and card draw are shown, not graded.</p>
+        <div class="keep-acts" id="detail-keep-acts"></div>
+        <p class="chart-caption">Each icon is the winners' average for that floor's fight; no icon means too few wins on it to average. Damage done: above the icon, you killed it faster than winners. Damage taken: below the icon, you took less than winners.</p>
+        <h3 class="strength-label">Damage done per turn</h3>
+        <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
+        <div class="floor-legend" id="detail-keep-damage-legend"></div>
+        <h3 class="strength-label">Damage taken per turn</h3>
+        <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-in-chart"></canvas></div>
+        <div class="floor-legend" id="detail-keep-in-legend"></div>
+        <div id="detail-keep-play">
+          <h3 class="strength-label">Energy and cards per turn</h3>
+          <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-play-chart"></canvas></div>
+          <div class="floor-legend" id="detail-keep-play-legend"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1600,13 +1613,13 @@ def build_html(runs: list[dict]) -> str:
         json.loads(_ENCHANT_DATA_FILE.read_text(encoding="utf-8"))
         if _ENCHANT_DATA_FILE.exists() else {}
     )
-    deck_strength = (
-        json.loads(_DECK_STRENGTH_FILE.read_text(encoding="utf-8"))
-        if _DECK_STRENGTH_FILE.exists() else None
-    )
     measured_runs = (
         json.loads(_MEASURED_FILE.read_text(encoding="utf-8"))
         if _MEASURED_FILE.exists() else None
+    )
+    fight_demand = (
+        json.loads(_FIGHT_DEMAND_FILE.read_text(encoding="utf-8"))
+        if _FIGHT_DEMAND_FILE.exists() else None
     )
 
     chart_data = json.dumps({
@@ -1624,8 +1637,8 @@ def build_html(runs: list[dict]) -> str:
         "cardChar":           card_char,
         "cardVariants":       card_variants,
     "enchantmentData":    enchantment_data,
-        "deckStrength":       deck_strength,
         "measuredRuns":       measured_runs,
+        "fightDemand":        fight_demand,
         "relicData":          relic_data,
         "potionData":         potion_data,
         "nodeIcons":          node_icons,

@@ -474,6 +474,57 @@ class EnemyAccounting(unittest.TestCase):
         self.assertEqual(d["fights"][0]["spawned"], 15)
         self.assertEqual(dt.check(d), [])
 
+    def test_a_boss_that_revives_is_reported_as_more_than_stood_there(self):
+        # Test Subject: 100 HP on the first snapshot, then it heals back up to 200 and
+        # 300. Net of the healing that reads as 100 removed in a 600 HP fight.
+        log = killing_fight(blow=10, extra=[("hp", {"c": "E0", "d": 20, "hp": 20}),
+                                            ("hp", {"c": "E0", "d": -20, "hp": 0})])
+        f = dt.derive({"v": 3, "log": log})["fights"][0]
+        self.assertEqual((f["enemy_lost"], f["enemy_net"]), (30, 10))
+        self.assertEqual(f["spawned"], 20)
+
+    def test_a_move_id_two_monsters_share_reads_as_the_one_in_this_fight(self):
+        # BITE_MOVE is 5 on a Phantasmal Gardener and 13 on a Tunneler. Keyed on the id
+        # alone, a Gardener fight read at Tunneler damage.
+        moves = {"BITE_MOVE": (((13, 1),), 9.0),
+                 ("ENCOUNTER.GARDENERS", "BITE_MOVE"): (((5, 1),), 3.8)}
+        state = snap("turn0", [], enemies=(("first", 10, 10),))
+        state["creatures"][1]["move"] = "BITE_MOVE"
+        log = [ev(1, "fight0", enc="ENCOUNTER.GARDENERS", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1),
+               ev(3, "snap", **state),
+               ev(4, "fight1", hp=70, round=1)]
+        t = dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"][0]
+        self.assertEqual((t["intent"], t["expected"]), (5, 3.8))
+
+    def test_two_monsters_sharing_a_move_in_one_fight_read_by_their_max_hp(self):
+        # Flail Knight's Ram is 15 and Magi Knight's 10, and the log calls them "first"
+        # and "third".
+        moves = {("ENCOUNTER.KNIGHTS", "RAM_MOVE"): (((15, 1),), 11.0),
+                 ("ENCOUNTER.KNIGHTS", "RAM_MOVE", 101): (((15, 1),), 11.0),
+                 ("ENCOUNTER.KNIGHTS", "RAM_MOVE", 82): (((10, 1),), 10.0)}
+        state = snap("turn0", [], enemies=(("first", 90, 101), ("third", 70, 82)))
+        state["creatures"][1]["move"] = state["creatures"][2]["move"] = "RAM_MOVE"
+        log = [ev(1, "fight0", enc="ENCOUNTER.KNIGHTS", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1),
+               ev(3, "snap", **state),
+               ev(4, "fight1", hp=70, round=1)]
+        t = dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"][0]
+        self.assertEqual((t["intent"], t["expected"]), (25, 21.0))
+
+    def test_a_move_outside_the_encounters_list_still_reads(self):
+        # A summoned monster is not in the encounter's list, and its move is still a
+        # move: the plain id is the fallback, not silence.
+        moves = {"BITE_MOVE": (((13, 1),), 9.0)}
+        state = snap("turn0", [], enemies=(("egg3", 10, 10),))
+        state["creatures"][1]["move"] = "BITE_MOVE"
+        log = [ev(1, "fight0", enc="ENCOUNTER.GARDENERS", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1),
+               ev(3, "snap", **state),
+               ev(4, "fight1", hp=70, round=1)]
+        t = dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"][0]
+        self.assertEqual(t["intent"], 13)
+
     def test_self_damage_is_a_fact_not_a_contradiction(self):
         # Bloodletting and Offering pay HP. The deck taking its own HP is not the
         # log disagreeing with itself, and an Ironclad run must not read as broken.
@@ -502,14 +553,215 @@ class EnemyAccounting(unittest.TestCase):
         self.assertEqual(f["junk"], 1)
 
     def test_hp_taken_off_with_no_hit_behind_it_is_its_own_bucket(self):
-        # Doom is a countdown to the enemy's own HP, not damage: the enemy simply
-        # loses the HP with nothing attacking it. Measuring it as damage the deck
-        # dealt would credit a deck for something it never hit with.
+        # Living Fog's bomb dies with the Fog: it loses its last HP with nothing
+        # attacking it. Measuring that as damage the deck dealt would credit a deck
+        # for something it never hit with.
         log = killing_fight(extra=[("hp", {"c": "E0", "d": -4, "hp": 0})])
         f = dt.derive({"v": 3, "log": log})["fights"][0]
         self.assertEqual(f["enemy_lost"], 14)
         self.assertEqual(f["dealt_removed"], 10)
         self.assertEqual(f["enemy_unexplained"], 4)
+
+    def test_overkill_is_already_out_of_the_hp_a_hit_took(self):
+        # A 15 on an enemy with 10 HP left: `unb` is the 10 it lost, with 5 overkill.
+        # Taking the overkill off again read as 5 HP gone with no hit behind it.
+        log = killing_fight(extra=[("hp", {"c": "E0", "d": -6, "hp": 0}),
+                                   ("hit", {"by": "P", "t": "E0", "total": 11, "blk": 0,
+                                            "unb": 6, "ovk": 5})])
+        f = dt.derive({"v": 3, "log": log})["fights"][0]
+        self.assertEqual(f["dmg_hit"], 16)
+        self.assertEqual(f["enemy_unexplained"], 0)
+
+    def test_overkill_is_left_in_for_damage_with_no_attacker_too(self):
+        log = killing_fight(extra=[("hp", {"c": "E0", "d": -2, "hp": 0}),
+                                   ("hit", {"by": "", "t": "E0", "total": 5, "blk": 0,
+                                            "unb": 2, "ovk": 3})])
+        f = dt.derive({"v": 3, "log": log})["fights"][0]
+        self.assertEqual(f["dmg_other"], 2)
+        self.assertEqual(f["enemy_unexplained"], 0)
+
+    def test_a_heal_cannot_hide_hp_gone_with_no_hit(self):
+        # Knowledge Demon heals: read off the net, the heal would cancel the gap.
+        log = killing_fight(extra=[("hp", {"c": "E0", "d": 4, "hp": 4}),
+                                   ("hp", {"c": "E0", "d": -4, "hp": 0})])
+        f = dt.derive({"v": 3, "log": log})["fights"][0]
+        self.assertEqual(f["enemy_unexplained"], 4)
+
+    def test_vulnerable_on_you_lifts_what_was_aimed_but_weak_on_them_does_not(self):
+        moves = {"BITE_MOVE": (((7, 2),), 3.0)}
+        def aimed(you, them):
+            state = snap("turn0", [], enemies=(("first", 10, 10),))
+            state["creatures"][0]["pow"] = you
+            state["creatures"][1].update(move="BITE_MOVE", pow=them)
+            log = [ev(1, "fight0", enc="ENCOUNTER.X", hp=70, round=1, deck=10),
+                   ev(2, "side0", side="Player", round=1, turn=1),
+                   ev(3, "snap", **state),
+                   ev(4, "fight1", hp=70, round=1)]
+            return dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"][0]["intent"]
+        self.assertEqual(aimed({}, {}), 14)
+        self.assertEqual(aimed({"POWER.VULNERABLE_POWER": 2}, {}), 20)  # 7 lands as 10, twice
+        self.assertEqual(aimed({}, {"POWER.WEAK_POWER": 1}), 14)
+
+    def test_the_giants_explosion_is_what_it_had_built_the_turn_before(self):
+        # It builds a number every turn and deals it the turn after it dies. The move
+        # list has no number for that, and the power is gone by the turn it lands.
+        def turn(q, n, move, built):
+            state = snap("turn0", [], enemies=(("giant", 10, 10),))
+            state["creatures"][1].update(move=move, pow={dt.ERUPTION: built} if built else {})
+            return [ev(q, "side0", side="Player", round=n, turn=n), ev(q + 1, "snap", **state)]
+        log = [ev(1, "fight0", enc="ENCOUNTER.GIANT", hp=70, round=1, deck=10),
+               *turn(2, 1, "STOMP_MOVE", 15), *turn(4, 2, "STOMP_MOVE", 18),
+               *turn(6, 3, dt.EXPLODE, 0), ev(8, "fight1", hp=70, round=3)]
+        moves = {"STOMP_MOVE": (((5, 1),), 5.0)}
+        turns = dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"]
+        self.assertEqual([t["intent"] for t in turns], [5, 5, 18])
+
+    def test_a_monster_that_never_built_anything_keeps_its_listed_explosion(self):
+        # Living Fog's bomb has the same move id, and its number in the move list.
+        state = snap("turn0", [], enemies=(("bomb1", 4, 4),))
+        state["creatures"][1]["move"] = dt.EXPLODE
+        log = [ev(1, "fight0", enc="ENCOUNTER.LIVING_FOG_NORMAL", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1),
+               ev(3, "snap", **state),
+               ev(4, "fight1", hp=70, round=1)]
+        moves = {("ENCOUNTER.LIVING_FOG_NORMAL", dt.EXPLODE): (((8, 1),), 8.0)}
+        self.assertEqual(dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"][0]["intent"], 8)
+
+    def test_one_fights_explosion_does_not_carry_into_the_next(self):
+        state = snap("turn0", [], enemies=(("giant", 10, 10),))
+        state["creatures"][1]["move"] = dt.EXPLODE
+        built = snap("turn0", [], enemies=(("giant", 10, 10),))
+        built["creatures"][1].update(move="STOMP_MOVE", pow={dt.ERUPTION: 30})
+        log = [ev(1, "fight0", enc="ENCOUNTER.GIANT", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1), ev(3, "snap", **built),
+               ev(4, "fight1", hp=70, round=1),
+               ev(5, "fight0", enc="ENCOUNTER.GIANT", hp=70, round=1, deck=10),
+               ev(6, "side0", side="Player", round=1, turn=1), ev(7, "snap", **state),
+               ev(8, "fight1", hp=70, round=1)]
+        fights = dt.derive({"v": 3, "log": log}, {})["fights"]
+        self.assertEqual(fights[1]["turns"][0]["intent"], 0)
+
+    def aimed_after(self, *during, move="BITE_MOVE", hits=((10, 2),), strength=None):
+        """What one turn aims, with `during` happening between its opening state and
+        the enemies' side. Two hits of 10 on one enemy unless told otherwise."""
+        state = snap("turn0", [], enemies=(("first", 10, 10),))
+        state["creatures"][1].update(move=move, pow=strength or {})
+        log = [ev(1, "fight0", enc="ENCOUNTER.X", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1),
+               ev(3, "snap", **state),
+               *[ev(4 + i, *e[:1], **e[1]) for i, e in enumerate(during)],
+               ev(50, "side0", side="Enemy", round=1, turn=1),
+               ev(51, "fight1", hp=70, round=1)]
+        return dt.derive({"v": 3, "log": log}, {move: (hits, 3.0)})["fights"][0]["turns"][0]["intent"]
+
+    def test_strength_gained_on_your_turn_lifts_what_was_aimed(self):
+        # Brimstone gives every enemy 1 as your turn starts, just after the opening
+        # state; Enrage gives Test Subject 2 for each Skill. Both land before it swings.
+        gained = ("pow", dict(c="first", p=dt.STRENGTH, d=1, n=1))
+        self.assertEqual(self.aimed_after(gained), 22)
+
+    def test_strength_your_deck_took_off_does_not_lower_what_was_aimed(self):
+        # Like Weak, that's damage the deck stopped, and the gap should show it.
+        cut = ("pow", dict(c="first", p=dt.STRENGTH, d=-15, n=-15, by="P"))
+        self.assertEqual(self.aimed_after(cut), 20)
+
+    def test_strength_given_back_after_they_swing_lifts_nothing(self):
+        state = snap("turn0", [], enemies=(("first", 10, 10),))
+        state["creatures"][1]["move"] = "BITE_MOVE"
+        log = [ev(1, "fight0", enc="ENCOUNTER.X", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1),
+               ev(3, "snap", **state),
+               ev(4, "side0", side="Enemy", round=1, turn=1),
+               ev(5, "pow", c="first", p=dt.STRENGTH, d=15, n=0),
+               ev(6, "fight1", hp=70, round=1)]
+        moves = {"BITE_MOVE": (((10, 2),), 3.0)}
+        self.assertEqual(dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"][0]["intent"], 20)
+
+    def test_strength_on_one_enemy_lifts_only_that_enemy(self):
+        gained = ("pow", dict(c="someone else", p=dt.STRENGTH, d=5, n=5))
+        self.assertEqual(self.aimed_after(gained), 20)
+
+    def test_tainted_adds_to_every_hit(self):
+        # Two Skills at 2 each: 4 on each of the two hits.
+        played = [("pow", dict(c="P", p=dt.TAINTED, d=2, n=2)), ("pow", dict(c="P", p=dt.TAINTED, d=2, n=4))]
+        self.assertEqual(self.aimed_after(*played), 28)
+
+    def test_tainted_comes_before_vulnerable(self):
+        # (5 + 2) x 1.5 is 10, where 5 x 1.5 + 2 would be 9.
+        state = snap("turn0", [], enemies=(("first", 10, 10),))
+        state["creatures"][0]["pow"] = {"POWER.VULNERABLE_POWER": 1}
+        state["creatures"][1]["move"] = "BITE_MOVE"
+        log = [ev(1, "fight0", enc="ENCOUNTER.X", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1),
+               ev(3, "snap", **state),
+               ev(4, "pow", c="P", p=dt.TAINTED, d=2, n=2),
+               ev(5, "fight1", hp=70, round=1)]
+        moves = {"BITE_MOVE": (((5, 1),), 3.0)}
+        self.assertEqual(dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"][0]["intent"], 10)
+
+    def test_tainted_does_not_last_into_the_next_turn(self):
+        state = snap("turn0", [], enemies=(("first", 10, 10),))
+        state["creatures"][1]["move"] = "BITE_MOVE"
+        log = [ev(1, "fight0", enc="ENCOUNTER.X", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1), ev(3, "snap", **state),
+               ev(4, "pow", c="P", p=dt.TAINTED, d=2, n=2),
+               ev(5, "side0", side="Player", round=2, turn=2), ev(6, "snap", **state),
+               ev(7, "fight1", hp=70, round=2)]
+        moves = {"BITE_MOVE": (((10, 1),), 3.0)}
+        turns = dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"]
+        self.assertEqual([t["intent"] for t in turns], [12, 10])
+
+    def growing(self, first, second, stopped=False):
+        """Two turns of move `first` then `second`, the first of them landing a hit
+        unless a stun or a kill stopped it."""
+        def state(move):
+            s = snap("turn0", [], enemies=(("first", 10, 10),))
+            s["creatures"][1]["move"] = move
+            return s
+        hit = [] if stopped else [ev(6, "hit", by="first", t="P", total=10, blk=0, unb=10, ovk=0)]
+        log = [ev(1, "fight0", enc="ENCOUNTER.X", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1), ev(3, "snap", **state(first)),
+               ev(5, "side0", side="Enemy", round=1, turn=1), *hit,
+               ev(7, "side0", side="Player", round=2, turn=2), ev(8, "snap", **state(second)),
+               ev(9, "fight1", hp=70, round=2)]
+        moves = {"PRESSURE_GUN_MOVE": (((20, 1),), 3.0), "MULTI_CLAW_MOVE": (((10, 3),), 3.0),
+                 "BITE_MOVE": (((10, 3),), 3.0)}
+        return [t["intent"] for t in dt.derive({"v": 3, "log": log}, moves)["fights"][0]["turns"]]
+
+    def test_pressure_gun_adds_five_each_time_it_fires(self):
+        self.assertEqual(self.growing("PRESSURE_GUN_MOVE", "PRESSURE_GUN_MOVE"), [20, 25])
+
+    def test_multi_claw_adds_a_hit_each_time_it_lands(self):
+        self.assertEqual(self.growing("MULTI_CLAW_MOVE", "MULTI_CLAW_MOVE"), [30, 40])
+
+    def test_a_move_that_never_landed_has_not_grown(self):
+        self.assertEqual(self.growing("MULTI_CLAW_MOVE", "MULTI_CLAW_MOVE", stopped=True), [30, 30])
+
+    def test_a_move_outside_the_list_does_not_grow(self):
+        self.assertEqual(self.growing("BITE_MOVE", "BITE_MOVE"), [30, 30])
+
+    def test_one_fights_growth_does_not_carry_into_the_next(self):
+        def state():
+            s = snap("turn0", [], enemies=(("first", 10, 10),))
+            s["creatures"][1]["move"] = "PRESSURE_GUN_MOVE"
+            return s
+        log = [ev(1, "fight0", enc="ENCOUNTER.X", hp=70, round=1, deck=10),
+               ev(2, "side0", side="Player", round=1, turn=1), ev(3, "snap", **state()),
+               ev(4, "side0", side="Enemy", round=1, turn=1),
+               ev(5, "hit", by="first", t="P", total=20, blk=0, unb=20, ovk=0),
+               ev(6, "fight1", hp=50, round=1),
+               ev(7, "fight0", enc="ENCOUNTER.X", hp=70, round=1, deck=10),
+               ev(8, "side0", side="Player", round=1, turn=1), ev(9, "snap", **state()),
+               ev(10, "fight1", hp=70, round=1)]
+        fights = dt.derive({"v": 3, "log": log}, {"PRESSURE_GUN_MOVE": (((20, 1),), 3.0)})["fights"]
+        self.assertEqual(fights[1]["turns"][0]["intent"], 20)
+
+    def test_the_enemies_side_opening_is_recorded_on_the_turn(self):
+        f = dt.derive({"v": 3, "log": fight()})["fights"][0]
+        self.assertTrue(f["turns"][0]["enemy_side"])
+        won_on_your_turn = [e for e in fight() if e["q"] < 18] + [ev(19, "fight1", hp=71, round=1)]
+        f = dt.derive({"v": 3, "log": won_on_your_turn})["fights"][0]
+        self.assertFalse(f["turns"][0]["enemy_side"])
 
 
 def two_turns(held_in_hand=(), generated=(), retained_in_snapshot=()):
@@ -661,10 +913,18 @@ class Joining(unittest.TestCase):
         self.assertEqual([n["enc"] for _, n in tr.align(fights, timeline)],
                          ["ENCOUNTER.A", "ENCOUNTER.B"])
 
+    def test_an_event_fight_pairs_by_the_fight_not_the_event(self):
+        # Real case: ENCOUNTER.MYSTERIOUS_KNIGHT_EVENT_ENCOUNTER sits in a second room
+        # behind EVENT.THE_LANTERN_KEY, and the node's enc is the event.
+        import telemetry_report as tr
+        fights = [{"enc": "ENCOUNTER.A"}, {"enc": "ENCOUNTER.EVENTY"}]
+        timeline = [{"enc": "ENCOUNTER.A", "turns": 3},
+                    {"enc": "EVENT.Y", "fight": "ENCOUNTER.EVENTY", "turns": 2}]
+        self.assertEqual([n["enc"] for _, n in tr.align(fights, timeline)],
+                         ["ENCOUNTER.A", "EVENT.Y"])
+
     def test_a_fight_only_one_side_has_is_skipped_not_fatal(self):
-        # Real case: the log saw ENCOUNTER.MYSTERIOUS_KNIGHT_EVENT_ENCOUNTER but the
-        # run file records it as an event, so a positional join lost every fight
-        # after it (12 of 24 instead of 23 of 24).
+        # A positional join would lose every fight after the gap.
         import telemetry_report as tr
         fights = [{"enc": "ENCOUNTER.A"}, {"enc": "ENCOUNTER.EVENTY"}, {"enc": "ENCOUNTER.B"}]
         timeline = [{"enc": "ENCOUNTER.A", "turns": 3}, {"enc": "ENCOUNTER.B", "turns": 2}]

@@ -1,11 +1,10 @@
-"""deck_strength.json for the site: every card's and relic's numbers for the
-formula, so js/deck-strength.js can give a run's damage, block, energy and
-cards per turn floor by floor.
+"""deck_strength.json: every card's and relic's numbers for the formula, as
+plain rows. The estimate is off the Runs page, so the site no longer reads
+this; it stays for patch-day work.
 
 The numbers come from the game data (card_data.json, relic_data.json,
 power_data.json at the repo root). Like those, the output is game data:
-gitignored, built locally, deployed with the site. Re-run after a game-data
-refresh.
+gitignored, built locally. Re-run after a game-data refresh.
 
     python export_strength.py
 """

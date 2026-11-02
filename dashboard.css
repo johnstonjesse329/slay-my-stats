@@ -886,15 +886,15 @@ h1 {
   /* minmax(0, ...): a bare 1fr never shrinks below its content, and a drawn
      chart canvas is content, so narrowing the window (or zooming in) left
      the timeline as wide as before, clipped off the right edge. */
-  grid-template-columns: var(--run-list-width, 300px) minmax(0, 1fr);
+  grid-template-columns: var(--run-list-width, 340px) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
-/* 300px fits the widest columns (Necrobinder, A10, F48, a two-digit month
-   and day) beside a scrollbar; the modded tag ("M") in the list adds its
-   own column, hence 330px. A variable, so the phone layout's single column
+/* 340px fits the widest columns (Necrobinder, A10, F48, an OP tag, a two-digit
+   month and day) beside a scrollbar; the modded tag ("M") in the list adds its
+   own column, hence 370px. A variable, so the phone layout's single column
    still wins. */
-#detail-layout:has(.detail-run-item .run-modded-tag) { --run-list-width: 330px; }
+#detail-layout:has(.detail-run-item .run-modded-tag) { --run-list-width: 370px; }
 
 /* ---- Run list (left column) ---- */
 
@@ -908,11 +908,11 @@ h1 {
   box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
   /* One set of columns for every row (each row is a subgrid of it), so each
      column is as wide as its widest entry and they line up down the list:
-     char, asc, W/L, floor, modded tag (empty unless modded), date. Spacing
-     is each cell's left padding, not a column gap, so the empty tag column
-     takes no room. */
+     char, asc, W/L, floor, reading, modded tag (empty unless modded), date.
+     Spacing is each cell's left padding, not a column gap, so the empty tag
+     column takes no room. */
   display: grid;
-  grid-template-columns: auto auto auto auto auto 1fr;
+  grid-template-columns: auto auto auto auto auto auto 1fr;
   align-content: start;
 }
 #detail-run-list > * { grid-column: 1 / -1; }
@@ -964,7 +964,35 @@ h1 {
 .detail-run-asc  { font-size: var(--fs-sm); text-align: right; }
 .detail-run-won  { font-weight: 700; font-size: var(--fs-sm); text-align: center; }
 .detail-run-floor { font-size: var(--fs-sm); text-align: right; }
+.detail-run-read  { text-align: center; }
 .detail-run-date  { font-size: var(--fs-sm); text-align: right; }
+
+/* How the whole run read: a round mark in the run list, a pill on the run's
+   header. OP is the same green filled in, so it reads as more of ahead and
+   not as the gold of meeting. */
+.run-reading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 0.1rem 0.6rem 0.1rem 0.3rem;
+  border-radius: 999px;
+  color: var(--text);
+}
+.run-reading.ahead { background: rgba(92,186,125,0.16); }
+.run-reading.meeting { background: rgba(224,196,104,0.14); }
+.run-reading.behind { background: rgba(224,92,92,0.16); }
+.run-reading.op {
+  padding: 0.1rem 0.6rem;
+  color: var(--bg-deep);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  background: #5cba7d;
+  box-shadow: 0 0 10px rgba(92,186,125,0.55);
+}
+.detail-run-read .run-reading.op { font-size: var(--fs-xs); line-height: 1.4; padding: 0 0.3rem; border-radius: 3px; }
 
 /* "Modded" (just "M" in the run list): on a run the game mod reported loaded
    mods for, in the run list and the run header. The mod list is its data-tip. */
@@ -1186,8 +1214,21 @@ h1 {
 .floor-tip .strength-chip.gain { border-color: #4087de; }
 .floor-tip .strength-chip.loss { border-color: #d97230; }
 .floor-tip .strength-measured { color: var(--muted, #8a8aa0); font-variant-numeric: tabular-nums; }
-.fl-items .fl-measured { color: var(--muted, #8a8aa0); font-style: italic; }
 .strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.keep-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.keep-act { border: 1px solid var(--hairline); border-radius: 6px; padding: 0.6rem 0.75rem; }
+.keep-act h3 { display: flex; align-items: center; font-size: var(--fs-sm); font-weight: 600; margin: 0 0 0.25rem; }
+.keep-act h3 .keep-signal { margin-left: auto; width: 22px; height: 22px; font-size: 13px; }
+.keep-kinds { display: flex; justify-content: center; gap: 0.75rem; margin-bottom: 0.5rem; color: var(--text-dim); font-size: var(--fs-sm); }
+.keep-kind { display: inline-flex; align-items: center; gap: 0.2rem; }
+.keep-act-row { display: grid; grid-template-columns: 6rem 1fr; column-gap: 0.5rem; align-items: baseline; font-size: var(--fs-sm); margin-top: 0.4rem; }
+.keep-act-row > span:first-child { color: var(--text-dim); }
+.keep-act-row > b { justify-self: start; font-weight: 600; }
+.keep-act-note { grid-column: 2; color: var(--text-dim); font-size: var(--fs-xs); }
+.keep-signal { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: var(--bg-deep); font-size: 10px; font-weight: 800; line-height: 1; vertical-align: -2px; }
+.keep-signal.ahead { background: #5cba7d; }
+.keep-signal.meeting { background: var(--gold); }
+.keep-signal.behind { background: #e05c5c; }
 .floor-legend {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1245,7 +1286,9 @@ h1 {
 @media (max-width: 640px) {
   .floor-tip .ft-row { flex-wrap: wrap; }
   .floor-tip .ft-big { border-left: 0; padding-left: 0; }
+  .floor-tip { max-width: calc(100vw - 16px); }
   .floor-tip th, .floor-tip td { padding: 1px 3px; }
+  .floor-tip td.strength-measured { white-space: normal; text-align: left; }
   .chart-wrap-tall { height: 400px; }
 }
 
@@ -2060,12 +2103,26 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #summary-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-  /* Run Detail: the 230px run list + timeline side-by-side has no room.
+  /* Run Detail: the run list + timeline side-by-side has no room.
      Stack them, and cap the run list's height (it's independently
      scrollable already) so it doesn't push the timeline below the fold. */
   #detail-layout { grid-template-columns: minmax(0, 1fr); }
   #detail-run-list { max-height: 240px; }
+  .detail-run-item, .detail-run-header-row { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .detail-run-item.active { padding-left: calc(0.5rem - 3px); }
+  .detail-run-item > :not(:first-child, :empty),
+  .detail-run-header-row > :not(:first-child, :empty) { padding-left: 0.3rem; }
 
+}
+
+/* Small phones upright: the run list has room for what tells runs apart. The
+   tag goes rather than its cell, or the date would slide into its column. The
+   run's own header still says MODDED, and turning the phone brings both back. */
+@media (max-width: 380px) {
+  .detail-run-item .run-modded-tag, .detail-run-year { display: none; }
+  .detail-run-item > :not(:first-child, :empty),
+  .detail-run-header-row > :not(:first-child, :empty) { padding-left: 0.2rem; }
+  .detail-run-item > .detail-run-mod { padding-left: 0; }
 }
 
 /* Narrow screens only, not a phone turned sideways: landscape has room for

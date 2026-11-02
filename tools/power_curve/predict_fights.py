@@ -225,8 +225,7 @@ def _prior(c):
 
 
 def card_row(c):
-    """What the formula needs from one card, as plain numbers (zeros left out),
-    so the site's js/deck-strength.js can run the same sums on the same rows.
+    """What the formula needs from one card, as plain numbers (zeros left out).
     A card the game data can't describe gets its shape's prior, marked "u", when
     PF_PRIORS is set; the prior measured a wash, so it is off by default."""
     row = numeric_row(c)
@@ -290,8 +289,7 @@ def formula_rows(rows, relic_blk, relic_energy, turns=pc.TURNS, relic_trig=None,
     """Per-turn damage and block, each played all-in as the sim's games are:
     the hand's cards for that job, as many as the energy pays for. What builds
     on them (Strength, Dexterity, Plating, block relics...) is its own number,
-    so the fit to real fights can weigh each one. js/deck-strength.js is a
-    line-for-line copy: change both."""
+    so the fit to real fights can weigh each one."""
     g = lambda r, k: r.get(k, 0)  # noqa: E731
     n = max(len(rows), 1)
     live = [r for r in rows if not g(r, "x")]
