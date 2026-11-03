@@ -1197,21 +1197,45 @@ h1 {
 .chart-wrap-short { height: 250px; }
 .strength-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim); margin: 0.6rem 0 0.2rem; }
 .floor-tip .strength-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; max-width: 320px; }
-.floor-tip .strength-chip { padding: 0 6px; border-radius: 9px; border: 1px solid; white-space: nowrap; }
+.floor-tip .strength-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px 0 0; border-radius: 10px; border: 1px solid; white-space: nowrap; line-height: 18px; }
+.floor-tip .strength-chip:not(:has(img)) { padding-left: 6px; }
+.floor-tip .strength-chip img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex: none; }
+.floor-tip .ft-hint { margin-top: 4px; color: var(--text-dim); font-size: 10px; }
+.floor-tip .ft-hint::after { content: "Click to hold; hover a pickup for its full card"; }
+.floor-tip.pinned { pointer-events: auto; border-color: var(--text-dim); }
+.floor-tip.pinned .ft-hint::after { content: "Esc or click away to close"; }
+.floor-tip.pinned [data-pick] { cursor: help; }
 .floor-tip .strength-chip.gain { border-color: #4087de; }
 .floor-tip .strength-chip.loss { border-color: #d97230; }
 .floor-tip .strength-measured { color: var(--muted, #8a8aa0); font-variant-numeric: tabular-nums; }
 .strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
-.keep-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.keep-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
 .keep-act { border: 1px solid var(--hairline); border-radius: 6px; padding: 0.6rem 0.75rem; }
-.keep-act h3 { display: flex; align-items: center; font-size: var(--fs-sm); font-weight: 600; margin: 0 0 0.25rem; }
-.keep-act h3 .keep-signal { margin-left: auto; width: 22px; height: 22px; font-size: 13px; }
+.keep-act h3 { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-sm); font-weight: 600; margin: 0 0 0.25rem; }
 .keep-kinds { display: flex; justify-content: center; gap: 0.75rem; margin-bottom: 0.5rem; color: var(--text-dim); font-size: var(--fs-sm); }
 .keep-kind { display: inline-flex; align-items: center; gap: 0.2rem; }
-.keep-act-row { display: grid; grid-template-columns: 6rem 1fr; column-gap: 0.5rem; align-items: baseline; font-size: var(--fs-sm); margin-top: 0.4rem; }
-.keep-act-row > span:first-child { color: var(--text-dim); }
-.keep-act-row > b { justify-self: start; font-weight: 600; }
-.keep-act-note { grid-column: 2; color: var(--text-dim); font-size: var(--fs-xs); }
+/* One metric a line, in the same columns on every card: icon and label, figure, mark,
+   winners', note. A per-turn figure's unit takes the mark and winners' columns. */
+.keep-act-row { display: grid; grid-template-columns: 5.2rem 2.6rem 1.5rem 3rem minmax(0, 1fr); column-gap: 0.3rem; align-items: baseline; font-size: var(--fs-sm); margin-top: 0.35rem; }
+.keep-act-row .ka-label { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-dim); white-space: nowrap; align-self: center; }
+.keep-ico { flex: none; }
+.keep-act-row .ka-fig { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.keep-act-row .ka-mark { text-align: center; align-self: center; }
+.keep-act-row .ka-unit { grid-column: 3 / 5; color: var(--text-dim); font-size: var(--fs-xs); }
+.keep-act-row .ka-vs { color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.keep-act-note { color: var(--text-dim); font-size: var(--fs-xs); }
+.keep-near { margin: 0.1rem 0 0 5.2rem; color: var(--text-dim); font-size: var(--fs-xs); }
+/* Damage taken against winners' two cut points: three zones in the marks' colours, the
+   act's own marker on them, the cut numbers under. */
+.keep-scale { position: relative; display: flex; gap: 2px; height: 6px; margin: 0.3rem 0 0 5.2rem; }
+.keep-scale .ks-zone { height: 100%; }
+.keep-scale .ks-zone:first-child { border-radius: 3px 0 0 3px; }
+.keep-scale .ks-zone:last-of-type { border-radius: 0 3px 3px 0; }
+.keep-scale .ks-zone.ahead { background: #5cba7d; }
+.keep-scale .ks-zone.meeting { background: var(--gold); }
+.keep-scale .ks-zone.behind { background: #e05c5c; }
+.keep-scale .ks-mark { position: absolute; top: -3px; width: 3px; height: 12px; margin-left: -1.5px; background: var(--text); border: 1px solid var(--bg-deep); border-radius: 2px; box-sizing: content-box; }
+.keep-scale-cuts { display: flex; justify-content: space-between; margin: 0.15rem 0 0 5.2rem; color: var(--text-dim); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .keep-signal { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: var(--bg-deep); font-size: 10px; font-weight: 800; line-height: 1; vertical-align: -2px; }
 .keep-signal.ahead { background: #5cba7d; }
 .keep-signal.meeting { background: var(--gold); }
@@ -1249,6 +1273,21 @@ h1 {
 .floor-tip th, .floor-tip td { padding: 1px 5px; text-align: right; white-space: nowrap; }
 .floor-tip th:first-child, .floor-tip td:first-child { text-align: left; padding-left: 0; }
 .floor-tip th { font-weight: 600; }
+.floor-tip td { font-variant-numeric: tabular-nums; }
+/* The fight table: You and Winners each get a Fight and an A turn column. */
+.floor-tip thead th { text-align: center; }
+.floor-tip thead tr.ft-sub th { color: var(--text-dim); font-weight: 400; text-align: right; }
+.floor-tip thead tr:first-child th[colspan] { border-bottom: 1px solid var(--hairline); }
+.floor-tip .ft-win { color: var(--text-dim); border-left: 1px solid var(--hairline); }
+.floor-tip .ft-win + .ft-win { border-left: 0; }
+.floor-tip td small { color: var(--text-dim); font-size: 10px; margin-left: 2px; }
+.floor-tip td .keep-ico { margin-right: 5px; vertical-align: -2px; }
+.floor-tip tr.ft-through td { font-weight: 700; }
+/* What arrived in a turn, as one bar: blocked, healed, got through, a 2px gap between. */
+.floor-tip .ft-split { position: relative; display: flex; gap: 2px; height: 8px; margin: 4px 0 6px; min-width: 200px; }
+.floor-tip .ft-split > span:first-child { border-radius: 4px 0 0 4px; }
+.floor-tip .ft-split > span:last-of-type { border-radius: 0 4px 4px 0; }
+.floor-tip .ft-tick { position: absolute; top: -3px; width: 2px; height: 14px; margin-left: -1px; background: var(--text); border-radius: 1px; }
 .floor-tip .ft-big {
   display: flex;
   flex-wrap: wrap;

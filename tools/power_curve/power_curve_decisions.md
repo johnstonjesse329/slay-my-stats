@@ -1585,3 +1585,53 @@ Breaking `run_reading` fails tests too: OP on acts 1 and 2, on every act, on any
 act, or on the damage mark alone; a run read as most of its acts, its last or its worst, or at one act's
 pace. So does `held_out` skipping OP. Dropping the close at the end of a log fails `Death` on both real
 logs.
+
+### Keeping Up by Floor, tidied: words, rule, totals, pickups (2026-11-02)
+
+Page only; no number or edge moved. The wording here is a draft until the user OKs it, except the
+verdict words, which are the user's own.
+
+**Verdict words.** The page says OP > Hype > Mid > Low. Hype is ahead, Mid is meeting, Low is behind
+(`KEEP_WORDS`). Everything above this section, the Python, the tests and the CSS classes keep ahead,
+meeting and behind; the marks ▲ – ▼ and their colours are the same. Only acts and whole runs get a
+word. A floor has no verdict: it sits above or below the average-win icon on the charts and that is all.
+
+**"Winners" is "average win" on the page.** The user's call, for the labels: "Winners" didn't say it
+was an average. The table head is "Avg win", the chart's icon is "Average win", hovers say "average
+win", and the fight table's footnote reads "Average of N wins". The old "Winners took" row is gone with
+the rest of the old five-row box. The maths are still `winners_of` and friends.
+
+**The rule is on the page.** Damage taken decides: Low above 1.5× the average win, Hype under ⅔ of it,
+and killing 25% faster with no more damage lifts a Mid to Hype. Each act's Taken row has a three-zone
+bar with the act marked on it and the two cut points as HP, computed from the average win by
+`keepCuts`, which settles each cut with `keepMark`'s own comparison so it never disagrees with the
+verdict at a float edge. A brute-force probe over 1.46 million (average win, taken) pairs and every
+turns pair found 3 mismatches before that fix and 0 after. A Mid within a fifth of the bar of an edge
+says how many HP from it, so a borderline run is visible. The Turns row has no bar, since turns never
+lower an act; it says "Hype at N or fewer, with damage ≤ M" while the lift can still apply.
+
+**Labels for energy.** "Card cost" is the face value of what was played, X counted as 3
+(`listPrice`, from `equiv`). "Energy paid" is what the turn actually spent (`spent`, the raw energy
+events). Free and discounted plays pull paid under cost; X plays push it over. Floor 8 of the logged
+Ironclad shows 9 paid against a cost of 4 on one turn: Bloodletting, Taunt and a Whirlwind played for 8.
+The energy and draw chart's third line is "Card cost" now, not "Energy played"; field names are the same.
+
+**The damage tooltip** is one table: You and Avg win each get Fight and A turn columns. Damage done's
+fight total is the enemy's HP. The damage taken tip splits what arrived into blocked, healed and got
+through, as a bar and as rows with their percent of what arrived, with the average win's got-through
+as a tick on the bar (clamped to the bar's end when winners got more through). "Got through" takes the
+colour of the Damage taken line. The palette was checked for dark on the tip's surface: tritan ΔE is 6.1, under
+the 8 target, so every colour ships with an icon and a label. A lost fight with no log reads "Lost here,
+no log to say."; a run with no log at all has no energy or draw chart and no act rows for them.
+
+**Pickups.** The tip's chips carry the card or relic picture; hovering one shows the full card or relic.
+The plan had the box stay open for a short grace delay so the pointer could reach the chip. It is
+click-to-pin instead: a click on a chart holds that floor's box (a hint line says so), and Esc, a click
+away, a scroll or a resize lets it go. A grace delay would have either left the box jumping to the next
+floor while the pointer crossed the chart, or frozen it on the wrong one.
+
+**Checked.** At 1920 the act cards are three across and at 390 stacked, no sideways scroll or clipped
+text at either. The act figures still come from the same aggregation code: the only change there is
+`enemyTurns` on a fight's row, which the tip uses for the fight totals. Pin, hint, Esc,
+click-away, scroll and resize all behave on the logged Ironclad; run 1774189616 (lost, no log) gives
+the lost-fight line and no log rows.
