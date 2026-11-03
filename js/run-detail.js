@@ -1294,9 +1294,14 @@ function createFloorTip() {
     if (e.pointerType !== "touch" && e.target.closest("[data-pick]")) hideFloatingHtmlTooltip();
   });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeFloorTip(); });
-  ["scroll", "resize"].forEach(type => window.addEventListener(type, () => {
-    if (floorTipTouch) closeFloorTip();
-  }, { passive: true }));
+  // A phone's address bar sliding away mid-drag fires resize with the same width; only a real
+  // change (rotation) closes the sheet.
+  let tipWidth = innerWidth;
+  window.addEventListener("scroll", () => { if (floorTipTouch) closeFloorTip(); }, { passive: true });
+  window.addEventListener("resize", () => {
+    if (floorTipTouch && innerWidth !== tipWidth) closeFloorTip();
+    tipWidth = innerWidth;
+  }, { passive: true });
 }
 function showFloorTip(context, html) {
   if (!floorTip) createFloorTip();
@@ -1430,13 +1435,21 @@ function renderDetailDeckChart(run) {
   // The breakdown is a type × rarity table; the floor's marked cards follow it
   // as real card faces.
   const tip = context => showFloorTip(context, i => {
-    const cols = [...new Set(["Basic", "Common", "Uncommon", "Rare", ...rKeys])];
     const rows = tKeys.filter(t => byT[t][i] > 0);
-    const table = `<table><tr><th></th>${cols.map(c => `<th style="color:${R.color[c]}">${rarityName(c)}</th>`).join("")}<th>All</th></tr>` +
-      rows.map(t => `<tr><td style="color:${T.color[t]}">${t}</td>${cols.map(c => `<td>${byTR[t + "|" + c][i] || ""}</td>`).join("")}<td><b>${byT[t][i]}</b></td></tr>`).join("") +
-      `</table>`;
+    const cols = [...new Set(["Basic", "Common", "Uncommon", "Rare", ...rKeys])];
+    const cell = (t, c) => byTR[t + "|" + c][i] || "";
+    // A phone's sheet is too narrow for eight rarity columns, so there the rarities run down
+    // and only those with cards on this floor are listed.
+    const rar = cols.filter(c => rows.some(t => cell(t, c)));
+    const table = floorTipTouch
+      ? `<table><tr><th></th>${rows.map(t => `<th style="color:${T.color[t]}">${t}</th>`).join("")}<th>All</th></tr>` +
+        rar.map(c => `<tr><td style="color:${R.color[c]}">${rarityName(c)}</td>${rows.map(t => `<td>${cell(t, c)}</td>`).join("")}<td><b>${rows.reduce((n, t) => n + (byTR[t + "|" + c][i] || 0), 0)}</b></td></tr>`).join("") +
+        `<tr class="ft-through"><td>All</td>${rows.map(t => `<td>${byT[t][i]}</td>`).join("")}<td>${totals[i]}</td></tr></table>`
+      : `<table><tr><th></th>${cols.map(c => `<th style="color:${R.color[c]}">${rarityName(c)}</th>`).join("")}<th>All</th></tr>` +
+        rows.map(t => `<tr><td style="color:${T.color[t]}">${t}</td>${cols.map(c => `<td>${cell(t, c)}</td>`).join("")}<td><b>${byT[t][i]}</b></td></tr>`).join("") +
+        `</table>`;
     const big = marks[i].length ? `<div class="ft-big">${marks[i].map(m =>
-      `<div class="ft-card">${renderCardFace(m.id, 0, 190) || `<b>${m.name}</b>`}${floorTipCaption(m, R.color)}</div>`).join("")}</div>` : "";
+      `<div class="ft-card">${renderCardFace(m.id, 0, floorTipTouch ? 130 : 190) || `<b>${m.name}</b>`}${floorTipCaption(m, R.color)}</div>`).join("")}</div>` : "";
     return `<div class="ft-row"><div>${floorTipHead(nodes[i], totals[i], "cards")}${table}</div>${big}</div>`;
   });
 

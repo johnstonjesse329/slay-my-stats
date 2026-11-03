@@ -1766,3 +1766,8 @@ not rated.
 - **A tapped card or relic chip stays open.** On touch, lifting the finger fires the chip's pointerout, which
   closed the card as the tap ended, so it showed only while held. Touch ignores that close now; it stays until a
   press elsewhere (checked: still open 1.5 s after the tap, and after tapping the chip again, closed by a tap away).
+- **The phone sheet is narrower than the desktop table.** The deck-by-floor table (types down, rarities across)
+  ran 450-500px, clipped in a 375px sheet. On touch it is turned the other way (rarities down, types across, an
+  All column): 200-350px at 393px wide, no sideways overflow. Card faces are 130px, not 190px, and the sheet
+  scrolls inside its 40vh cap, so the card is reached by scrolling the sheet. Resize closes the sheet only when the
+  width changes: iOS fires resize as its address bar collapses on scroll, which closed it mid-scrub.
