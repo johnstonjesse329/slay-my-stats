@@ -1745,3 +1745,5 @@ not rated.
 - **The floor tooltip's split bar lost its average-win tick.** A line through the bar needed its hover text to
   mean anything. Winners' figures are in the table beside it, and the bar's blue and red match the Blocked and
   Damage taken rows.
+- **Deck and relic markers are one size.** Uncommon picks were 30 px and Rares 38 px; now all 38, with the ring
+  colour saying the rarity. Stacks on one floor are ordered Uncommon, Rare, Ancient.

@@ -1060,10 +1060,11 @@ function hatchPattern(color) {
 const hatchCss = color => `repeating-linear-gradient(-45deg, ${color}99 0 1.5px, transparent 1.5px 4px)`;
 
 // Only the notable gains get a marker over their floor: Uncommon and Rare
-// cards, and Uncommon, Rare and Ancient relics. Rarer is bigger.
+// cards, and Uncommon, Rare and Ancient relics. All one size; the ring colour says the rarity.
 const CARD_MARK  = new Set(["Uncommon", "Rare"]);
 const RELIC_MARK = new Set(["Uncommon", "Rare", "Ancient"]);
-const MARK_SIZE  = { Uncommon: 30, Rare: 38, Ancient: 38 };
+const MARK_SIZE  = { Uncommon: 38, Rare: 38, Ancient: 38 };
+const MARK_RANK  = { Uncommon: 0, Rare: 1, Ancient: 2 };
 
 let detailDeckChart  = null;
 let detailRelicChart = null;
@@ -1109,7 +1110,7 @@ function floorMarks(nodes, items, group, marked, imgSrc, name) {
       if (merged.has(m.id)) merged.get(m.id).count++;
       else merged.set(m.id, { ...m, count: 1 });
     });
-    return [...merged.values()].sort((a, b) => MARK_SIZE[a.rarity] - MARK_SIZE[b.rarity]);
+    return [...merged.values()].sort((a, b) => MARK_RANK[a.rarity] - MARK_RANK[b.rarity]);
   });
 }
 
