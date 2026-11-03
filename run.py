@@ -1305,6 +1305,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="grid-2">
   <div class="chart-box">
     <h3>Win % by ascension</h3>
+    <p class="chart-caption">Share of runs won at each ascension, by character.</p>
     <div class="chart-wrap"><canvas id="ascWinChart"></canvas></div>
   </div>
   <div class="chart-box">
@@ -1504,9 +1505,14 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="detail-deck-relics"></div>
       <div id="detail-timeline"></div>
       <div class="chart-box" id="detail-hp-box" style="margin-top:16px">
+        <h2>HP by Floor</h2>
+        <p class="chart-caption">Your HP after each floor, against your max HP.</p>
         <div class="chart-wrap"><canvas id="detail-hp-chart"></canvas></div>
+        <div class="floor-legend" id="detail-hp-legend"></div>
       </div>
       <div class="chart-box" id="detail-gold-box" style="margin-top:16px">
+        <h2>Gold by Floor</h2>
+        <p class="chart-caption">Your gold after each floor.</p>
         <div class="chart-wrap"><canvas id="detail-gold-chart"></canvas></div>
       </div>
       <div class="chart-box" id="detail-deck-box" style="margin-top:16px">
@@ -1523,8 +1529,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
-        <p class="chart-caption">Against the average win on the same fights (any character, <span id="detail-keep-tier"></span>, monsters tuned the same). <span class="keep-signal ahead">▲</span> Hype, <span class="keep-signal meeting">–</span> Mid, <span class="keep-signal behind">▼</span> Low. Energy and draw aren't rated.</p>
-        <p class="chart-caption">An act is rated on its damage taken against the average win on the same fights: Hype at ⅔ of their damage or less, Low at 1.5× or more, Mid between. Finishing in 25% fewer turns with no more damage lifts a Mid to Hype. The numbers on each meter come from that average, so they shift a little as more wins are recorded.</p>
+        <p class="chart-caption">Damage taken as a % of the average win's on the same fights (any character, <span id="detail-keep-tier"></span>, monsters tuned the same). <span class="keep-signal ahead">▲</span> Hype at 67% or less, <span class="keep-signal meeting">–</span> Mid between, <span class="keep-signal behind">▼</span> Low at 150% or more. A Mid becomes Hype at 100% or less in under 80% of the turns. Energy and draw aren't rated.</p>
         <div class="keep-acts" id="detail-keep-acts"></div>
         <p class="chart-caption">Each icon is the average win for that fight; none means too few wins. Damage done: above it means faster. Damage taken: below it means less.</p>
         <h3 class="strength-label">Damage done per turn</h3>

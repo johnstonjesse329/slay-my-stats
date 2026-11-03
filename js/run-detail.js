@@ -743,9 +743,9 @@ function iconAxis(extra = {}) {
 function floorAxis(extra = {}) {
   return {
     ...extra,
-    title: { display: true, text: "Floor", color: "#8a8aa0", font: { size: 12 } },
+    title: { display: true, text: "Floor", color: "#ccc", font: { size: 12 } },
     ticks: {
-      color: "#8a8aa0", autoSkip: false, maxRotation: 0,
+      color: "#ccc", autoSkip: false, maxRotation: 0,
       callback(v) { const f = Number(this.getLabelForValue(v)); return f === 1 || f % 5 === 0 ? f : ""; },
     },
   };
@@ -847,6 +847,11 @@ function renderDetailHpChart(run) {
 
   if (detailHpChart) { detailHpChart.destroy(); detailHpChart = null; }
 
+  // HP's swatch is the area's own fill; Max HP's is the dashed line.
+  document.getElementById("detail-hp-legend").innerHTML = `<div class="fl-items">` +
+    `<span class="fl-item"><span class="fl-swatch" style="background:${color}33;border:2px solid ${color}"></span>HP</span>` +
+    `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #8a8aa0 0 4px, transparent 4px 7px)"></span>Max HP</span></div>`;
+
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
@@ -884,21 +889,9 @@ function renderDetailHpChart(run) {
       layout: { padding: { top: ACT_BAND, right: 24 } },
       interaction: { mode: "index", intersect: false },
       plugins: {
-        // At the bottom, to leave the top band to the act names.
-        legend: {
-          position: "bottom",
-          labels: {
-            color: "#ccc",
-            // Max HP's key is a short dashed line like the one on the chart,
-            // not the default box, which drew a dashed line as a faint square.
-            // HP's box keeps the area's own fill, not the solid point colour.
-            usePointStyle: true,
-            pointStyleWidth: 22,
-            generateLabels: chart => Chart.defaults.plugins.legend.labels.generateLabels(chart)
-              .map(item => item.text === "Max HP" ? { ...item, pointStyle: "line" }
-                : { ...item, pointStyle: "rect", fillStyle: chart.data.datasets[item.datasetIndex].backgroundColor }),
-          },
-        },
+        // The key sits under the chart as HTML, like the deck, relic and
+        // keeping-up charts, so all of them read the same.
+        legend: { display: false },
         tooltip: {
           // The "Max HP" dataset only exists to draw the dashed reference
           // line — its value is already shown as the "/maxHp" half of the
@@ -967,8 +960,8 @@ function renderDetailGoldChart(run) {
       layout: { padding: { top: ACT_BAND, right: 24 } },
       interaction: { mode: "index", intersect: false },
       plugins: {
-        // At the bottom, to leave the top band to the act names.
-        legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 14 } },
+        // One line, named by the heading above, so no key.
+        legend: { display: false },
         tooltip: {
           callbacks: {
             title: items => {
@@ -1228,7 +1221,30 @@ let floorTipTimer = 0;
 let floorTipOver = false;
 let floorTipTouch = false;
 const floorTipPointer = { x: 0, y: 0 };
-const FLOOR_TIP_GRACE = 250;
+// Where the pointer was when the box opened, and which side of it the box is on.
+const floorTipAnchor = { x: 0, y: 0, below: true };
+const FLOOR_TIP_GRACE = 450;
+// Is p on a straight line from a to some point of the rect r: on its way there?
+function onTheWay(a, r, p) {
+  const dx = p.x - a.x, dy = p.y - a.y;
+  let lo = 0, hi = Infinity;
+  for (const [d, from, min, max] of [[dx, a.x, r.left, r.right], [dy, a.y, r.top, r.bottom]]) {
+    if (d === 0) { if (from < min || from > max) return false; continue; }
+    const t1 = (min - from) / d, t2 = (max - from) / d;
+    lo = Math.max(lo, Math.min(t1, t2));
+    hi = Math.min(hi, Math.max(t1, t2));
+  }
+  return hi >= lo && hi >= 1;
+}
+// The pointer is between where it opened the box and the box, past the first few pixels
+// (so scrubbing along the chart is still scrubbing): it is heading for it. The box then
+// keeps its floor and stays open, however the pointer wanders on the way.
+function floorTipApproached() {
+  if (!floorTip || floorTip.style.display !== "block") return false;
+  const { x, y } = floorTipPointer, a = floorTipAnchor;
+  if (a.below ? y < a.y + 6 : y > a.y - 6) return false;
+  return onTheWay(a, floorTip.getBoundingClientRect(), { x, y });
+}
 function closeFloorTip() {
   clearTimeout(floorTipTimer);
   floorTipOver = false;
@@ -1238,7 +1254,12 @@ function closeFloorTip() {
 }
 function scheduleFloorTipClose() {
   clearTimeout(floorTipTimer);
-  if (!floorTipTouch) floorTipTimer = setTimeout(() => { if (!floorTipOver) closeFloorTip(); }, FLOOR_TIP_GRACE);
+  if (floorTipTouch) return;
+  floorTipTimer = setTimeout(() => {
+    if (floorTipOver) return;
+    if (floorTipApproached()) scheduleFloorTipClose();
+    else closeFloorTip();
+  }, FLOOR_TIP_GRACE);
 }
 function createFloorTip() {
   floorTip = document.createElement("div");
@@ -1275,26 +1296,32 @@ function showFloorTip(context, html) {
   // Pointer is on the box: the chart can't see it any more, and its updates mean nothing.
   if (floorTipOver) return;
   const t = context.tooltip;
-  if (!t.opacity || !t.dataPoints?.length) { scheduleFloorTipClose(); return; }
+  const seen = t.opacity && t.dataPoints?.length;
+  // On its way to the box: the chart's view of the pointer (another floor, or none) doesn't count.
+  if (floorTipApproached()) { if (seen) clearTimeout(floorTipTimer); else scheduleFloorTipClose(); return; }
+  if (!seen) { scheduleFloorTipClose(); return; }
   clearTimeout(floorTipTimer);
   const key = context.chart.id + ":" + t.dataPoints[0].dataIndex;
-  if (floorTip.dataset.key !== key) {
-    floorTip.innerHTML = html(t.dataPoints[0].dataIndex);
-    floorTip.dataset.key = key;
-  }
+  // Placed once per floor, not on every pointer move, so the box doesn't slide away from a
+  // pointer that is heading for it.
+  if (floorTip.style.display === "block" && floorTip.dataset.key === key) return;
+  floorTip.innerHTML = html(t.dataPoints[0].dataIndex);
+  floorTip.dataset.key = key;
   floorTip.style.display = "block";
   // Measured at the origin, so the last position near an edge can't squeeze it narrower.
   // clientWidth leaves out the scrollbar.
   floorTip.style.left = floorTip.style.top = "0px";
   const { clientWidth: vw, clientHeight: vh } = document.documentElement;
   const r = context.chart.canvas.getBoundingClientRect();
-  const px = floorTipPointer.x || r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
+  // Centred on the floor's column, so the pointer is over the box's width however it drifts.
+  const px = r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
   const w = floorTip.offsetWidth, h = floorTip.offsetHeight;
-  const gap = 14;
+  const gap = 12;
   const below = py + gap + h <= vh - 8 || py - gap - h < 8;
   floorTip.classList.toggle("above", !below);
   floorTip.style.left = Math.max(8, Math.min(px - w / 2, vw - 8 - w)) + "px";
   floorTip.style.top = Math.max(8, below ? py + gap : py - gap - h) + "px";
+  Object.assign(floorTipAnchor, { x: floorTipPointer.x || px, y: py, below });
 }
 
 const floorTipHead = (node, total, unit) => {
@@ -1340,7 +1367,7 @@ function floorChartConfig(nodes, plugins, tip, y, datasets) {
       // The HTML legend under the chart (floorLegend) replaces Chart.js's.
       plugins: { legend: { display: false }, tooltip: { enabled: false, external: tip } },
       scales: {
-        x: floorAxis({ stacked: true, grid: { display: false } }),
+        x: floorAxis({ stacked: true, grid: { color: "#2e3035" } }),
         // includeBounds off: the top is wherever the markers needed it, not a
         // round number, so it gets no label of its own crowding the last one.
         y: { stacked: true, grid: { color: "#2e3035" }, ...y, ticks: { color: "#ccc", precision: 0, includeBounds: false, ...y.ticks } },
@@ -1718,8 +1745,8 @@ const keepSignal = (tone, what) => `<span class="keep-signal ${tone}" role="img"
 // How the rating works, with this reading's two cut points, for a mark's hover.
 function keepRule(winTaken) {
   const { hype, low } = keepCuts(winTaken);
-  return `Rated on damage taken against the average win on the same fights: ${hype >= 0 ? `Hype at ${hype} or less, ` : ""}Low from ${low}, Mid between. ` +
-    `25% fewer turns with no more damage lifts a Mid to Hype.`;
+  return `Damage taken as a % of the average win's: ${hype >= 0 ? `Hype at 67% or less (${hype}), ` : ""}Low at 150% or more (${low}), Mid between. ` +
+    `A Mid becomes Hype at 100% or less damage taken in under 80% of the turns.`;
 }
 
 // A run's reading on its header, or just its mark in the run list (short). The numbers
@@ -1745,14 +1772,13 @@ function renderKeepActs(run, nodes, measured) {
   const box = document.getElementById("detail-keep-acts");
   const acts = actReadings(run, nodes, measured);
   box.style.display = acts.length ? "" : "none";
-  // One metric on one line: icon and label take the slack, then the figure, its mark and
-  // the average win's, hugging the right edge so no card has a dead middle. A line with
-  // no mark or average win (a per-turn figure) gives those two columns to its note. A
-  // sub line, when there is one, runs the card's width under it.
+  // One metric on one line, as cells of the half-card's grid: icon and label take the slack,
+  // then the figure and either its mark and the average win's, or (a per-turn figure) its
+  // note. A sub line, when there is one, runs the half's width under it.
   const row = (icon, label, figure, { mark, vs, note, sub } = {}) =>
-    `<div class="keep-act-row"><span class="ka-label">${icon}${label}</span><b class="ka-fig">${figure}</b>` +
+    `<span class="ka-label">${icon}${label}</span><b class="ka-fig">${figure}</b>` +
     (mark === undefined ? `<span class="ka-note">${note || ""}</span>` : `<span class="ka-mark">${mark}</span>${vs}`) +
-    (sub ? `<span class="ka-sub">${sub}</span>` : "") + `</div>`;
+    (sub ? `<span class="ka-sub">${sub}</span>` : "");
   // The average win's figure, whole, with the exact average on hover.
   const vs = (v, unit) => `<span class="ka-vs" title="Average win ${+v.toFixed(1)} ${unit}">vs ${Math.round(v)}</span>`;
   // Damage taken on a three-zone meter the card's width: Hype, Mid, Low, each with its mark
@@ -1807,20 +1833,23 @@ function renderKeepActs(run, nodes, measured) {
       `${KEEP_WORDS[a.verdict]}${a.lacking ? `, lacking ${a.lacking}` : ""}`,
       `Took ${Math.round(a.taken)}, average win ${Math.round(a.winTaken)}. ${keepRule(a.winTaken)}`,
       ...(a.verdict === "ahead" && a.held === "meeting"
-        ? [`Hype on speed: ${a.turns} turns against an average win of ${+a.winTurns.toFixed(1)}, with damage no higher.`] : []),
+        ? [`Hype on speed: ${a.turns} turns against an average win of ${+a.winTurns.toFixed(1)}, with damage taken no higher.`] : []),
     ].join("\n");
     const pill = `<span class="run-reading ${a.verdict}" data-tip="${tip}" tabindex="0"><span class="keep-signal ${a.verdict}" aria-hidden="true">${KEEP_SIGNS[a.verdict]}</span>${KEEP_WORDS[a.verdict]}</span>`;
-    const takenSub = [a.healed ? `−${Math.round(a.healed)} healed` : "", nearNote(a)].filter(Boolean).join(" · ");
+    const takenSub = [a.healed ? `After healing ${Math.round(a.healed)} HP` : "", nearNote(a)].filter(Boolean).join(" · ");
     const perTurnRow = (icon, label, value, note) => row(icon, label, `${perTurn(value)}<small>/turn</small>`, { note });
+    // Against the average win on the left, what the deck did per turn on the right; a card
+    // too narrow for two columns stacks them.
     return `<div class="keep-act"><h3><span class="ka-title">Act ${a.act}<span class="keep-kinds">${kinds(a)}</span></span>${pill}</h3>` +
+      `<div class="ka-body"><div class="ka-half ka-main">` +
       row(keepIcon("turns", KEEP_DEMAND_COLOR), "Fight turns", a.turns,
         { mark: keepSignal(a.speed, `Fight turns: ${KEEP_WORDS[a.speed]}`), vs: vs(a.winTurns, "turns"), sub: speedNote(a) }) +
-      row(keepIcon("taken", KEEP_LINES.taken.color), "Taken", Math.round(a.taken),
-        { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage"), sub: takenSub }) + meter(a) +
-      (log ? perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
+      row(keepIcon("taken", KEEP_LINES.taken.color), "Damage taken", Math.round(a.taken),
+        { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage"), sub: takenSub }) + meter(a) + `</div>` +
+      (log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
         perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)} · base ${KEEP_BASE.energy}`) +
-        perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, `${perTurn(log.played)} played · base ${KEEP_BASE.cards}`) : "") +
-      `</div>`;
+        perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, `${perTurn(log.played)} played · base ${KEEP_BASE.cards}`) + `</div>` : "") +
+      `</div></div>`;
   }).join("");
 }
 

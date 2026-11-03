@@ -1601,8 +1601,8 @@ was an average. The table head is "Avg win", the chart's icon is "Average win", 
 win", and the fight table's footnote reads "Average of N wins". The old "Winners took" row is gone with
 the rest of the old five-row box. The maths are still `winners_of` and friends.
 
-**The rule is on the page.** Damage taken decides: Low above 1.5× the average win, Hype under ⅔ of it,
-and killing 25% faster with no more damage lifts a Mid to Hype. Each act's Taken row has a three-zone
+**The rule is on the page.** Damage taken decides: Low at 150% or more of the average win's, Hype at
+67% or less, and finishing in under 80% of the turns with no more damage lifts a Mid to Hype. Each act's Taken row has a three-zone
 bar with the act marked on it and the two cut points as HP, computed from the average win by
 `keepCuts`, which settles each cut with `keepMark`'s own comparison so it never disagrees with the
 verdict at a float edge. A brute-force probe over 1.46 million (average win, taken) pairs and every
@@ -1645,15 +1645,25 @@ The user opened a real Silent win on gamma and listed what was wrong. What chang
 vanished as the pointer left the floor's point, and "Click to hold" meant nothing to a visitor. Now the
 box opens straight below the pointer (above when it would not fit), centred on it, so reaching it is a
 vertical move that stays on the same floor. A transparent strip bridges the gap, and leaving the chart
-or the box closes it after 250 ms, which entering the box cancels. Chips open the full card or relic on
+or the box closes it after 450 ms, which entering the box cancels. That alone still lost the box on a
+diagonal approach, so while the pointer is on a line from where the box opened to any point of it, the
+box holds its floor and the timer restarts; moving sideways along the chart still changes floors. Chips open the full card or relic on
 hover. Touch has no hover, so a tap holds the box until a tap elsewhere, Esc, a scroll or a resize.
 Text is 15 px. Checked by moving the pointer 250 px into the box in 15 px steps: open all the way.
 
+**Charts match.** HP and Gold by Floor got a heading, a caption and the HTML key under the chart like
+Deck, Relics and Keeping Up (Gold is one line, so no key), and every floor chart has the same x gridlines.
+Secondary text inside the Keeping Up box and the tip is brighter (`#d2cdea`) so it no longer reads as
+unimportant next to the white. Act cards are two columns when the card is 560px wide or more.
+
 **Wording.** "This run" / "Avg win" on the tip. "Fight turns" replaces "Turns to kill", which did not
-say what was killed. The rule is stated as a mechanism, the same maths: *rated on damage taken against
-the average win on the same fights; Hype at ⅔ of their damage or less, Low at 1.5× or more, Mid between;
-25% fewer turns with no more damage lifts a Mid to Hype.* The numbers on each meter come from the
-current average win, so they shift as wins are recorded. These strings are drafts until the user OKs them.
+say what was killed. The rule is stated as a mechanism, the same maths, in one convention (damage taken
+and turns as a % of the average win's) and once, in the section caption: *Damage taken as a % of the
+average win's on the same fights: Hype at 67% or less, Mid between, Low at 150% or more. A Mid becomes
+Hype at 100% or less in under 80% of the turns.* The first draft said ⅔, 1.5× and "25% fewer turns" in
+three conventions, and 25% was wrong: the edge is winners' turns over yours above 1.25, so your turns
+under 80% of theirs, which is 20% fewer. A mark's hover repeats the rule with this reading's cut points
+as HP. These strings are drafts until the user OKs them.
 
 **Act cards.** 16 px text, one grid for every row (label, figure, mark, "vs N") so the columns line up
 across cards and nothing floats mid-card, kind icons in the heading. The meter is a 12 px gauge: each

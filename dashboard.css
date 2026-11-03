@@ -1272,7 +1272,7 @@ h1 {
 .floor-tip .strength-chip img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex: none; }
 .floor-tip .strength-chip.gain { border-color: #4087de; }
 .floor-tip .strength-chip.loss { border-color: #d97230; }
-.floor-tip .strength-measured { color: var(--muted, #8a8aa0); font-variant-numeric: tabular-nums; }
+.floor-tip .strength-measured { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 .keep-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
 .keep-act { border: 1px solid var(--hairline); border-radius: 8px; padding: 0.8rem 1rem 0.9rem; font-size: var(--fs-md); }
@@ -1280,24 +1280,36 @@ h1 {
 .ka-title { display: inline-flex; align-items: center; gap: 0.75rem; }
 .keep-kinds { display: inline-flex; gap: 0.6rem; color: var(--text-dim); font-size: var(--fs-sm); font-weight: 400; }
 .keep-kind { display: inline-flex; align-items: center; gap: 0.25rem; }
-/* One metric a line. Icon and label take the slack, then the figure, its mark and the
-   average win's hug the right edge, so every card has the same columns and no dead middle.
-   A per-turn line gives the mark and average-win columns to its note; a sub line runs the
-   card's width under its row. */
-.keep-act-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 1.6rem 4.2rem; column-gap: 0.4rem; align-items: baseline; margin-top: 0.5rem; }
-.keep-act-row .ka-label { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-dim); white-space: nowrap; align-self: center; }
+/* Secondary text here sits close to the primary, so only the weight and size set them apart:
+   the dimmer page-wide grey read as unimportant beside the white figures. */
+#detail-keep-box, .floor-tip { --text-dim: #d2cdea; }
+/* A card is two halves: what the act took and how long it took against the average win, then
+   what the deck did per turn. Each half is one grid whose rows are its cells in order (label
+   and icon take the slack, then the figure, then its mark and the average win's or its note),
+   so the columns line up down the half and a note is never squeezed. Where the card is wide
+   the halves sit side by side, so a label is never a card's width away from its figure; a
+   narrow card stacks them. A sub line runs the half's width under its row. */
+.keep-act { container-type: inline-size; }
+.ka-body { display: grid; gap: 0.9rem 2rem; }
+.ka-half { display: grid; column-gap: 0.5rem; row-gap: 0.5rem; align-items: baseline; align-content: start; }
+.ka-main { grid-template-columns: minmax(0, 1fr) auto 1.6rem auto; }
+.ka-flow { grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 0.9rem; }
+@container (min-width: 560px) {
+  .ka-body:has(.ka-flow) { grid-template-columns: 1fr 1fr; }
+}
+.ka-label { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-dim); white-space: nowrap; align-self: center; }
 .keep-ico { flex: none; }
-.keep-act-row .ka-fig { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
-.keep-act-row .ka-fig small { margin-left: 2px; color: var(--text-dim); font-size: var(--fs-sm); font-weight: 400; }
-.keep-act-row .ka-mark { text-align: center; align-self: center; }
-.keep-act-row .ka-vs { color: var(--text-dim); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
-.keep-act-row .ka-note { grid-column: 3 / 5; color: var(--text-dim); font-size: var(--fs-sm); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.keep-act-row .ka-sub { grid-column: 1 / -1; color: var(--text-dim); font-size: var(--fs-sm); }
-.keep-act-row .ka-sub:empty { display: none; }
+.ka-fig { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ka-fig small { margin-left: 2px; color: var(--text-dim); font-size: var(--fs-sm); font-weight: 400; }
+.ka-mark { text-align: center; align-self: center; }
+.ka-vs { color: var(--text-dim); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.ka-note { color: var(--text-dim); font-size: var(--fs-sm); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ka-sub { grid-column: 1 / -1; margin-top: -0.3rem; color: var(--text-dim); font-size: var(--fs-sm); }
+.ka-sub:empty { display: none; }
 /* Damage taken against the average win's two cut points: Hype, Mid and Low as three zones
    (mark and word inside, the word dropped when a zone is narrow), a pointer with the act's
    figure, a tick for the average win's, and each cut number under the edge it belongs to. */
-.keep-meter { margin: 1.35rem 0 0; font-variant-numeric: tabular-nums; }
+.keep-meter { grid-column: 1 / -1; margin: 0.9rem 0 0; font-variant-numeric: tabular-nums; }
 .ks-bar { position: relative; display: flex; gap: 2px; height: 22px; }
 .ks-zone { display: flex; align-items: center; justify-content: center; gap: 0.3rem; min-width: 0; overflow: hidden; container-type: inline-size; color: var(--bg-deep); font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; }
 .ks-zone:first-child { border-radius: 6px 0 0 6px; }
@@ -1348,8 +1360,8 @@ h1 {
   box-shadow: 0 6px 24px #0008;
 }
 /* The strip between the box and the pointer, so crossing it never leaves the box. */
-.floor-tip::before { content: ""; position: absolute; left: 0; right: 0; top: -16px; height: 16px; }
-.floor-tip.above::before { top: auto; bottom: -16px; }
+.floor-tip::before { content: ""; position: absolute; left: 0; right: 0; top: -12px; height: 12px; }
+.floor-tip.above::before { top: auto; bottom: -12px; }
 .floor-tip .ft-row { display: flex; gap: 14px; align-items: flex-start; }
 .floor-tip .ft-head { margin-bottom: 6px; font-size: 1rem; white-space: nowrap; }
 .floor-tip table { border-collapse: collapse; }
