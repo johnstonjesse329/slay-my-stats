@@ -127,7 +127,7 @@ function renderDetailRunList() {
   const container = document.getElementById("detail-run-list");
 
   if (runs.length === 0) {
-    container.innerHTML = `<div style="color:#8a8aa0;padding:1rem;font-size:var(--fs-sm)">No runs match the current filters.</div>`;
+    container.innerHTML = `<div style="color:var(--text-dim);padding:1rem;font-size:var(--fs-sm)">No runs match the current filters.</div>`;
     return;
   }
 
@@ -154,12 +154,12 @@ function renderDetailRunList() {
     const active = run.ts === detailSelectedTs;
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
       <span class="detail-run-char">${label}</span>
-      <span class="detail-run-asc" style="color:#bcbcd0">A${run.asc}</span>
+      <span class="detail-run-asc" style="color:var(--text-dim)">A${run.asc}</span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
-      <span class="detail-run-floor" style="color:#bcbcd0">F${run.floor}</span>
+      <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
       <span class="detail-run-mod">${moddedTagHtml(run, false, true)}</span>
-      <span class="detail-run-date" style="color:#8a8aa0">${fmtDate(run.ts).replace(/\/\d+$/, `<span class="detail-run-year">$&</span>`)}</span>
+      <span class="detail-run-date" style="color:var(--text-dim)">${fmtDate(run.ts).replace(/\/\d+$/, `<span class="detail-run-year">$&</span>`)}</span>
     </div>`;
   }).join("");
 
@@ -328,11 +328,11 @@ function renderDetailRun(run) {
     <div class="detail-run-header-bar">
       <span class="dot" style="background:${color};width:14px;height:14px"></span>
       <span style="font-weight:700;font-size:1.1rem">${label}</span>
-      <span style="color:#bcbcd0">A${run.asc}</span>
+      <span style="color:var(--text-dim)">A${run.asc}</span>
       <span style="color:${won ? "#5cba7d" : "#e05c5c"};font-weight:600">${won ? "Victory" : "Defeat"}</span>
       ${runReadingHtml(run)}
-      <span style="color:#bcbcd0">Floor ${run.floor}</span>
-      <span style="color:#bcbcd0">${fmtHrsMin(run.mins)}</span>
+      <span style="color:var(--text-dim)">Floor ${run.floor}</span>
+      <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
       <span class="rh-date">${fmtDate(run.ts)}</span>
       ${run.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed: </span>${run.seed}</span>` : ""}
       ${moddedTagHtml(run, true)}
@@ -602,7 +602,7 @@ function actCountPills(actNodes) {
 function renderDetailTimeline(run) {
   const nodes = run.timeline || [];
   if (nodes.length === 0) {
-    document.getElementById("detail-timeline").innerHTML = `<div style="color:#8a8aa0;padding:1rem">No timeline data for this run.</div>`;
+    document.getElementById("detail-timeline").innerHTML = `<div style="color:var(--text-dim);padding:1rem">No timeline data for this run.</div>`;
     return;
   }
 
@@ -1540,6 +1540,8 @@ const KEEP_ICONS = {
   healed: `<path d="M8 14C3 10.5 1.8 8 1.8 5.8 1.8 4 3.2 2.8 4.8 2.8c1.2 0 2.5.7 3.2 1.9.7-1.2 2-1.9 3.2-1.9 1.6 0 3 1.2 3 3 0 2.2-1.2 4.7-6.2 8.2z" fill="currentColor"/>`,
   energy: `<path d="M9.3 1L3.5 9h4l-.8 6L12.5 7h-4z" fill="currentColor"/>`,
   draw: `<rect x="3.5" y="2" width="9" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/>`,
+  // Drawn is the outline, played the same card filled: a card in hand and a card used.
+  played: `<rect x="3.5" y="2" width="9" height="12" rx="1.6" fill="currentColor"/>`,
 };
 const keepIcon = (name, color) =>
   `<svg class="keep-ico" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color:${color}">${KEEP_ICONS[name]}</svg>`;
@@ -1848,7 +1850,8 @@ function renderKeepActs(run, nodes, measured) {
         { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage"), sub: takenSub }) + meter(a) + `</div>` +
       (log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
         perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)} · base ${KEEP_BASE.energy}`) +
-        perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, `${perTurn(log.played)} played · base ${KEEP_BASE.cards}`) + `</div>` : "") +
+        perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, `base ${KEEP_BASE.cards}`) +
+        perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") + `</div>` : "") +
       `</div></div>`;
   }).join("");
 }

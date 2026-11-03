@@ -13,7 +13,7 @@ Chart.defaults.font.size = 14;
 // hide the 105 tick label, and force a 100 tick to always exist
 const WIN_PCT_Y_AXIS = {
   max: 105,
-  ticks: { color: "#bcbcd0", stepSize: 25, callback: v => v <= 100 ? v : null },
+  ticks: { color: "#d2cdea", stepSize: 25, callback: v => v <= 100 ? v : null },
   afterBuildTicks: axis => {
     if (!axis.ticks.some(t => t.value === 100))
       axis.ticks.push({ value: 100 });
@@ -66,7 +66,7 @@ const ascWinChart = new Chart(document.getElementById("ascWinChart"), {
     scales: {
       x: {
         grid:  { display: false },
-        ticks: { color: "#bcbcd0" },
+        ticks: { color: "#d2cdea" },
         title: { display: true, text: "Ascension", color: "#999" },
       },
       y: {
@@ -273,14 +273,14 @@ function updateMonthlyWinChart(filteredRuns) {
       scales: {
         x: {
           grid:  { color: "#3f4147" },
-          ticks: { color: "#bcbcd0" },
+          ticks: { color: "#d2cdea" },
         },
         y: {
           grid:        { color: "#3f4147" },
           title:       { display: true, text: "Win %", color: "#999" },
           beginAtZero: true,
           max:         100,
-          ticks:       { color: "#bcbcd0", stepSize: 25 },
+          ticks:       { color: "#d2cdea", stepSize: 25 },
         },
       },
     },
@@ -340,7 +340,7 @@ function makeRestActChart(id) {
       },
       scales: {
         x: {
-          grid: { display: false }, ticks: { color: "#bcbcd0" },
+          grid: { display: false }, ticks: { color: "#d2cdea" },
           title: { display: true, text: "Times chosen", color: "#999" },
         },
         y: {
@@ -477,7 +477,7 @@ const eliteCheckpointChart = new Chart(document.getElementById("eliteCheckpointC
     },
     scales: {
       x: {
-        grid: { display: false }, ticks: { color: "#bcbcd0" },
+        grid: { display: false }, ticks: { color: "#d2cdea" },
         title: { display: true, text: "Elites defeated", color: "#999" },
       },
       y: {

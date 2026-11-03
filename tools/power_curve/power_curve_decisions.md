@@ -1653,8 +1653,10 @@ Text is 15 px. Checked by moving the pointer 250 px into the box in 15 px steps:
 
 **Charts match.** HP and Gold by Floor got a heading, a caption and the HTML key under the chart like
 Deck, Relics and Keeping Up (Gold is one line, so no key), and every floor chart has the same x gridlines.
-Secondary text inside the Keeping Up box and the tip is brighter (`#d2cdea`) so it no longer reads as
-unimportant next to the white. Act cards are two columns when the card is 560px wide or more.
+Secondary text everywhere is one brighter colour (`--text-dim`, `#d2cdea`, chart ticks the same) so it no
+longer reads as unimportant next to the white; the old hard-coded greys `#8a8aa0` and `#bcbcd0` are gone as text
+colours. The act card's Draw row says only its base; "Cards played" is its own row, since a card drawn is not
+a card played (a full hand with no energy is a different problem from a deck that draws little). Act cards are two columns when the card is 560px wide or more.
 
 **Wording.** "This run" / "Avg win" on the tip. "Fight turns" replaces "Turns to kill", which did not
 say what was killed. The rule is stated as a mechanism, the same maths, in one convention (damage taken

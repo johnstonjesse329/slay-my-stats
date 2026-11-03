@@ -13,7 +13,7 @@
     runsData        : [{char, asc, won, floor, mins, cards, relics, ts, mp, mode}, ...]
 */
 
-Chart.defaults.color = "#bcbcd0";
-Chart.defaults.scale.ticks.color = "#bcbcd0";
-Chart.defaults.scales.category.ticks.color = "#bcbcd0";
+Chart.defaults.color = "#d2cdea";
+Chart.defaults.scale.ticks.color = "#d2cdea";
+Chart.defaults.scales.category.ticks.color = "#d2cdea";
 

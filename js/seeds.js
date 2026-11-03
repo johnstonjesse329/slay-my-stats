@@ -264,7 +264,7 @@ function renderSeeds() {
 
   const tbody = document.getElementById("seeds-tbody");
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#8a8aa0;padding:1.5rem">No matching seeds</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:1.5rem">No matching seeds</td></tr>`;
     return;
   }
 
@@ -301,7 +301,7 @@ function renderSeeds() {
 
   tbody.innerHTML = visibleRows.map((run, i) => {
     const color = charColor(run);
-    const wonDot = `<span style="color:${run.won ? "#e0e0e0" : "#8a8aa0"}">${run.won ? "Win" : "Loss"}</span>`;
+    const wonDot = `<span style="color:${run.won ? "#e0e0e0" : "var(--text-dim)"}">${run.won ? "Win" : "Loss"}</span>`;
 
     let matchSummary = "";
     if (hasFilters) {
@@ -320,13 +320,13 @@ function renderSeeds() {
 
     return `<tr class="seed-row" data-idx="${i}" style="cursor:pointer" tabindex="0">
       <td style="padding:0.4rem 0.75rem;font-family:monospace;white-space:nowrap">
-        <span class="seed-expand-arrow" style="color:#8a8aa0;font-size:var(--fs-xs);margin-right:0.4rem">▶</span><span class="seed-id" role="button" tabindex="0" aria-label="Copy seed ${run.seed}" style="cursor:pointer;color:#e0c468" data-tip="Click to copy" data-seed="${run.seed}">${run.seed}</span>
+        <span class="seed-expand-arrow" style="color:var(--text-dim);font-size:var(--fs-xs);margin-right:0.4rem">▶</span><span class="seed-id" role="button" tabindex="0" aria-label="Copy seed ${run.seed}" style="cursor:pointer;color:#e0c468" data-tip="Click to copy" data-seed="${run.seed}">${run.seed}</span>
       </td>
       <td style="padding:0.4rem 0.75rem;white-space:nowrap">
         <span style="color:${color}">${fmtCharName(run.char)}</span>
       </td>
       <td style="padding:0.4rem 0.75rem;text-align:center">${wonDot}</td>
-      <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:#bcbcd0;font-size:var(--fs-sm)">${fmt(run.ts)}</td>
+      <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:var(--text-dim);font-size:var(--fs-sm)">${fmt(run.ts)}</td>
       <td style="padding:0.4rem 0.75rem;font-size:var(--fs-sm)">${matchSummary}</td>
     </tr>`;
   }).join("") + moreRow;
@@ -393,11 +393,11 @@ function renderSeedDetail(run) {
   return `<div class="seed-detail-panel">
     <div class="seed-detail-section">
       <div class="seed-detail-label">Final deck — ${cards.length} unique, ${(run.finalDeck||[]).length} total</div>
-      <div class="seed-detail-cards">${groupsHtml || "<span style='color:#8a8aa0'>—</span>"}</div>
+      <div class="seed-detail-cards">${groupsHtml || "<span style='color:var(--text-dim)'>—</span>"}</div>
     </div>
     <div class="seed-detail-section">
       <div class="seed-detail-label">Relics — ${relics.length}</div>
-      <div class="deck-relic-list">${relicHtml || "<span style='color:#8a8aa0'>—</span>"}</div>
+      <div class="deck-relic-list">${relicHtml || "<span style='color:var(--text-dim)'>—</span>"}</div>
     </div>
   </div>`;
 }

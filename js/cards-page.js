@@ -155,7 +155,7 @@ function renderCardsPage() {
     { key: "winSkipped", label: "Win % if skipped",align: "center", width: "140px" },
   ];
 
-  const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.3rem 0.5rem;font-size:var(--fs-sm);width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "#bcbcd0"}"`;
+  const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.3rem 0.5rem;font-size:var(--fs-sm);width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "var(--text-dim)"}"`;
   document.getElementById("cards-thead").innerHTML = `<tr>
     ${cols.map(c => `<th ${thStyle(c)} data-sort="${c.key}" tabindex="0">${c.label}${cardsSortKey === c.key ? (cardsSortDir < 0 ? " ▾" : " ▴") : ""}</th>`).join("")}
   </tr>`;
@@ -176,7 +176,7 @@ function renderCardsPage() {
   // disagree with the rest of the app about what a sample size was worth
   // warning about.
   const pct = (v, color) => {
-    if (v == null) return `<span style="color:#8a8aa0">—</span>`;
+    if (v == null) return `<span style="color:var(--text-dim)">—</span>`;
     return `<span style="color:${color};font-weight:${v >= 50 ? "800" : "400"};"${v >= 50 ? ` class="cards-hi"` : ""}>${v}%</span>`;
   };
 
@@ -197,10 +197,10 @@ function renderCardsPage() {
       : "";
     return `<tr>
     <td style="padding:0.3rem 0.5rem;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
-    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "#bcbcd0"}">${r.owner}</td>
-    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${TYPE_COLOR[r.type] || "#bcbcd0"}">${r.type}</td>
-    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "#bcbcd0"}">${r.rarity}</td>
-    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md);color:#bcbcd0">${r.offered}</td>
+    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "var(--text-dim)"}">${r.owner}</td>
+    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
+    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}</td>
+    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.offered}</td>
     <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.pickRate, "#ccc")}</td>
     <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.winPicked,  "#ccc")}</td>
     <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.winSkipped, "#ccc")}</td>

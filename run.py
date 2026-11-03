@@ -1265,7 +1265,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <div class="filter-group">
       <span class="filter-label">Date</span>
       <input type="date" id="shared-date-from" aria-label="Start date">
-      <span style="color:#8a8aa0;font-size:0.85rem" aria-hidden="true">→</span>
+      <span style="color:var(--text-dim);font-size:0.85rem" aria-hidden="true">→</span>
       <input type="date" id="shared-date-to" aria-label="End date">
       <div class="sep"></div>
       <button class="toggle-btn" id="shared-date-7d">7d</button>
@@ -1278,7 +1278,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <button class="toggle-btn" id="shared-filters-save" title="Remember the current filters and use them as the default next time you open this dashboard">Save as default</button>
       <button class="toggle-btn" id="shared-filters-reset" title="Revert to the built-in filters. Your saved default is kept unless you click Save as default">Reset filters</button>
       <span id="shared-filters-unsaved" title="You've changed filters since your last save — click Save as default to keep them" style="display:none;align-items:center;justify-content:center;width:1.15rem;height:1.15rem;margin-left:0.4rem;border-radius:50%;background:#e0c468;color:#13132a;font-size:0.75rem;font-weight:700;cursor:default;user-select:none">!</span>
-      <span id="shared-filters-status" style="color:#8a8aa0;font-size:0.8rem;margin-left:0.4rem"></span>
+      <span id="shared-filters-status" style="color:var(--text-dim);font-size:0.8rem;margin-left:0.4rem"></span>
     </div>
   </div>
 </nav>
