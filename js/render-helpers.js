@@ -55,8 +55,11 @@ function renderCards(grand, charStats, restAvg) {
   const winPct = grand.win_pct !== null ? grand.win_pct + "%" : "—";
   const items = [
     { label: "Win %", value: winPct },
-    { label: "Best win %", value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
-      tip: charStats[bestIdx].win_pct !== null ? `${fmtCharName(chars[bestIdx])} · ${charStats[bestIdx].wins}W / ${charStats[bestIdx].losses}L` : "No wins" },
+    // The character is the point of this card, so it sits in the label where a
+    // phone can see it; the tooltip keeps only the win/loss counts.
+    { label: charStats[bestIdx].win_pct !== null ? `Best win % · ${fmtCharName(chars[bestIdx])}` : "Best win %",
+      value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
+      tip: charStats[bestIdx].win_pct !== null ? `${charStats[bestIdx].wins}W / ${charStats[bestIdx].losses}L` : "No wins" },
     { label: "Most played",    value: fmtCharName(chars[mostIdx]),
       // Run count is the Runs card's value — show only the share here.
       tip: `${mostPlayedPct}% of all runs` },
