@@ -1309,18 +1309,20 @@ h1 {
 .ka-sub:empty { display: none; }
 /* Damage taken against the average win's two cut points: Hype, Mid and Low as three zones
    (mark and word inside, the word dropped when a zone is narrow), a pointer with the act's
-   figure, a tick for the average win's, and each cut number under the edge it belongs to. */
+   figure, and each cut number under the edge it belongs to. */
 .keep-meter { grid-column: 1 / -1; margin: 0.9rem 0 0; font-variant-numeric: tabular-nums; }
 .ks-bar { position: relative; display: flex; gap: 2px; height: 22px; }
 .ks-zone { display: flex; align-items: center; justify-content: center; gap: 0.3rem; min-width: 0; overflow: hidden; container-type: inline-size; color: var(--bg-deep); font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; }
 .ks-zone:first-child { border-radius: 6px 0 0 6px; }
 .ks-zone:last-of-type { border-radius: 0 6px 6px 0; }
 .ks-zone b { font-size: 11px; line-height: 1; }
+/* Mid's mark: a ring round a dot, drawn so it looks the same in every font. */
+.bullseye { display: inline-block; width: 1.1em; height: 1.1em; border-radius: 50%; background: radial-gradient(circle, currentColor 0 26%, transparent 30% 54%, currentColor 58% 100%); }
+.ks-zone .bullseye { font-size: 12px; }
 @container (max-width: 64px) { .ks-word { display: none; } }
 .ks-zone.ahead { background: #5cba7d; }
 .ks-zone.meeting { background: var(--gold); }
 .ks-zone.behind { background: #e05c5c; }
-.ks-win { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--bg-deep); opacity: 0.55; }
 .ks-mark { position: absolute; top: -5px; bottom: -5px; width: 4px; margin-left: -2px; background: var(--text); border: 1px solid var(--bg-deep); border-radius: 2px; box-sizing: content-box; }
 .ks-mark b { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 2px; font-size: var(--fs-sm); font-weight: 700; color: var(--text); line-height: 1.1; }
 .ks-mark.first b { left: -3px; transform: none; }

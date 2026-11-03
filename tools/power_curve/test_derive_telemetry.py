@@ -74,6 +74,31 @@ class TurnModel(unittest.TestCase):
         self.assertEqual(f["turns"][0]["taken"], 9)
         self.assertEqual(f["taken"], 9)
 
+    def test_the_killing_blow_counts_in_full_overkill_included(self):
+        # The hit that kills logs `hit`, `hp` to 0 and `die` with no `recv` behind it
+        # (run 1793674597: 6 HP left, 9 blocked, 14 through). Damage taken is what the
+        # blow carried, not the HP there was left to lose.
+        log = fight()
+        log[-1]["q"] = 40  # events are read in q order; the fight closes after the blow
+        log += [
+            ev(30, "hp", c="P", d=-6, hp=0),
+            ev(31, "hit", by="E0", t="P", total=15, blk=9, unb=6, ovk=8),
+            ev(32, "die", c="P", stop=False),
+        ]
+        f = dt.derive({"v": 3, "log": log})["fights"][0]
+        self.assertEqual(f["taken"], 9 + 14)
+        self.assertEqual(f["blocked"], 9)
+        self.assertEqual(f["overkill"], 8)
+        self.assertEqual(f["self_dmg"], 0)
+
+    def test_a_hit_with_its_recv_is_not_counted_again_when_the_player_dies(self):
+        log = fight()
+        log[-1]["q"] = 40
+        log.append(ev(32, "die", c="P", stop=False))
+        f = dt.derive({"v": 3, "log": log})["fights"][0]
+        self.assertEqual(f["taken"], 9)
+        self.assertEqual(f["overkill"], 0)
+
     def test_extra_turn_opens_another_turn(self):
         log = fight()
         cut = len(log) - 1  # everything before fight1

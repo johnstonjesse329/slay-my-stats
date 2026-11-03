@@ -1555,7 +1555,7 @@ const KEEP_TURN_EDGES = [0.8, 1.25];
 // The acts a run has to read ahead in to be OP: fight_demand.py's OP_ACTS, counted from 1.
 const KEEP_OP_ACTS = [2, 3];
 // A reading's mark: the shape says it as well as the colour.
-const KEEP_SIGNS = { ahead: "▲", meeting: "–", behind: "▼" };
+const KEEP_SIGNS = { ahead: "▲", meeting: `<i class="bullseye"></i>`, behind: "▼" };
 // Fight icons on a chart, in px: up to the HP and gold charts' size, and a floor and a
 // half wide when a run has many floors; still readable on a phone.
 const KEEP_ICON = { min: 16, max: NODE_POINT };
@@ -1634,9 +1634,12 @@ function fightReadings(run, nodes, measured) {
     const enemyTurns = m ? m.enemyTurns : n.turns - (lost ? 0 : 1);
     if (enemyTurns) {
       row.enemyTurns = enemyTurns;
-      row.total = keepTaken(n);
+      // The fight that killed you: the run file stops at the HP you had left, the log
+      // has the whole blow.
+      const gross = lost && m ? m.taken : n.dmg || 0;
+      row.total = Math.max(0, gross - (n.healed || 0));
       row.taken = row.total / enemyTurns;
-      row.healedOff = (n.dmg || 0) - row.total;
+      row.healedOff = gross - row.total;
       row.healedAll = n.healed || 0;
       row.healed = row.healedOff / enemyTurns;
       if (how) { row.winRate = how.rate; row.winTotal = how.taken; }
@@ -1785,8 +1788,7 @@ function renderKeepActs(run, nodes, measured) {
   // The average win's figure, whole, with the exact average on hover.
   const vs = (v, unit) => `<span class="ka-vs" title="Average win ${+v.toFixed(1)} ${unit}">vs ${v.toFixed(0)}</span>`;
   // Damage taken on a three-zone meter the card's width: Hype, Mid, Low, each with its mark
-  // and (when it has room) its word, the act's own figure on a pointer, the average win's
-  // on a tick, and the two cut points under the zone edges they belong to. The meter runs a
+  // and (when it has room) its word, the act's own figure on a pointer, and the two cut points under the zone edges they belong to. The meter runs a
   // little past Low.
   const meter = a => {
     const { hype, low } = keepCuts(a.winTaken);
@@ -1801,7 +1803,6 @@ function renderKeepActs(run, nodes, measured) {
     return `<div class="keep-meter" role="img" aria-label="${label}" title="${label}">` +
       `<div class="ks-bar">` +
       (hypeW ? zone("ahead", hypeW, KEEP_WORDS.ahead) : "") + zone("meeting", lowAt - hypeW, KEEP_WORDS.meeting) + zone("behind", 100 - lowAt, KEEP_WORDS.behind) +
-      `<i class="ks-win" style="left:${pct(a.winTaken)}%" title="Average win took ${Math.round(a.winTaken)}"></i>` +
       `<i class="ks-mark${at < 12 ? " first" : at > 88 ? " last" : ""}" style="left:${at}%"><b>${taken}</b></i></div>` +
       `<div class="ks-cuts">` +
       (hypeW ? cut(hypeW < 16 ? "hype start" : "hype", hypeW, `≤ ${hype}`) : "") + cut("mid", lowAt - hypeW, "") + cut("low", 100 - lowAt, `≥ ${low}`) + `</div></div>`;

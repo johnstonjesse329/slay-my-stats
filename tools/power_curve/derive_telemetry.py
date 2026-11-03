@@ -98,6 +98,9 @@ def _new_fight(fight, first):
         # Damage to enemies that did not come from one of our attacks: poison and
         # other damage over time log with an empty attacker.
         "dmg_other": 0, "dmg_hit": 0, "junk": 0,
+        # What the killing blow carried past 0 HP. It is part of `taken`, because the
+        # damage that killed you is the damage you took, not the 6 HP you had left.
+        "overkill": 0,
     }
 
 
@@ -119,6 +122,9 @@ def derive(log, moves=None):
     fight = None
     turn = None
     seen_openers = set()
+    # The last enemy hit on the player that no `recv` has followed yet. Every hit has a
+    # `recv` behind it except the one that kills: that logs `hit`, `hp` to 0, `die`.
+    unreceived = None
     # Who is Vulnerable right now. It decides which hits were boosted, which is the
     # number the formula's Vulnerable term is standing in for: how much of the damage
     # actually landed at +50%. Counting turns where it happened to be up at turn start
@@ -335,7 +341,19 @@ def derive(log, moves=None):
             amount = a.get("unb") or 0
             turn["dmg_other"] += amount
             fight["dmg_other"] += amount
+        elif kind == "hit" and a.get("t") == PLAYER and a.get("by") != PLAYER:
+            unreceived = a
+        elif kind == "die" and a.get("c") == PLAYER and unreceived is not None:
+            # The killing blow, counted from its `hit`: `unb` is what took the HP that
+            # was left, `ovk` what was left over after that.
+            blow = unreceived
+            unreceived = None
+            over = blow.get("ovk") or 0
+            turn["taken"] += (blow.get("unb") or 0) + over
+            turn["blocked"] += blow.get("blk") or 0
+            fight["overkill"] += over
         elif kind == "recv" and a.get("t") == PLAYER:
+            unreceived = None
             # Damage that comes at us attributed to ourselves is a curse or a status
             # doing its work, not the enemy: Knowledge Demon's curse deals 6 a turn.
             # Counting it as enemy demand made 133 points of hits look like 175, and
@@ -494,7 +512,7 @@ def derive(log, moves=None):
         f["spawned"] = max(0, f["enemy_lost"] - (f["pool"] or 0))
         # HP paid that no incoming hit explains: the deck's own costs (Bloodletting,
         # Offering, potions). A fact about the deck, not a hole in the log.
-        f["self_dmg"] = max(0, f["hp_in"] - f["taken"])
+        f["self_dmg"] = max(0, f["hp_in"] - (f["taken"] - f["overkill"]))
         # The demand side, from what the enemies were about to do each turn, and the
         # cost of not killing them: an enemy-turn is one enemy standing when a turn
         # began. A turn's damage is a distribution, not an average -- a fight that
@@ -536,9 +554,10 @@ def check(derived):
         # is a fact about the deck, recorded as `self_dmg`, not a contradiction. Fewer
         # HP lost than the hits say is a hole: something dealt damage that never
         # happened.
-        if f["taken"] > f["hp_in"]:
+        if f["taken"] - f.get("overkill", 0) > f["hp_in"]:
             problems.append(
-                f"{tag}: {f['taken']} counted as damage taken but only {f['hp_in']} HP lost")
+                f"{tag}: {f['taken'] - f.get('overkill', 0)} counted as damage taken but only "
+                f"{f['hp_in']} HP lost")
         # What there was to kill against what was killed. More than the pool means
         # enemies appeared or healed, which the fight records as `spawned`. Less, in a
         # fight that was won, means damage the log missed.

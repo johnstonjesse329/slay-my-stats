@@ -1727,3 +1727,19 @@ winners' damage per turn over yours, marked on the same edges) was tried beside 
 and dropped: it is those two rows divided, and the user read three rows as one number shown twice. The act
 card keeps Fight turns (speed) and Damage taken (the rating); damage done per turn stays in the log-only rows,
 not rated.
+
+### The blow that killed you, the Mid mark, and one-act cards (2026-11-03)
+
+- **The killing blow was missing from the log's numbers.** The hit that kills logs `hit`, `hp` to 0 and `die`
+  and no `recv`, and the deriver only counted `recv`, so the fatal fight showed the 6 HP you had left (the
+  run file's figure too, capped at the HP remaining) when the blow was 14 through plus 9 blocked. The deriver
+  now counts that `hit` at `die`: what got through plus its overkill goes into `taken`, the blocked part into
+  `blocked`, and the overkill is kept as `overkill` on the fight so the "more taken than HP lost" check
+  stays honest. The page uses the log's figure for the fight that ended a lost run; it never fed the
+  ratings (the fatal fight is left out of the act totals), so no verdict moved. Runs with no log keep the
+  run file's figure.
+- **Mid's mark is a bullseye, and the average-win tick is off the meter.** The dash said nothing and the
+  thin tick inside the Mid zone read as a stray divider. The average win is on the row above ("vs 76") and
+  the zone edges carry the cut numbers. The bullseye is drawn in CSS so it is the same in every font.
+- **A one-act card keeps the three-act card width** (the grid's column minimum is a third of the row).
+
