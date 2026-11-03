@@ -160,45 +160,33 @@ function renderPersonalBests() {
   chars.forEach(char => { bests[char].currentStreak = bests[char]._streak; });
 
 
-  // One line per stat, label left / value right. The panels used to stack an
-  // uppercase label over every value in a two-column grid, and in a 5-wide
-  // grid most labels wrapped to two or three lines, so each panel ran ~970px.
+  // Every stat is one line on the same four columns (label | low | separator |
+  // high), see .pb-row in dashboard.css, so the numbers, dots and dashes sit at
+  // one x on every row and every card. A single value spans the number columns
+  // and ends on the same right edge.
   const row = (label, valueHtml) =>
-    `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;font-size:var(--fs-sm);line-height:1.55">
-      <span style="color:#8a8aa0">${label}</span>
-      <span style="font-weight:600;color:#ccc;white-space:nowrap">${valueHtml}</span>
-    </div>`;
+    `<div class="pb-row"><span class="pb-label">${label}</span><span class="pb-val">${valueHtml}</span></div>`;
+  const pairRow = (label, lo, sep, hi) =>
+    `<div class="pb-row"><span class="pb-label">${label}</span><span class="pb-lo">${lo}</span><span class="pb-sep">${sep}</span><span class="pb-hi">${hi}</span></div>`;
 
   // A value that links to the specific run that produced it (best is
   // { value, ts } or null — see the tracking above).
   const link = (best, fmt = v => v) => best
-    ? `<span class="pb-stat-link" data-ts="${best.ts}" data-tip="Jump to this run" style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-decoration-color:#8a8aa0;text-underline-offset:2px">${fmt(best.value)}</span>`
+    ? `<span class="pb-stat-link" data-ts="${best.ts}" data-tip="Jump to this run">${fmt(best.value)}</span>`
     : "—";
 
   // Fewest–most as one row; each end still links to its own run.
-  const range = (lo, hi, fmt) => !lo || !hi ? "—"
-    : lo.value === hi.value ? link(lo, fmt)
-    : `${link(lo, fmt)}<span style="color:#8a8aa0;font-weight:400"> – </span>${link(hi, fmt)}`;
+  const rangeRow = (label, lo, hi, fmt) => !lo || !hi ? row(label, "—")
+    : lo.value === hi.value ? row(label, link(lo, fmt))
+    : pairRow(label, link(lo, fmt), "", link(hi, fmt));
 
-  const heading = (title, note = "") =>
-    `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;border-top:1px solid #3f4147;margin-top:0.4rem;padding-top:0.35rem;margin-bottom:0.15rem">
-      <span style="font-size:var(--fs-xs);color:#a8a2c4;text-transform:uppercase;letter-spacing:.06em;font-weight:600">${title}</span>
-      <span style="font-size:var(--fs-xs);color:#8a8aa0;text-align:right">${note}</span>
-    </div>`;
+  const heading = (title, lo, hi) =>
+    `<div class="pb-head"><span>${title}</span><span class="pb-lo">${lo}</span><span class="pb-hi">${hi}</span></div>`;
 
-  // Favorites as a two-column grid: column headers once ("Most picked" /
-  // "Best win %"), then one row per group with a small label spanning both
-  // columns. Items use favoriteItemHtml's column layout, where names wrap to
-  // two lines instead of truncating to "Bloodle…" in the narrow column.
-  const colHead = text =>
-    `<div style="font-size:var(--fs-xs);color:#a8a2c4;font-weight:600">${text}</div>`;
-  const groupLabel = text =>
-    `<div style="grid-column:1/-1;font-size:var(--fs-xs);color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-top:0.2rem">${text}</div>`;
-  const favGrid = (headA, headB, groups) =>
-    `<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:0.15rem 0.6rem;border-top:1px solid #3f4147;margin-top:0.4rem;padding-top:0.35rem">
-      ${colHead(headA)}${colHead(headB)}
-      ${groups.map(([label, a, b]) => `${label ? groupLabel(label) : ""}${a}${b}`).join("")}
-    </div>`;
+  // Favourites: a head line per list with its column names, then one row per
+  // item (favoriteItemHtml).
+  const favHead = (title, countHead) =>
+    `<div class="pb-fav-head"><span class="pb-fav-title">${title}</span><span>${countHead}</span><span>Win</span></div>`;
 
   const favorites = aggregateCharFavorites();
 
@@ -209,42 +197,41 @@ function renderPersonalBests() {
     const noRuns = b.fastestWin === null;
     // Deaths read as a count plus a share of every run this character has, so
     // "died 3 times" has a scale next to it.
-    const deaths = n => b.gamesPlayed
-      ? `${n}<span style="color:#8a8aa0;font-weight:400"> · </span>${Math.round(n / b.gamesPlayed * 100)}%`
-      : "—";
+    const deaths = (label, n) => b.gamesPlayed
+      ? pairRow(label, n, "·", `${Math.round(n / b.gamesPlayed * 100)}%`)
+      : row(label, "—");
     const fav = favorites[char];
 
-    return `<div class="card" style="border-color:${color}55;box-sizing:border-box">
-      <div style="font-size:var(--fs-sm);font-weight:700;color:${color};letter-spacing:.04em;margin-bottom:0.35rem">${label.toUpperCase()}</div>
+    return `<div class="card pb-card" style="border-color:${color}55">
+      <div class="pb-char" style="color:${color}">${label.toUpperCase()}</div>
       ${row("Runs", b.gamesPlayed || "—")}
-      ${row("Wins", b.gamesPlayed
-        ? `${b.totalWins}<span style="color:#8a8aa0;font-weight:400"> · </span>${Math.round(b.totalWins / b.gamesPlayed * 100)}%`
-        : "—")}
-      ${row("Final boss deaths", deaths(b.finalBossDeaths))}
-      ${row("Elite deaths", deaths(b.eliteDeaths))}
+      ${b.gamesPlayed
+        ? pairRow("Wins", b.totalWins, "·", `${Math.round(b.totalWins / b.gamesPlayed * 100)}%`)
+        : row("Wins", "—")}
+      ${deaths("Final boss deaths", b.finalBossDeaths)}
+      ${deaths("Elite deaths", b.eliteDeaths)}
       ${noRuns
-        ? `<div style="color:#8a8aa0;font-size:var(--fs-sm);padding:0.25rem 0">No wins yet</div>`
+        ? `<div class="pb-none">No wins yet</div>`
         : `${row("Current win streak", b.currentStreak || 0)}
           ${row("Best win streak", b.longestStreak)}
           ${row("Fastest win", link(b.fastestWin, fmtHrsMinSec))}
-          ${heading("Winning runs", "lowest – highest")}
-          ${row("Elites", range(b.fewestElites, b.mostElitesWin))}
-          ${row("Cards", range(b.fewestCards, b.mostCards))}
-          ${row("Relics", range(b.fewestRelics, b.mostRelics))}
-          ${row("Max HP", range(b.fewestMaxHp, b.mostMaxHp))}
-          ${row("Final boss turns", range(b.fewestFinalBossTurns, b.mostFinalBossTurns))}
-          ${favGrid("Most picked", "Best win %", [
-              ["Cards",  favoriteItemHtml("card",  fav.card.mostPicked,      "picks", "count", true),
-                         favoriteItemHtml("card",  fav.card.bestWinRate,     "picks", "win",   true)],
-              ["Rares",  favoriteItemHtml("card",  fav.rareCard.mostPicked,  "picks", "count", true),
-                         favoriteItemHtml("card",  fav.rareCard.bestWinRate, "picks", "win",   true)],
-              ["Relics", favoriteItemHtml("relic", fav.relic.mostPicked,     "picks", "count", true),
-                         favoriteItemHtml("relic", fav.relic.bestWinRate,    "picks", "win",   true)],
-            ])}
-          ${favGrid("Most bought card", "Most bought relic", [
-              [null, favoriteItemHtml("card",  fav.shopCard.mostPicked,  "buys", "count", true),
-                     favoriteItemHtml("relic", fav.shopRelic.mostPicked, "buys", "count", true)],
-            ])}`
+          ${heading("Winning runs", "lowest", "highest")}
+          ${rangeRow("Elites", b.fewestElites, b.mostElitesWin)}
+          ${rangeRow("Cards", b.fewestCards, b.mostCards)}
+          ${rangeRow("Relics", b.fewestRelics, b.mostRelics)}
+          ${rangeRow("Max HP", b.fewestMaxHp, b.mostMaxHp)}
+          ${rangeRow("Final boss turns", b.fewestFinalBossTurns, b.mostFinalBossTurns)}
+          ${favHead("Most picked", "Picks")}
+          ${favoriteItemHtml("card",  fav.card.mostPicked,     "Card",  "count")}
+          ${favoriteItemHtml("card",  fav.rareCard.mostPicked, "Rare",  "count")}
+          ${favoriteItemHtml("relic", fav.relic.mostPicked,    "Relic", "count")}
+          ${favHead("Best win %", "Picks")}
+          ${favoriteItemHtml("card",  fav.card.bestWinRate,     "Card",  "win")}
+          ${favoriteItemHtml("card",  fav.rareCard.bestWinRate, "Rare",  "win")}
+          ${favoriteItemHtml("relic", fav.relic.bestWinRate,    "Relic", "win")}
+          ${favHead("Most bought", "Buys")}
+          ${favoriteItemHtml("card",  fav.shopCard.mostPicked,  "Card",  "count", "bought")}
+          ${favoriteItemHtml("relic", fav.shopRelic.mostPicked, "Relic", "count", "bought")}`
       }
     </div>`;
   }).join("");
@@ -437,70 +424,42 @@ function aggregateCharFavorites() {
   return result;
 }
 
-// emph ("count" | "win") brightens the number the item was chosen for, and
-// leads with it. column: true is the narrow two-column layout in the
-// character panes -- the thumbnail top-aligns with a name clamped to two
-// lines with an ellipsis for names that don't fit (the hover/tap tooltip
-// this row already has shows the full name), and the stat pieces wrap when
-// they don't fit.
-function favoriteItemHtml(kind, item, countLabel = "picks", emph = null, column = false) {
-  // Empty state keeps the same icon + two-line footprint as populated rows
-  // so the tile grid's row heights stay aligned across characters
-  if (!item) return `<div style="display:flex;align-items:${column ? "flex-start" : "center"};gap:0.4rem;min-width:0;opacity:0.45">
-    <span style="width:22px;height:22px;flex:0 0 auto;border:1px dashed #3f4147;border-radius:4px"></span>
-    <div style="min-width:0">
-      <div style="font-size:var(--fs-sm);color:#8a8aa0">None yet</div>
-      <div style="font-size:var(--fs-sm);color:#8a8aa0">no ${countLabel}</div>
-    </div>
+// One favourite as a one-line row on the character card's fixed columns:
+// tag | picture | name | count | win %. emph ("count" | "win") brightens the
+// number the item was chosen for. A long name is cut with an ellipsis (the
+// hover/tap tooltip this row has shows the whole thing), so every row is one
+// line and the count and win % land in the same column on every card. An empty
+// slot keeps the row's footprint so the cards stay the same height.
+function favoriteItemHtml(kind, item, tag, emph = null, noun = "picked") {
+  const tagHtml = `<span class="fav-tag">${tag}</span>`;
+  if (!item) return `<div class="fav-item fav-empty">
+    ${tagHtml}<span class="fav-icon"><span class="fav-none"></span></span>
+    <span class="fav-name">None yet</span><span class="fav-num">—</span><span class="fav-num">—</span>
   </div>`;
   const label = kind === "card" ? fmtCardLabel(item.id) : fmtRelicLabel(item.id);
-  const hi = (text, on) => on ? `<b style="color:#e8e6f0;font-weight:700">${text}</b>` : text;
-  const countText = hi(`${item.picked} ${item.picked === 1 ? countLabel.replace(/s$/, "") : countLabel}`, emph === "count");
-  const winText   = item.winPct != null ? hi(`${item.winPct}% win`, emph === "win") : null;
-  // One field order in both columns. The pair is there to be read across, and
-  // swapping pick/win by column ("27 picks · 52% win" beside "86% win · 7
-  // picks") made the reader relearn the order every time.
-  const pieces = [countText, winText].filter(Boolean);
-  const sub = pieces.join(" · ");
-  const plainSub = sub.replace(/<[^>]+>/g, "");
+  const winText = item.winPct != null ? `${item.winPct}%` : "—";
+  const imgHtml = src => src
+    ? `<img loading="lazy" src="${thumbSrc(src)}" alt="${label}" style="width:22px;height:22px;object-fit:contain;border-radius:4px">`
+    : "";
   // Same real card face / relic art used everywhere else, at icon size, with
-  // the same rich hover tooltip -- this row used to show a bare cropped
-  // portrait with no hover at all, which read as inconsistent next to every
-  // other card/relic thumbnail in the dashboard.
+  // the same rich hover tooltip.
   let thumbHtml, tooltipHtml, tooltipClass;
   if (kind === "card") {
     thumbHtml = cardFaceAvailable()
       ? `<div class="fav-item-face">${renderCardFace(item.id, 0, 26, { thumb: true, props: item.props })}</div>`
-      : (() => {
-          const src = cardImgSrc(item.id);
-          return src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="${label}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;flex:0 0 auto">` : "";
-        })();
+      : imgHtml(cardImgSrc(item.id));
     tooltipHtml = buildCardTooltip(item.id, 0, item.props, item.enchantment);
     tooltipClass = "card-tooltip-wrap";
   } else {
-    const src = relicImgSrc(item.id);
-    thumbHtml = src
-      ? `<img loading="lazy" src="${thumbSrc(src)}" alt="${label}" style="width:22px;height:22px;object-fit:contain;border-radius:4px;flex:0 0 auto">`
-      : "";
+    thumbHtml = imgHtml(relicImgSrc(item.id));
     tooltipHtml = buildRelicTooltip(item.id);
     tooltipClass = "relic-tooltip-wrap";
   }
+  const num = (text, on) => `<span class="fav-num${on ? " fav-emph" : ""}">${text}</span>`;
 
-  return `<div class="fav-item" tabindex="0" role="img" aria-label="${label} — ${plainSub}" style="display:flex;align-items:${column ? "flex-start" : "center"};gap:0.4rem;min-width:0">
-    ${thumbHtml}
-    ${column
-      ? `<div style="min-width:0">
-      <div style="font-size:var(--fs-sm);color:#ccc;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;hyphens:auto" lang="en">${label}</div>
-      <div style="font-size:var(--fs-xs);color:#a0a0b8;display:flex;flex-wrap:wrap;align-items:center;column-gap:0.3rem;line-height:1.35">
-        ${pieces.map(p => `<span style="white-space:nowrap">${p}</span>`).join("")}
-      </div>
-    </div>`
-      : `<div style="overflow:hidden;min-width:0">
-      <div style="font-size:var(--fs-sm);color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div>
-      <div style="font-size:var(--fs-sm);color:#a0a0b8;display:flex;align-items:center;gap:0.25rem;min-width:0">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${sub}</span>
-      </div>
-    </div>`}
+  return `<div class="fav-item" tabindex="0" role="img" aria-label="${label} — ${item.picked} ${noun}, ${winText} win">
+    ${tagHtml}<span class="fav-icon">${thumbHtml}</span>
+    <span class="fav-name">${label}</span>${num(item.picked, emph === "count")}${num(winText, emph === "win")}
     ${tooltipHtml ? `<div class="${tooltipClass}">${tooltipHtml}</div>` : ""}
   </div>`;
 }
