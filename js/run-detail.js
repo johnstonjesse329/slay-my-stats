@@ -1748,8 +1748,8 @@ const keepSignal = (tone, what) => `<span class="keep-signal ${tone}" role="img"
 // How the rating works, with this reading's two cut points, for a mark's hover.
 function keepRule(winTaken) {
   const { hype, low } = keepCuts(winTaken);
-  return `Damage you took, against the average win on the same fights. ${hype >= 0 ? `Hype: ${hype} or less. ` : ""}Low: ${low} or more. Mid: in between. ` +
-    `A Mid counts as Hype if you won the fights much faster and took no more damage.`;
+  return `The average win took ${+winTaken.toFixed(1)} damage on these fights. ${hype >= 0 ? `Hype: you took ${hype} or less. ` : ""}Mid: ${hype + 1} to ${low - 1}. Low: ${low} or more. ` +
+    `A Mid counts as Hype if you took no more than they did and finished in 4 turns or fewer for every 5 of theirs.`;
 }
 
 // A run's reading on its header, or just its mark in the run list (short). The numbers

@@ -1660,14 +1660,15 @@ a card played (a full hand with no energy is a different problem from a deck tha
 The three chart names inside the Keeping Up box (Damage done per turn, Damage taken per turn, Energy and cards per turn) are 16 px, a step under the box's 24 px heading; they had inherited the 24 px by accident.
 
 **Wording.** "This run" / "Avg win" on the tip. "Fight turns" replaces "Turns to kill", which did not
-say what was killed. The rule is stated once, in the section caption, in plain words with no percentages
-or ratios (the reader is not a mathematician; the numbers live on the meter and in the hover): *Damage you
-took, against the average win on the same fights. Hype: a lot less. Mid: about the same. Low: a lot more.
-A Mid counts as Hype if you won the fights much faster and took no more damage.* The maths underneath is
-unchanged: Hype at 67% or less of the winners' damage taken, Low at 150% or more, and a Mid lifts to Hype
-when your turns are under 80% of theirs (20% fewer; the first draft's "25% fewer" was wrong) with damage
-taken at 100% or less. A mark's hover repeats the rule with this reading's cut points as HP ("Hype: 63 or
-less. Low: 143 or more."). These strings are drafts until the user OKs them.
+say what was killed. The rule is stated once, in the section caption, with numbers a reader can use at a
+glance and no ratios or percent signs: *For every 100 damage the average win took on the same fights, how
+much did you take? Hype: 67 or less. Mid: 68 to 149. Low: 150 or more. A Mid counts as Hype if you took 100 or
+less and finished in 4 turns or fewer for every 5 of theirs.* A first plain-words-only draft ("a lot less,
+about the same, a lot more") said nothing and was dropped: the reader wants the numbers, just not the maths.
+The maths underneath is unchanged: Hype under 67% of the winners' damage taken, Low at 150% or more, and a
+Mid lifts to Hype when your turns are under 80% of theirs (4 for every 5; the first draft's "25% fewer" was
+wrong) with damage taken at 100% or less. A mark's hover gives this reading's own numbers ("The average win
+took 95 damage on these fights. Hype: you took 63 or less. Mid: 64 to 142. Low: 143 or more."). These strings are drafts until the user OKs them.
 
 **Act cards.** 16 px text, one grid for every row (label, figure, mark, "vs N") so the columns line up
 across cards and nothing floats mid-card, kind icons in the heading. The meter is a 12 px gauge: each
