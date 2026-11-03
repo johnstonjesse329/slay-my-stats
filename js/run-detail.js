@@ -1354,6 +1354,11 @@ const floorTipHead = (node, total, unit) => {
 const floorTipCaption = (m, colors) =>
   `<div class="ft-cap">Gained${m.count > 1 ? " ×" + m.count : ""} · ` +
   `<span style="color:${colors[m.rarity]}">${m.rarity}</span></div>`;
+// A phone's sheet has no room for card faces or relic text, so the floor's marked pickups are
+// chips like the ones in Keeping Up by Floor: tap one for the full card or relic.
+const floorTipChips = (marks, colors, relic) => `<div class="strength-chips">${marks.map(m =>
+  `<span class="strength-chip" style="border-color:${colors[m.rarity]}" data-pick="${relic ? "relic" : "card"}:${m.id}${relic ? "" : ":0"}">` +
+  `${m.src ? `<img src="${m.src}" alt="">` : ""}${m.name}${m.count > 1 ? " ×" + m.count : ""}</span>`).join("")}</div>`;
 
 // The y axis's afterDataLimits for a chart with markers: raises the top (in
 // steps of `step`) until every floor's stack of markers fits under it, so a
@@ -1448,8 +1453,9 @@ function renderDetailDeckChart(run) {
       : `<table><tr><th></th>${cols.map(c => `<th style="color:${R.color[c]}">${rarityName(c)}</th>`).join("")}<th>All</th></tr>` +
         rows.map(t => `<tr><td style="color:${T.color[t]}">${t}</td>${cols.map(c => `<td>${cell(t, c)}</td>`).join("")}<td><b>${byT[t][i]}</b></td></tr>`).join("") +
         `</table>`;
+    if (floorTipTouch) return `${floorTipHead(nodes[i], totals[i], "cards")}${table}${marks[i].length ? floorTipChips(marks[i], R.color, false) : ""}`;
     const big = marks[i].length ? `<div class="ft-big">${marks[i].map(m =>
-      `<div class="ft-card">${renderCardFace(m.id, 0, floorTipTouch ? 130 : 190) || `<b>${m.name}</b>`}${floorTipCaption(m, R.color)}</div>`).join("")}</div>` : "";
+      `<div class="ft-card">${renderCardFace(m.id, 0, 190) || `<b>${m.name}</b>`}${floorTipCaption(m, R.color)}</div>`).join("")}</div>` : "";
     return `<div class="ft-row"><div>${floorTipHead(nodes[i], totals[i], "cards")}${table}</div>${big}</div>`;
   });
 
@@ -1516,6 +1522,7 @@ function renderDetailRelicChart(run) {
   const tip = context => showFloorTip(context, i => {
     const table = `<table>${keys.filter(k => counts[k][i] > 0).map(k =>
       `<tr><td style="color:${G.color[k]}">${k}</td><td>${counts[k][i]}</td></tr>`).join("")}</table>`;
+    if (floorTipTouch) return `${floorTipHead(nodes[i], totals[i], "relics")}${table}${marks[i].length ? floorTipChips(marks[i], G.color, true) : ""}`;
     const big = marks[i].length ? `<div class="ft-big ft-col">${marks[i].map(m => {
       const p = relicTextParts(m.id) || { name: m.name, desc: "" };
       return `<div class="ft-relic" style="border-color:${G.color[m.rarity]}">${m.src ? `<img src="${m.src}" alt="">` : ""}<div>

@@ -1379,7 +1379,11 @@ h1 {
 }
 .floor-tip.docked.docked-top { bottom: auto; top: calc(8px + env(safe-area-inset-top)); }
 .floor-tip.docked::before { display: none; }
-.floor-tip.docked .ft-card { width: 130px; }
+/* Tight rows, so a floor's table and the chips after it fit the sheet without scrolling. */
+.floor-tip.docked { padding: 10px 12px; font-size: 0.875rem; }
+.floor-tip.docked .ft-head { margin-bottom: 3px; font-size: 0.9375rem; }
+.floor-tip.docked th, .floor-tip.docked td { padding: 1px 5px; }
+.floor-tip.docked th:first-child, .floor-tip.docked td:first-child { padding-left: 0; }
 /* The strip between the box and the pointer, so crossing it never leaves the box. */
 .floor-tip::before { content: ""; position: absolute; left: 0; right: 0; top: -12px; height: 12px; }
 .floor-tip.above::before { top: auto; bottom: -12px; }
