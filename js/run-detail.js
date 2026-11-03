@@ -2021,7 +2021,7 @@ function renderDetailKeepCharts(run) {
   const playTip = tip(simple(r => r.play ? [
     row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
     row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),
-    row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "printed costs of the cards played, added up. An X card counts as 3"),
+    row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "printed costs of the cards played, added up"),
     row("Energy paid", KEEP_DEMAND_COLOR, aTurn(r.play.spent), "what you really spent. Discounts and free plays make it lower"),
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
   ] : []));
