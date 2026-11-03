@@ -1516,8 +1516,11 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
-        <p class="chart-caption">Against the average win on the same fights (any character, <span id="detail-keep-tier"></span>, monsters tuned the same). <span class="keep-signal ahead">▲</span> Hype, <span class="keep-signal meeting">–</span> Mid, <span class="keep-signal behind">▼</span> Low. An act is graded on damage taken after healing: more turns is fine while that holds. Energy and draw aren't graded.</p>
-        <p class="chart-caption">Damage taken decides: Low above 1.5× the average win, Hype under ⅔ of it. Killing 25% faster with no more damage lifts a Mid to Hype. Each act's bar shows where it sits.</p>
+        <dl class="chart-caption keep-key">
+          <dt>Graded on</dt><dd>Damage taken after healing, against wins on the same fights at <span id="detail-keep-tier"></span>. Energy and draw aren't graded</dd>
+          <dt><span class="keep-signal ahead"></span> Hype</dt><dd>Less damage taken than 3 in 4 wins, or faster than 3 in 4 with no more damage than the average</dd>
+          <dt><span class="keep-signal meeting"></span> Mid</dt><dd>The middle half</dd>
+          <dt><span class="keep-signal behind"></span> Low</dt><dd>More damage taken than 3 in 4 wins</dd>        </dl>
         <div class="keep-acts" id="detail-keep-acts"></div>
         <p class="chart-caption">Each icon is the average win for that fight; none means too few wins. Damage done: above it means faster. Damage taken: below it means less. Click a chart to hold a floor's box.</p>
         <h3 class="strength-label">Damage done per turn</h3>

@@ -670,9 +670,10 @@ class ActReading(unittest.TestCase):
     def setUpClass(cls):
         cls.runs = fd.run_fights(HISTORY)
         cls.demand = fd.table(cls.runs)
+        cls.cuts = fd.cuts_of(cls.runs, cls.demand)
 
     def rows(self, r):
-        return fd.act_readings(fd.run_fights({r.key: r.raw})[0], self.demand)
+        return fd.act_readings(fd.run_fights({r.key: r.raw})[0], self.demand, self.cuts)
 
     def test_an_act_sums_to_the_run_file_and_to_the_log_apart(self):
         for r in LOADED:
@@ -702,7 +703,7 @@ class ActReading(unittest.TestCase):
     def test_a_run_sums_to_the_run_file_and_to_the_log_apart(self):
         for r in LOADED:
             with self.subTest(run=r.ts):
-                whole = fd.run_reading(self.rows(r))
+                whole = fd.run_reading(self.rows(r), self.cuts)
                 lost = not r.raw.get("win")
                 pairs = r.pairs[:-1 if lost else None]
                 rooms = fight_rooms(r.raw)[:-1 if lost else None]
@@ -716,11 +717,11 @@ class ActReading(unittest.TestCase):
         # Next door can happen: acts just under the speed edge can total just over it.
         opposite = {"ahead": "behind", "behind": "ahead"}
         read = 0
-        for _, _, _, acts in fd.player_acts(self.runs, self.demand):
+        for _, _, _, acts in fd.player_acts(self.runs, self.demand, self.cuts):
             marks = {a["verdict"] for a in acts}
             if len(marks) == 1 and marks & set(opposite):
                 read += 1
-                self.assertNotEqual(fd.run_reading(acts)["verdict"], opposite[marks.pop()])
+                self.assertNotEqual(fd.run_reading(acts, self.cuts)["verdict"], opposite[marks.pop()])
         self.assertGreater(read, 0)
 
     def test_a_won_fight_gave_the_enemies_one_turn_less(self):
@@ -773,7 +774,7 @@ class ActReading(unittest.TestCase):
         self.assertLess(off / walked, 0.001, (off, walked))
 
     def test_a_behind_act_names_the_worse_of_its_two_parts(self):
-        rows = [row for *_, row in fd.act_rows(self.runs, self.demand)]
+        rows = [row for *_, row in fd.act_rows(self.runs, self.demand, self.cuts)]
         for row in rows:
             self.assertAlmostEqual(row["pace"] * row["each"], row["guard"])
             self.assertEqual(row["lacking"] is not None, row["verdict"] == "behind")
@@ -786,7 +787,7 @@ class ActReading(unittest.TestCase):
         # run it was read from. Each act of the one tier with the wins for it, which is why
         # the tiers stay apart: how often a run wins depends on the tier too.
         cells = fd.held_out(self.runs)
-        rate = lambda *key: sum(won for won, _ in cells[key]) / len(cells[key])
+        rate = lambda *key: sum(won for won, *_ in cells[key]) / len(cells[key])
         for act in {k[2] for k in cells if k[:2] == ("solo", 0)}:
             with self.subTest(act=act):
                 self.assertLess(rate("solo", 0, act, "behind"), rate("solo", 0, act, "meeting"))
@@ -796,8 +797,8 @@ class ActReading(unittest.TestCase):
         # The same held-out test for the reading on the run's header, in both tiers with
         # the runs for it: a run's acts add up to something that means what they do.
         cells = fd.held_out(self.runs)
-        for level in (0, 2):
-            rate = lambda place: statistics.mean(won for won, _ in cells["solo", level, "run", place])
+        for level in (0, 1):
+            rate = lambda place: statistics.mean(won for won, *_ in cells["solo", level, "run", place])
             with self.subTest(tier=level):
                 self.assertLess(rate("behind"), rate("meeting"))
                 self.assertLess(rate("meeting"), rate("ahead"))
@@ -806,25 +807,25 @@ class ActReading(unittest.TestCase):
         # OP names the runs that got away from the fights. Under 8, where there are enough
         # of them to say so, they beat the reading they mostly are.
         cells = fd.held_out(self.runs)
-        rate = lambda place: statistics.mean(won for won, _ in cells["solo", 0, "run", place])
+        rate = lambda place: statistics.mean(won for won, *_ in cells["solo", 0, "run", place])
         self.assertGreater(rate("op"), rate("ahead"))
         self.assertLess(len(cells["solo", 0, "run", "op"]), len(cells["solo", 0, "run", "ahead"]))
 
     def test_the_verdict_holds_up_where_winning_is_rare(self):
-        # 9 and up is a far harder game: fewer wins to draw a line from and fewer runs that
+        # 8 and up is a far harder game: fewer wins to draw a line from and fewer runs that
         # win. Reading behind there still has to cost something.
         cells = fd.held_out(self.runs)
-        share = lambda place: [won for (mode, level, _, p), rows in cells.items() if (mode, level, p) == ("solo", 2, place)
-                               for won, _ in rows]
+        share = lambda place: [won for (mode, level, _, p), rows in cells.items() if (mode, level, p) == ("solo", 1, place)
+                               for won, *_ in rows]
         self.assertLess(sum(share("behind")) / len(share("behind")),
                         sum(share("meeting")) / len(share("meeting")))
 
     def test_a_tier_with_the_wins_reads_its_winners_as_meeting(self):
-        # The point of the tiers: a run that won at 9 and up reads about as a run that won
+        # The point of the tiers: a run that won at 8 and up reads about as a run that won
         # under 8 does, though it faced harder monsters.
-        for level in (0, 2):
+        for level in (0, 1):
             with self.subTest(tier=level):
-                guards = [row["guard"] for mode, t, won, row in fd.act_rows(self.runs, self.demand)
+                guards = [row["guard"] for mode, t, won, row in fd.act_rows(self.runs, self.demand, self.cuts)
                           if mode == "solo" and t == level and won]
                 self.assertAlmostEqual(statistics.median(guards), 1, delta=0.15)
 
@@ -843,7 +844,8 @@ class ActReading(unittest.TestCase):
         halves = self.runs[::2], self.runs[1::2]
         lifted, meeting = [], []
         for train, test in (halves, halves[::-1]):
-            for mode, level, won, row in fd.act_rows(test, fd.table(train)):
+            demand = fd.table(train)
+            for mode, level, won, row in fd.act_rows(test, demand, fd.cuts_of(train, demand)):
                 if (mode, level) == ("solo", 0):
                     if row["verdict"] == "meeting":
                         meeting.append(won)
@@ -858,8 +860,8 @@ class ActReading(unittest.TestCase):
         slow, level = [], []
         for (mode, tier, _, place), rows in cells.items():
             if mode == "solo" and tier == 0:
-                slow += [won for won, pace in rows if pace < fd.SLOW and place != "behind"]
-                level += [won for won, pace in rows if pace >= 1 and place == "behind"]
+                slow += [won for won, _, slower in rows if slower and place != "behind"]
+                level += [won for won, pace, _ in rows if pace >= 1 and place == "behind"]
         self.assertGreater(sum(slow) / len(slow), 1.5 * sum(level) / len(level))
 
 
