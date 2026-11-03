@@ -162,7 +162,8 @@ h1 {
   #summary-cards .card .value { line-height: 1; }
 }
 
-/* Personal bests: force 5 equal columns so tiles never leave an orphan.
+/* Personal bests: three equal columns, five once there is room, so tiles never
+   leave an orphan (auto-fit would leave one at in-between widths).
    minmax(0, 1fr), not bare 1fr -- bare 1fr is minmax(auto, 1fr), so a
    column holding a wide character panel refuses to shrink below that
    content's width and blows the grid out past the viewport instead of
@@ -170,12 +171,80 @@ h1 {
    and .grid-2/.grid-4 further down, for the same fix). */
 #personal-bests-cards {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+@media (min-width: 1560px) {
+  #personal-bests-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+/* Character cards: every line is one row on the same four columns
+   (label | low | separator | high), so numbers, dots and dashes share one x
+   down a card and across cards. A single value (.pb-val) spans the three number
+   columns and ends on the same right edge. */
+.pb-card { box-sizing: border-box; }
+.pb-char { font-size: var(--fs-sm); font-weight: 700; margin-bottom: 0.35rem; }
+.pb-row, .pb-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2.9rem 0.8rem 2.9rem;
+  column-gap: 0.2rem;
+  align-items: baseline;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+.pb-label { color: #8a8aa0; }
+.pb-lo, .pb-hi, .pb-val, .pb-sep { text-align: right; white-space: nowrap; font-weight: 600; color: #ccc; }
+.pb-lo { grid-column: 2; }
+.pb-sep { grid-column: 3; text-align: center; color: #8a8aa0; font-weight: 400; }
+.pb-hi { grid-column: 4; }
+.pb-val { grid-column: 2 / -1; }
+.pb-head {
+  border-top: 1px solid #3f4147;
+  margin-top: 0.4rem;
+  padding-top: 0.35rem;
+  margin-bottom: 0.15rem;
+  font-size: var(--fs-xs);
+  color: #a8a2c4;
+  line-height: 1.55;
+}
+.pb-head > :first-child { font-weight: 600; }
+.pb-head .pb-lo, .pb-head .pb-hi { color: #8a8aa0; font-weight: 400; }
+.pb-none { color: #8a8aa0; font-size: var(--fs-sm); padding: 0.25rem 0; }
+/* Favourites: a head line per list (title over the picture and name, then
+   the two number columns), then one row per item on the same columns. */
+.pb-fav-head, #personal-bests-cards .fav-item {
+  display: grid;
+  grid-template-columns: 2.4rem 26px minmax(0, 1fr) 2.6rem 2.6rem;
+  column-gap: 0.4rem;
+  align-items: center;
+}
+.pb-fav-head {
+  border-top: 1px solid #3f4147;
+  margin-top: 0.4rem;
+  padding-top: 0.35rem;
+  margin-bottom: 0.15rem;
+  font-size: var(--fs-xs);
+  color: #8a8aa0;
+}
+.pb-fav-head > span { text-align: right; }
+.pb-fav-head > .pb-fav-title { grid-column: 1 / 4; text-align: left; color: #a8a2c4; font-weight: 600; }
+#personal-bests-cards .fav-item { min-height: 36px; font-size: var(--fs-sm); }
+.fav-tag { font-size: var(--fs-xs); color: #8a8aa0; }
+.fav-icon { display: flex; align-items: center; justify-content: center; width: 26px; }
+.fav-none { width: 22px; height: 22px; border: 1px dashed #3f4147; border-radius: 4px; }
+.fav-name { min-width: 0; color: #ccc; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fav-num { text-align: right; color: #a0a0b8; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fav-num.fav-emph { color: #e8e6f0; font-weight: 700; }
+.fav-empty { opacity: 0.45; }
 /* Most Picked/Best Win % card & relic rows: same hover-tooltip anchoring as
    the deck/relic tiles they borrow buildCardTooltip/buildRelicTooltip from
    (.card-tooltip-wrap / .relic-tooltip-wrap below), just on a row-shaped
-   wrapper instead of a square tile. */
+   wrapper instead of a square tile. The box opens over the picture, at the
+   row's left edge, not centred on a row that is as wide as the card. */
+#personal-bests-cards .fav-item .card-tooltip-wrap,
+#personal-bests-cards .fav-item .relic-tooltip-wrap {
+  left: 2.8rem;
+  transform: none;
+}
 .fav-item {
   position: relative;
   z-index: 1;
@@ -234,6 +303,7 @@ h1 {
 /* Personal Bests stat values that link to the run behind them (see
    statLink() in dashboard.js) — gold on hover, matching every other
    interactive-text affordance in the app. */
+.pb-stat-link { cursor: pointer; text-decoration: underline dotted #8a8aa0; text-underline-offset: 2px; }
 .pb-stat-link:hover { color: var(--gold) !important; }
 /* ---- Ascension Tracker (Overview) ---- */
 /* One card per character, solo over multiplayer. auto-fit so a player with
