@@ -199,7 +199,7 @@ function renderPersonalBests() {
     // Deaths read as a count plus a share of every run this character has, so
     // "died 3 times" has a scale next to it.
     const deaths = (label, n) => b.gamesPlayed
-      ? pairRow(label, n, "·", `${Math.round(n / b.gamesPlayed * 100)}%`)
+      ? pairRow(label, n, "", `${Math.round(n / b.gamesPlayed * 100)}%`)
       : row(label, "—");
     const fav = favorites[char];
 
@@ -207,7 +207,7 @@ function renderPersonalBests() {
       <div class="pb-char" style="color:${color}">${label}</div>
       ${row("Runs", b.gamesPlayed || "—")}
       ${b.gamesPlayed
-        ? pairRow("Wins", b.totalWins, "·", `${Math.round(b.totalWins / b.gamesPlayed * 100)}%`)
+        ? pairRow("Wins", b.totalWins, "", `${Math.round(b.totalWins / b.gamesPlayed * 100)}%`)
         : row("Wins", "—")}
       ${deaths("Final boss deaths", b.finalBossDeaths)}
       ${deaths("Elite deaths", b.eliteDeaths)}
