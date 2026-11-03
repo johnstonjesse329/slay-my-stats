@@ -1288,8 +1288,10 @@ function createFloorTip() {
     const html = kind === "relic" ? buildRelicTooltip(id) : buildCardTooltip(id, up === "1");
     showFloatingHtmlTooltip(chip, html);
   });
+  // A finger "leaves" the chip the moment it lifts, which closed the card as the tap ended.
+  // On touch it stays until a press elsewhere (tooltip.js dismissTipsOutside).
   floorTip.addEventListener("pointerout", e => {
-    if (e.target.closest("[data-pick]")) hideFloatingHtmlTooltip();
+    if (e.pointerType !== "touch" && e.target.closest("[data-pick]")) hideFloatingHtmlTooltip();
   });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeFloorTip(); });
   ["scroll", "resize"].forEach(type => window.addEventListener(type, () => {

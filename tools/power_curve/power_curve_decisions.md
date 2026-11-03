@@ -1763,3 +1763,6 @@ not rated.
   box) used a stale anchor on touch, and with the full-width sheet it covered the whole chart, so a scrub froze
   on one floor, worst where the sheet was tall (card floors). The hold is mouse-only now; 24 steps across the
   deck and relic charts give 24 floors, 9 of them with card faces, at all three screen positions.
+- **A tapped card or relic chip stays open.** On touch, lifting the finger fires the chip's pointerout, which
+  closed the card as the tap ended, so it showed only while held. Touch ignores that close now; it stays until a
+  press elsewhere (checked: still open 1.5 s after the tap, and after tapping the chip again, closed by a tap away).
