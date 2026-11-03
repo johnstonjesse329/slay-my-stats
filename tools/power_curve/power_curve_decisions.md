@@ -1831,3 +1831,24 @@ against Mid 40% of 20. Act 1 at 9 and up no longer inverts. The quarters barely 
 "Graded on: Damage taken after healing, against wins on the same fights at A0–7 (or A8+). Energy and
 draw aren't graded", then Hype, Mid and Low as before. Its marks are filled from `KEEP_SIGNS`, so they
 are the pills' marks, whatever those become.
+
+**Low is now Rough (2026-11-03).** On the page, "Low" read backwards next to damage taken, where low is good, so
+the behind word is **Rough** (`KEEP_WORDS`). Hype, Mid and Rough; the rule and the cut points are unchanged. Entries above
+keep the old word because that is what they were written in. The hover is now two meters (damage taken, fight turns)
+and one line saying why; the rule still does not read turns for Rough (see the speed tests above: within noise).
+
+## Engine, parked (2026-11-03)
+
+**Engine** is effective energy played per turn: the printed cost (`listPrice`) of the cards played, per turn, against the base 3. Energy is uncapped, while the 10-card hand caps cards played, so the two differ by archetype. Your call: **informational only until there is more data**. The act card already shows Card cost, Draw, Damage and Cards played ungraded, which is that form. Nothing on the page grades it.
+
+Sample: 8 usable logged runs (5 wins, 3 losses), all one player, A1, solo, 152 fights.
+
+- Act 1: no separation. Losses ran 3.05 to 3.36, wins 2.77 to 3.59.
+- Act 2: the one loss that reached it had 4.10, more than two of the wins.
+- Act 3: all five wins ran 5.6 to 7.3, about double base. No loss reached Act 3, so the late-act relationship (low engine can't win unless damage or block reads Hype) cannot be tested.
+- Within an act, fight-level rank correlation with damage taken: about -0.17 (Act 1), -0.02 (Act 2), -0.08 (Act 3). Damage taken did the splitting, not engine.
+- Earlier deck-only simulation version scored rho about -0.11 and -0.13 and came off the site on 2026-11-01.
+
+Shape to try when there is data (your hypotheses): engine is skewed, since a peak-OP engine exists that a very good deck does not need, so a low engine does not mean a weak deck. If graded it lifts and never sinks: one high bar from the top of winners' acts, no quarters.
+
+Gate for grading: more than one player's logged winning acts, enough per act to cut a top-tail bar, losses past Act 1, and a held-out test showing it adds beyond damage taken and turns. Check first that X-cost cards, counted flat at 3 in `export_measured.py` and `infra/lambda/ingest/measured.py`, do not under-read banked energy.

@@ -298,6 +298,17 @@ h1 {
 }
 .card .label { font-size: var(--fs-sm); color: var(--text-dim); }
 .card .value { font-size: var(--fs-lg); font-weight: 700; color: var(--gold); line-height: 1.2; }
+/* A summary card's label has three weights: the stat's name and who it is about
+   are bold, the figure behind the value is dim. */
+.card .label .name, .card .label .what { font-weight: 700; }
+.card .label .name { color: var(--gold); }
+.card .label .what { color: var(--text); }
+.card .label .detail { color: var(--text-faint); }
+/* Gold marks what the stat is, so the figure beside it is plain white. */
+#summary-cards .card .value { color: var(--text); white-space: nowrap; font-size: 1.25rem; }
+/* The name is the main item now, so it is not the small print beside a big number. */
+#summary-cards .card .label { font-size: var(--fs-md); }
+#summary-cards .card .label .detail { font-size: var(--fs-sm); }
 .card .sub   { font-size: var(--fs-sm); color: var(--text-dim); margin-top: 0.1rem; }
 
 /* Personal Bests stat values that link to the run behind them (see
@@ -1282,7 +1293,7 @@ h1 {
 .floor-tip .strength-chip img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex: none; }
 .floor-tip .strength-chip.gain { border-color: #4087de; }
 .floor-tip .strength-chip.loss { border-color: #d97230; }
-.floor-tip .strength-measured { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.floor-tip .strength-measured { color: var(--text-dim); font-variant-numeric: tabular-nums; text-align: left; }
 .strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 .keep-key { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem; margin: 0 0 0.9rem; }
 .keep-key dt { color: var(--text); font-weight: 600; white-space: nowrap; }
@@ -2350,3 +2361,20 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #seeds-table .seed-detail-cards .deck-tile-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #seeds-table .seed-detail-cards .cardface { width: 100% !important; }
 }
+
+/* A reading's hover: damage taken and fight turns, each on a Hype/Mid/Low meter. */
+.kt-row { width: 260px; margin: 0.5rem 0 0.2rem; font-variant-numeric: tabular-nums; }
+.kt-head { display: flex; align-items: baseline; gap: 0.4rem; margin-bottom: 0.25rem; }
+.kt-head b { color: var(--text); }
+.kt-vs { margin-left: auto; color: var(--text-dim); }
+.kt-bar { position: relative; display: flex; gap: 2px; height: 14px; }
+.kt-zone { display: flex; align-items: center; justify-content: center; min-width: 0; overflow: hidden; color: var(--bg-deep); font-size: 10px; line-height: 1; }
+.kt-zone:first-child { border-radius: 4px 0 0 4px; }
+.kt-zone:last-of-type { border-radius: 0 4px 4px 0; }
+.kt-zone.ahead { background: #5cba7d; }
+.kt-zone.meeting { background: var(--gold); }
+.kt-zone.behind { background: #e05c5c; }
+.kt-mark { position: absolute; top: -3px; bottom: -3px; width: 4px; margin-left: -2px; background: var(--text); border: 1px solid var(--bg-deep); border-radius: 2px; box-sizing: content-box; }
+.kt-cuts { display: flex; gap: 2px; margin-top: 0.15rem; color: var(--text-dim); font-size: var(--fs-sm); }
+.kt-cut { display: flex; justify-content: flex-end; white-space: nowrap; min-width: 0; }
+.kt-cut.low { justify-content: flex-start; }

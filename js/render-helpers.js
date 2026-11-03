@@ -56,15 +56,17 @@ function renderCards(grand, charStats, restAvg) {
   const items = [
     { label: "Win %", value: winPct },
     // The character is the point of this card, so it sits in the label where a
-    // phone can see it; the tooltip keeps only the win/loss counts.
-    { label: charStats[bestIdx].win_pct !== null ? `Best win % · ${fmtCharName(chars[bestIdx])}` : "Best win %",
-      value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
-      tip: charStats[bestIdx].win_pct !== null ? `${charStats[bestIdx].wins}W / ${charStats[bestIdx].losses}L` : "No wins" },
+    // phone can see it, in their colour, with the win/loss counts after it.
+    { label: "Best win %",
+      what: charStats[bestIdx].win_pct !== null ? fmtCharName(chars[bestIdx]) : "",
+      whatColor: CHAR_COLOR_MAP[chars[bestIdx]],
+      detail: charStats[bestIdx].win_pct !== null ? `${charStats[bestIdx].wins}W / ${charStats[bestIdx].losses}L` : "No wins",
+      value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—" },
     // The share of runs is what makes this card mean anything, so it is in the
     // label. The run count is the Runs card's value and is not repeated.
-    { label: grand.runs ? `Most played · ${mostPlayedPct}%` : "Most played", value: fmtCharName(chars[mostIdx]) },
-    { label: "Gold gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
-      tip: grand.runs ? `median ${grand.median_gold.toLocaleString()} per run` : "" },
+    { label: "Most played", detail: grand.runs ? `${mostPlayedPct}% of runs` : "", value: fmtCharName(chars[mostIdx]) },
+    { label: "Gold gained", detail: grand.runs ? `Median ${grand.median_gold.toLocaleString()}` : "",
+      value: grand.runs ? grand.total_gold.toLocaleString() : "—" },
     // Elites and bosses are a card each. The row stays at 8 cards, which
     // divides evenly into 4 + 4 instead of leaving a ragged edge.
     { label: "Elites defeated", value: grand.runs ? grand.total_elites_defeated.toLocaleString() : "—" },
@@ -72,29 +74,22 @@ function renderCards(grand, charStats, restAvg) {
   ];
 
   // A filtered number must not read as a lifetime one, so the active mode is
-  // in the label where a phone sees it. The win count, which Win % already
-  // implies, stays in the tooltip.
+  // in the label where a phone sees it.
   const scopeName = sharedActiveMode !== "all"
     ? ({ solo: "Solo", multi: "Multiplayer", daily: "Daily" }[sharedActiveMode] || sharedActiveMode)
     : "";
-  const runsTip = `${grand.wins} win${grand.wins === 1 ? "" : "s"}`;
-  const runsCard = `<div class="card" data-tip="${runsTip}" tabindex="0">
-    <div class="label">${scopeName ? `${scopeName} runs` : "Runs"}</div>
-    <div class="value">${grand.runs}</div>
-  </div>`;
-
-  const timeCard = `<div class="card"${grand.runs ? ` data-tip="median ${grand.median_min}m per run" tabindex="0"` : ""}>
-    <div class="label">Time played</div>
-    <div class="value">${grand.runs ? fmtHrsMin(grand.total_min) : "—"}</div>
-  </div>`;
-
-  // tabindex so the data-tip is reachable by keyboard and by a phone tap, the
-  // same way the Personal Bests rows do it.
-  const itemCard = card =>
-    `<div class="card"${card.tip ? ` data-tip="${card.tip}" tabindex="0"` : ""}>
-      <div class="label">${card.label}</div>
-      <div class="value">${card.value}</div>
+  // One card builder, three weights: `label` is what the stat is (bold), `what`
+  // is who or what it is about (bold, in a character's colour), `detail` is the
+  // figure behind the value (dim). Everything is on the card, nothing on hover.
+  const itemCard = ({ label, what, whatColor, detail, value }) =>
+    `<div class="card">
+      <div class="label"><b class="name">${label}</b>${what ? ` <b class="what"${whatColor ? ` style="color:${whatColor}"` : ""}>${what}</b>` : ""}${detail ? ` <span class="detail">${detail}</span>` : ""}</div>
+      <div class="value">${value}</div>
     </div>`;
+  const runsCard = itemCard({ label: scopeName ? `${scopeName} runs` : "Runs",
+    detail: `${grand.wins} win${grand.wins === 1 ? "" : "s"}`, value: grand.runs });
+  const timeCard = itemCard({ label: "Time played", detail: grand.runs ? `Median ${grand.median_min}m` : "",
+    value: grand.runs ? fmtHrsMin(grand.total_min) : "—" });
 
   // Win % first, totals last.
   document.getElementById("summary-cards").innerHTML =

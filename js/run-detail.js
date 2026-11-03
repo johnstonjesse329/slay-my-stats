@@ -145,7 +145,7 @@ function renderDetailRunList() {
     ${sortHead("asc", "Asc")}
     ${sortHead("won", "W/L")}
     ${sortHead("floor", "Floor")}
-    ${sortHead("read", "+/–", `Hype, Mid or Low against the average win on this run's fights.\nOP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
+    ${sortHead("read", "+/–", `Hype, Mid or Rough against the average win on this run's fights.\nOP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
     <span></span>
     ${sortHead("date", "Date")}
   </div>` + runs.map((run, i) => {
@@ -1568,7 +1568,7 @@ const KEEP_DEMAND_COLOR = "#c4c4d4";
 const KEEP_SPLIT = { blocked: "#5aa0e6", healed: "#5cba7d", through: "#e05252" };
 // How a reading is named on the page. The keys ("ahead", "meeting", "behind") are
 // fight_demand.py's and the CSS classes'; OP, above Hype, is a run's alone.
-const KEEP_WORDS = { ahead: "Hype", meeting: "Mid", behind: "Low" };
+const KEEP_WORDS = { ahead: "Hype", meeting: "Mid", behind: "Rough" };
 // 16px glyphs for the metrics, drawn in the colour of their line on the charts.
 const KEEP_ICONS = {
   turns: `<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
@@ -1695,9 +1695,9 @@ const keepActCut = act => {
   return cuts.acts[act - 1] || cuts.run;
 };
 
-// Where damage taken turns an act Hype or Low among winners: keepMark's edges on
+// Where damage taken turns an act Hype or Rough among winners: keepMark's edges on
 // guard = (winTaken+1)/(taken+1), solved for taken. Damage taken is a whole number, so
-// Hype is the most that still reads Hype and Low the least that reads Low. hype is -1
+// Hype is the most that still reads Hype and Rough the least that reads Rough. hype is -1
 // when winners took so little that no amount reads Hype.
 const keepCuts = (winTaken, edges) => {
   const guard = taken => (winTaken + 1) / (taken + 1);
@@ -1794,9 +1794,56 @@ const keepSignal = (tone, what) => `<span class="keep-signal ${tone}" role="img"
 // How the rating works, with this reading's two cut points, for a mark's hover.
 function keepRule(winTaken, cut) {
   const { hype, low } = keepCuts(winTaken, cut.guard);
-  return `The average win took ${+winTaken.toFixed(1)} damage on these fights. ${hype >= 0 ? `Hype: you took ${hype} or less. ` : ""}Mid: ${hype + 1} to ${low - 1}. Low: ${low} or more. ` +
+  return `The average win took ${+winTaken.toFixed(1)} damage on these fights. ${hype >= 0 ? `Hype: you took ${hype} or less. ` : ""}Mid: ${hype + 1} to ${low - 1}. Rough: ${low} or more. ` +
     `A Mid counts as Hype if you took no more than they did and finished faster than 3 in 4 wins.`;
 }
+
+// One measure on a tooltip's meter: Hype, Mid and Rough zones side by side, the figure on a
+// pointer, and the two cut points under the zone edges. aheadEnd is where the Hype zone stops
+// (0 for none) and behindAt where Rough starts, in the measure's own units.
+function keepTipMeter(name, value, vs, aheadEnd, behindAt, cuts) {
+  const top = Math.max(behindAt * 1.3, value * 1.1, 1);
+  const pct = v => Math.min(100, Math.max(0, v / top * 100));
+  const aheadW = aheadEnd > 0 ? pct(aheadEnd) : 0, lowAt = pct(behindAt), at = pct(value);
+  const zone = (tone, w) => `<span class='kt-zone ${tone}' style='flex:${w} 1 0'>${KEEP_SIGNS[tone]}</span>`;
+  const cut = (w, text, cls = "") => `<span class='kt-cut ${cls}' style='flex:${w} 1 0'>${text}</span>`;
+  return `<div class='kt-row'><div class='kt-head'><span>${name}</span><b>${value}</b><span class='kt-vs'>vs ${vs}</span></div>` +
+    `<div class='kt-bar'>${aheadW ? zone("ahead", aheadW) : ""}${zone("meeting", lowAt - aheadW)}${zone("behind", 100 - lowAt)}` +
+    `<i class='kt-mark${at > 88 ? " last" : ""}' style='left:${at}%'></i></div>` +
+    `<div class='kt-cuts'>${aheadW ? cut(aheadW, cuts[0]) : ""}${cut(lowAt - aheadW, "")}${cut(100 - lowAt, cuts[1], "low")}</div></div>`;
+}
+
+// The hover for a run's or an act's reading, built to read at a glance: the verdict, then
+// damage taken and fight turns each on a Hype/Mid/Rough meter against the average win, then
+// the one line that says why. x is a run's or act's totals (turns, winTurns, taken, winTaken,
+// cut, verdict); extra are plain lines after it. Lines are joined by a newline for data-tip,
+// so the markup has no newlines and quotes are escaped for the attribute.
+function keepReadingTip(x, head, why, extra = []) {
+  const { hype, low } = keepCuts(x.winTaken, x.cut.guard);
+  const taken = Math.round(x.taken);
+  const held = keepMark((x.winTaken + 1) / (x.taken + 1), x.cut.guard), speed = keepMark(x.winTurns / x.turns, x.cut.pace);
+  // Turns where winners' pace tips into fast or slow, settled on keepMark's own comparison.
+  const fast = keepFastTurns(x.winTurns, x.cut.pace);
+  let slow = Math.floor(x.winTurns / x.cut.pace[0]) + 1;
+  while (slow > 1 && keepMark(x.winTurns / (slow - 1), x.cut.pace) === "behind") slow--;
+  while (keepMark(x.winTurns / slow, x.cut.pace) !== "behind") slow++;
+  const html = [
+    head,
+    keepTipMeter("Damage taken", taken, Math.round(x.winTaken), hype + 1, low, [`≤ ${hype}`, `≥ ${low}`]),
+    keepTipMeter("Fight turns", x.turns, +x.winTurns.toFixed(1), fast + 1, slow, [`≤ ${fast}`, `≥ ${slow}`]),
+    why(held, speed),
+    ...extra,
+  ].join("\n");
+  return html.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+// What a reading comes to, in a line: damage taken, and whether the turns back it up.
+const keepWhy = x => (held, speed) => {
+  const fast = speed === "ahead", slow = speed === "behind";
+  if (x.verdict === "ahead") return held === "ahead" ? "Less damage taken than 3 in 4 wins." : "Damage in the middle, but fast with it.";
+  if (x.verdict === "behind") return held === "behind" ? `More damage taken than 3 in 4 wins${fast ? ", though fast." : slow ? ", and slower." : ", and no faster."}` : "";
+  return "Damage in the middle of wins.";
+};
 
 // A run's reading on its header, or just its mark in the run list (short). The numbers
 // are on hover, as they are on an act's mark.
@@ -1804,13 +1851,9 @@ function runReadingHtml(run, short = false) {
   const r = runReadingOf(run);
   if (!r) return "";
   const word = KEEP_WORDS[r.verdict];
-  const tip = [
+  const tip = keepReadingTip(r,
     r.op ? `OP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}` : `${word} against the average win on this run's fights`,
-    `Fight turns: ${r.turns}, average win ${+r.winTurns.toFixed(1)}`,
-    `Damage taken: ${Math.round(r.taken)}, average win ${Math.round(r.winTaken)}`,
-    keepRule(r.winTaken, r.cut),
-    ...(run.won ? [] : ["Not counting the fight that ended it"]),
-  ].join("\n");
+    keepWhy(r), run.won ? [] : ["Not counting the fight that ended it."]);
   const focus = short ? "" : ` tabindex="0"`;
   if (r.op) return `<span class="run-reading op" data-tip="${tip}"${focus}>${short ? "" : `<span aria-hidden="true">▲▲</span>`}OP</span>`;
   if (short) return `<span class="keep-signal ${r.verdict}" role="img" aria-label="${word}" data-tip="${tip}">${KEEP_SIGNS[r.verdict]}</span>`;
@@ -1830,9 +1873,9 @@ function renderKeepActs(run, nodes, measured) {
     (sub ? `<span class="ka-sub">${sub}</span>` : "");
   // The average win's figure, whole, with the exact average on hover.
   const vs = (v, unit) => `<span class="ka-vs" title="Average win ${+v.toFixed(1)} ${unit}">vs ${v.toFixed(0)}</span>`;
-  // Damage taken on a three-zone meter the card's width: Hype, Mid, Low, each with its mark
+  // Damage taken on a three-zone meter the card's width: Hype, Mid, Rough, each with its mark
   // and (when it has room) its word, the act's own figure on a pointer, and the two cut points under the zone edges they belong to. The meter runs a
-  // little past Low.
+  // little past Rough.
   const meter = a => {
     const { hype, low } = keepCuts(a.winTaken, a.cut.guard);
     const taken = Math.round(a.taken);
@@ -1856,7 +1899,7 @@ function renderKeepActs(run, nodes, measured) {
     const { hype, low } = keepCuts(a.winTaken, a.cut.guard);
     const taken = Math.round(a.taken);
     const top = Math.max(low * 1.3, taken * 1.1, 1);
-    const [gap, edge] = [[low - taken, "Low"], [hype >= 0 ? taken - hype : Infinity, "Hype"]].sort((x, y) => x[0] - y[0])[0];
+    const [gap, edge] = [[low - taken, "Rough"], [hype >= 0 ? taken - hype : Infinity, "Hype"]].sort((x, y) => x[0] - y[0])[0];
     return gap <= top * 0.2 ? `${gap} HP from ${edge}` : "";
   };
   // What would lift a Mid to Hype on speed: finishing in few enough turns while taking no
@@ -1876,13 +1919,8 @@ function renderKeepActs(run, nodes, measured) {
   box.innerHTML = acts.map(a => {
     const log = a.log;
     const perTurn = v => (v / log.turns).toFixed(1);
-    const tip = [
-      `${KEEP_WORDS[a.verdict]}${a.lacking ? `, lacking ${a.lacking}` : ""}`,
-      `Took ${Math.round(a.taken)}, average win ${Math.round(a.winTaken)}. ${keepRule(a.winTaken, a.cut)}`,
-      ...(a.verdict === "ahead" && a.held === "meeting"
-        ? [`Hype on speed: ${a.turns} turns against an average win of ${+a.winTurns.toFixed(1)}, with damage taken no higher.`] : []),
-      ...[a.verdict === "meeting" ? speedNote(a) : "", nearNote(a), a.healed ? `After healing ${Math.round(a.healed)} HP` : ""].filter(Boolean),
-    ].join("\n");
+    const tip = keepReadingTip(a, `${KEEP_WORDS[a.verdict]}${a.lacking ? `, lacking ${a.lacking}` : ""}`, keepWhy(a),
+      [a.healed ? `After healing ${Math.round(a.healed)} HP.` : ""].filter(Boolean));
     const pill = `<span class="run-reading ${a.verdict}" data-tip="${tip}" tabindex="0"><span class="keep-signal ${a.verdict}" aria-hidden="true">${KEEP_SIGNS[a.verdict]}</span>${KEEP_WORDS[a.verdict]}</span>`;
     const perTurnRow = (icon, label, value, note) => row(icon, label, `${perTurn(value)}<small>/turn</small>`, { note });
     // Against the average win on the left, what the deck did per turn on the right; a card
@@ -2021,8 +2059,8 @@ function renderDetailKeepCharts(run) {
   const playTip = tip(simple(r => r.play ? [
     row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
     row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),
-    row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "printed costs of the cards played, added up"),
-    row("Energy paid", KEEP_DEMAND_COLOR, aTurn(r.play.spent), "what you really spent. Discounts and free plays make it lower"),
+    row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "Printed costs of the cards played, added up."),
+    row("Energy paid", KEEP_DEMAND_COLOR, aTurn(r.play.spent), "What you really spent. Discounts and free plays make it lower."),
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
   ] : []));
 

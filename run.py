@@ -1545,7 +1545,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
           <dt>Graded on</dt><dd>Damage taken after healing, against wins on the same fights at <span id="detail-keep-tier"></span>. Energy and draw aren't graded</dd>
           <dt><span class="keep-signal ahead"></span> Hype</dt><dd>Less damage taken than 3 in 4 wins, or faster than 3 in 4 with no more damage than the average</dd>
           <dt><span class="keep-signal meeting"></span> Mid</dt><dd>The middle half</dd>
-          <dt><span class="keep-signal behind"></span> Low</dt><dd>More damage taken than 3 in 4 wins</dd>
+          <dt><span class="keep-signal behind"></span> Rough</dt><dd>More damage taken than 3 in 4 wins</dd>
         </dl>
         <div class="keep-acts" id="detail-keep-acts"></div>
         <p class="chart-caption">Each icon is the average win for that fight; none means too few wins. Damage done: above it means faster. Damage taken: below it means less.</p>
