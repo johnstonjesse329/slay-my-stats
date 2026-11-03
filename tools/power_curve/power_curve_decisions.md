@@ -1742,4 +1742,6 @@ not rated.
   thin tick inside the Mid zone read as a stray divider. The average win is on the row above ("vs 76") and
   the zone edges carry the cut numbers. The bullseye is drawn in CSS so it is the same in every font.
 - **A one-act card keeps the three-act card width** (the grid's column minimum is a third of the row).
-
+- **The floor tooltip's split bar lost its average-win tick.** A line through the bar needed its hover text to
+  mean anything. Winners' figures are in the table beside it, and the bar's blue and red match the Blocked and
+  Damage taken rows.

@@ -1385,7 +1385,6 @@ h1 {
 .floor-tip .ft-split { position: relative; display: flex; gap: 2px; height: 10px; margin: 6px 0 8px; min-width: 240px; }
 .floor-tip .ft-split > span:first-child { border-radius: 5px 0 0 5px; }
 .floor-tip .ft-split > span:last-of-type { border-radius: 0 5px 5px 0; }
-.floor-tip .ft-tick { position: absolute; top: -3px; width: 2px; height: 16px; margin-left: -1px; background: var(--text); border-radius: 1px; }
 .floor-tip .ft-big {
   display: flex;
   flex-wrap: wrap;

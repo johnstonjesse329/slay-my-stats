@@ -1956,7 +1956,7 @@ function renderDetailKeepCharts(run) {
   });
 
   // What arrived each turn, split into what was blocked, healed back, and got through. The
-  // bar is as wide as what arrived; the tick is where winners' got-through ends.
+  // bar is as wide as what arrived; winners' figures are in the table.
   const inTip = tip(r => {
     if (r.taken === undefined) return "";
     const et = r.enemyTurns, k = KEEP_SPLIT;
@@ -1965,10 +1965,8 @@ function renderDetailKeepCharts(run) {
       r.winRate === undefined ? "" : Math.round(r.winTotal), one(r.winRate), "ft-through");
     if (r.arrived === undefined) return `<table>${fightHead}${r.healedOff ? frow(keepIcon("healed", k.healed), "Healed", r.healedOff, one(r.healed), "", "") : ""}${through(keepIcon("taken", k.through))}</table>`;
     const seg = (v, color, what) => v > 0 ? `<span style="flex:${v} 1 0;background:${color}" title="${what}"></span>` : "";
-    const tick = r.winRate === undefined ? "" :
-      `<i class="ft-tick" style="left:${Math.min(1, Math.max(0, (r.blocked + r.healed + r.winRate) / r.arrived)) * 100}%" title="Average win got ${r.winRate.toFixed(1)} a turn through"></i>`;
     return `<div class="ft-split" role="img" aria-label="Of ${r.arrived.toFixed(1)} a turn arriving: ${r.blocked.toFixed(1)} blocked, ${r.healed.toFixed(1)} healed, ${r.taken.toFixed(1)} got through">` +
-      seg(r.blocked, k.blocked, "Blocked") + seg(r.healed, k.healed, "Healed") + seg(r.taken, k.through, "Got through") + tick + `</div>` +
+      seg(r.blocked, k.blocked, "Blocked") + seg(r.healed, k.healed, "Healed") + seg(r.taken, k.through, "Got through") + `</div>` +
       `<table>${fightHead}` +
       frow(swatch(KEEP_DEMAND_COLOR), "Arrived", Math.round(r.arrived * et), one(r.arrived), "", "") +
       frow(keepIcon("blocked", k.blocked), `Blocked ${share(r.blocked)}`, Math.round(r.blocked * et), one(r.blocked), "", "") +
