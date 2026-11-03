@@ -1677,11 +1677,11 @@ the act's value is a pointer with its number, and the average win is a tick.
 
 **Damage done and taken are different colours.** They were `#e0604f` and `#d9652b`, ΔE 4.1, a FAIL in
 `validate_palette.js`. The first fix made taken blue (`#3f8fd8`), which sat next to the grey-blue blocked
-(`#8b93b5`) in the tip's split bar and read as the same thing, and damage should be red. Now taken is red
-`#e05252` and dashed (HP lost), blocked is a clear shield blue `#5aa0e6`, healed
-is green `#5cba7d`, and damage done is gold `#e8a83a` (done/taken ΔE 20 normal, 15 colour-blind). Drawn
-`#9b7fe0`, played `#2fa384`, card cost `#b5861a` are unchanged; card cost is the closest to gold (ΔE 12.6), and
-the two never share a chart.
+(`#8b93b5`) in the tip's split bar and read as the same thing. The user's call: red is for the damage
+chart's line (`#e05252`) and for the incoming-damage segment of the tip's bar (what got through); the
+damage taken line is gold `#e8a83a` and dashed (done/taken ΔE 20 normal, 15 colour-blind). Blocked is a
+clear shield blue `#5aa0e6`, healed green `#5cba7d`. Drawn `#9b7fe0`, played `#2fa384`, card cost `#b5861a`
+are unchanged; card cost is the closest to the gold (ΔE 12.6), and the two never share a chart.
 
 **Energy and draw on gamma.** The chart read `measured_runs.json`, which is built on the owner's machine
 from their logs and is not on the site, so an uploaded run never had it: not a regression, it never
