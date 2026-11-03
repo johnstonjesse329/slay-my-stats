@@ -1516,18 +1516,19 @@ function renderDetailRelicChart(run) {
 // site, DATA.measuredRuns for local logs; tools/power_curve/export_measured.py), and only
 // those runs can show energy and cards: a run file doesn't say.
 const KEEP_LINES = {
-  damage: { label: "Damage done", color: "#e0604f" },
-  taken:  { label: "Damage taken", color: "#3f8fd8", dash: [6, 4] },
+  damage: { label: "Damage done", color: "#e8a83a" },
+  taken:  { label: "Damage taken", color: "#e05252", dash: [6, 4] },
   drawn:  { label: "Cards drawn", color: "#9b7fe0" },
   played: { label: "Cards played", color: "#2fa384" },
   energy: { label: "Card cost", color: "#b5861a" },
 };
-// validate_palette.js (dark and light): damage done red and damage taken blue were a pair at
-// ΔE 4 before. Damage taken is also dashed, so colour is not the only difference.
+// Damage taken is red, as HP is; the block that stopped some of it is blue (a shield) and
+// what was healed back is green. Damage done is gold. validate_palette.js: done/taken ΔE 20
+// (normal), 15 under colour blindness; taken is also dashed, so colour is not the only cue.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
 // What arrived on a turn, split: blocked, healed off, and what got through (the line's
 // own colour). Each has an icon and a label as well, so colour is never the only cue.
-const KEEP_SPLIT = { blocked: "#8b93b5", healed: "#2fa384", through: KEEP_LINES.taken.color };
+const KEEP_SPLIT = { blocked: "#5aa0e6", healed: "#5cba7d", through: KEEP_LINES.taken.color };
 // How a reading is named on the page. The keys ("ahead", "meeting", "behind") are
 // fight_demand.py's and the CSS classes'; OP, above Hype, is a run's alone.
 const KEEP_WORDS = { ahead: "Hype", meeting: "Mid", behind: "Low" };
