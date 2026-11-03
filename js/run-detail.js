@@ -1783,7 +1783,7 @@ function renderKeepActs(run, nodes, measured) {
     (mark === undefined ? `<span class="ka-note">${note || ""}</span>` : `<span class="ka-mark">${mark}</span>${vs}`) +
     (sub ? `<span class="ka-sub">${sub}</span>` : "");
   // The average win's figure, whole, with the exact average on hover.
-  const vs = (v, unit) => `<span class="ka-vs" title="Average win ${+v.toFixed(1)} ${unit}">vs ${Math.round(v)}</span>`;
+  const vs = (v, unit, digits = 0) => `<span class="ka-vs" title="Average win ${+v.toFixed(1)} ${unit}">vs ${v.toFixed(digits)}</span>`;
   // Damage taken on a three-zone meter the card's width: Hype, Mid, Low, each with its mark
   // and (when it has room) its word, the act's own figure on a pointer, the average win's
   // on a tick, and the two cut points under the zone edges they belong to. The meter runs a
@@ -1847,6 +1847,8 @@ function renderKeepActs(run, nodes, measured) {
       `<div class="ka-body"><div class="ka-half ka-main">` +
       row(keepIcon("turns", KEEP_DEMAND_COLOR), "Fight turns", a.turns,
         { mark: keepSignal(a.speed, `Fight turns: ${KEEP_WORDS[a.speed]}`), vs: vs(a.winTurns, "turns"), sub: speedNote(a) }) +
+      row(keepIcon("taken", KEEP_LINES.taken.color), "Taken per turn", (a.taken / a.turns).toFixed(1),
+        { mark: keepSignal(keepMark(a.each, KEEP_EDGES), `Damage taken per turn: ${KEEP_WORDS[keepMark(a.each, KEEP_EDGES)]}`), vs: vs(a.winTaken / a.winTurns, "damage a turn", 1) }) +
       row(keepIcon("taken", KEEP_LINES.taken.color), "Damage taken", Math.round(a.taken),
         { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage"), sub: takenSub }) + meter(a) + `</div>` +
       (log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +

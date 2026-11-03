@@ -1698,3 +1698,27 @@ copies together on the Ironclad and Silent logs, field by field; change one and 
 Runs uploaded before this have the log but no `measured`: `tools/backfill_measured.py` writes it onto
 them. A run with no log shows "No per-turn log for this run." in that slot instead of nothing.
 
+
+### Output, mitigation and speed: tested, and shown as separate rows (2026-11-02)
+
+The question: a Mid that wins fast (took as much damage as the winners did, in fewer turns) reads odd, and
+anchoring speed inside Mid felt wrong. The idea was that output, mitigation and speed together tell the
+story. Tested on held-out acts (runs split in halves, each half read against the other's averages; 3,723
+acts, AUC of a won run scoring above a lost one):
+
+- **Output and speed are one number here.** Damage done per turn is the enemies' HP over the turns taken,
+  and the enemies' HP is fixed by the fight, so it cannot be tested apart from speed.
+- **Mitigation is the winners' damage per turn over yours** (`each = guard / pace`). Alone it reads about
+  as well as damage taken (solo 0.735 against 0.772).
+- **Speed matters in every damage band**, and most in co-op. Solo Hype: 74% won at an even pace, 94% fast.
+  Co-op Mid: 59% even, 93% fast. Solo Low: 26% even, 48% fast (21 acts). Asc 9+ is too small to trust.
+- **No three-level rule beats the current one by more than noise.** Letting a fast Low lift, letting a
+  slow Hype sink: within 0.01 AUC of the shipped rule, solo and co-op (the best, co-op 0.732 against 0.723,
+is inside the noise). Stepping fast up and slow down is worse (solo 0.705 against 0.721). The
+  larger loss is cutting damage taken into three bins (0.772 raw, 0.721 as Hype/Mid/Low).
+
+So the verdict is unchanged (speed lifts a Mid to Hype, never sinks anything) and the three parts are shown
+instead: the act card has Fight turns, Taken per turn and Damage taken, each with its own mark and "vs"
+figure. Taken per turn is the mitigation read, marked with the same 67% / 150% edges as damage taken
+(`keepMark(a.each, KEEP_EDGES)`); it uses the run file's numbers only, so co-op runs show it too. Damage done
+per turn stays in the log-only rows below, not rated. "Taken per turn" is a draft label until the user OKs it.
