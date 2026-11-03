@@ -1276,7 +1276,9 @@ h1 {
 .floor-tip .strength-chip.loss { border-color: #d97230; }
 .floor-tip .strength-measured { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
-.keep-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
+/* Sized for three acts: auto-fill keeps the empty tracks, so a run that ended in Act 1 gets one
+   card's width, not the whole row. Never more than three across; 340px minimum each. */
+.keep-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(340px, calc((100% - 1.7rem) / 3)), 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
 .keep-act { border: 1px solid var(--hairline); border-radius: 8px; padding: 0.8rem 1rem 0.9rem; font-size: var(--fs-md); }
 .keep-act h3 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: var(--fs-md); font-weight: 600; margin: 0 0 0.35rem; }
 .ka-title { display: inline-flex; align-items: center; gap: 0.75rem; }
