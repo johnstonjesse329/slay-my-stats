@@ -60,9 +60,9 @@ function renderCards(grand, charStats, restAvg) {
     { label: charStats[bestIdx].win_pct !== null ? `Best win % · ${fmtCharName(chars[bestIdx])}` : "Best win %",
       value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
       tip: charStats[bestIdx].win_pct !== null ? `${charStats[bestIdx].wins}W / ${charStats[bestIdx].losses}L` : "No wins" },
-    { label: "Most played",    value: fmtCharName(chars[mostIdx]),
-      // Run count is the Runs card's value — show only the share here.
-      tip: `${mostPlayedPct}% of all runs` },
+    // The share of runs is what makes this card mean anything, so it is in the
+    // label. The run count is the Runs card's value and is not repeated.
+    { label: grand.runs ? `Most played · ${mostPlayedPct}%` : "Most played", value: fmtCharName(chars[mostIdx]) },
     { label: "Gold gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
       tip: grand.runs ? `median ${grand.median_gold.toLocaleString()} per run` : "" },
     // Elites and bosses are a card each. The row stays at 8 cards, which
@@ -71,16 +71,15 @@ function renderCards(grand, charStats, restAvg) {
     { label: "Bosses defeated", value: grand.runs ? grand.total_bosses_defeated.toLocaleString() : "—" },
   ];
 
-  // The scope note is worth keeping — a filtered number must not read as a
-  // lifetime one — but it moves to the tooltip. The filter bar's summary line
-  // states the active mode in plain sight, so nothing is lost by not repeating
-  // it on the card.
-  const scopeNote = sharedActiveMode !== "all"
-    ? `${({ solo: "Solo", multi: "Multiplayer", daily: "Daily" }[sharedActiveMode] || sharedActiveMode)} runs only`
+  // A filtered number must not read as a lifetime one, so the active mode is
+  // in the label where a phone sees it. The win count, which Win % already
+  // implies, stays in the tooltip.
+  const scopeName = sharedActiveMode !== "all"
+    ? ({ solo: "Solo", multi: "Multiplayer", daily: "Daily" }[sharedActiveMode] || sharedActiveMode)
     : "";
-  const runsTip = [`${grand.wins} win${grand.wins === 1 ? "" : "s"}`, scopeNote].filter(Boolean).join(" · ");
+  const runsTip = `${grand.wins} win${grand.wins === 1 ? "" : "s"}`;
   const runsCard = `<div class="card" data-tip="${runsTip}" tabindex="0">
-    <div class="label">Runs</div>
+    <div class="label">${scopeName ? `Runs · ${scopeName}` : "Runs"}</div>
     <div class="value">${grand.runs}</div>
   </div>`;
 
