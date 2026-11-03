@@ -1783,7 +1783,7 @@ function renderKeepActs(run, nodes, measured) {
     (mark === undefined ? `<span class="ka-note">${note || ""}</span>` : `<span class="ka-mark">${mark}</span>${vs}`) +
     (sub ? `<span class="ka-sub">${sub}</span>` : "");
   // The average win's figure, whole, with the exact average on hover.
-  const vs = (v, unit, digits = 0) => `<span class="ka-vs" title="Average win ${+v.toFixed(1)} ${unit}">vs ${v.toFixed(digits)}</span>`;
+  const vs = (v, unit) => `<span class="ka-vs" title="Average win ${+v.toFixed(1)} ${unit}">vs ${v.toFixed(0)}</span>`;
   // Damage taken on a three-zone meter the card's width: Hype, Mid, Low, each with its mark
   // and (when it has room) its word, the act's own figure on a pointer, the average win's
   // on a tick, and the two cut points under the zone edges they belong to. The meter runs a
@@ -1837,10 +1837,9 @@ function renderKeepActs(run, nodes, measured) {
       `Took ${Math.round(a.taken)}, average win ${Math.round(a.winTaken)}. ${keepRule(a.winTaken)}`,
       ...(a.verdict === "ahead" && a.held === "meeting"
         ? [`Hype on speed: ${a.turns} turns against an average win of ${+a.winTurns.toFixed(1)}, with damage taken no higher.`] : []),
-      ...[a.verdict === "meeting" ? speedNote(a) : "", nearNote(a)].filter(Boolean),
+      ...[a.verdict === "meeting" ? speedNote(a) : "", nearNote(a), a.healed ? `After healing ${Math.round(a.healed)} HP` : ""].filter(Boolean),
     ].join("\n");
     const pill = `<span class="run-reading ${a.verdict}" data-tip="${tip}" tabindex="0"><span class="keep-signal ${a.verdict}" aria-hidden="true">${KEEP_SIGNS[a.verdict]}</span>${KEEP_WORDS[a.verdict]}</span>`;
-    const takenSub = a.healed ? `After healing ${Math.round(a.healed)} HP` : "";
     const perTurnRow = (icon, label, value, note) => row(icon, label, `${perTurn(value)}<small>/turn</small>`, { note });
     // Against the average win on the left, what the deck did per turn on the right; a card
     // too narrow for two columns stacks them.
@@ -1848,10 +1847,8 @@ function renderKeepActs(run, nodes, measured) {
       `<div class="ka-body"><div class="ka-half ka-main">` +
       row(keepIcon("turns", KEEP_DEMAND_COLOR), "Fight turns", a.turns,
         { mark: keepSignal(a.speed, `Fight turns: ${KEEP_WORDS[a.speed]}`), vs: vs(a.winTurns, "turns") }) +
-      row(keepIcon("taken", KEEP_LINES.taken.color), "Taken per turn", (a.taken / a.turns).toFixed(1),
-        { mark: keepSignal(keepMark(a.each, KEEP_EDGES), `Damage taken per turn: ${KEEP_WORDS[keepMark(a.each, KEEP_EDGES)]}`), vs: vs(a.winTaken / a.winTurns, "damage a turn", 1) }) +
       row(keepIcon("taken", KEEP_LINES.taken.color), "Damage taken", Math.round(a.taken),
-        { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage"), sub: takenSub }) + meter(a) + `</div>` +
+        { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage") }) + meter(a) + `</div>` +
       (log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
         perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)} · base ${KEEP_BASE.energy}`) +
         perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, `base ${KEEP_BASE.cards}`) +

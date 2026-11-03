@@ -1699,7 +1699,7 @@ Runs uploaded before this have the log but no `measured`: `tools/backfill_measur
 them. A run with no log shows "No per-turn log for this run." in that slot instead of nothing.
 
 
-### Output, mitigation and speed: tested, and shown as separate rows (2026-11-02)
+### Output, mitigation and speed: tested, verdict unchanged (2026-11-02)
 
 The question: a Mid that wins fast (took as much damage as the winners did, in fewer turns) reads odd, and
 anchoring speed inside Mid felt wrong. The idea was that output, mitigation and speed together tell the
@@ -1717,8 +1717,8 @@ acts, AUC of a won run scoring above a lost one):
 is inside the noise). Stepping fast up and slow down is worse (solo 0.705 against 0.721). The
   larger loss is cutting damage taken into three bins (0.772 raw, 0.721 as Hype/Mid/Low).
 
-So the verdict is unchanged (speed lifts a Mid to Hype, never sinks anything) and the three parts are shown
-instead: the act card has Fight turns, Taken per turn and Damage taken, each with its own mark and "vs"
-figure. Taken per turn is the mitigation read, marked with the same 67% / 150% edges as damage taken
-(`keepMark(a.each, KEEP_EDGES)`); it uses the run file's numbers only, so co-op runs show it too. Damage done
-per turn stays in the log-only rows below, not rated. "Taken per turn" is a draft label until the user OKs it.
+So the verdict is unchanged (speed lifts a Mid to Hype, never sinks anything). A "Taken per turn" row (the
+winners' damage per turn over yours, marked on the same edges) was tried beside Fight turns and Damage taken
+and dropped: it is those two rows divided, and the user read three rows as one number shown twice. The act
+card keeps Fight turns (speed) and Damage taken (the rating); damage done per turn stays in the log-only rows,
+not rated.
