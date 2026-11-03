@@ -1657,15 +1657,17 @@ Secondary text everywhere is one brighter colour (`--text-dim`, `#d2cdea`, chart
 longer reads as unimportant next to the white; the old hard-coded greys `#8a8aa0` and `#bcbcd0` are gone as text
 colours. The act card's Draw row says only its base; "Cards played" is its own row, since a card drawn is not
 a card played (a full hand with no energy is a different problem from a deck that draws little). Act cards are two columns when the card is 560px wide or more.
+The three chart names inside the Keeping Up box (Damage done per turn, Damage taken per turn, Energy and cards per turn) are 16 px, a step under the box's 24 px heading; they had inherited the 24 px by accident.
 
 **Wording.** "This run" / "Avg win" on the tip. "Fight turns" replaces "Turns to kill", which did not
-say what was killed. The rule is stated as a mechanism, the same maths, in one convention (damage taken
-and turns as a % of the average win's) and once, in the section caption: *Damage taken as a % of the
-average win's on the same fights: Hype at 67% or less, Mid between, Low at 150% or more. A Mid becomes
-Hype at 100% or less in under 80% of the turns.* The first draft said ⅔, 1.5× and "25% fewer turns" in
-three conventions, and 25% was wrong: the edge is winners' turns over yours above 1.25, so your turns
-under 80% of theirs, which is 20% fewer. A mark's hover repeats the rule with this reading's cut points
-as HP. These strings are drafts until the user OKs them.
+say what was killed. The rule is stated once, in the section caption, in plain words with no percentages
+or ratios (the reader is not a mathematician; the numbers live on the meter and in the hover): *Damage you
+took, against the average win on the same fights. Hype: a lot less. Mid: about the same. Low: a lot more.
+A Mid counts as Hype if you won the fights much faster and took no more damage.* The maths underneath is
+unchanged: Hype at 67% or less of the winners' damage taken, Low at 150% or more, and a Mid lifts to Hype
+when your turns are under 80% of theirs (20% fewer; the first draft's "25% fewer" was wrong) with damage
+taken at 100% or less. A mark's hover repeats the rule with this reading's cut points as HP ("Hype: 63 or
+less. Low: 143 or more."). These strings are drafts until the user OKs them.
 
 **Act cards.** 16 px text, one grid for every row (label, figure, mark, "vs N") so the columns line up
 across cards and nothing floats mid-card, kind icons in the heading. The meter is a 12 px gauge: each

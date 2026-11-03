@@ -1529,7 +1529,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
-        <p class="chart-caption">Damage taken as a % of the average win's on the same fights (any character, <span id="detail-keep-tier"></span>, monsters tuned the same). <span class="keep-signal ahead">▲</span> Hype at 67% or less, <span class="keep-signal meeting">–</span> Mid between, <span class="keep-signal behind">▼</span> Low at 150% or more. A Mid becomes Hype at 100% or less in under 80% of the turns. Energy and draw aren't rated.</p>
+        <p class="chart-caption">Damage you took, against the average win on the same fights (any character, <span id="detail-keep-tier"></span>, monsters tuned the same). <span class="keep-signal ahead">▲</span> Hype: a lot less. <span class="keep-signal meeting">–</span> Mid: about the same. <span class="keep-signal behind">▼</span> Low: a lot more. A Mid counts as Hype if you won the fights much faster and took no more damage. Energy and draw aren't rated.</p>
         <div class="keep-acts" id="detail-keep-acts"></div>
         <p class="chart-caption">Each icon is the average win for that fight; none means too few wins. Damage done: above it means faster. Damage taken: below it means less.</p>
         <h3 class="strength-label">Damage done per turn</h3>
