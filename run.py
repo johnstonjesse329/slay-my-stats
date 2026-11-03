@@ -1198,10 +1198,13 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     top = (f"""
 <nav class="site-nav" aria-label="Site">
   <a class="site-brand" href="/">Slay My Stats</a>
-  <span class="site-player" id="site-player" hidden></span>
   <div class="site-links">{links}
   </div>
 </nav>
+<header class="player-head" id="player-head" hidden>
+  <h1 id="player-name"></h1>
+  <p id="player-meta"></p>
+</header>
 """ if site_links is not None else f"""
 <header>
 <h1>Slay the Spire 2</h1>
@@ -1282,14 +1285,11 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <main id="main-content">
 <div id="page-overview">
-<div class="cards" id="summary-cards"></div>
-<div class="cards" id="personal-bests-cards"></div>
-
 <div class="grid-1">
   <div class="chart-box">
     <div class="asc-head">
       <div>
-        <h2>Ascension Tracker</h2>
+        <h2>Ascension tracker</h2>
         <p class="chart-caption">Where each character stands on the climb to A10. Standard runs only.</p>
       </div>
       <div class="asc-stats" id="asc-tracker-stats"></div>
@@ -1298,13 +1298,17 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </div>
 
+<div class="cards" id="summary-cards"></div>
+<div class="cards" id="personal-bests-cards"></div>
+
+<h2 class="group-head">Win rates</h2>
 <div class="grid-2">
   <div class="chart-box">
-    <h2>Win % by Ascension</h2>
+    <h3>Win % by ascension</h3>
     <div class="chart-wrap"><canvas id="ascWinChart"></canvas></div>
   </div>
   <div class="chart-box">
-    <h2>Win % by Month</h2>
+    <h3>Win % by month</h3>
     <p class="chart-caption">Dotted lines mark when each game build was first played.</p>
     <div class="chart-wrap"><canvas id="monthlyWinChart"></canvas></div>
   </div>
@@ -1312,33 +1316,35 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-2">
   <div class="chart-box">
-    <h2>Win %</h2>
+    <h3>Win %</h3>
     <p class="chart-caption">Share of runs won, by character and ascension.</p>
     <div class="pivot-wrap"><table class="pivot" id="pivot-table"></table></div>
   </div>
   <div class="chart-box">
-    <h2>Final Boss Win %</h2>
+    <h3>Final boss win %</h3>
     <p class="chart-caption">Of the runs that reached the final boss, the share that beat it. Ascension 10's two Act 3 bosses are shown separately.</p>
     <div class="pivot-wrap"><table class="pivot" id="final-boss-win-table"></table></div>
   </div>
 </div>
 
+<h2 class="group-head">Time</h2>
 <div class="grid-1">
   <div class="chart-box">
-    <h2>Time Played</h2>
+    <h3>Time played</h3>
     <p class="chart-caption">Hours on each character and its share of your total, and median run length in runs you lost and runs you won.</p>
     <div id="time-lanes"></div>
   </div>
 </div>
 
+<h2 class="group-head">Choices</h2>
 <div class="grid-2">
   <div class="chart-box">
-    <h2>Win % by Elites Defeated</h2>
-    <p class="chart-caption">Win % by elites defeated before each act boss. Can signal the rewards scaling into a win, or greed getting you killed. <span id="elite-checkpoint-missing"></span></p>
+    <h3>Win % by elites defeated</h3>
+    <p class="chart-caption">Win % by elites defeated before each act boss. This can signal the rewards scaling into a win, or greed getting you killed. <span id="elite-checkpoint-missing"></span></p>
     <div class="chart-wrap"><canvas id="eliteCheckpointChart"></canvas></div>
   </div>
   <div class="chart-box">
-    <h2>Act Boss Defeated, by Rest Site Choices</h2>
+    <h3>Act boss defeated, by rest site choices</h3>
     <p class="chart-caption">Runs that reached each act boss: the share that defeated it, by how many times you picked Heal or Smith in that act.</p>
     <div class="rest-act-pair">
       <div><h3>Heal</h3><div class="chart-wrap"><canvas id="restHealChart"></canvas></div></div>
@@ -1349,15 +1355,16 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2>Cards &amp; Relics</h2>
+    <h3>Cards &amp; relics</h3>
     <p class="chart-caption">Median cards and relics when the run ended, in runs you lost and runs you won.</p>
     <div id="run-end-lanes"></div>
   </div>
 </div>
 
+<h2 class="group-head">Fights</h2>
 <div class="grid-1">
   <div class="chart-box">
-    <h2>Fight Win %</h2>
+    <h3>Fight win %</h3>
     <p class="chart-caption">Share of times you won each elite and boss fight.</p>
     <div id="win-lanes"></div>
   </div>
@@ -1365,15 +1372,15 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2>HP Entering Fight</h2>
-    <p class="chart-caption">How healthy should you be before taking the fight? Your HP at the lowest 10% of your wins on each one, and your median HP when you win.</p>
+    <h3>HP entering fight</h3>
+    <p class="chart-caption">How healthy should you be before taking the fight? Your HP at the lowest 10% of your wins on each fight, and your median HP when you win.</p>
     <div id="hp-lanes"></div>
   </div>
 </div>
 
 <div class="grid-1">
   <div class="chart-box">
-    <h2>Damage Taken</h2>
+    <h3>Damage taken</h3>
     <p class="chart-caption">Median damage taken per elite and boss fight.</p>
     <div id="dmg-lanes"></div>
   </div>
@@ -1415,7 +1422,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 </div>
 
 <div class="chart-box">
-  <h2 id="cards-title">Card Offer &amp; Pick Rates</h2>
+  <h2 id="cards-title">Card offer &amp; pick rates</h2>
   <p class="chart-caption" id="cards-caption">Every card offered under the current filters.</p>
   <input type="text" class="seeds-input" id="cards-name-filter" placeholder="Filter by card name…" aria-label="Filter cards by name" style="max-width:260px;margin-bottom:0.75rem">
   <div class="cards-split">
@@ -1437,7 +1444,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div id="page-seeds" style="display:none">
 
 <div class="chart-box" style="margin-bottom:1.5rem">
-  <h2>Search by Cards &amp; Relics Offered</h2>
+  <h2>Search by cards &amp; relics offered</h2>
   <div class="seeds-search-area">
     <div class="seeds-search-col">
       <div class="seeds-search-label">Cards</div>
@@ -1462,7 +1469,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 </div>
 
 <div class="chart-box">
-  <h2 id="seeds-title">Matching Seeds</h2>
+  <h2 id="seeds-title">Matching seeds</h2>
   <p class="chart-caption" id="seeds-caption">Seeds whose run offered every card and relic you searched for.</p>
   <div class="cards-split">
   <div class="pivot-wrap seeds-list">
@@ -1653,6 +1660,7 @@ def build_html(runs: list[dict]) -> str:
     # the map scroll background); point that at the repo folder instead, the
     # same way every other image in this build resolves to a file:// URI.
     css = css.replace("url(/ui_icons/", f"url({_UI_ICONS_DIR.as_uri()}/")
+    css = css.replace("url(/kreon-", f"url({(_HERE / 'site' / 'fonts').as_uri()}/kreon-")
     # data.js no longer declares DATA itself (it's a global provided before the
     # bundle runs — see js/data.js's header comment), so emit the declaration
     # here, ahead of the concatenated js/*.js.

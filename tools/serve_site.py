@@ -84,6 +84,7 @@ _CONTENT_TYPES = {
     ".webp": "image/webp",
     ".png":  "image/png",
     ".ttf":  "font/ttf",
+    ".woff2": "font/woff2",
     ".gz":   "application/gzip",
 }
 

@@ -11,7 +11,8 @@ just not linked from the bar.
 File names: lowercase letters, digits and dashes only, and not a name the site already uses (`u`, `users`,
 `api`, or an art folder like `thumbs`). The build stops with a message if one isn't allowed.
 
-The home page's intro, above the player search, is `site/home-intro.html`, written the same way.
+The home page's hero, at the top above the site stats, is `site/home-intro.html`: plain HTML again, with its
+own classes (`players.css`).
 
 Preview: `python tools/serve_site.py`, then open `http://localhost:8000/about`. Edits, and new pages, show
 up when you refresh. On the live site a new page also changes the CloudFront setup, which the push asks you

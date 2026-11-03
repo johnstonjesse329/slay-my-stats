@@ -7,7 +7,7 @@ let cardsIncludeOtherChars = false;
 let cardsActiveType   = "all";
 let cardsActiveRarity = "all";
 let cardsNameFilter   = "";
-let cardsSortKey      = "pickRate";
+let cardsSortKey      = "offered";
 let cardsSortDir      = -1; // -1 = descending
 
 (function initCardsFilters() {
@@ -33,12 +33,8 @@ let cardsSortDir      = -1; // -1 = descending
   ["all","attack","skill","power"].forEach(t => {
     document.getElementById(`cards-type-${t}`).addEventListener("click", () => {
       cardsActiveType = t;
-      ["all","attack","skill","power"].forEach(x => {
-        const btn = document.getElementById(`cards-type-${x}`);
-        btn.classList.toggle("active", x === t);
-        btn.style.color = x === t ? "#e0c468" : "";
-        btn.style.borderColor = x === t ? "#e0c468" : "";
-      });
+      ["all","attack","skill","power"].forEach(x =>
+        document.getElementById(`cards-type-${x}`).classList.toggle("active", x === t));
       renderCardsPage();
     });
   });
@@ -47,12 +43,8 @@ let cardsSortDir      = -1; // -1 = descending
   ["all","common","uncommon","rare"].forEach(r => {
     document.getElementById(`cards-rarity-${r}`).addEventListener("click", () => {
       cardsActiveRarity = r;
-      ["all","common","uncommon","rare"].forEach(x => {
-        const btn = document.getElementById(`cards-rarity-${x}`);
-        btn.classList.toggle("active", x === r);
-        btn.style.color = x === r ? "#e0c468" : "";
-        btn.style.borderColor = x === r ? "#e0c468" : "";
-      });
+      ["all","common","uncommon","rare"].forEach(x =>
+        document.getElementById(`cards-rarity-${x}`).classList.toggle("active", x === r));
       renderCardsPage();
     });
   });
@@ -158,12 +150,12 @@ function renderCardsPage() {
     { key: "type",       label: "Type",            align: "left",   width: "80px"  },
     { key: "rarity",     label: "Rarity",          align: "left",   width: "110px"  },
     { key: "offered",    label: "Offered",         align: "center", width: "90px"  },
-    { key: "pickRate",   label: "Pick Rate",       align: "center", width: "100px"  },
-    { key: "winPicked",  label: "Win % if Picked", align: "center", width: "130px" },
-    { key: "winSkipped", label: "Win % if Skipped",align: "center", width: "140px" },
+    { key: "pickRate",   label: "Pick rate",       align: "center", width: "100px"  },
+    { key: "winPicked",  label: "Win % if picked", align: "center", width: "130px" },
+    { key: "winSkipped", label: "Win % if skipped",align: "center", width: "140px" },
   ];
 
-  const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.3rem 0.5rem;font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.05em;width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "#bcbcd0"}"`;
+  const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.3rem 0.5rem;font-size:var(--fs-sm);width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "#bcbcd0"}"`;
   document.getElementById("cards-thead").innerHTML = `<tr>
     ${cols.map(c => `<th ${thStyle(c)} data-sort="${c.key}" tabindex="0">${c.label}${cardsSortKey === c.key ? (cardsSortDir < 0 ? " ▾" : " ▴") : ""}</th>`).join("")}
   </tr>`;

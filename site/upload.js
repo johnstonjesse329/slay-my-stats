@@ -2,8 +2,8 @@
 // Upload — "Sign in with Steam" and the run-history upload, live site only.
 //
 // Flow:
-//   1. The site bar's "Upload runs" button sends the browser to Steam's
-//      OpenID login, with this site's root as return_to.
+//   1. The call to action on the home page or the Upload page sends the
+//      browser to Steam's OpenID login, returning to the page it started on.
 //   2. Steam redirects back to /?openid.mode=id_res&openid.claimed_id=...
 //      Those params are the proof of who signed in; they're moved out of the
 //      address bar (so they don't linger in history or get shared) into
@@ -58,6 +58,10 @@
     for (const c of children || []) node.append(c);
     return node;
   }
+
+  const runCount = n => `${n} run${n === 1 ? "" : "s"}`;
+  const alreadyThere = n => n === 1 ? "That run is already on your profile."
+    : `All ${n} runs are already on your profile.`;
 
   // ---- Steam sign-in ------------------------------------------------------
 
@@ -188,9 +192,9 @@
 
   // ---- UI -------------------------------------------------------------------
 
-  // The site bar's "Upload runs" entry is an ordinary nav link, taken from the
-  // `nav:` label on site/pages/upload.html, so there is nothing to inject here.
-  // What this wires up is the call to action at the top of that page.
+  // The site bar's "Upload runs" entry is a link to the Upload page, taken from
+  // the `nav:` label on site/pages/upload.html. What this wires up is the call
+  // to action on that page.
   function wireUploadLinks(signIn, canHostPanel) {
     const upload = () => {
       if (!signIn || Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) startSignIn();
@@ -231,8 +235,7 @@
     // box. Those get no path line, no Copy button and no "go to the folder"
     // step: the fallback path is Windows, so showing it anywhere else would just
     // be a wrong answer, and this is the one part of the panel that differs per
-    // platform. Matches what the Upload page tells the reader: "These steps are
-    // for Windows and macOS."
+    // platform.
     const isMac = navigator.platform.startsWith("Mac");
     const hasPath = isMac || navigator.platform.startsWith("Win");
     const historyPath = isMac
@@ -258,26 +261,25 @@
     // Copies too, in case step 1 was skipped.
     folderBtn.addEventListener("click", () => { if (hasPath) copyPath(); folderInput.click(); });
 
-    const step = (title, ...body) => el("li", {}, [el("strong", { textContent: title }), ...body]);
+    const step = (title, ...body) => el("li", {}, [title, ...body]);
     const panel = el("section", { className: "upload-panel" }, [
       el("h2", { textContent: "Upload your runs" }),
       el("p", {}, profile
         ? ["Signed in with Steam as ", el("a", { href: `/u/${profile.slug}`, textContent: profile.name }), "."]
-        : ["Signed in with Steam. Your profile's address comes from your Steam name."]),
+        : ["Signed in with Steam."]),
       el("ol", { className: "upload-steps" }, [
         // The path, and getting the picker to it, are the only platform-specific
         // steps; everything else applies wherever runs can be picked at all.
         ...(hasPath ? [
-          step("Copy your run history folder's location.",
+          step("Copy the folder path.",
             el("div", { className: "upload-path" }, [pathCode, copyBtn])),
         ] : []),
-        step("Click Choose history folder below.",
+        step("Click Choose history folder.",
           el("div", { className: "upload-actions" }, [folderBtn, folderInput])),
         ...(hasPath ? [isMac
-          ? step("Go to the folder:", " press ⌘⇧G, paste (⌘V) and press Return.")
-          : step("Go to the folder:", " click the address bar at the top of the window that opens, paste (Ctrl+V) and press Enter.")] : []),
-        step("Select it", " even though it looks empty (the picker only shows folders, not the run files inside)"
-          + " and click Upload (or Select). If your browser asks whether to upload the files, say yes."),
+          ? step("Go to the folder:", " press ⌘⇧G, paste, and then press Return.")
+          : step("Go to the folder:", " click the address bar, paste, and then press Enter.")] : []),
+        step("Select the folder", " and confirm. It looks empty because the picker only shows folders."),
       ]),
       el("p", { className: "upload-note", textContent: "Runs already on your profile are skipped." }),
       status,
@@ -376,13 +378,13 @@
 
     // With a remembered profile, check for new runs before asking for an
     // upload URL: if there are none, there is nothing to send.
-    setStatus(status, `Found ${runs.length} runs. Checking which are new…`);
+    setStatus(status, `Found ${runCount(runs.length)}. Checking which are new…`);
     const known = knownProfile(signIn.steamId);
     let slug = known && known.slug;
     let have = await existingTimestamps(slug);
     const allThere = () => runs.every(r => have.has(r.start));
     if (allThere()) {
-      finishAtProfile(status, `All ${runs.length} runs are already on your profile.`, slug);
+      finishAtProfile(status, alreadyThere(runs.length), slug);
       return;
     }
 
@@ -399,13 +401,13 @@
       have = await existingTimestamps(slug);
       if (allThere()) {
         pending = null;
-        finishAtProfile(status, `All ${runs.length} runs are already on your profile.`, slug);
+        finishAtProfile(status, alreadyThere(runs.length), slug);
         return;
       }
     }
     const fresh = runs.filter(r => !have.has(r.start)).map(r => r.line);
 
-    setStatus(status, `Compressing ${fresh.length} new runs…`);
+    setStatus(status, `Compressing ${fresh.length} new ${fresh.length === 1 ? "run" : "runs"}…`);
     const body = await gzip(fresh.join("\n"));
     if (body.length > auth.maxBytes) {
       pending = null;
@@ -414,7 +416,7 @@
       return;
     }
 
-    setStatus(status, `Uploading ${fresh.length} runs (${(body.length / 1048576).toFixed(1)} MB)…`);
+    setStatus(status, `Uploading ${runCount(fresh.length)} (${(body.length / 1048576).toFixed(1)} MB)…`);
     const form = new FormData();
     for (const [k, v] of Object.entries(auth.fields)) form.append(k, v);
     form.append("file", new Blob([body], { type: "application/gzip" }), "runs.ndjson.gz");  // must come last
@@ -430,7 +432,7 @@
     }
     pending = null;
 
-    setStatus(status, `Sent. Adding ${fresh.length} runs to your profile…`);
+    setStatus(status, `Sent. Adding ${runCount(fresh.length)} to your profile…`);
     const result = await waitForResult(auth.uploadId);
     const profileLink = (result && result.slug) || slug
       ? { href: `/u/${(result && result.slug) || slug}`, text: "View profile" } : null;
@@ -445,13 +447,13 @@
     if (result.slug) rememberProfile(signIn.steamId, result.slug, result.name);
     if (!result.added) {
       if (result.duplicates) {
-        finishAtProfile(status, `All ${result.duplicates} runs are already on your profile.`, result.slug || slug);
+        finishAtProfile(status, alreadyThere(result.duplicates), result.slug || slug);
       } else {
         setStatus(status, "None of those files could be read as runs.", profileLink);
       }
       return;
     }
-    const parts = [`Added ${result.added} run${result.added === 1 ? "" : "s"}; your profile now has ${result.total}.`];
+    const parts = [`Added ${runCount(result.added)}; your profile now has ${result.total}.`];
     if (result.rejected + unreadable) parts.push(`${result.rejected + unreadable} file(s) couldn't be read as runs and were skipped.`);
     finishAtProfile(status, parts.join(" "), result.slug || slug);
   }

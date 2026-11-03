@@ -392,7 +392,7 @@ function renderSeedDetail(run) {
 
   return `<div class="seed-detail-panel">
     <div class="seed-detail-section">
-      <div class="seed-detail-label">Final Deck — ${cards.length} unique, ${(run.finalDeck||[]).length} total</div>
+      <div class="seed-detail-label">Final deck — ${cards.length} unique, ${(run.finalDeck||[]).length} total</div>
       <div class="seed-detail-cards">${groupsHtml || "<span style='color:#8a8aa0'>—</span>"}</div>
     </div>
     <div class="seed-detail-section">

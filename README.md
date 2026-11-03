@@ -9,7 +9,7 @@ dashboard code:
   folder from the browser. Your profile lives at `/u/<name>`, named after your Steam name, and anyone can find
   it by searching on the home page.
 
-**Overview:** totals, then a card for each character with its records and most-picked cards.
+**Overview:** the ascension tracker, totals, then a card for each character with its records and most-picked cards.
 
 ![Overview tab of a player profile](images/site-overview.png)
 
@@ -59,7 +59,10 @@ slay-my-stats/
 ├── site/                    Site-only code (not in the local file)
 │   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>, pages
 │   ├── pages/               hand-written pages: <name>.html is served at /<name> (see its README)
-│   ├── home-intro.html      the home page's intro, above the player search
+│   ├── home-intro.html      the home page's hero: title, upload button, preview picture
+│   ├── home-preview.webp    that picture, and og-preview.png (the link preview): shots of a made-up player,
+│   │                        retaken by hand when the dashboard's look changes
+│   ├── fonts/               Kreon (headings), with its licence
 │   ├── players.css          site bar, finder, site stats, pages
 │   ├── upload.js            Steam sign-in and the upload panel
 │   └── upload.css
@@ -304,7 +307,8 @@ sequenceDiagram
     B-->>P: result + link to /u/<slug>
 ```
 
-1. **Sign in.** "Upload runs" in the site bar sends you to Steam's OpenID login. Steam redirects back to the
+1. **Sign in.** "Upload runs" in the site bar (or the home page's button) opens the Upload page, and its button
+   sends you to Steam's OpenID login. Steam redirects back to the
    site with signed `openid.*` parameters, which prove your Steam ID. Every upload carries that proof, and the
    ingest Lambda re-checks it with Steam. The same sign-in works for more uploads until it's 30 minutes old.
 2. **Pick the folder.** The browser reads the `.run` files locally and drops runs your profile already has. It

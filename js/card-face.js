@@ -281,7 +281,7 @@ function renderDetailDeckRelics(run) {
   const relicHtml  = renderRelicTiles(relics);
 
   document.getElementById("detail-deck-relics").innerHTML = `
-    <div class="detail-section-heading">Final Deck</div>
+    <div class="detail-section-heading">Final deck</div>
     ${groupsHtml}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
