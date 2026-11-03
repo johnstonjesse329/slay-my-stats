@@ -1759,3 +1759,7 @@ not rated.
   Couldn't load the player list...". The site bar, tabs and filter bar are wrapped in `data-nosnippet` divs with
   `display: contents` (nav and a are ignored by Google, and the wrapper adds no box: rects checked identical).
   The meta description is unchanged. Google re-reads on its own schedule.
+- **A finger never "heads for" the tooltip.** The mouse hold (keep the floor while the pointer is on its way to the
+  box) used a stale anchor on touch, and with the full-width sheet it covered the whole chart, so a scrub froze
+  on one floor, worst where the sheet was tall (card floors). The hold is mouse-only now; 24 steps across the
+  deck and relic charts give 24 floors, 9 of them with card faces, at all three screen positions.

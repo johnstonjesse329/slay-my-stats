@@ -1251,7 +1251,9 @@ function onTheWay(a, r, p) {
 // (so scrubbing along the chart is still scrubbing): it is heading for it. The box then
 // keeps its floor and stays open, however the pointer wanders on the way.
 function floorTipApproached() {
-  if (!floorTip || floorTip.style.display !== "block") return false;
+  // A finger has no heading for the box: the docked sheet sits at a screen edge, far from
+  // where the last mouse opened one, and holding the floor for it froze the scrub.
+  if (floorTipTouch || !floorTip || floorTip.style.display !== "block") return false;
   const { x, y } = floorTipPointer, a = floorTipAnchor;
   if (a.below ? y < a.y + 6 : y > a.y - 6) return false;
   return onTheWay(a, floorTip.getBoundingClientRect(), { x, y });
