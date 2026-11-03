@@ -1224,6 +1224,16 @@ let floorTipTouch = false;
 const floorTipPointer = { x: 0, y: 0 };
 // Where the pointer was when the box opened, and which side of it the box is on.
 const floorTipAnchor = { x: 0, y: 0, below: true };
+// Listening from load, not from the box's first showing: the first tap on a chart is what
+// opens the box, and its pointerdown has to be seen already to know it was a finger.
+document.addEventListener("pointermove", e => {
+  floorTipPointer.x = e.clientX; floorTipPointer.y = e.clientY;
+  floorTipTouch = e.pointerType === "touch";
+}, { passive: true, capture: true });
+document.addEventListener("pointerdown", e => {
+  floorTipTouch = e.pointerType === "touch";
+  if (floorTipTouch && floorTip && floorTip.style.display === "block" && !floorTip.contains(e.target) && e.target.tagName !== "CANVAS") closeFloorTip();
+});
 const FLOOR_TIP_GRACE = 450;
 // Is p on a straight line from a to some point of the rect r: on its way there?
 function onTheWay(a, r, p) {
@@ -1279,14 +1289,6 @@ function createFloorTip() {
   floorTip.addEventListener("pointerout", e => {
     if (e.target.closest("[data-pick]")) hideFloatingHtmlTooltip();
   });
-  document.addEventListener("pointermove", e => {
-    floorTipPointer.x = e.clientX; floorTipPointer.y = e.clientY;
-    floorTipTouch = e.pointerType === "touch";
-  }, { passive: true, capture: true });
-  document.addEventListener("pointerdown", e => {
-    floorTipTouch = e.pointerType === "touch";
-    if (floorTipTouch && floorTip.style.display === "block" && !floorTip.contains(e.target) && e.target.tagName !== "CANVAS") closeFloorTip();
-  });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeFloorTip(); });
   ["scroll", "resize"].forEach(type => window.addEventListener(type, () => {
     if (floorTipTouch) closeFloorTip();
@@ -1309,11 +1311,22 @@ function showFloorTip(context, html) {
   floorTip.innerHTML = html(t.dataPoints[0].dataIndex);
   floorTip.dataset.key = key;
   floorTip.style.display = "block";
+  const { clientWidth: vw, clientHeight: vh } = document.documentElement;
+  const r = context.chart.canvas.getBoundingClientRect();
+  // A finger covers what it points at, and a box beside it covers the rest of a phone's
+  // chart. So on touch the box is a sheet on the screen edge away from the chart (CSS
+  // sizes it): the chart stays in view and the finger keeps scrubbing it.
+  floorTip.classList.toggle("docked", floorTipTouch);
+  if (floorTipTouch) {
+    floorTip.classList.remove("above");
+    floorTip.classList.toggle("docked-top", (r.top + r.bottom) / 2 > vh / 2);
+    floorTip.style.left = floorTip.style.top = "";
+    floorTip.scrollTop = 0;
+    return;
+  }
   // Measured at the origin, so the last position near an edge can't squeeze it narrower.
   // clientWidth leaves out the scrollbar.
   floorTip.style.left = floorTip.style.top = "0px";
-  const { clientWidth: vw, clientHeight: vh } = document.documentElement;
-  const r = context.chart.canvas.getBoundingClientRect();
   // Centred on the floor's column, so the pointer is over the box's width however it drifts.
   const px = r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
   const w = floorTip.offsetWidth, h = floorTip.offsetHeight;

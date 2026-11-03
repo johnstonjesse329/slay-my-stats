@@ -421,6 +421,14 @@ h1 {
 
 /* 300px: room for a plot after the --fs-sm axis labels and legend. */
 .chart-wrap { position: relative; height: 300px; }
+/* Touch: a finger dragged along a chart scrubs its floors, so it must not start a text selection or
+   the callout, and a sideways drag stays with the chart while an up-down one still scrolls the page. */
+@media (pointer: coarse) {
+  .chart-wrap, .floor-tip {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  .chart-wrap canvas { touch-action: pan-y; -webkit-tap-highlight-color: transparent; }
+}
 
 /* Act Boss Defeated, by Rest Site Choices: a Heal and a Smith chart share one
    half-width box, a little shorter so the box stays level with its neighbour
@@ -1362,6 +1370,15 @@ h1 {
   color: var(--text);
   box-shadow: 0 6px 24px #0008;
 }
+/* On touch: a sheet on the screen edge away from the chart (docked-top when the chart is in
+   the lower half), so it never covers the chart being scrubbed. Placed by js/run-detail.js. */
+.floor-tip.docked {
+  left: 8px; right: 8px; width: auto; max-width: none;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  max-height: 40vh; overflow: auto; overscroll-behavior: contain;
+}
+.floor-tip.docked.docked-top { bottom: auto; top: calc(8px + env(safe-area-inset-top)); }
+.floor-tip.docked::before { display: none; }
 /* The strip between the box and the pointer, so crossing it never leaves the box. */
 .floor-tip::before { content: ""; position: absolute; left: 0; right: 0; top: -12px; height: 12px; }
 .floor-tip.above::before { top: auto; bottom: -12px; }

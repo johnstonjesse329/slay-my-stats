@@ -1184,6 +1184,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     Seed Data). Shared by build_html() (the local HTML
     generator) and build_site.py (the static site).
 
+    The site bar (with the player finder), the page tabs and the filter bar sit in
+    `display: contents` divs marked data-nosnippet (Google honours it on div, span and
+    section only, so not on the navs): without it a search result's abstract was that chrome,
+    "Skip to content ... Search players ... Overview Runs Cards Seeds Filters", rather than the
+    meta description or the page's own text. The wrappers have no box of their own.
+
     site_links (live site only): (href, label) pairs for a site bar in place
     of the header, after the site's name (a link home); label is HTML.
     A GitHub icon link ends .site-links; site/upload.js adds its button
@@ -1195,25 +1201,30 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <a class="site-github" href="{REPO_URL}" target="_blank" rel="noopener" aria-label="Source code on GitHub" title="Source code on GitHub">
       <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="{_GITHUB_MARK}"/></svg>
     </a>"""
+    skip = '<a class="skip-link" href="#main-content">Skip to content</a>'
     top = (f"""
+<div data-nosnippet style="display:contents">
+{skip}
 <nav class="site-nav" aria-label="Site">
   <a class="site-brand" href="/">Slay My Stats</a>
   <div class="site-links">{links}
   </div>
 </nav>
+</div>
 <header class="player-head" id="player-head" hidden>
   <h1 id="player-name"></h1>
   <p id="player-meta"></p>
 </header>
 """ if site_links is not None else f"""
+{skip}
 <header>
 <h1>Slay the Spire 2</h1>
 <p class="subtitle">{subtitle}</p>
 </header>
 """)
     return f"""<div class="map-bg" aria-hidden="true"></div>
-<a class="skip-link" href="#main-content">Skip to content</a>
 {top}
+<div data-nosnippet style="display:contents">
 <nav class="page-tabs" aria-label="Pages">
   <button class="page-tab active" id="tab-overview" onclick="showPage('overview')">Overview</button>
   <button class="page-tab" id="tab-detail" onclick="showPage('detail')">Runs</button>
@@ -1282,6 +1293,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     </div>
   </div>
 </nav>
+</div>
 
 <main id="main-content">
 <div id="page-overview">

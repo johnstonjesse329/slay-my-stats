@@ -1747,3 +1747,15 @@ not rated.
   Damage taken rows.
 - **Deck and relic markers are one size.** Uncommon picks were 30 px and Rares 38 px; now all 38, with the ring
   colour saying the rarity. Stacks on one floor are ordered Uncommon, Rare, Ancient.
+- **On a phone the floor tooltip is a docked sheet.** Under a finger the box sat on the chart being read. A touch
+  tap now docks it full width at the screen edge farther from the chart (top when the chart is in the lower half),
+  at most 40% of the height and scrollable. It does not move while scrubbing; only its content changes. Mouse
+  placement is unchanged. Checked at 390 px with the chart at the top, middle and bottom of the screen.
+- **Charts keep a finger drag for scrubbing.** Touch-only (`pointer: coarse`) rules turn off text selection and the
+  tap highlight on the chart and the sheet, and set `touch-action: pan-y` on the canvas: a vertical drag still
+  scrolls the page, a horizontal one scrubs the floors (7 floors crossed in one swipe, no page scroll, empty
+  selection). Desktop selection is untouched.
+- **Google's abstract skips the page chrome.** The snippet read "Skip to content Slay My Stats. Search players.
+  Couldn't load the player list...". The site bar, tabs and filter bar are wrapped in `data-nosnippet` divs with
+  `display: contents` (nav and a are ignored by Google, and the wrapper adds no box: rects checked identical).
+  The meta description is unchanged. Google re-reads on its own schedule.
