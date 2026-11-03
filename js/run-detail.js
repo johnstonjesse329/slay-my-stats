@@ -1556,8 +1556,9 @@ const KEEP_TURN_EDGES = [0.8, 1.25];
 const KEEP_OP_ACTS = [2, 3];
 // A reading's mark: the shape says it as well as the colour.
 const KEEP_SIGNS = { ahead: "▲", meeting: "–", behind: "▼" };
-// Fight icons on a chart, in px: about a floor's width, and still readable on a phone.
-const KEEP_ICON = { min: 12, max: 22 };
+// Fight icons on a chart, in px: up to the HP and gold charts' size, and a floor and a
+// half wide when a run has many floors; still readable on a phone.
+const KEEP_ICON = { min: 16, max: NODE_POINT };
 // The kinds of fight, in the order an act card lists them.
 const KEEP_KINDS = { monster: "Normal", elite: "Elites", boss: "Boss" };
 // How each tier is named on the page: fight_demand.py's TIER_NAMES, for a reader.
@@ -1987,7 +1988,7 @@ function renderDetailKeepCharts(run) {
     borderWidth: 2, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 4, spanGaps: true,
     cubicInterpolationMode: "monotone",
   });
-  const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, box.clientWidth / nodes.length)));
+  const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * box.clientWidth / nodes.length)));
   const winners = (id, pick) => {
     const has = i => rows[i] && pick(rows[i]) !== undefined;
     return {
