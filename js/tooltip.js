@@ -45,13 +45,44 @@ function clampTooltipPosition(el, rawLeft, rawTop, margin = 8) {
   };
 }
 
+// How the shared box is hidden. The three rules below are WCAG 1.4.13 (content
+// on hover or focus), which is what Tippy.js and Floating UI implement too:
+//   hoverable   the pointer can travel onto the box without it closing (a short
+//               grace delay on leaving the trigger, cancelled by entering the box)
+//   persistent  it stays until the pointer is outside both, or focus moves on
+//   dismissible Esc, or a tap/click anywhere outside it, closes it
+// Chart tooltips follow the pointer and aren't enterable; text tips and rich
+// card/relic tips are ("tip-live").
+const TIP_GRACE_MS = 150;
+let tipTrigger = null;
+let tipHideTimer = null;
+function cancelTipHide() {
+  clearTimeout(tipHideTimer);
+  tipHideTimer = null;
+}
+function scheduleTipHide() {
+  cancelTipHide();
+  tipHideTimer = setTimeout(hideSharedTooltip, TIP_GRACE_MS);
+}
+function hideSharedTooltip() {
+  cancelTipHide();
+  tipTrigger = null;
+  if (!floatingTooltipEl) return;
+  floatingTooltipEl.style.opacity = 0;
+  floatingTooltipEl.classList.remove("chart-tooltip-rich", "tip-live");
+}
+
 function chartTooltipHandler({ chart, tooltip }) {
   const el = getFloatingTooltipEl();
 
   if (tooltip.opacity === 0) {
     el.style.opacity = 0;
+    el.classList.remove("tip-live");
     return;
   }
+  cancelTipHide();
+  tipTrigger = null;
+  el.classList.remove("tip-live", "chart-tooltip-rich");
 
   const colors = tooltip.labelColors || [];
   el.innerHTML =
@@ -109,6 +140,10 @@ function showTableTooltip(target, clientX = null, clientY = null) {
   const text = target.dataset.tip;
   if (!text) return;
   const el = getFloatingTooltipEl();
+  cancelTipHide();
+  tipTrigger = target;
+  el.classList.remove("chart-tooltip-rich");
+  el.classList.add("tip-live");
   el.innerHTML = text.split("\n").map(line => `<div>${line}</div>`).join("");
   el.style.left = "0px";
   el.style.top = "0px";
@@ -136,7 +171,7 @@ function showTableTooltip(target, clientX = null, clientY = null) {
   el.style.top  = `${top}px`;
 }
 function hideTableTooltip() {
-  if (floatingTooltipEl) floatingTooltipEl.style.opacity = 0;
+  scheduleTipHide();
 }
 document.addEventListener("mouseover", e => {
   const target = e.target.closest("[data-tip]");
@@ -167,7 +202,9 @@ document.addEventListener("focusout", e => {
 function showFloatingHtmlTooltip(target, html) {
   if (!html) return;
   const el = getFloatingTooltipEl();
-  el.classList.add("chart-tooltip-rich");
+  cancelTipHide();
+  tipTrigger = target;
+  el.classList.add("chart-tooltip-rich", "tip-live");
   el.innerHTML = html;
   loadDeferredImages(el);
   el.style.left = "0px";
@@ -189,26 +226,61 @@ function showFloatingHtmlTooltip(target, html) {
   });
 }
 function hideFloatingHtmlTooltip() {
-  if (!floatingTooltipEl) return;
-  floatingTooltipEl.style.opacity = 0;
-  floatingTooltipEl.classList.remove("chart-tooltip-rich");
+  scheduleTipHide();
 }
+
+// Entering the box keeps it; leaving it (with a mouse) starts the same grace
+// delay, so moving back onto the trigger doesn't flicker it shut.
+document.addEventListener("pointerenter", e => {
+  if (floatingTooltipEl && e.target === floatingTooltipEl) cancelTipHide();
+}, true);
+document.addEventListener("pointerleave", e => {
+  if (floatingTooltipEl && e.target === floatingTooltipEl && e.pointerType === "mouse"
+      && floatingTooltipEl.classList.contains("tip-live")) scheduleTipHide();
+}, true);
 
 // Card/relic/node tooltips (card-face.js, run-detail.js, render-helpers.js)
 // open via :focus-within on a tabindex="0" trigger, so a touch tap can
 // reveal them the same way a mouse hover does. But a tap only ever *moves*
 // focus on iOS/Android when it lands on something itself focusable --
-// tapping the tooltip's own static text, or blank space elsewhere on the
-// page, doesn't blur the trigger, so the tooltip lingers open forever.
-// Blur it on the next tap no matter where that tap lands; if the tap hit a
-// different focusable trigger, the browser's own focus-follows-tap then
-// opens that one right after.
-document.addEventListener("touchstart", () => {
+// tapping blank space elsewhere on the page doesn't blur the trigger, so
+// the tooltip lingers open forever. The same goes for the shared box
+// (data-tip text, rich card/relic, a chart's): no mouseout ever comes on a
+// touch screen. So any press outside a tooltip and its trigger closes it; a
+// press inside it (to read or scroll it) keeps it. A press on a different
+// trigger closes this one and the browser's own focus-follows-tap, or the
+// compat mouseover that follows, opens that one right after.
+const TIP_FOCUS_TRIGGERS = ".card-tile, .relic-tile, .fav-item, .run-boon-wrap, .node-card, .site-tip";
+function dismissTipsOutside(target) {
   const active = document.activeElement;
-  if (active && active.matches(".card-tile, .relic-tile, .fav-item, .run-boon-wrap, .node-card, .site-tip")) {
-    active.blur();
+  if (active && active.matches(TIP_FOCUS_TRIGGERS) && !active.contains(target)) active.blur();
+  const inBox = floatingTooltipEl && floatingTooltipEl.contains(target);
+  const onTrigger = tipTrigger && tipTrigger.contains(target);
+  if (!inBox && !onTrigger) hideSharedTooltip();
+  // Chart.js keeps its hover state until the pointer next moves over a
+  // canvas, so tapping the same point again would change nothing and the box
+  // would stay hidden. Clear it on every chart but the one pressed.
+  if (typeof Chart !== "undefined" && Chart.instances) {
+    for (const chart of Object.values(Chart.instances)) {
+      if (chart.canvas.contains(target) || !chart.tooltip?.getActiveElements().length) continue;
+      chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+      chart.setActiveElements([]);
+      chart.update("none");
+    }
   }
-}, { passive: true });
+}
+document.addEventListener("pointerdown", e => dismissTipsOutside(e.target), { capture: true, passive: true });
+
+// Esc closes whatever tooltip is showing: the shared box, a focus-opened one
+// (blur) and a hover-opened CSS one (the same class a scroll uses, lifted
+// when the pointer next moves).
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  hideSharedTooltip();
+  const active = document.activeElement;
+  if (active && active.matches(TIP_FOCUS_TRIGGERS)) active.blur();
+  document.body.classList.add("suppress-hover-tooltips");
+});
 
 // "IRONCLAD" -> "Ironclad", for legends, labels, and tooltips
 function fmtCharName(char) {

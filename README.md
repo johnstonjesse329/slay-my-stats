@@ -52,7 +52,7 @@ slay-my-stats/
 │   ├── charts.js            Chart.js setup
 │   ├── card-face.js         card rendering
 │   ├── render-helpers.js    shared markup builders
-│   ├── tooltip.js           floating tooltips
+│   ├── tooltip.js           floating tooltips (can be moused into; Esc or a tap outside closes them)
 │   ├── item-tips.js         card faces and relic tooltips (also on the site's front page)
 │   ├── update.js            re-render on filter change
 │   └── map-bg.js            background map panning
