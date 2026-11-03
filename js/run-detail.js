@@ -1806,7 +1806,7 @@ function renderKeepActs(run, nodes, measured) {
       `<div class="ks-cuts">` +
       (hypeW ? cut(hypeW < 16 ? "hype start" : "hype", hypeW, `≤ ${hype}`) : "") + cut("mid", lowAt - hypeW, "") + cut("low", 100 - lowAt, `≥ ${low}`) + `</div></div>`;
   };
-  // How near a Mid is to either edge, said only when it is within a fifth of the meter.
+  // How near a Mid is to either edge, said only when it is within a fifth of the meter. Hover only.
   const nearNote = a => {
     if (a.held !== "meeting") return "";
     const { hype, low } = keepCuts(a.winTaken);
@@ -1817,7 +1817,7 @@ function renderKeepActs(run, nodes, measured) {
   };
   // What would lift a Mid to Hype on speed: finishing in few enough turns while taking no
   // more than the average win did. Said only while it can still matter, and ticked off once
-  // it has.
+  // it has. Hover only.
   const speedNote = a => {
     const fast = keepFastTurns(a.winTurns), cap = Math.floor(a.winTaken);
     if (a.verdict === "ahead" && a.held === "meeting") return `Hype on speed (damage ≤ ${cap})`;
@@ -1837,16 +1837,17 @@ function renderKeepActs(run, nodes, measured) {
       `Took ${Math.round(a.taken)}, average win ${Math.round(a.winTaken)}. ${keepRule(a.winTaken)}`,
       ...(a.verdict === "ahead" && a.held === "meeting"
         ? [`Hype on speed: ${a.turns} turns against an average win of ${+a.winTurns.toFixed(1)}, with damage taken no higher.`] : []),
+      ...[a.verdict === "meeting" ? speedNote(a) : "", nearNote(a)].filter(Boolean),
     ].join("\n");
     const pill = `<span class="run-reading ${a.verdict}" data-tip="${tip}" tabindex="0"><span class="keep-signal ${a.verdict}" aria-hidden="true">${KEEP_SIGNS[a.verdict]}</span>${KEEP_WORDS[a.verdict]}</span>`;
-    const takenSub = [a.healed ? `After healing ${Math.round(a.healed)} HP` : "", nearNote(a)].filter(Boolean).join(" · ");
+    const takenSub = a.healed ? `After healing ${Math.round(a.healed)} HP` : "";
     const perTurnRow = (icon, label, value, note) => row(icon, label, `${perTurn(value)}<small>/turn</small>`, { note });
     // Against the average win on the left, what the deck did per turn on the right; a card
     // too narrow for two columns stacks them.
     return `<div class="keep-act"><h3><span class="ka-title">Act ${a.act}<span class="keep-kinds">${kinds(a)}</span></span>${pill}</h3>` +
       `<div class="ka-body"><div class="ka-half ka-main">` +
       row(keepIcon("turns", KEEP_DEMAND_COLOR), "Fight turns", a.turns,
-        { mark: keepSignal(a.speed, `Fight turns: ${KEEP_WORDS[a.speed]}`), vs: vs(a.winTurns, "turns"), sub: speedNote(a) }) +
+        { mark: keepSignal(a.speed, `Fight turns: ${KEEP_WORDS[a.speed]}`), vs: vs(a.winTurns, "turns") }) +
       row(keepIcon("taken", KEEP_LINES.taken.color), "Taken per turn", (a.taken / a.turns).toFixed(1),
         { mark: keepSignal(keepMark(a.each, KEEP_EDGES), `Damage taken per turn: ${KEEP_WORDS[keepMark(a.each, KEEP_EDGES)]}`), vs: vs(a.winTaken / a.winTurns, "damage a turn", 1) }) +
       row(keepIcon("taken", KEEP_LINES.taken.color), "Damage taken", Math.round(a.taken),
