@@ -29,8 +29,10 @@ Pushing the gamma branch does the same; pushing main always deploys production.
 
     infra\\.venv\\Scripts\\python.exe tools/deploy.py --stage gamma
 
-`--reheader` takes `--stage` too. For gamma only, `DEPLOY_YES=1` skips the y/N
-on stack changes, so it can run with nobody at the terminal.
+`--reheader` takes `--stage` too. `DEPLOY_YES=1` skips the y/N on gamma's stack changes, so
+it can run with nobody at the terminal. Production only skips it for `DEPLOY_YES=prod`, a
+value nothing sets by accident: the prompt reads the console, so without it a push run by
+an agent or an editor just stalls there.
 
 Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 `git push --no-verify`.
@@ -220,10 +222,12 @@ def deploy_infra() -> None:
     if "There were no differences" in output:
         print("Infra: no changes.")
         return
-    # DEPLOY_YES=1 answers the question up front, for a run with nobody at the
-    # terminal. Gamma only: production's stack changes always get a person.
-    if STACK_NAME == STAGES["gamma"][2] and os.environ.get("DEPLOY_YES"):
-        print("Infra: deploying these changes (DEPLOY_YES).")
+    # DEPLOY_YES answers the question up front, for a run with nobody at the terminal.
+    # Any value does it for gamma; production wants the word "prod", so a stray
+    # DEPLOY_YES=1 left in the environment can't ship a production stack change.
+    yes = os.environ.get("DEPLOY_YES", "")
+    if (STACK_NAME == STAGES["gamma"][2] and yes) or (STACK_NAME == STAGES["prod"][2] and yes == "prod"):
+        print(f"Infra: deploying these changes (DEPLOY_YES={yes}).")
     elif not ask("Deploy these infra changes?"):
         raise DeployError("infra deploy declined")
     run(["cdk", "deploy", STACK_NAME, "--require-approval", "never"], cwd=_INFRA, env=env)
