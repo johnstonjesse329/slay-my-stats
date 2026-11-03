@@ -1651,6 +1651,11 @@ box holds its floor and the timer restarts; moving sideways along the chart stil
 hover. Touch has no hover, so a tap holds the box until a tap elsewhere, Esc, a scroll or a resize.
 Text is 15 px. Checked by moving the pointer 250 px into the box in 15 px steps: open all the way.
 
+**Text drawn on the charts was small.** The act labels over every floor chart were 12 px, the "Floor" axis
+title 12 px, the ×N badges 11 px and the TYPE/RARITY labels 12 px, against 14 px ticks and 16 px act cards.
+Now 15, 14, 13 and 14. The act label drops to plain "Act N" unless the name fits inside its act with 4 px to spare,
+so on a phone Act 2 and Act 3 no longer run into each other (checked at 390 px).
+
 **Charts match.** HP and Gold by Floor got a heading, a caption and the HTML key under the chart like
 Deck, Relics and Keeping Up (Gold is one line, so no key), and every floor chart has the same x gridlines.
 Secondary text everywhere is one brighter colour (`--text-dim`, `#d2cdea`, chart ticks the same) so it no

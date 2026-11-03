@@ -743,7 +743,7 @@ function iconAxis(extra = {}) {
 function floorAxis(extra = {}) {
   return {
     ...extra,
-    title: { display: true, text: "Floor", color: "#ccc", font: { size: 12 } },
+    title: { display: true, text: "Floor", color: "#ccc", font: { size: 14 } },
     ticks: {
       color: "#ccc", autoSkip: false, maxRotation: 0,
       callback(v) { const f = Number(this.getLabelForValue(v)); return f === 1 || f % 5 === 0 ? f : ""; },
@@ -811,7 +811,7 @@ function makeActBoundaryPlugin(nodes) {
         ctx.stroke();
       });
       ctx.fillStyle = "#cfcbe0";
-      ctx.font = "600 12px 'Segoe UI', system-ui, sans-serif";
+      ctx.font = "600 15px 'Segoe UI', system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
       spans.forEach(({ act, name, from, to }) => {
@@ -819,7 +819,7 @@ function makeActBoundaryPlugin(nodes) {
         // Just "Act N" when the name won't fit over the act's floors (a short
         // last act, or a narrow screen).
         const full = name ? `Act ${act} · ${name}` : `Act ${act}`;
-        const label = ctx.measureText(full).width <= right - left + 20 ? full : `Act ${act}`;
+        const label = ctx.measureText(full).width <= right - left - 4 ? full : `Act ${act}`;
         ctx.fillText(label, (left + right) / 2, top - ACT_BAND + 2);
       });
       ctx.restore();
@@ -1118,7 +1118,7 @@ function floorMarks(nodes, items, group, marked, imgSrc, name) {
 // charts and redraw the chart once they decode.
 const floorMarkImages = new Map();  // src -> Image
 function makeMarkPlugin(marks, totals, colors) {
-  const font = "700 11px 'Segoe UI', system-ui, sans-serif";
+  const font = "700 13px 'Segoe UI', system-ui, sans-serif";
   return {
     id: "floorMarks",
     afterDatasetsDraw(chart) {
@@ -1166,7 +1166,7 @@ function makeMarkPlugin(marks, totals, colors) {
             const text = "×" + m.count, w = ctx.measureText(text).width + 6;
             ctx.fillStyle = "#16142a";
             ctx.beginPath();
-            ctx.roundRect(cx + r - 6, cy + r - 9, w, 13, 6);
+            ctx.roundRect(cx + r - 6, cy + r - 10, w, 15, 7);
             ctx.fill();
             ctx.fillStyle = ACT_COLOUR;
             ctx.textAlign = "left";
@@ -1435,7 +1435,7 @@ function renderDetailDeckChart(run) {
       ctx.moveTo(left, y0);
       ctx.lineTo(right, y0);
       ctx.stroke();
-      ctx.font = "700 12px 'Segoe UI', system-ui, sans-serif";
+      ctx.font = "700 14px 'Segoe UI', system-ui, sans-serif";
       ctx.textAlign = "left";
       ctx.fillStyle = ACT_COLOUR;
       ctx.textBaseline = "bottom";
