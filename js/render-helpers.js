@@ -79,7 +79,7 @@ function renderCards(grand, charStats, restAvg) {
     : "";
   const runsTip = `${grand.wins} win${grand.wins === 1 ? "" : "s"}`;
   const runsCard = `<div class="card" data-tip="${runsTip}" tabindex="0">
-    <div class="label">${scopeName ? `Runs · ${scopeName}` : "Runs"}</div>
+    <div class="label">${scopeName ? `${scopeName} runs` : "Runs"}</div>
     <div class="value">${grand.runs}</div>
   </div>`;
 
