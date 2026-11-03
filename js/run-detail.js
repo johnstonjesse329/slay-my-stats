@@ -145,7 +145,7 @@ function renderDetailRunList() {
     ${sortHead("asc", "Asc")}
     ${sortHead("won", "W/L")}
     ${sortHead("floor", "Floor")}
-    ${sortHead("read", "+/–", `Ahead of, meeting or behind winners on this run's fights.\nOP: ahead in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
+    ${sortHead("read", "+/–", `Hype, Mid or Low against the average win on this run's fights.\nOP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
     <span></span>
     ${sortHead("date", "Date")}
   </div>` + runs.map((run, i) => {
@@ -1217,12 +1217,46 @@ function floorBands(bands) {
 // hold the floor's gains at full size: real card faces and relic text.
 // One box serves every floor chart; it is rebuilt only when the floor changes.
 let floorTip = null;
+// A click on a chart holds the box where it is, so the pointer can move onto it and
+// hover a pickup for the full card or relic. Hovering alone leaves it non-interactive,
+// so scrubbing across floors never snags on it. Esc, a click elsewhere, a scroll or a
+// resize lets go.
+let floorTipPinned = false;
+function pinFloorTip(pin) {
+  floorTipPinned = pin;
+  if (!floorTip) return;
+  floorTip.classList.toggle("pinned", pin);
+  if (!pin) { floorTip.style.display = "none"; hideFloatingHtmlTooltip(); }
+}
+function createFloorTip() {
+  floorTip = document.createElement("div");
+  floorTip.className = "floor-tip";
+  document.body.appendChild(floorTip);
+  // A pickup chip: the full card or relic, as it shows everywhere else.
+  floorTip.addEventListener("pointerover", e => {
+    const chip = e.target.closest("[data-pick]");
+    if (!chip || !floorTipPinned) return;
+    const [kind, id, up] = chip.dataset.pick.split(":");
+    const html = kind === "relic" ? buildRelicTooltip(id) : buildCardTooltip(id, up === "1");
+    showFloatingHtmlTooltip(chip, html);
+  });
+  floorTip.addEventListener("pointerout", e => {
+    if (e.target.closest("[data-pick]")) hideFloatingHtmlTooltip();
+  });
+  document.addEventListener("pointerdown", e => {
+    if (floorTipPinned && !floorTip.contains(e.target) && e.target.tagName !== "CANVAS") pinFloorTip(false);
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && floorTipPinned) pinFloorTip(false); });
+  ["scroll", "resize"].forEach(type => window.addEventListener(type, () => { if (floorTipPinned) pinFloorTip(false); }, { passive: true }));
+}
+// A chart's onClick: hold the box for the floor under the pointer, or let go of it.
+function toggleFloorTip(e, active, chart) {
+  if (floorTipPinned) { pinFloorTip(false); return; }
+  if (floorTip && floorTip.style.display === "block" && floorTip.dataset.key.startsWith(chart.id + ":")) pinFloorTip(true);
+}
 function showFloorTip(context, html) {
-  if (!floorTip) {
-    floorTip = document.createElement("div");
-    floorTip.className = "floor-tip";
-    document.body.appendChild(floorTip);
-  }
+  if (!floorTip) createFloorTip();
+  if (floorTipPinned) return;
   const t = context.tooltip;
   if (!t.opacity || !t.dataPoints?.length) { floorTip.style.display = "none"; return; }
   const key = context.chart.id + ":" + t.dataPoints[0].dataIndex;
@@ -1283,6 +1317,7 @@ function floorChartConfig(nodes, plugins, tip, y, datasets) {
       // Right: room for a ×N badge on the last floor.
       layout: { padding: { top: ACT_BAND, right: 24 } },
       interaction: { mode: "index", intersect: false },
+      onClick: toggleFloorTip,
       // The HTML legend under the chart (floorLegend) replaces Chart.js's.
       plugins: { legend: { display: false }, tooltip: { enabled: false, external: tip } },
       scales: {
@@ -1436,12 +1471,30 @@ function renderDetailRelicChart(run) {
 // a run file doesn't say.
 const KEEP_LINES = {
   damage: { label: "Damage done", color: "#e0604f" },
-  taken:  { label: "Damage taken", color: "#4087de" },
+  taken:  { label: "Damage taken", color: "#d9652b" },
   drawn:  { label: "Cards drawn", color: "#9b7fe0" },
   played: { label: "Cards played", color: "#2fa384" },
-  energy: { label: "Energy played", color: "#b5861a" },
+  energy: { label: "Card cost", color: "#b5861a" },
 };
 const KEEP_DEMAND_COLOR = "#c4c4d4";
+// What arrived on a turn, split: blocked, healed off, and what got through (the line's
+// own colour). Each has an icon and a label as well, so colour is never the only cue.
+const KEEP_SPLIT = { blocked: "#5a7fd0", healed: "#2fa384", through: KEEP_LINES.taken.color };
+// How a reading is named on the page. The keys ("ahead", "meeting", "behind") are
+// fight_demand.py's and the CSS classes'; OP, above Hype, is a run's alone.
+const KEEP_WORDS = { ahead: "Hype", meeting: "Mid", behind: "Low" };
+// 16px glyphs for the metrics, drawn in the colour of their line on the charts.
+const KEEP_ICONS = {
+  turns: `<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
+  damage: `<path d="M3 13 12.5 3.5M8.5 3h4.5v4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`,
+  taken: `<path d="M8 1.5l1.8 4.3 4.5.4-3.4 3 1 4.4L8 11.1l-3.9 2.5 1-4.4-3.4-3 4.5-.4z" fill="currentColor"/>`,
+  blocked: `<path d="M8 1.5l5 2v4.2c0 3-2.1 5.1-5 6.8-2.9-1.7-5-3.8-5-6.8V3.5z" fill="currentColor"/>`,
+  healed: `<path d="M8 14C3 10.5 1.8 8 1.8 5.8 1.8 4 3.2 2.8 4.8 2.8c1.2 0 2.5.7 3.2 1.9.7-1.2 2-1.9 3.2-1.9 1.6 0 3 1.2 3 3 0 2.2-1.2 4.7-6.2 8.2z" fill="currentColor"/>`,
+  energy: `<path d="M9.3 1L3.5 9h4l-.8 6L12.5 7h-4z" fill="currentColor"/>`,
+  draw: `<rect x="3.5" y="2" width="9" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/>`,
+};
+const keepIcon = (name, color) =>
+  `<svg class="keep-ico" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color:${color}">${KEEP_ICONS[name]}</svg>`;
 // Fights an act takes before it gets a reading: fight_demand.py's ACT_MIN.
 const KEEP_ACT_MIN = 3;
 // Winners' damage taken over yours, where behind ends and ahead starts: fight_demand.py's
@@ -1527,6 +1580,7 @@ function fightReadings(run, nodes, measured) {
     // Enemies act after you, so a fight you won gives them a turn less.
     const enemyTurns = m ? m.enemyTurns : n.turns - (lost ? 0 : 1);
     if (enemyTurns) {
+      row.enemyTurns = enemyTurns;
       row.total = keepTaken(n);
       row.taken = row.total / enemyTurns;
       row.healedOff = (n.dmg || 0) - row.total;
@@ -1544,6 +1598,24 @@ function fightReadings(run, nodes, measured) {
 }
 
 const keepMark = (value, [low, high]) => value < low ? "behind" : value > high ? "ahead" : "meeting";
+
+// Where damage taken turns an act Hype or Low against winners' average: keepMark's edges on
+// guard = (winTaken+1)/(taken+1), solved for taken. Damage taken is a whole number, so
+// Hype is the most that still reads Hype and Low the least that reads Low. hype is -1
+// when winners took so little that no amount reads Hype.
+const keepCuts = winTaken => {
+  const guard = taken => (winTaken + 1) / (taken + 1);
+  let hype = Math.ceil((winTaken + 1) / KEEP_EDGES[1] - 1) - 1, low = Math.floor((winTaken + 1) / KEEP_EDGES[0] - 1) + 1;
+  // The division can land a hair either side of a whole number, so settle both on
+  // keepMark's own comparison.
+  while (hype >= 0 && keepMark(guard(hype), KEEP_EDGES) !== "ahead") hype--;
+  while (keepMark(guard(hype + 1), KEEP_EDGES) === "ahead") hype++;
+  while (keepMark(guard(low), KEEP_EDGES) !== "behind") low++;
+  while (low > 0 && keepMark(guard(low - 1), KEEP_EDGES) === "behind") low--;
+  return { hype, low };
+};
+// Turns that lift a Mid on damage to Hype: winners' turns over yours above FAST.
+const keepFastTurns = winTurns => Math.ceil(winTurns / KEEP_TURN_EDGES[1]) - 1;
 
 // fight_demand.py's verdict.
 const keepVerdict = (pace, guard) => {
@@ -1620,16 +1692,23 @@ function runReadingRank(run) {
 
 const keepSignal = (tone, what) => `<span class="keep-signal ${tone}" role="img" aria-label="${what}" title="${what}">${KEEP_SIGNS[tone]}</span>`;
 
+// Damage taken's two cut points as a sentence, for a mark's hover.
+function keepRule(winTaken) {
+  const { hype, low } = keepCuts(winTaken);
+  return `Damage taken decides: ${hype >= 0 ? `Hype at ${hype} or less, ` : ""}Low from ${low}.`;
+}
+
 // A run's reading on its header, or just its mark in the run list (short). The numbers
 // are on hover, as they are on an act's mark.
 function runReadingHtml(run, short = false) {
   const r = runReadingOf(run);
   if (!r) return "";
-  const word = r.verdict[0].toUpperCase() + r.verdict.slice(1);
+  const word = KEEP_WORDS[r.verdict];
   const tip = [
-    r.op ? `OP: ahead in Acts ${KEEP_OP_ACTS.join(" and ")}` : `${word}${r.verdict === "ahead" ? " of" : ""} winners on this run's fights`,
-    `Turns to kill: ${r.turns}, winners ${+r.winTurns.toFixed(1)}`,
-    `Damage taken: ${Math.round(r.taken)}, winners ${Math.round(r.winTaken)}`,
+    r.op ? `OP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}` : `${word} against the average win on this run's fights`,
+    `Turns to kill: ${r.turns}, average win ${+r.winTurns.toFixed(1)}`,
+    `Damage taken: ${Math.round(r.taken)}, average win ${Math.round(r.winTaken)}`,
+    keepRule(r.winTaken),
     ...(run.won ? [] : ["Not counting the fight that ended it"]),
   ].join("\n");
   const focus = short ? "" : ` tabindex="0"`;
@@ -1642,9 +1721,43 @@ function renderKeepActs(run, nodes, measured) {
   const box = document.getElementById("detail-keep-acts");
   const acts = actReadings(run, nodes, measured);
   box.style.display = acts.length ? "" : "none";
-  const row = (label, value, ...notes) => `<div class="keep-act-row"><span>${label}</span>${value}` +
-    notes.filter(Boolean).map(n => `<span class="keep-act-note">${n}</span>`).join("") + `</div>`;
-  const whole = v => +v.toFixed(1);
+  // One metric on one line, in fixed columns so the three cards read alike: icon and label,
+  // the figure, its mark, winners', then a note. A per-turn figure puts its unit where the
+  // mark and winners' would be.
+  const row = (icon, label, figure, mark, vs, note) =>
+    `<div class="keep-act-row"><span class="ka-label">${icon}${label}</span><b class="ka-fig">${figure}</b>` +
+    (vs === undefined ? `<span class="ka-unit">${mark}</span>` : `<span class="ka-mark">${mark}</span>${vs}`) +
+    `<span class="keep-act-note">${note || ""}</span></div>`;
+  // Winners' figure, whole, with the exact average on hover.
+  const vs = (v, unit) => `<span class="ka-vs" title="Average win ${+v.toFixed(1)} ${unit}">vs ${Math.round(v)}</span>`;
+  // Damage taken on a three-zone scale, with the act's marker and the two cut points, and
+  // how near a Mid is to either edge: the scale runs to a little past Low, and "near" is
+  // a fifth of it.
+  const scale = a => {
+    const { hype, low } = keepCuts(a.winTaken);
+    const taken = Math.round(a.taken);
+    const top = Math.max(low * 1.3, taken * 1.1, 1);
+    const pct = v => Math.min(100, Math.max(0, v / top * 100));
+    const hypeW = hype >= 0 ? pct(hype + 1) : 0, lowAt = pct(low);
+    const label = `Damage taken ${taken}: ${KEEP_WORDS[a.held]}. ${keepRule(a.winTaken)}`;
+    const near = a.held !== "meeting" ? null
+      : [[low - taken, "Low"], [hype >= 0 ? taken - hype : Infinity, "Hype"]].sort((x, y) => x[0] - y[0])[0];
+    return `<div class="keep-scale" role="img" aria-label="${label}">` +
+      (hypeW ? `<span class="ks-zone ahead" style="flex:${hypeW} 1 0"></span>` : "") +
+      `<span class="ks-zone meeting" style="flex:${lowAt - hypeW} 1 0"></span>` +
+      `<span class="ks-zone behind" style="flex:${100 - lowAt} 1 0"></span>` +
+      `<i class="ks-mark" style="left:${pct(taken)}%"></i></div>` +
+      `<div class="keep-scale-cuts"><span>${hype >= 0 ? `▲ ≤ ${hype}` : ""}</span><span>▼ ≥ ${low}</span></div>` +
+      (near && near[0] <= top * 0.2 ? `<div class="keep-near">${near[0]} HP from ${near[1]}</div>` : "");
+  };
+  // What would lift a Mid to Hype on speed: killing in few enough turns while taking no more
+  // than winners did. Said only while it can still matter, and ticked off once it has.
+  const speedNote = a => {
+    const fast = keepFastTurns(a.winTurns), cap = Math.floor(a.winTaken);
+    if (a.verdict === "ahead" && a.held === "meeting") return `Hype on speed (damage ≤ ${cap})`;
+    if (a.verdict !== "meeting" || fast < 1) return "";
+    return a.turns <= fast ? `Fast enough; Hype if damage ≤ ${cap}` : `Hype at ${fast} or fewer, with damage ≤ ${cap}`;
+  };
   // The fights an act's numbers cover, by kind: normal, elites, boss.
   const kindOf = key => key in KEEP_KINDS ? key : "boss";
   const order = Object.keys(KEEP_KINDS);
@@ -1653,14 +1766,26 @@ function renderKeepActs(run, nodes, measured) {
   box.innerHTML = acts.map(a => {
     const log = a.log;
     const perTurn = v => (v / log.turns).toFixed(1);
-    const verdict = a.verdict[0].toUpperCase() + a.verdict.slice(1) + (a.lacking ? `: lacking ${a.lacking}` : "");
-    return `<div class="keep-act"><h3>Act ${a.act}${keepSignal(a.verdict, verdict)}</h3><div class="keep-kinds">${kinds(a)}</div>` +
-      row("Turns to kill", `<b>${a.turns} ${keepSignal(a.speed, `Turns to kill: ${a.speed}`)}</b>`, `winners ${whole(a.winTurns)}`,
-        log && `${perTurn(log.removed)} damage done a turn, ${(log.removed / log.played).toFixed(1)} a card played`) +
-      row("Damage taken", `<b>${Math.round(a.taken)} ${keepSignal(a.held, `Damage taken: ${a.held}`)}</b>`,
-        a.healed && `after ${Math.round(a.healed)} healed`, `winners ${Math.round(a.winTaken)}`) +
-      (log ? row("Energy", `<b>${perTurn(log.energy)} a turn</b>`, `${perTurn(log.spent)} actually spent, base ${KEEP_BASE.energy}`) +
-        row("Card draw", `<b>${perTurn(log.drawn)} a turn</b>`, `${perTurn(log.played)} played, base ${KEEP_BASE.cards}`) : "") +
+    const tip = [
+      `${KEEP_WORDS[a.verdict]}${a.lacking ? `, lacking ${a.lacking}` : ""}`,
+      `Took ${Math.round(a.taken)}, average win ${Math.round(a.winTaken)}. ${keepRule(a.winTaken)}`,
+      ...(a.verdict === "ahead" && a.held === "meeting"
+        ? [`Hype on speed: ${a.turns} turns against an average win of ${+a.winTurns.toFixed(1)}, with damage no higher.`] : []),
+    ].join("\n");
+    const pill = `<span class="run-reading ${a.verdict}" data-tip="${tip}" tabindex="0"><span class="keep-signal ${a.verdict}" aria-hidden="true">${KEEP_SIGNS[a.verdict]}</span>${KEEP_WORDS[a.verdict]}</span>`;
+    return `<div class="keep-act"><h3>Act ${a.act}${pill}</h3><div class="keep-kinds">${kinds(a)}</div>` +
+      row(keepIcon("turns", KEEP_DEMAND_COLOR), "Turns", a.turns,
+        keepSignal(a.speed, `Turns to kill: ${KEEP_WORDS[a.speed]}`), vs(a.winTurns, "turns")) +
+      (speedNote(a) ? `<div class="keep-near">${speedNote(a)}</div>` : "") +
+      row(keepIcon("taken", KEEP_LINES.taken.color), "Taken", Math.round(a.taken),
+        keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs(a.winTaken, "damage"),
+        a.healed ? `−${Math.round(a.healed)} healed` : "") + scale(a) +
+      (log ? row(keepIcon("damage", KEEP_LINES.damage.color), "Damage", perTurn(log.removed), "/turn",
+          undefined, `${(log.removed / log.played).toFixed(1)}/card`) +
+        row(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", perTurn(log.energy), "/turn",
+          undefined, `paid ${perTurn(log.spent)} · base ${KEEP_BASE.energy}`) +
+        row(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", perTurn(log.drawn), "/turn",
+          undefined, `${perTurn(log.played)} played · base ${KEEP_BASE.cards}`) : "") +
       `</div>`;
   }).join("");
 }
@@ -1701,6 +1826,7 @@ function renderDetailKeepCharts(run) {
   const box = document.getElementById("detail-keep-box");
   detailKeepCharts.forEach(c => c.destroy());
   detailKeepCharts = [];
+  pinFloorTip(false);
   const measured = measuredStrengthByNode(run, nodes);
   const rows = fightReadings(run, nodes, measured);
   if (!rows) { box.style.display = "none"; return; }
@@ -1712,52 +1838,82 @@ function renderDetailKeepCharts(run) {
     heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []),
     heldItems(run.finalRelics || [], run.relicsAdded, run.relicsLost || [])) : null;
   const name = ([id], relic) => relic ? relicInfo(id)?.title || fmtRelicLabel(id) : cardInfo(id)?.title || fmtCardLabel(id);
-  const chips = (list, relic) => list.map(c =>
-    `<span class="strength-chip ${c[2] > 0 ? "gain" : "loss"}">${c[2] > 0 ? "+" : "−"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`).join("");
+  // A pickup: its picture, then its name. data-pick says what to show in full on hover:
+  // "card:ID:1" (upgraded) or "relic:ID".
+  const chips = (list, relic) => list.map(c => {
+    const src = relic ? relicImgSrc(c[0]) : cardImgSrc(c[0]);
+    return `<span class="strength-chip ${c[2] > 0 ? "gain" : "loss"}" data-pick="${relic ? "relic" : "card"}:${c[0]}${relic ? "" : ":" + +c[1]}">` +
+      `${src ? `<img src="${src}" alt="" loading="lazy">` : ""}${c[2] > 0 ? "+" : "−"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`;
+  }).join("");
   const changed = i => {
     const s = changes && i ? changes[i] : null;
     return s && (s.cards.length || s.relics.length)
-      ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div>` : "";
+      ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div><div class="ft-hint"></div>` : "";
   };
 
+  // The simple tip table: key, label, figure, note.
   const row = (label, color, value, note) => `<tr><td><span class="strength-key" style="background:${color}"></span>` +
     `${label}</td><td><b>${value}</b></td><td class="strength-measured">${note || ""}</td></tr>`;
   const aTurn = v => `${v.toFixed(1)} a turn`;
+  // The fight table: label | you: fight, a turn | winners: fight, a turn. A cell with no
+  // figure is left empty so the columns stay put. `key` is the swatch or icon before the label.
+  const fightHead = `<thead><tr><th></th><th colspan="2">You</th><th colspan="2" class="ft-win">Avg win</th></tr>` +
+    `<tr class="ft-sub"><th></th><th>Fight</th><th>A turn</th><th class="ft-win">Fight</th><th class="ft-win">A turn</th></tr></thead>`;
+  const frow = (key, label, you, perTurn, win, winPerTurn, cls = "") =>
+    `<tr class="${cls}"><td>${key}${label}</td><td><b>${you ?? ""}</b></td><td>${perTurn ?? ""}</td>` +
+    `<td class="ft-win">${win ?? ""}</td><td class="ft-win">${winPerTurn ?? ""}</td></tr>`;
+  const swatch = color => `<span class="strength-key" style="background:${color}"></span>`;
+  const one = v => v === undefined ? undefined : v.toFixed(1);
   // What sort of fight it was, so a bad one can be read as a lack of damage to many targets.
   const fightKind = (n, r) => r && r.many !== undefined ? `<div class="ft-cap">${[keepRank(n), r.many ? "Multi-enemy" : "Single enemy"].filter(Boolean).join(" · ")}</div>` : "";
   // Each chart's hover box: the floor, that chart's own numbers, what the floor changed.
-  const tip = lines => context => showFloorTip(context, i => {
-    const list = rows[i] ? lines(rows[i]) : [];
+  // `body` gets the floor's reading and returns HTML (a table, and whatever goes with it).
+  const tip = body => context => showFloorTip(context, i => {
+    const inner = rows[i] ? body(rows[i]) : "";
     const head = floorTipHead({ ...nodes[i], enc: nodes[i].fight || nodes[i].enc });
-    return `${head}${fightKind(nodes[i], rows[i])}${list.length ? `<table>${list.join("")}</table>` : ""}${changed(i)}`;
+    return `${head}${fightKind(nodes[i], rows[i])}${inner}${changed(i)}`;
   });
+  const simple = lines => r => { const list = lines(r); return list.length ? `<table>${list.join("")}</table>` : ""; };
 
   const damageTip = tip(r => {
-    const lines = [
-      ...(r.pool ? [row("Enemy HP", KEEP_DEMAND_COLOR, `${Math.round(r.pool)}${run.mp ? " a player" : ""}`)] : []),
-      row("Turns", KEEP_DEMAND_COLOR, r.turns, r.ask === undefined ? "" : `winners ${+r.winTurns.toFixed(1)}, ${r.winN} wins`),
-    ];
-    if (r.doing === undefined) return [...lines, row("Damage done", KEEP_LINES.damage.color, "—", "lost here, no log to say")];
-    return [...lines, row("Damage done", KEEP_LINES.damage.color, aTurn(r.doing), r.ask === undefined ? "" : `winners ${aTurn(r.ask)}`)];
+    const lost = r.doing === undefined;
+    const hp = r.pool ? `${Math.round(r.pool)}${run.mp ? "/player" : ""}` : "";
+    const wins = r.ask === undefined ? "" : `<div class="ft-cap">Average of ${r.winN} win${r.winN === 1 ? "" : "s"}</div>`;
+    const done = lost
+      ? frow(swatch(KEEP_LINES.damage.color), "Damage done", "—", "—", hp, one(r.ask))
+      : frow(swatch(KEEP_LINES.damage.color), "Damage done", hp, one(r.doing), r.ask === undefined ? "" : hp, one(r.ask));
+    return `<table>${fightHead}${done}` +
+      frow(swatch(KEEP_DEMAND_COLOR), "Turns", r.turns, "", r.ask === undefined ? "" : +r.winTurns.toFixed(1), "") +
+      `</table>${wins}${lost ? `<div class="ft-cap">Lost here, no log to say.</div>` : ""}`;
   });
+
+  // What arrived each turn, split into what was blocked, healed back, and got through. The
+  // bar is as wide as what arrived; the tick is where winners' got-through ends.
   const inTip = tip(r => {
-    if (r.taken === undefined) return [];
-    const lines = [];
-    if (r.arrived !== undefined) lines.push(
-      row("Arrived", KEEP_DEMAND_COLOR, aTurn(r.arrived)),
-      row("Blocked", KEEP_LINES.taken.color, aTurn(r.blocked)));
-    if (r.healedOff) lines.push(row("Healed", KEEP_LINES.taken.color, aTurn(r.healed),
-      r.healedOff < r.healedAll ? `${r.healedOff} of ${r.healedAll} in the fight` : `${r.healedOff} in the fight`));
-    lines.push(row("Damage taken", KEEP_LINES.taken.color, aTurn(r.taken), `${Math.round(r.total)} in the fight`));
-    if (r.winRate !== undefined) lines.push(row("Winners took", KEEP_DEMAND_COLOR, aTurn(r.winRate), `${Math.round(r.winTotal)} in the fight`));
-    return lines;
+    if (r.taken === undefined) return "";
+    const et = r.enemyTurns, k = KEEP_SPLIT;
+    const share = v => r.arrived ? `<small>${Math.round(v / r.arrived * 100)}%</small>` : "";
+    const through = key => frow(key, `Damage taken ${share(r.taken)}`, Math.round(r.total), one(r.taken),
+      r.winRate === undefined ? "" : Math.round(r.winTotal), one(r.winRate), "ft-through");
+    if (r.arrived === undefined) return `<table>${fightHead}${r.healedOff ? frow(keepIcon("healed", k.healed), "Healed", r.healedOff, one(r.healed), "", "") : ""}${through(keepIcon("taken", k.through))}</table>`;
+    const seg = (v, color, what) => v > 0 ? `<span style="flex:${v} 1 0;background:${color}" title="${what}"></span>` : "";
+    const tick = r.winRate === undefined ? "" :
+      `<i class="ft-tick" style="left:${Math.min(1, Math.max(0, (r.blocked + r.healed + r.winRate) / r.arrived)) * 100}%" title="Average win got ${r.winRate.toFixed(1)} a turn through"></i>`;
+    return `<div class="ft-split" role="img" aria-label="Of ${r.arrived.toFixed(1)} a turn arriving: ${r.blocked.toFixed(1)} blocked, ${r.healed.toFixed(1)} healed, ${r.taken.toFixed(1)} got through">` +
+      seg(r.blocked, k.blocked, "Blocked") + seg(r.healed, k.healed, "Healed") + seg(r.taken, k.through, "Got through") + tick + `</div>` +
+      `<table>${fightHead}` +
+      frow(swatch(KEEP_DEMAND_COLOR), "Arrived", Math.round(r.arrived * et), one(r.arrived), "", "") +
+      frow(keepIcon("blocked", k.blocked), `Blocked ${share(r.blocked)}`, Math.round(r.blocked * et), one(r.blocked), "", "") +
+      (r.healedOff ? frow(keepIcon("healed", k.healed), `Healed ${share(r.healed)}`, r.healedOff, one(r.healed), "", "") : "") +
+      through(keepIcon("taken", k.through)) + `</table>`;
   });
-  const playTip = tip(r => r.play ? [
+  const playTip = tip(simple(r => r.play ? [
     row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
     row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),
-    row("Energy played", KEEP_LINES.energy.color, aTurn(r.play.energy), `${r.play.spent.toFixed(1)} actually spent`),
+    row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "face value of what you played, X as 3"),
+    row("Energy paid", KEEP_DEMAND_COLOR, aTurn(r.play.spent), "free plays lower it, X plays raise it"),
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
-  ] : []);
+  ] : []));
 
   const line = ({ label, color }, pick) => ({
     label, data: rows.map(r => { const v = r ? pick(r) : null; return v === undefined ? null : v; }),
@@ -1769,7 +1925,7 @@ function renderDetailKeepCharts(run) {
   const winners = (id, pick) => {
     const has = i => rows[i] && pick(rows[i]) !== undefined;
     return {
-      label: "Winners' average", showLine: false,
+      label: "Average win", showLine: false,
       data: rows.map((r, i) => has(i) ? pick(r) : null),
       ...nodePoints(nodes, () => detailKeepCharts.find(c => c.canvas.id === `detail-keep-${id}-chart`),
         (n, key, i) => has(i), iconSize, keepIconKey),

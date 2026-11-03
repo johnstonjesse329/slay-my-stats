@@ -1516,9 +1516,10 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
-        <p class="chart-caption">Compared with the average of winning runs on these same fights, any character, at <span id="detail-keep-tier"></span>, where the monsters are tuned the same. <span class="keep-signal ahead">▲</span> ahead, <span class="keep-signal meeting">–</span> meeting and <span class="keep-signal behind">▼</span> behind, on each row and for the act. An act is behind on damage taken, less what the fight healed back: more turns than winners is fine so long as that holds. It's ahead on much less damage taken, or on killing much faster without taking more. Energy and card draw are shown, not graded.</p>
+        <p class="chart-caption">Against the average win on the same fights (any character, <span id="detail-keep-tier"></span>, monsters tuned the same). <span class="keep-signal ahead">▲</span> Hype, <span class="keep-signal meeting">–</span> Mid, <span class="keep-signal behind">▼</span> Low. An act is graded on damage taken after healing: more turns is fine while that holds. Energy and draw aren't graded.</p>
+        <p class="chart-caption">Damage taken decides: Low above 1.5× the average win, Hype under ⅔ of it. Killing 25% faster with no more damage lifts a Mid to Hype. Each act's bar shows where it sits.</p>
         <div class="keep-acts" id="detail-keep-acts"></div>
-        <p class="chart-caption">Each icon is the winners' average for that floor's fight; no icon means too few wins on it to average. Damage done: above the icon, you killed it faster than winners. Damage taken: below the icon, you took less than winners.</p>
+        <p class="chart-caption">Each icon is the average win for that fight; none means too few wins. Damage done: above it means faster. Damage taken: below it means less. Click a chart to hold a floor's box.</p>
         <h3 class="strength-label">Damage done per turn</h3>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
