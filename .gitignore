@@ -68,3 +68,6 @@ measured_runs.json
 # What each encounter asks of a deck, from the game data and aggregated runs
 # (tools/power_curve/fight_demand.py).
 fight_demand.json
+
+# Cut from the game data when the ingest Lambda is bundled (tools/build_measured_cards.py).
+infra/lambda/ingest/measured_cards.json

@@ -1624,7 +1624,7 @@ colour of the Damage taken line. The palette was checked for dark on the tip's s
 the 8 target, so every colour ships with an icon and a label. A lost fight with no log reads "Lost here,
 no log to say."; a run with no log at all has no energy or draw chart and no act rows for them.
 
-**Pickups.** The tip's chips carry the card or relic picture; hovering one shows the full card or relic.
+**Pickups** (superseded: the box is now enterable by hover, see "Keeping Up on gamma: readable, reachable" below). The tip's chips carry the card or relic picture; hovering one shows the full card or relic.
 The plan had the box stay open for a short grace delay so the pointer could reach the chip. It is
 click-to-pin instead: a click on a chart holds that floor's box (a hint line says so), and Esc, a click
 away, a scroll or a resize lets it go. A grace delay would have either left the box jumping to the next
@@ -1635,3 +1635,48 @@ text at either. The act figures still come from the same aggregation code: the o
 `enemyTurns` on a fight's row, which the tip uses for the fight totals. Pin, hint, Esc,
 click-away, scroll and resize all behave on the logged Ironclad; run 1774189616 (lost, no log) gives
 the lost-fight line and no log rows.
+
+
+### Keeping Up on gamma: readable, reachable, and the energy chart for every uploaded run (2026-11-02)
+
+The user opened a real Silent win on gamma and listed what was wrong. What changed, and why:
+
+**The tip is reachable.** The click-to-pin above was the wrong fix: it left hovering a race, the box
+vanished as the pointer left the floor's point, and "Click to hold" meant nothing to a visitor. Now the
+box opens straight below the pointer (above when it would not fit), centred on it, so reaching it is a
+vertical move that stays on the same floor. A transparent strip bridges the gap, and leaving the chart
+or the box closes it after 250 ms, which entering the box cancels. Chips open the full card or relic on
+hover. Touch has no hover, so a tap holds the box until a tap elsewhere, Esc, a scroll or a resize.
+Text is 15 px. Checked by moving the pointer 250 px into the box in 15 px steps: open all the way.
+
+**Wording.** "This run" / "Avg win" on the tip. "Fight turns" replaces "Turns to kill", which did not
+say what was killed. The rule is stated as a mechanism, the same maths: *rated on damage taken against
+the average win on the same fights; Hype at ⅔ of their damage or less, Low at 1.5× or more, Mid between;
+25% fewer turns with no more damage lifts a Mid to Hype.* The numbers on each meter come from the
+current average win, so they shift as wins are recorded. These strings are drafts until the user OKs them.
+
+**Act cards.** 16 px text, one grid for every row (label, figure, mark, "vs N") so the columns line up
+across cards and nothing floats mid-card, kind icons in the heading. The meter is a 12 px gauge: each
+zone carries its sign and word (Hype, Mid, Low), the cut points are numbers under the zone boundaries,
+the act's value is a pointer with its number, and the average win is a tick.
+
+**Damage done and taken are different colours.** They were `#e0604f` and `#d9652b`, ΔE 4.1, a FAIL in
+`validate_palette.js`. Now done `#e0604f`, taken `#3f8fd8` and dashed, drawn `#9b7fe0`, played `#2fa384`,
+card cost `#b5861a`: all pass in dark and light. The tip's "got through" segment takes the taken colour,
+blocked is `#8b93b5`, and healed shares the played teal only where they never sit together.
+
+**Energy and draw on gamma.** The chart read `measured_runs.json`, which is built on the owner's machine
+from their logs and is not on the site, so an uploaded run never had it: not a regression, it never
+existed there. The event log is in the data bucket (`telemetry/<steamid>/<ts>.json.gz`), but CloudFront
+serves only `users/*` and the page does not fetch it. Chosen: read the log once at ingest
+(`infra/lambda/ingest/measured.py`: `derive_telemetry.derive`, the log's fights aligned to the run's
+timeline, the same per-floor numbers as `export_measured.py`) and store them as `measured` on the run in
+its month file, about 3 KB a run. The page reads `run.measured` first, then `DATA.measuredRuns`. The
+Lambda bundle gets `derive_telemetry.py` and a `measured_cards.json` (card costs and junk ids) cut from
+the local `card_data.json` at synth time; the game data stays out of the repo. `derive` takes an enemy
+move table that only feeds what an enemy was about to do, none of it these numbers, so the Lambda passes
+none (checked: identical output on both local logs). `infra/tests/test_measured.py` holds the two
+copies together on the Ironclad and Silent logs, field by field; change one and the other has to follow.
+Runs uploaded before this have the log but no `measured`: `tools/backfill_measured.py` writes it onto
+them. A run with no log shows "No per-turn log for this run." in that slot instead of nothing.
+

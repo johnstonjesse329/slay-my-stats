@@ -1216,26 +1216,40 @@ function floorBands(bands) {
 // The hover box is plain HTML rather than Chart.js's canvas tooltip, so it can
 // hold the floor's gains at full size: real card faces and relic text.
 // One box serves every floor chart; it is rebuilt only when the floor changes.
+//
+// It has to be reachable. It opens straight below the pointer (above, near the bottom of
+// the window), as wide as it needs and centred on it, so heading for it is a vertical move
+// that stays on the same floor instead of sliding to the next one. A transparent strip
+// fills the gap, and losing the point only starts a short grace period that entering the
+// box cancels. Hover a pickup for its full card or relic. On touch there is no leaving, so
+// the box stays until a tap elsewhere, Esc, a scroll or a resize.
 let floorTip = null;
-// A click on a chart holds the box where it is, so the pointer can move onto it and
-// hover a pickup for the full card or relic. Hovering alone leaves it non-interactive,
-// so scrubbing across floors never snags on it. Esc, a click elsewhere, a scroll or a
-// resize lets go.
-let floorTipPinned = false;
-function pinFloorTip(pin) {
-  floorTipPinned = pin;
+let floorTipTimer = 0;
+let floorTipOver = false;
+let floorTipTouch = false;
+const floorTipPointer = { x: 0, y: 0 };
+const FLOOR_TIP_GRACE = 250;
+function closeFloorTip() {
+  clearTimeout(floorTipTimer);
+  floorTipOver = false;
   if (!floorTip) return;
-  floorTip.classList.toggle("pinned", pin);
-  if (!pin) { floorTip.style.display = "none"; hideFloatingHtmlTooltip(); }
+  floorTip.style.display = "none";
+  hideFloatingHtmlTooltip();
+}
+function scheduleFloorTipClose() {
+  clearTimeout(floorTipTimer);
+  if (!floorTipTouch) floorTipTimer = setTimeout(() => { if (!floorTipOver) closeFloorTip(); }, FLOOR_TIP_GRACE);
 }
 function createFloorTip() {
   floorTip = document.createElement("div");
   floorTip.className = "floor-tip";
   document.body.appendChild(floorTip);
+  floorTip.addEventListener("pointerenter", () => { floorTipOver = true; clearTimeout(floorTipTimer); });
+  floorTip.addEventListener("pointerleave", () => { floorTipOver = false; scheduleFloorTipClose(); });
   // A pickup chip: the full card or relic, as it shows everywhere else.
   floorTip.addEventListener("pointerover", e => {
     const chip = e.target.closest("[data-pick]");
-    if (!chip || !floorTipPinned) return;
+    if (!chip) return;
     const [kind, id, up] = chip.dataset.pick.split(":");
     const html = kind === "relic" ? buildRelicTooltip(id) : buildCardTooltip(id, up === "1");
     showFloatingHtmlTooltip(chip, html);
@@ -1243,38 +1257,44 @@ function createFloorTip() {
   floorTip.addEventListener("pointerout", e => {
     if (e.target.closest("[data-pick]")) hideFloatingHtmlTooltip();
   });
+  document.addEventListener("pointermove", e => {
+    floorTipPointer.x = e.clientX; floorTipPointer.y = e.clientY;
+    floorTipTouch = e.pointerType === "touch";
+  }, { passive: true, capture: true });
   document.addEventListener("pointerdown", e => {
-    if (floorTipPinned && !floorTip.contains(e.target) && e.target.tagName !== "CANVAS") pinFloorTip(false);
+    floorTipTouch = e.pointerType === "touch";
+    if (floorTipTouch && floorTip.style.display === "block" && !floorTip.contains(e.target) && e.target.tagName !== "CANVAS") closeFloorTip();
   });
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && floorTipPinned) pinFloorTip(false); });
-  ["scroll", "resize"].forEach(type => window.addEventListener(type, () => { if (floorTipPinned) pinFloorTip(false); }, { passive: true }));
-}
-// A chart's onClick: hold the box for the floor under the pointer, or let go of it.
-function toggleFloorTip(e, active, chart) {
-  if (floorTipPinned) { pinFloorTip(false); return; }
-  if (floorTip && floorTip.style.display === "block" && floorTip.dataset.key.startsWith(chart.id + ":")) pinFloorTip(true);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeFloorTip(); });
+  ["scroll", "resize"].forEach(type => window.addEventListener(type, () => {
+    if (floorTipTouch) closeFloorTip();
+  }, { passive: true }));
 }
 function showFloorTip(context, html) {
   if (!floorTip) createFloorTip();
-  if (floorTipPinned) return;
+  // Pointer is on the box: the chart can't see it any more, and its updates mean nothing.
+  if (floorTipOver) return;
   const t = context.tooltip;
-  if (!t.opacity || !t.dataPoints?.length) { floorTip.style.display = "none"; return; }
+  if (!t.opacity || !t.dataPoints?.length) { scheduleFloorTipClose(); return; }
+  clearTimeout(floorTipTimer);
   const key = context.chart.id + ":" + t.dataPoints[0].dataIndex;
   if (floorTip.dataset.key !== key) {
     floorTip.innerHTML = html(t.dataPoints[0].dataIndex);
     floorTip.dataset.key = key;
   }
   floorTip.style.display = "block";
-  // Right of the pointer, flipped to its left near the edge of the window
-  // (clientWidth, which leaves out the scrollbar). Measured at the origin,
-  // so the last position near the edge can't squeeze it narrower.
+  // Measured at the origin, so the last position near an edge can't squeeze it narrower.
+  // clientWidth leaves out the scrollbar.
   floorTip.style.left = floorTip.style.top = "0px";
   const { clientWidth: vw, clientHeight: vh } = document.documentElement;
   const r = context.chart.canvas.getBoundingClientRect();
-  const right = r.left + t.caretX + 16;
-  const left = right + floorTip.offsetWidth > vw - 8 ? r.left + t.caretX - 16 - floorTip.offsetWidth : right;
-  floorTip.style.left = Math.max(8, left) + "px";
-  floorTip.style.top = Math.max(8, Math.min(r.top + t.caretY - 20, vh - floorTip.offsetHeight - 8)) + "px";
+  const px = floorTipPointer.x || r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
+  const w = floorTip.offsetWidth, h = floorTip.offsetHeight;
+  const gap = 14;
+  const below = py + gap + h <= vh - 8 || py - gap - h < 8;
+  floorTip.classList.toggle("above", !below);
+  floorTip.style.left = Math.max(8, Math.min(px - w / 2, vw - 8 - w)) + "px";
+  floorTip.style.top = Math.max(8, below ? py + gap : py - gap - h) + "px";
 }
 
 const floorTipHead = (node, total, unit) => {
@@ -1317,7 +1337,6 @@ function floorChartConfig(nodes, plugins, tip, y, datasets) {
       // Right: room for a ×N badge on the last floor.
       layout: { padding: { top: ACT_BAND, right: 24 } },
       interaction: { mode: "index", intersect: false },
-      onClick: toggleFloorTip,
       // The HTML legend under the chart (floorLegend) replaces Chart.js's.
       plugins: { legend: { display: false }, tooltip: { enabled: false, external: tip } },
       scales: {
@@ -1466,20 +1485,22 @@ function renderDetailRelicChart(run) {
 // its fights summed against what winners did on each. DATA.fightDemand
 // (tools/power_curve/fight_demand.py) is the fight's side: its HP, and the average turns
 // and damage taken of runs that won it with the monsters tuned the same, whoever played
-// them. A run the mod has been in also has what the fight did inside (DATA.measuredRuns,
-// tools/power_curve/export_measured.py), and only those runs can show energy and cards:
-// a run file doesn't say.
+// them. A run the mod has been in also has what the fight did inside (run.measured on the
+// site, DATA.measuredRuns for local logs; tools/power_curve/export_measured.py), and only
+// those runs can show energy and cards: a run file doesn't say.
 const KEEP_LINES = {
   damage: { label: "Damage done", color: "#e0604f" },
-  taken:  { label: "Damage taken", color: "#d9652b" },
+  taken:  { label: "Damage taken", color: "#3f8fd8", dash: [6, 4] },
   drawn:  { label: "Cards drawn", color: "#9b7fe0" },
   played: { label: "Cards played", color: "#2fa384" },
   energy: { label: "Card cost", color: "#b5861a" },
 };
+// validate_palette.js (dark and light): damage done red and damage taken blue were a pair at
+// ΔE 4 before. Damage taken is also dashed, so colour is not the only difference.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
 // What arrived on a turn, split: blocked, healed off, and what got through (the line's
 // own colour). Each has an icon and a label as well, so colour is never the only cue.
-const KEEP_SPLIT = { blocked: "#5a7fd0", healed: "#2fa384", through: KEEP_LINES.taken.color };
+const KEEP_SPLIT = { blocked: "#8b93b5", healed: "#2fa384", through: KEEP_LINES.taken.color };
 // How a reading is named on the page. The keys ("ahead", "meeting", "behind") are
 // fight_demand.py's and the CSS classes'; OP, above Hype, is a run's alone.
 const KEEP_WORDS = { ahead: "Hype", meeting: "Mid", behind: "Low" };
@@ -1516,10 +1537,12 @@ const KEEP_TIER_NAMES = ["ascension 7 and under", "ascension 8", "ascension 9 an
 const KEEP_BASE = { energy: 3, cards: 5 };
 let detailKeepCharts = [];
 
-// The measured series for this run, aligned to the chart's nodes by floor number.
-// Null when the run has no event log, which is most of them.
+// The measured series for this run, aligned to the chart's nodes by floor number. The run
+// carries its own when the site read its event log at upload (infra/lambda/ingest/measured.py);
+// DATA.measuredRuns is the same read for the owner's logs on this machine. Null when the run
+// has no event log, which is most of them.
 function measuredStrengthByNode(run, nodes) {
-  const rows = (DATA.measuredRuns || {})[run.ts];
+  const rows = run.measured || (DATA.measuredRuns || {})[run.ts];
   if (!rows || !rows.length) return null;
   const byFloor = new Map(rows.map(r => [r.floor, r]));
   return nodes.map(n => byFloor.get(n.floor + 1) || null);
@@ -1692,10 +1715,11 @@ function runReadingRank(run) {
 
 const keepSignal = (tone, what) => `<span class="keep-signal ${tone}" role="img" aria-label="${what}" title="${what}">${KEEP_SIGNS[tone]}</span>`;
 
-// Damage taken's two cut points as a sentence, for a mark's hover.
+// How the rating works, with this reading's two cut points, for a mark's hover.
 function keepRule(winTaken) {
   const { hype, low } = keepCuts(winTaken);
-  return `Damage taken decides: ${hype >= 0 ? `Hype at ${hype} or less, ` : ""}Low from ${low}.`;
+  return `Rated on damage taken against the average win on the same fights: ${hype >= 0 ? `Hype at ${hype} or less, ` : ""}Low from ${low}, Mid between. ` +
+    `25% fewer turns with no more damage lifts a Mid to Hype.`;
 }
 
 // A run's reading on its header, or just its mark in the run list (short). The numbers
@@ -1706,7 +1730,7 @@ function runReadingHtml(run, short = false) {
   const word = KEEP_WORDS[r.verdict];
   const tip = [
     r.op ? `OP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}` : `${word} against the average win on this run's fights`,
-    `Turns to kill: ${r.turns}, average win ${+r.winTurns.toFixed(1)}`,
+    `Fight turns: ${r.turns}, average win ${+r.winTurns.toFixed(1)}`,
     `Damage taken: ${Math.round(r.taken)}, average win ${Math.round(r.winTaken)}`,
     keepRule(r.winTaken),
     ...(run.won ? [] : ["Not counting the fight that ended it"]),
@@ -1721,37 +1745,50 @@ function renderKeepActs(run, nodes, measured) {
   const box = document.getElementById("detail-keep-acts");
   const acts = actReadings(run, nodes, measured);
   box.style.display = acts.length ? "" : "none";
-  // One metric on one line, in fixed columns so the three cards read alike: icon and label,
-  // the figure, its mark, winners', then a note. A per-turn figure puts its unit where the
-  // mark and winners' would be.
-  const row = (icon, label, figure, mark, vs, note) =>
+  // One metric on one line: icon and label take the slack, then the figure, its mark and
+  // the average win's, hugging the right edge so no card has a dead middle. A line with
+  // no mark or average win (a per-turn figure) gives those two columns to its note. A
+  // sub line, when there is one, runs the card's width under it.
+  const row = (icon, label, figure, { mark, vs, note, sub } = {}) =>
     `<div class="keep-act-row"><span class="ka-label">${icon}${label}</span><b class="ka-fig">${figure}</b>` +
-    (vs === undefined ? `<span class="ka-unit">${mark}</span>` : `<span class="ka-mark">${mark}</span>${vs}`) +
-    `<span class="keep-act-note">${note || ""}</span></div>`;
-  // Winners' figure, whole, with the exact average on hover.
+    (mark === undefined ? `<span class="ka-note">${note || ""}</span>` : `<span class="ka-mark">${mark}</span>${vs}`) +
+    (sub ? `<span class="ka-sub">${sub}</span>` : "") + `</div>`;
+  // The average win's figure, whole, with the exact average on hover.
   const vs = (v, unit) => `<span class="ka-vs" title="Average win ${+v.toFixed(1)} ${unit}">vs ${Math.round(v)}</span>`;
-  // Damage taken on a three-zone scale, with the act's marker and the two cut points, and
-  // how near a Mid is to either edge: the scale runs to a little past Low, and "near" is
-  // a fifth of it.
-  const scale = a => {
+  // Damage taken on a three-zone meter the card's width: Hype, Mid, Low, each with its mark
+  // and (when it has room) its word, the act's own figure on a pointer, the average win's
+  // on a tick, and the two cut points under the zone edges they belong to. The meter runs a
+  // little past Low.
+  const meter = a => {
     const { hype, low } = keepCuts(a.winTaken);
     const taken = Math.round(a.taken);
     const top = Math.max(low * 1.3, taken * 1.1, 1);
     const pct = v => Math.min(100, Math.max(0, v / top * 100));
     const hypeW = hype >= 0 ? pct(hype + 1) : 0, lowAt = pct(low);
+    const zone = (tone, w, text) => `<span class="ks-zone ${tone}" style="flex:${w} 1 0"><b aria-hidden="true">${KEEP_SIGNS[tone]}</b><span class="ks-word">${text}</span></span>`;
+    const cut = (cls, w, text) => `<span class="ks-cut ${cls}" style="flex:${w} 1 0">${text}</span>`;
     const label = `Damage taken ${taken}: ${KEEP_WORDS[a.held]}. ${keepRule(a.winTaken)}`;
-    const near = a.held !== "meeting" ? null
-      : [[low - taken, "Low"], [hype >= 0 ? taken - hype : Infinity, "Hype"]].sort((x, y) => x[0] - y[0])[0];
-    return `<div class="keep-scale" role="img" aria-label="${label}">` +
-      (hypeW ? `<span class="ks-zone ahead" style="flex:${hypeW} 1 0"></span>` : "") +
-      `<span class="ks-zone meeting" style="flex:${lowAt - hypeW} 1 0"></span>` +
-      `<span class="ks-zone behind" style="flex:${100 - lowAt} 1 0"></span>` +
-      `<i class="ks-mark" style="left:${pct(taken)}%"></i></div>` +
-      `<div class="keep-scale-cuts"><span>${hype >= 0 ? `▲ ≤ ${hype}` : ""}</span><span>▼ ≥ ${low}</span></div>` +
-      (near && near[0] <= top * 0.2 ? `<div class="keep-near">${near[0]} HP from ${near[1]}</div>` : "");
+    const at = pct(taken);
+    return `<div class="keep-meter" role="img" aria-label="${label}" title="${label}">` +
+      `<div class="ks-bar">` +
+      (hypeW ? zone("ahead", hypeW, KEEP_WORDS.ahead) : "") + zone("meeting", lowAt - hypeW, KEEP_WORDS.meeting) + zone("behind", 100 - lowAt, KEEP_WORDS.behind) +
+      `<i class="ks-win" style="left:${pct(a.winTaken)}%" title="Average win took ${Math.round(a.winTaken)}"></i>` +
+      `<i class="ks-mark${at < 12 ? " first" : at > 88 ? " last" : ""}" style="left:${at}%"><b>${taken}</b></i></div>` +
+      `<div class="ks-cuts">` +
+      (hypeW ? cut(hypeW < 16 ? "hype start" : "hype", hypeW, `≤ ${hype}`) : "") + cut("mid", lowAt - hypeW, "") + cut("low", 100 - lowAt, `≥ ${low}`) + `</div></div>`;
   };
-  // What would lift a Mid to Hype on speed: killing in few enough turns while taking no more
-  // than winners did. Said only while it can still matter, and ticked off once it has.
+  // How near a Mid is to either edge, said only when it is within a fifth of the meter.
+  const nearNote = a => {
+    if (a.held !== "meeting") return "";
+    const { hype, low } = keepCuts(a.winTaken);
+    const taken = Math.round(a.taken);
+    const top = Math.max(low * 1.3, taken * 1.1, 1);
+    const [gap, edge] = [[low - taken, "Low"], [hype >= 0 ? taken - hype : Infinity, "Hype"]].sort((x, y) => x[0] - y[0])[0];
+    return gap <= top * 0.2 ? `${gap} HP from ${edge}` : "";
+  };
+  // What would lift a Mid to Hype on speed: finishing in few enough turns while taking no
+  // more than the average win did. Said only while it can still matter, and ticked off once
+  // it has.
   const speedNote = a => {
     const fast = keepFastTurns(a.winTurns), cap = Math.floor(a.winTaken);
     if (a.verdict === "ahead" && a.held === "meeting") return `Hype on speed (damage ≤ ${cap})`;
@@ -1762,7 +1799,7 @@ function renderKeepActs(run, nodes, measured) {
   const kindOf = key => key in KEEP_KINDS ? key : "boss";
   const order = Object.keys(KEEP_KINDS);
   const kinds = a => Object.entries(a.kinds).sort(([x], [y]) => order.indexOf(kindOf(x)) - order.indexOf(kindOf(y))).map(([key, n]) =>
-    `<span class="keep-kind" title="${KEEP_KINDS[kindOf(key)]}: ${n}">${nodeIconHtml(key, 18, kindOf(key))}${n}</span>`).join("");
+    `<span class="keep-kind" title="${KEEP_KINDS[kindOf(key)]}: ${n}">${nodeIconHtml(key, 20, kindOf(key))}${n}</span>`).join("");
   box.innerHTML = acts.map(a => {
     const log = a.log;
     const perTurn = v => (v / log.turns).toFixed(1);
@@ -1773,19 +1810,16 @@ function renderKeepActs(run, nodes, measured) {
         ? [`Hype on speed: ${a.turns} turns against an average win of ${+a.winTurns.toFixed(1)}, with damage no higher.`] : []),
     ].join("\n");
     const pill = `<span class="run-reading ${a.verdict}" data-tip="${tip}" tabindex="0"><span class="keep-signal ${a.verdict}" aria-hidden="true">${KEEP_SIGNS[a.verdict]}</span>${KEEP_WORDS[a.verdict]}</span>`;
-    return `<div class="keep-act"><h3>Act ${a.act}${pill}</h3><div class="keep-kinds">${kinds(a)}</div>` +
-      row(keepIcon("turns", KEEP_DEMAND_COLOR), "Turns", a.turns,
-        keepSignal(a.speed, `Turns to kill: ${KEEP_WORDS[a.speed]}`), vs(a.winTurns, "turns")) +
-      (speedNote(a) ? `<div class="keep-near">${speedNote(a)}</div>` : "") +
+    const takenSub = [a.healed ? `−${Math.round(a.healed)} healed` : "", nearNote(a)].filter(Boolean).join(" · ");
+    const perTurnRow = (icon, label, value, note) => row(icon, label, `${perTurn(value)}<small>/turn</small>`, { note });
+    return `<div class="keep-act"><h3><span class="ka-title">Act ${a.act}<span class="keep-kinds">${kinds(a)}</span></span>${pill}</h3>` +
+      row(keepIcon("turns", KEEP_DEMAND_COLOR), "Fight turns", a.turns,
+        { mark: keepSignal(a.speed, `Fight turns: ${KEEP_WORDS[a.speed]}`), vs: vs(a.winTurns, "turns"), sub: speedNote(a) }) +
       row(keepIcon("taken", KEEP_LINES.taken.color), "Taken", Math.round(a.taken),
-        keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs(a.winTaken, "damage"),
-        a.healed ? `−${Math.round(a.healed)} healed` : "") + scale(a) +
-      (log ? row(keepIcon("damage", KEEP_LINES.damage.color), "Damage", perTurn(log.removed), "/turn",
-          undefined, `${(log.removed / log.played).toFixed(1)}/card`) +
-        row(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", perTurn(log.energy), "/turn",
-          undefined, `paid ${perTurn(log.spent)} · base ${KEEP_BASE.energy}`) +
-        row(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", perTurn(log.drawn), "/turn",
-          undefined, `${perTurn(log.played)} played · base ${KEEP_BASE.cards}`) : "") +
+        { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage"), sub: takenSub }) + meter(a) +
+      (log ? perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
+        perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)} · base ${KEEP_BASE.energy}`) +
+        perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, `${perTurn(log.played)} played · base ${KEEP_BASE.cards}`) : "") +
       `</div>`;
   }).join("");
 }
@@ -1826,7 +1860,7 @@ function renderDetailKeepCharts(run) {
   const box = document.getElementById("detail-keep-box");
   detailKeepCharts.forEach(c => c.destroy());
   detailKeepCharts = [];
-  pinFloorTip(false);
+  closeFloorTip();
   const measured = measuredStrengthByNode(run, nodes);
   const rows = fightReadings(run, nodes, measured);
   if (!rows) { box.style.display = "none"; return; }
@@ -1848,16 +1882,16 @@ function renderDetailKeepCharts(run) {
   const changed = i => {
     const s = changes && i ? changes[i] : null;
     return s && (s.cards.length || s.relics.length)
-      ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div><div class="ft-hint"></div>` : "";
+      ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div>` : "";
   };
 
   // The simple tip table: key, label, figure, note.
   const row = (label, color, value, note) => `<tr><td><span class="strength-key" style="background:${color}"></span>` +
     `${label}</td><td><b>${value}</b></td><td class="strength-measured">${note || ""}</td></tr>`;
   const aTurn = v => `${v.toFixed(1)} a turn`;
-  // The fight table: label | you: fight, a turn | winners: fight, a turn. A cell with no
+  // The fight table: label | this run: fight, a turn | average win: fight, a turn. A cell with no
   // figure is left empty so the columns stay put. `key` is the swatch or icon before the label.
-  const fightHead = `<thead><tr><th></th><th colspan="2">You</th><th colspan="2" class="ft-win">Avg win</th></tr>` +
+  const fightHead = `<thead><tr><th></th><th colspan="2">This run</th><th colspan="2" class="ft-win">Avg win</th></tr>` +
     `<tr class="ft-sub"><th></th><th>Fight</th><th>A turn</th><th class="ft-win">Fight</th><th class="ft-win">A turn</th></tr></thead>`;
   const frow = (key, label, you, perTurn, win, winPerTurn, cls = "") =>
     `<tr class="${cls}"><td>${key}${label}</td><td><b>${you ?? ""}</b></td><td>${perTurn ?? ""}</td>` +
@@ -1883,7 +1917,7 @@ function renderDetailKeepCharts(run) {
       ? frow(swatch(KEEP_LINES.damage.color), "Damage done", "—", "—", hp, one(r.ask))
       : frow(swatch(KEEP_LINES.damage.color), "Damage done", hp, one(r.doing), r.ask === undefined ? "" : hp, one(r.ask));
     return `<table>${fightHead}${done}` +
-      frow(swatch(KEEP_DEMAND_COLOR), "Turns", r.turns, "", r.ask === undefined ? "" : +r.winTurns.toFixed(1), "") +
+      frow(swatch(KEEP_DEMAND_COLOR), "Fight turns", r.turns, "", r.ask === undefined ? "" : +r.winTurns.toFixed(1), "") +
       `</table>${wins}${lost ? `<div class="ft-cap">Lost here, no log to say.</div>` : ""}`;
   });
 
@@ -1915,10 +1949,10 @@ function renderDetailKeepCharts(run) {
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
   ] : []));
 
-  const line = ({ label, color }, pick) => ({
+  const line = ({ label, color, dash }, pick) => ({
     label, data: rows.map(r => { const v = r ? pick(r) : null; return v === undefined ? null : v; }),
     borderColor: color, pointHoverBackgroundColor: color,
-    borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, spanGaps: true,
+    borderWidth: 2, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 4, spanGaps: true,
     cubicInterpolationMode: "monotone",
   });
   const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, box.clientWidth / nodes.length)));
@@ -1934,7 +1968,7 @@ function renderDetailKeepCharts(run) {
   const chart = (id, series, tipFor) => {
     // Only the lines: the winners' icons explain themselves, and the caption says what they are.
     document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(s =>
-      `<span class="fl-item"><span class="strength-key" style="background:${s.borderColor}"></span>${s.label}</span>`
+      `<span class="fl-item"><span class="strength-key" style="background:${s.borderDash?.length ? `repeating-linear-gradient(90deg, ${s.borderColor} 0 4px, transparent 4px 7px)` : s.borderColor}"></span>${s.label}</span>`
     ).join("")}</div>`;
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
       floorChartConfig(nodes, [], tipFor, { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 } }, series)));
@@ -1945,6 +1979,7 @@ function renderDetailKeepCharts(run) {
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";
+  document.getElementById("detail-keep-play-none").style.display = played ? "none" : "";
   if (played) chart("play", [
     line(KEEP_LINES.drawn, r => r.play && r.play.drawn),
     line(KEEP_LINES.played, r => r.play && r.play.played),

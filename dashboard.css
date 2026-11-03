@@ -1266,46 +1266,55 @@ h1 {
 .chart-wrap-tall { height: 480px; }
 .chart-wrap-short { height: 250px; }
 .strength-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim); margin: 0.6rem 0 0.2rem; }
-.floor-tip .strength-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; max-width: 320px; }
-.floor-tip .strength-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px 0 0; border-radius: 10px; border: 1px solid; white-space: nowrap; line-height: 18px; }
-.floor-tip .strength-chip:not(:has(img)) { padding-left: 6px; }
-.floor-tip .strength-chip img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex: none; }
-.floor-tip .ft-hint { margin-top: 4px; color: var(--text-dim); font-size: 10px; }
-.floor-tip .ft-hint::after { content: "Click to hold; hover a pickup for its full card"; }
-.floor-tip.pinned { pointer-events: auto; border-color: var(--text-dim); }
-.floor-tip.pinned .ft-hint::after { content: "Esc or click away to close"; }
-.floor-tip.pinned [data-pick] { cursor: help; }
+.floor-tip .strength-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; max-width: 420px; }
+.floor-tip .strength-chip { display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 0; border-radius: 13px; border: 1px solid; white-space: nowrap; line-height: 24px; cursor: help; }
+.floor-tip .strength-chip:not(:has(img)) { padding-left: 9px; }
+.floor-tip .strength-chip img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex: none; }
 .floor-tip .strength-chip.gain { border-color: #4087de; }
 .floor-tip .strength-chip.loss { border-color: #d97230; }
 .floor-tip .strength-measured { color: var(--muted, #8a8aa0); font-variant-numeric: tabular-nums; }
 .strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
-.keep-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
-.keep-act { border: 1px solid var(--hairline); border-radius: 6px; padding: 0.6rem 0.75rem; }
-.keep-act h3 { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-sm); font-weight: 600; margin: 0 0 0.25rem; }
-.keep-kinds { display: flex; justify-content: center; gap: 0.75rem; margin-bottom: 0.5rem; color: var(--text-dim); font-size: var(--fs-sm); }
-.keep-kind { display: inline-flex; align-items: center; gap: 0.2rem; }
-/* One metric a line, in the same columns on every card: icon and label, figure, mark,
-   winners', note. A per-turn figure's unit takes the mark and winners' columns. */
-.keep-act-row { display: grid; grid-template-columns: 5.2rem 2.6rem 1.5rem 3rem minmax(0, 1fr); column-gap: 0.3rem; align-items: baseline; font-size: var(--fs-sm); margin-top: 0.35rem; }
-.keep-act-row .ka-label { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-dim); white-space: nowrap; align-self: center; }
+.keep-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
+.keep-act { border: 1px solid var(--hairline); border-radius: 8px; padding: 0.8rem 1rem 0.9rem; font-size: var(--fs-md); }
+.keep-act h3 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: var(--fs-md); font-weight: 600; margin: 0 0 0.35rem; }
+.ka-title { display: inline-flex; align-items: center; gap: 0.75rem; }
+.keep-kinds { display: inline-flex; gap: 0.6rem; color: var(--text-dim); font-size: var(--fs-sm); font-weight: 400; }
+.keep-kind { display: inline-flex; align-items: center; gap: 0.25rem; }
+/* One metric a line. Icon and label take the slack, then the figure, its mark and the
+   average win's hug the right edge, so every card has the same columns and no dead middle.
+   A per-turn line gives the mark and average-win columns to its note; a sub line runs the
+   card's width under its row. */
+.keep-act-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 1.6rem 4.2rem; column-gap: 0.4rem; align-items: baseline; margin-top: 0.5rem; }
+.keep-act-row .ka-label { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-dim); white-space: nowrap; align-self: center; }
 .keep-ico { flex: none; }
 .keep-act-row .ka-fig { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.keep-act-row .ka-fig small { margin-left: 2px; color: var(--text-dim); font-size: var(--fs-sm); font-weight: 400; }
 .keep-act-row .ka-mark { text-align: center; align-self: center; }
-.keep-act-row .ka-unit { grid-column: 3 / 5; color: var(--text-dim); font-size: var(--fs-xs); }
-.keep-act-row .ka-vs { color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.keep-act-note { color: var(--text-dim); font-size: var(--fs-xs); }
-.keep-near { margin: 0.1rem 0 0 5.2rem; color: var(--text-dim); font-size: var(--fs-xs); }
-/* Damage taken against winners' two cut points: three zones in the marks' colours, the
-   act's own marker on them, the cut numbers under. */
-.keep-scale { position: relative; display: flex; gap: 2px; height: 6px; margin: 0.3rem 0 0 5.2rem; }
-.keep-scale .ks-zone { height: 100%; }
-.keep-scale .ks-zone:first-child { border-radius: 3px 0 0 3px; }
-.keep-scale .ks-zone:last-of-type { border-radius: 0 3px 3px 0; }
-.keep-scale .ks-zone.ahead { background: #5cba7d; }
-.keep-scale .ks-zone.meeting { background: var(--gold); }
-.keep-scale .ks-zone.behind { background: #e05c5c; }
-.keep-scale .ks-mark { position: absolute; top: -3px; width: 3px; height: 12px; margin-left: -1.5px; background: var(--text); border: 1px solid var(--bg-deep); border-radius: 2px; box-sizing: content-box; }
-.keep-scale-cuts { display: flex; justify-content: space-between; margin: 0.15rem 0 0 5.2rem; color: var(--text-dim); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.keep-act-row .ka-vs { color: var(--text-dim); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.keep-act-row .ka-note { grid-column: 3 / 5; color: var(--text-dim); font-size: var(--fs-sm); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.keep-act-row .ka-sub { grid-column: 1 / -1; color: var(--text-dim); font-size: var(--fs-sm); }
+.keep-act-row .ka-sub:empty { display: none; }
+/* Damage taken against the average win's two cut points: Hype, Mid and Low as three zones
+   (mark and word inside, the word dropped when a zone is narrow), a pointer with the act's
+   figure, a tick for the average win's, and each cut number under the edge it belongs to. */
+.keep-meter { margin: 1.35rem 0 0; font-variant-numeric: tabular-nums; }
+.ks-bar { position: relative; display: flex; gap: 2px; height: 22px; }
+.ks-zone { display: flex; align-items: center; justify-content: center; gap: 0.3rem; min-width: 0; overflow: hidden; container-type: inline-size; color: var(--bg-deep); font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; }
+.ks-zone:first-child { border-radius: 6px 0 0 6px; }
+.ks-zone:last-of-type { border-radius: 0 6px 6px 0; }
+.ks-zone b { font-size: 11px; line-height: 1; }
+@container (max-width: 64px) { .ks-word { display: none; } }
+.ks-zone.ahead { background: #5cba7d; }
+.ks-zone.meeting { background: var(--gold); }
+.ks-zone.behind { background: #e05c5c; }
+.ks-win { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--bg-deep); opacity: 0.55; }
+.ks-mark { position: absolute; top: -5px; bottom: -5px; width: 4px; margin-left: -2px; background: var(--text); border: 1px solid var(--bg-deep); border-radius: 2px; box-sizing: content-box; }
+.ks-mark b { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 2px; font-size: var(--fs-sm); font-weight: 700; color: var(--text); line-height: 1.1; }
+.ks-mark.first b { left: -3px; transform: none; }
+.ks-mark.last b { left: auto; right: -3px; transform: none; }
+.ks-cuts { display: flex; gap: 2px; margin-top: 0.25rem; color: var(--text-dim); font-size: var(--fs-sm); }
+.ks-cut { display: flex; justify-content: flex-end; white-space: nowrap; min-width: 0; }
+.ks-cut.start, .ks-cut.low { justify-content: flex-start; }
 .keep-signal { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: var(--bg-deep); font-size: 10px; font-weight: 800; line-height: 1; vertical-align: -2px; }
 .keep-signal.ahead { background: #5cba7d; }
 .keep-signal.meeting { background: var(--gold); }
@@ -1326,21 +1335,25 @@ h1 {
 
 .floor-tip {
   position: fixed;
-  pointer-events: none;
   z-index: 50;
   display: none;
   max-width: calc(100vw - 16px);
-  background: #16142aee;
+  background: #16142af4;
   border: 1px solid var(--hairline);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: var(--fs-xs);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.9375rem;
+  line-height: 1.35;
   color: var(--text);
+  box-shadow: 0 6px 24px #0008;
 }
+/* The strip between the box and the pointer, so crossing it never leaves the box. */
+.floor-tip::before { content: ""; position: absolute; left: 0; right: 0; top: -16px; height: 16px; }
+.floor-tip.above::before { top: auto; bottom: -16px; }
 .floor-tip .ft-row { display: flex; gap: 14px; align-items: flex-start; }
-.floor-tip .ft-head { margin-bottom: 4px; white-space: nowrap; }
+.floor-tip .ft-head { margin-bottom: 6px; font-size: 1rem; white-space: nowrap; }
 .floor-tip table { border-collapse: collapse; }
-.floor-tip th, .floor-tip td { padding: 1px 5px; text-align: right; white-space: nowrap; }
+.floor-tip th, .floor-tip td { padding: 3px 8px; text-align: right; white-space: nowrap; }
 .floor-tip th:first-child, .floor-tip td:first-child { text-align: left; padding-left: 0; }
 .floor-tip th { font-weight: 600; }
 .floor-tip td { font-variant-numeric: tabular-nums; }
@@ -1350,14 +1363,14 @@ h1 {
 .floor-tip thead tr:first-child th[colspan] { border-bottom: 1px solid var(--hairline); }
 .floor-tip .ft-win { color: var(--text-dim); border-left: 1px solid var(--hairline); }
 .floor-tip .ft-win + .ft-win { border-left: 0; }
-.floor-tip td small { color: var(--text-dim); font-size: 10px; margin-left: 2px; }
+.floor-tip td small { color: var(--text-dim); font-size: 0.75rem; margin-left: 3px; }
 .floor-tip td .keep-ico { margin-right: 5px; vertical-align: -2px; }
 .floor-tip tr.ft-through td { font-weight: 700; }
 /* What arrived in a turn, as one bar: blocked, healed, got through, a 2px gap between. */
-.floor-tip .ft-split { position: relative; display: flex; gap: 2px; height: 8px; margin: 4px 0 6px; min-width: 200px; }
-.floor-tip .ft-split > span:first-child { border-radius: 4px 0 0 4px; }
-.floor-tip .ft-split > span:last-of-type { border-radius: 0 4px 4px 0; }
-.floor-tip .ft-tick { position: absolute; top: -3px; width: 2px; height: 14px; margin-left: -1px; background: var(--text); border-radius: 1px; }
+.floor-tip .ft-split { position: relative; display: flex; gap: 2px; height: 10px; margin: 6px 0 8px; min-width: 240px; }
+.floor-tip .ft-split > span:first-child { border-radius: 5px 0 0 5px; }
+.floor-tip .ft-split > span:last-of-type { border-radius: 0 5px 5px 0; }
+.floor-tip .ft-tick { position: absolute; top: -3px; width: 2px; height: 16px; margin-left: -1px; background: var(--text); border-radius: 1px; }
 .floor-tip .ft-big {
   display: flex;
   flex-wrap: wrap;
@@ -1383,7 +1396,7 @@ h1 {
   .floor-tip .ft-row { flex-wrap: wrap; }
   .floor-tip .ft-big { border-left: 0; padding-left: 0; }
   .floor-tip { max-width: calc(100vw - 16px); }
-  .floor-tip th, .floor-tip td { padding: 1px 3px; }
+  .floor-tip th, .floor-tip td { padding: 2px 5px; }
   .floor-tip td.strength-measured { white-space: normal; text-align: left; }
   .chart-wrap-tall { height: 400px; }
 }

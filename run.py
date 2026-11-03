@@ -1523,21 +1523,22 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
-        <p class="chart-caption">Against the average win on the same fights (any character, <span id="detail-keep-tier"></span>, monsters tuned the same). <span class="keep-signal ahead">▲</span> Hype, <span class="keep-signal meeting">–</span> Mid, <span class="keep-signal behind">▼</span> Low. An act is graded on damage taken after healing: more turns is fine while that holds. Energy and draw aren't graded.</p>
-        <p class="chart-caption">Damage taken decides: Low above 1.5× the average win, Hype under ⅔ of it. Killing 25% faster with no more damage lifts a Mid to Hype. Each act's bar shows where it sits.</p>
+        <p class="chart-caption">Against the average win on the same fights (any character, <span id="detail-keep-tier"></span>, monsters tuned the same). <span class="keep-signal ahead">▲</span> Hype, <span class="keep-signal meeting">–</span> Mid, <span class="keep-signal behind">▼</span> Low. Energy and draw aren't rated.</p>
+        <p class="chart-caption">An act is rated on its damage taken against the average win on the same fights: Hype at ⅔ of their damage or less, Low at 1.5× or more, Mid between. Finishing in 25% fewer turns with no more damage lifts a Mid to Hype. The numbers on each meter come from that average, so they shift a little as more wins are recorded.</p>
         <div class="keep-acts" id="detail-keep-acts"></div>
-        <p class="chart-caption">Each icon is the average win for that fight; none means too few wins. Damage done: above it means faster. Damage taken: below it means less. Click a chart to hold a floor's box.</p>
+        <p class="chart-caption">Each icon is the average win for that fight; none means too few wins. Damage done: above it means faster. Damage taken: below it means less.</p>
         <h3 class="strength-label">Damage done per turn</h3>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
         <h3 class="strength-label">Damage taken per turn</h3>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-in-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-in-legend"></div>
+        <h3 class="strength-label">Energy and cards per turn</h3>
         <div id="detail-keep-play">
-          <h3 class="strength-label">Energy and cards per turn</h3>
           <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-play-chart"></canvas></div>
           <div class="floor-legend" id="detail-keep-play-legend"></div>
         </div>
+        <p class="chart-caption" id="detail-keep-play-none">No per-turn log for this run. Runs played with the mod and uploaded through it have one.</p>
       </div>
     </div>
   </div>

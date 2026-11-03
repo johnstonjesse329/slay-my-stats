@@ -35,6 +35,11 @@ INGEST_DIR = Path(__file__).resolve().parents[1] / "lambda" / "ingest"
 # so the two can't drift apart. It lives at the repo root, outside the asset
 # folder, and gets copied in at synth time.
 RUN_PY = Path(__file__).resolve().parents[2] / "run.py"
+# Likewise the event-log reading the Keeping Up numbers come from, and the card costs
+# it prices plays with, cut from the local game data (tools/build_measured_cards.py).
+DERIVE_PY = Path(__file__).resolve().parents[2] / "tools" / "power_curve" / "derive_telemetry.py"
+CARDS_PY = Path(__file__).resolve().parents[2] / "tools" / "build_measured_cards.py"
+CARD_DATA = Path(__file__).resolve().parents[2] / "card_data.json"
 # Hand-written site pages: site/pages/<name>.html is served at /<name>.
 # tools/deploy.py checks the names (build_site.site_pages()) before cdk
 # runs; each page gets its own CloudFront behavior below.
@@ -44,16 +49,27 @@ SITE_PAGES = sorted(f.stem for f in (Path(__file__).resolve().parents[2] / "site
 @jsii.implements(ILocalBundling)
 class _CopyIngestSources:
     def try_bundle(self, output_dir: str, *, image=None, **_kwargs) -> bool:
-        shutil.copy(INGEST_DIR / "handler.py", output_dir)
+        for name in ("handler.py", "measured.py"):
+            shutil.copy(INGEST_DIR / name, output_dir)
         shutil.copy(RUN_PY, output_dir)
+        shutil.copy(DERIVE_PY, output_dir)
+        # Without game data the table is left out and the Lambda reads it as empty:
+        # Card cost lines come out flat, nothing else is lost.
+        if CARD_DATA.exists():
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("build_measured_cards", CARDS_PY)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.write(Path(output_dir) / "measured_cards.json", CARD_DATA)
         return True
 
 
 def _ingest_asset_hash() -> str:
     import hashlib
     h = hashlib.sha256()
-    for p in (INGEST_DIR / "handler.py", RUN_PY):
-        h.update(p.read_bytes())
+    for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA):
+        if p.exists():
+            h.update(p.read_bytes())
     return h.hexdigest()
 
 

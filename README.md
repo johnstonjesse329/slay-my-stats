@@ -70,7 +70,8 @@ slay-my-stats/
 │   ├── app.py
 │   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
 │   ├── lambda/ingest/handler.py               the upload Lambdas (ingest, process, failure)
-│   ├── tests/test_ingest.py
+│   ├── lambda/ingest/measured.py              per-floor energy and card numbers, read from a run's event log at upload
+│   ├── tests/test_ingest.py, test_measured.py
 │   └── requirements.txt     CDK, boto3
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
@@ -78,6 +79,8 @@ slay-my-stats/
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
 │   ├── rebuild_stats.py     recount users/_stats.json.gz from every profile
+│   ├── backfill_measured.py give runs uploaded before `measured` their per-floor numbers, from their stored logs
+│   ├── build_measured_cards.py  card costs for the ingest Lambda, cut from card_data.json at bundle time
 │   ├── remove_profile.py    take a profile off the site
 │   ├── refresh_game_data.py game-data pipeline driver (see "Refreshing game data")
 │   ├── export_game_data.py  drives the game to export its data and render every card face
@@ -107,7 +110,7 @@ paths:
 ├── power_data.json          what each power does, for the offline deck-strength formula
 ├── deck_strength.json       every card's and relic's numbers, for the offline tools; the site doesn't read it
 ├── fight_demand.json        each encounter's HP and what winning runs did on it, per ascension tier, for the Runs page's Keeping Up section
-├── measured_runs.json       what the runs with an event log actually did, for the same charts
+├── measured_runs.json       what the owner's local logs did, for the same charts (uploaded runs carry theirs as `measured`)
 ├── data_provenance.json     which game build produced the data and art
 ├── card_final/              finished card images, base and upgraded (served)
 ├── card_portraits/          card art thumbnails (served)
@@ -421,6 +424,9 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
 
 - `tools/rebuild_profiles.py` re-parses players' kept uploads after a fix to `run.py`'s parser. Bump
   `run.PARSER_VERSION` with the fix, then `--stale` rebuilds the profiles an older parser built.
+- `tools/backfill_measured.py` writes `measured` (per-floor energy and cards, for the Keeping Up chart) onto runs
+  uploaded before the Lambda worked it out, from their stored event logs. Runs that already have it are left alone;
+  `--redo` re-reads them after the reading changes.
 - `tools/remove_profile.py --slug <slug>` takes a profile off the site. The player's next upload starts a fresh
   one. Add `--raw` to delete their kept uploads too.
 - `tools/rebuild_stats.py` recounts the site-wide stats. Run it after either of the above.
@@ -492,7 +498,8 @@ flowchart TB
 ```
 
 Any change to `run.py` or the handler shows up in `cdk diff` as new code for the Lambdas, since they bundle
-both. To skip deploying for one push, use `SKIP_DEPLOY=1 git push`.
+both, along with `measured.py`, `tools/power_curve/derive_telemetry.py` and a card-cost table cut from your local
+`card_data.json` (so synth needs the game data; without it the energy chart's Card cost line is flat). To skip deploying for one push, use `SKIP_DEPLOY=1 git push`.
 
 Set up once, outside CDK:
 
@@ -671,8 +678,9 @@ separately by `tools/bake_map_background.py`.
 The Runs page's Keeping Up charts need one more file, made after the refresh:
 `python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in
 `tools/power_curve/gamma_raw/`. Without it the charts are hidden. Their energy and cards chart also needs
-`python tools/power_curve/export_measured.py` (writes `measured_runs.json`), and shows only on runs with an
-event log. The offline deck-strength tools need `python tools/extract_power_data.py`, then
+`python tools/power_curve/export_measured.py` (writes `measured_runs.json`) for logs on this machine. Runs uploaded
+through the site carry the same numbers as `measured`, worked out when they were uploaded. It shows only on runs
+with an event log. The offline deck-strength tools need `python tools/extract_power_data.py`, then
 `python tools/power_curve/export_strength.py` (writes `deck_strength.json`); nothing on the site reads those.
 
 Text and images are not re-derived, though — that was measurably wrong. Earlier versions re-implemented the

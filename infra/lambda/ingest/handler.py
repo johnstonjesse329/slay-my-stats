@@ -98,6 +98,7 @@ from datetime import datetime, timezone
 
 # Bundled next to this file in the Lambda asset (see the stack's bundling);
 # on the dev server the repo root is on sys.path instead.
+import measured
 import run
 
 STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login"
@@ -485,6 +486,16 @@ class Spool:
             return [json.loads(line) for line in f]
 
 
+def _measured_rows(cleaned: dict, parsed: dict) -> list[dict]:
+    """The run's per-floor numbers from its event log, or none: a log in an older
+    shape has nothing to read, and a log this can't read costs the run's charts, not
+    the run."""
+    try:
+        return measured.measured(cleaned, parsed.get("timeline"))
+    except Exception:  # noqa: BLE001 -- derived from game-process input; never fail an upload over it
+        return []
+
+
 def spool_upload(body: bytes, steam_id: str, spool: Spool) -> tuple[int, int, int]:
     """Parse every run in the upload into the spool; returns (count good,
     count rejected, count that looked like .run files at all -- rejected ones
@@ -511,10 +522,15 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool) -> tuple[int, int, in
         except (ValueError, TypeError, KeyError, AttributeError, IndexError, RecursionError):
             ok = False
         if ok:
-            spool.add(parsed)
             cleaned = clean_telemetry(telemetry)
             if cleaned:
                 spool.add_telemetry(ts, cleaned)
+                # What each fight did, read once here and kept on the run, so the page
+                # draws its energy and card-draw charts without fetching the log.
+                rows = _measured_rows(cleaned, parsed)
+                if rows:
+                    parsed["measured"] = rows
+            spool.add(parsed)
             good += 1
         else:
             rejected += 1

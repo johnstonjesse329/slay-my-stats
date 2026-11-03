@@ -6,6 +6,9 @@ in, the log says what happened inside it: what arrived, what was blocked, what c
 the enemies, and the cards and energy played. The Keeping Up charts on the Runs page read
 these; no estimate goes into them.
 
+The ingest Lambda has a port of this (infra/lambda/ingest/measured.py), which puts the same
+numbers on each uploaded run. Keep them in step: infra/tests/test_measured.py compares them.
+
 Keys are the run's start time, which is what the page already uses to identify a run, and
 whose value is the telemetry file's name.
 
