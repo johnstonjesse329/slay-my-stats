@@ -109,7 +109,7 @@ paths:
 ├── enchantments_data.json   enchantment titles and per-amount text
 ├── power_data.json          what each power does, for the offline deck-strength formula
 ├── deck_strength.json       every card's and relic's numbers, for the offline tools; the site doesn't read it
-├── fight_demand.json        each encounter's HP and what winning runs did on it, per ascension tier, for the Runs page's Keeping Up section
+├── fight_demand.json        each encounter's HP and what winning runs did on it, per ascension tier, and the quarters of winning acts, for the Runs page's Keeping Up section
 ├── measured_runs.json       what the owner's local logs did, for the same charts (uploaded runs carry theirs as `measured`)
 ├── data_provenance.json     which game build produced the data and art
 ├── card_final/              finished card images, base and upgraded (served)

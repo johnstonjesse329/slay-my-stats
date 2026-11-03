@@ -6,6 +6,7 @@ enemies, a boss with no HP in the data, an encounter the data does not have.
 """
 import gzip
 import json
+import statistics
 import sys
 import tempfile
 import unittest
@@ -218,28 +219,27 @@ class Tiers(unittest.TestCase):
         return [[fight(asc=asc, t=t)] for _ in range(n)]
 
     def test_each_is_how_the_monsters_are_tuned(self):
-        self.assertEqual([fd.tier(a) for a in (0, 1, 7, 8, 9, 10)], [0, 0, 0, 1, 2, 2])
+        self.assertEqual([fd.tier(a) for a in (0, 1, 7, 8, 9, 10)], [0, 0, 0, 1, 1, 1])
 
     def test_under_8_shares_a_line(self):
         self.assertEqual(line_of([[fight(asc=0, t=2)], [fight(asc=1, t=3)], [fight(asc=7, t=7)]])["turns"], 4)
 
-    def test_9_and_10_share_a_line(self):
-        self.assertEqual(line_of([[fight(asc=9, t=2)], [fight(asc=10, t=3)], [fight(asc=9, t=7)]], 2)["turns"], 4)
+    def test_8_9_and_10_share_a_line(self):
+        self.assertEqual(line_of([[fight(asc=8, t=2)], [fight(asc=10, t=3)], [fight(asc=9, t=7)]], 1)["turns"], 4)
 
     def test_a_line_holds_only_its_own_tiers_wins(self):
-        tiers = demand_of([*self.wins(1, 3), *self.wins(8, 5), *self.wins(10, 9)])["ENCOUNTER.X"]["tiers"]
-        self.assertEqual([t["turns"] for t in tiers], [3, 5, 9])
-        self.assertEqual([t["n"] for t in tiers], [fd.WON_MIN] * 3)
+        tiers = demand_of([*self.wins(1, 3), *self.wins(10, 9)])["ENCOUNTER.X"]["tiers"]
+        self.assertEqual([t["turns"] for t in tiers], [3, 9])
+        self.assertEqual([t["n"] for t in tiers], [fd.WON_MIN] * 2)
 
     def test_too_few_wins_in_a_tier_borrows_from_no_other(self):
-        d = demand_of([*self.wins(1, 3, 20), *self.wins(9, 9)])["ENCOUNTER.X"]
+        d = demand_of([*self.wins(1, 3, 20), *self.wins(9, 9, fd.WON_MIN - 1)])["ENCOUNTER.X"]
         self.assertIsNone(fd.winners_of(fight(asc=8), d))
         self.assertEqual(fd.winners_of(fight(asc=1), d)["turns"], 3)
-        self.assertEqual(fd.winners_of(fight(asc=10), d)["turns"], 9)
 
     def test_an_act_leaves_out_fights_its_tier_has_no_line_for(self):
-        demand = demand_of([*self.wins(1, 3, 20), *self.wins(9, 3)])
-        self.assertEqual(fd.act_readings([fight(asc=8)] * 3, demand), [])
+        demand = demand_of(self.wins(1, 3, 20))
+        self.assertEqual(fd.act_readings([fight(asc=8)] * 3, demand, CUTS), [])
 
     def test_the_hp_a_fight_reads_at_is_the_runs_own(self):
         demand = demand_of(self.wins(8, 3))
@@ -387,12 +387,15 @@ ACT_X = {"turns": 4, "taken": 15, "n": 9}
 ACTS = {"ENCOUNTER.X": {"tiers": every_tier(ACT_X)},
         "ENCOUNTER.Y": {"tiers": every_tier({"turns": 2, "taken": 2, "n": 9})},
         "ENCOUNTER.UNWON": {"pool": [100, 120], "tiers": every_tier({})}}
+# Quarters of winning acts, fixed here so a case reads the same whatever the history holds.
+CUT = {"guard": [0.67, 1.5], "pace": [0.8, 1.25]}
+CUTS = {"acts": [CUT] * 3, "run": CUT}
 
 
 class ActReadings(unittest.TestCase):
     def test_each_fight_is_held_to_its_own_winners_and_the_act_sums_them(self):
         fights = [fight(t=4, taken=9), fight(enc="ENCOUNTER.Y", t=2, taken=3), fight(t=6, taken=0)]
-        row = fd.act_readings(fights, ACTS)[0]
+        row = fd.act_readings(fights, ACTS, CUTS)[0]
         self.assertEqual((row["turns"], row["winTurns"]), (12, 10))
         self.assertEqual((row["taken"], row["winTaken"]), (12, 32))
         self.assertAlmostEqual(row["pace"], 10 / 12)
@@ -400,81 +403,81 @@ class ActReadings(unittest.TestCase):
         self.assertAlmostEqual(row["each"], (33 / 13) / (10 / 12))
 
     def test_a_hard_act_that_matches_winners_reads_level(self):
-        row = fd.act_readings([fight(t=4, taken=15)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=4, taken=15)] * 3, ACTS, CUTS)[0]
         self.assertEqual(row["pace"], 1)
         self.assertEqual(row["guard"], 1)
         self.assertEqual(row["verdict"], "meeting")
 
     def test_slow_is_fine_so_long_as_damage_taken_holds(self):
-        row = fd.act_readings([fight(t=8, taken=15)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=8, taken=15)] * 3, ACTS, CUTS)[0]
         self.assertEqual(row["pace"], 0.5)
         self.assertEqual(row["verdict"], "meeting")
         self.assertIsNone(row["lacking"])
 
     def test_being_slow_earns_no_allowance_of_damage(self):
-        row = fd.act_readings([fight(t=8, taken=30)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=8, taken=30)] * 3, ACTS, CUTS)[0]
         self.assertEqual(row["verdict"], "behind")
 
     def test_fights_that_ran_long_lack_damage(self):
-        row = fd.act_readings([fight(t=8, taken=30)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=8, taken=30)] * 3, ACTS, CUTS)[0]
         self.assertEqual(row["lacking"], "damage")
 
     def test_too_much_each_turn_lacks_block(self):
-        row = fd.act_readings([fight(t=4, taken=60)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=4, taken=60)] * 3, ACTS, CUTS)[0]
         self.assertEqual(row["verdict"], "behind")
         self.assertEqual(row["lacking"], "block")
 
     def test_ahead_lacks_nothing(self):
-        row = fd.act_readings([fight(t=8, taken=1)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=8, taken=1)] * 3, ACTS, CUTS)[0]
         self.assertEqual(row["verdict"], "ahead")
         self.assertIsNone(row["lacking"])
 
     def test_killing_much_faster_without_taking_more_is_ahead(self):
-        row = fd.act_readings([fight(t=3, taken=15)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=3, taken=15)] * 3, ACTS, CUTS)[0]
         self.assertEqual((row["held"], row["speed"]), ("meeting", "ahead"))
         self.assertEqual(row["verdict"], "ahead")
 
     def test_killing_much_faster_and_taking_more_is_meeting(self):
-        row = fd.act_readings([fight(t=3, taken=20)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=3, taken=20)] * 3, ACTS, CUTS)[0]
         self.assertEqual((row["held"], row["speed"]), ("meeting", "ahead"))
         self.assertEqual(row["verdict"], "meeting")
 
     def test_speed_lifts_nothing_out_of_behind(self):
-        row = fd.act_readings([fight(t=2, taken=60)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=2, taken=60)] * 3, ACTS, CUTS)[0]
         self.assertEqual((row["held"], row["speed"]), ("behind", "ahead"))
         self.assertEqual(row["verdict"], "behind")
 
     def test_a_slow_act_keeps_its_reading_and_its_own_mark(self):
-        row = fd.act_readings([fight(t=8, taken=1)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=8, taken=1)] * 3, ACTS, CUTS)[0]
         self.assertEqual((row["held"], row["speed"]), ("ahead", "behind"))
         self.assertEqual(row["verdict"], "ahead")
 
     def test_an_act_with_no_damage_still_divides(self):
-        row = fd.act_readings([fight(t=4)] * 3, ACTS)[0]
+        row = fd.act_readings([fight(t=4)] * 3, ACTS, CUTS)[0]
         self.assertEqual(row["guard"], 46)
 
     def test_the_fight_that_ended_the_run_is_left_out(self):
         fights = [fight()] * 3 + [fight(t=50, taken=999, died=True)]
-        self.assertEqual(fd.act_readings(fights, ACTS)[0]["fights"], 3)
+        self.assertEqual(fd.act_readings(fights, ACTS, CUTS)[0]["fights"], 3)
 
     def test_too_few_fights_is_no_reading(self):
-        self.assertEqual(fd.act_readings([fight()] * (fd.ACT_MIN - 1), ACTS), [])
+        self.assertEqual(fd.act_readings([fight()] * (fd.ACT_MIN - 1), ACTS, CUTS), [])
 
     def test_an_encounter_with_no_data_does_not_count(self):
         fights = [fight()] * 3 + [fight(enc="ENCOUNTER.GONE")]
-        self.assertEqual(fd.act_readings(fights, ACTS)[0]["fights"], 3)
+        self.assertEqual(fd.act_readings(fights, ACTS, CUTS)[0]["fights"], 3)
 
     def test_an_encounter_too_few_have_won_does_not_count(self):
         fights = [fight()] * 3 + [fight(enc="ENCOUNTER.UNWON")]
-        self.assertEqual(fd.act_readings(fights, ACTS)[0]["fights"], 3)
+        self.assertEqual(fd.act_readings(fights, ACTS, CUTS)[0]["fights"], 3)
 
     def test_acts_read_apart(self):
-        rows = fd.act_readings([fight(act=a) for a in (0, 0, 0, 1, 1, 1)], ACTS)
+        rows = fd.act_readings([fight(act=a) for a in (0, 0, 0, 1, 1, 1)], ACTS, CUTS)
         self.assertEqual([r["act"] for r in rows], [0, 1])
 
     def test_a_party_reads_against_winning_parties(self):
         demand = {"ENCOUNTER.X": {"tiers": every_tier({**ACT_X, "coop": {"turns": 8, "taken": 1, "n": 9}})}}
-        row = fd.act_readings([fight(t=4, share=1.2)] * 3, demand)[0]
+        row = fd.act_readings([fight(t=4, share=1.2)] * 3, demand, CUTS)[0]
         self.assertEqual(row["winTurns"], 24)
         self.assertEqual(row["winTaken"], 3)
 
@@ -483,7 +486,7 @@ class RunReading(unittest.TestCase):
     def read(self, *acts):
         """A run of three fights an act, each given as (turns, damage taken)."""
         fights = [fight(t=t, taken=taken, act=a) for a, (t, taken) in enumerate(acts) for _ in range(3)]
-        return fd.run_reading(fd.act_readings(fights, ACTS))
+        return fd.run_reading(fd.act_readings(fights, ACTS, CUTS), CUTS)
 
     def test_a_run_is_its_acts_added_up(self):
         got = self.read((4, 15), (6, 3))
@@ -504,7 +507,7 @@ class RunReading(unittest.TestCase):
                 self.assertEqual(self.read(*acts)["verdict"], want)
 
     def test_no_act_to_read_is_no_reading(self):
-        self.assertIsNone(fd.run_reading([]))
+        self.assertIsNone(fd.run_reading([], CUTS))
 
     def test_op_is_ahead_in_both_late_acts(self):
         behind = (4, 60)
@@ -521,19 +524,19 @@ class RunReading(unittest.TestCase):
 
     def test_op_takes_no_win(self):
         fights = [fight(t=8, taken=1, act=a) for a in (1, 2) for _ in range(3)] + [fight(act=2, died=True)]
-        self.assertTrue(fd.run_reading(fd.act_readings(fights, ACTS))["op"])
+        self.assertTrue(fd.run_reading(fd.act_readings(fights, ACTS, CUTS), CUTS)["op"])
 
 
 class HeldOut(unittest.TestCase):
     def test_a_whole_run_reads_against_the_other_half_only(self):
         # Against its own half each run would meet its own line.
-        cells = fd.held_out([self.steady, self.strong] * 2)
+        cells = fd.held_out([self.steady, self.strong] * 2, CUTS)
         self.assertEqual(len(cells["solo", 0, "run", "behind"]), 2)
         self.assertEqual(len(cells["solo", 0, "run", "ahead"]), 2)
         self.assertNotIn(("solo", 0, "run", "meeting"), cells)
 
     def test_an_op_run_counts_as_ahead_too(self):
-        cells = fd.held_out([self.steady, self.strong] * 2)
+        cells = fd.held_out([self.steady, self.strong] * 2, CUTS)
         self.assertEqual(cells["solo", 0, "run", "op"], cells["solo", 0, "run", "ahead"])
 
     steady = [fight(t=4, taken=30, act=a) for a in range(3) for _ in range(3)]
@@ -543,32 +546,75 @@ class HeldOut(unittest.TestCase):
 class ActRows(unittest.TestCase):
     def test_each_player_of_a_party_is_read(self):
         party = [{**fight(t=4, share=1.2), "each": [3, 30]} for _ in range(3)]
-        rows = list(fd.act_rows([party], ACTS))
+        rows = list(fd.act_rows([party], ACTS, CUTS))
         self.assertEqual([r[0] for r in rows], ["coop", "coop"])
         self.assertEqual([r[3]["taken"] for r in rows], [9, 90])
 
     def test_a_lost_run_is_marked(self):
         fights = [fight()] * 3 + [fight(died=True)]
-        self.assertFalse(next(fd.act_rows([fights], ACTS))[2])
+        self.assertFalse(next(fd.act_rows([fights], ACTS, CUTS))[2])
 
     def test_a_run_is_marked_with_its_tier(self):
-        self.assertEqual(next(fd.act_rows([[fight(asc=10)] * 3], ACTS))[1], 2)
+        self.assertEqual(next(fd.act_rows([[fight(asc=10)] * 3], ACTS, CUTS))[1], 1)
 
 
 class Verdict(unittest.TestCase):
     def test_on_the_edge_is_meeting(self):
-        low, high = fd.EDGES
-        self.assertEqual([fd.verdict(1, v) for v in (low - 0.01, low, high, high + 0.01)],
+        low, high = CUT["guard"]
+        self.assertEqual([fd.verdict(1, v, CUT) for v in (low - 0.01, low, high, high + 0.01)],
                          ["behind", "meeting", "meeting", "ahead"])
 
     def test_level_with_winners_is_meeting(self):
-        self.assertEqual(fd.verdict(1, 1), "meeting")
+        self.assertEqual(fd.verdict(1, 1, CUT), "meeting")
 
     def test_on_the_speed_edge_is_meeting(self):
-        self.assertEqual([fd.verdict(p, 1) for p in (fd.FAST, fd.FAST + 0.01)], ["meeting", "ahead"])
+        fast = CUT["pace"][1]
+        self.assertEqual([fd.verdict(p, 1, CUT) for p in (fast, fast + 0.01)], ["meeting", "ahead"])
 
     def test_just_over_on_damage_taken_gets_no_lift(self):
-        self.assertEqual(fd.verdict(2, 0.99), "meeting")
+        self.assertEqual(fd.verdict(2, 0.99, CUT), "meeting")
+
+    def test_the_edges_are_the_ones_given(self):
+        tight = {"guard": [0.9, 1.1], "pace": [0.95, 1.05]}
+        self.assertEqual([fd.verdict(1, g, tight) for g in (0.85, 1.2)], ["behind", "ahead"])
+        self.assertEqual([fd.verdict(1, g, CUT) for g in (0.85, 1.2)], ["meeting", "meeting"])
+
+
+class Cuts(unittest.TestCase):
+    """The quarters an act is read against: winning acts only, every tier together."""
+
+    @staticmethod
+    def played(taken, t=4, asc=0, died=False):
+        fights = [fight(t=t, taken=taken, asc=asc, act=a) for a in range(3) for _ in range(3)]
+        return fights + [fight(act=2, died=True)] if died else fights
+
+    def cuts(self, runs):
+        return fd.cuts_of(runs, fd.table(runs))
+
+    def test_the_quarters_are_of_winning_acts(self):
+        runs = [self.played(taken) for taken in (0, 10, 20, 30, 40)]
+        got = self.cuts(runs)["acts"][0]["guard"]
+        guards = sorted(r["guard"] for fights in runs for r in fd.act_totals(fights, fd.table(runs)) if r["act"] == 0)
+        self.assertEqual(got, [round(q, 3) for q in statistics.quantiles(guards, n=4)[::2]])
+        self.assertLess(got[0], 1)
+        self.assertGreater(got[1], 1)
+
+    def test_a_lost_run_moves_nothing(self):
+        wins = [self.played(taken) for taken in (0, 10, 20, 30, 40)]
+        self.assertEqual(self.cuts(wins), self.cuts(wins + [self.played(500, died=True)] * 5))
+
+    def test_every_tier_goes_in(self):
+        low = [self.played(taken) for taken in (0, 10, 20)]
+        high = [self.played(taken, asc=10) for taken in (0, 60, 120)]
+        self.assertNotEqual(self.cuts(low + high), self.cuts(low + [self.played(10, asc=10)] * 3))
+
+    def test_one_set_per_act_and_one_for_runs(self):
+        got = self.cuts([self.played(taken) for taken in (0, 10, 20, 30, 40)])
+        self.assertEqual(len(got["acts"]), 3)
+        self.assertEqual(set(got["run"]), {"guard", "pace"})
+
+    def test_an_act_past_the_last_has_the_runs_quarters(self):
+        self.assertIs(fd.act_cut({"acts": [CUT], "run": "run"}, 1), "run")
 
 
 if __name__ == "__main__":

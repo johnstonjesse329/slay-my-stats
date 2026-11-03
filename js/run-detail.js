@@ -1585,11 +1585,6 @@ const keepIcon = (name, color) =>
   `<svg class="keep-ico" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color:${color}">${KEEP_ICONS[name]}</svg>`;
 // Fights an act takes before it gets a reading: fight_demand.py's ACT_MIN.
 const KEEP_ACT_MIN = 3;
-// Winners' damage taken over yours, where behind ends and ahead starts: fight_demand.py's
-// EDGES.
-const KEEP_EDGES = [0.67, 1.5];
-// Winners' turns over yours: fight_demand.py's SLOW and FAST.
-const KEEP_TURN_EDGES = [0.8, 1.25];
 // The acts a run has to read ahead in to be OP: fight_demand.py's OP_ACTS, counted from 1.
 const KEEP_OP_ACTS = [2, 3];
 // A reading's mark: the shape says it as well as the colour.
@@ -1600,7 +1595,7 @@ const KEEP_ICON = { min: 16, max: NODE_POINT };
 // The kinds of fight, in the order an act card lists them.
 const KEEP_KINDS = { monster: "Normal", elite: "Elites", boss: "Boss" };
 // How each tier is named on the page: fight_demand.py's TIER_NAMES, for a reader.
-const KEEP_TIER_NAMES = ["ascension 7 and under", "ascension 8", "ascension 9 and up"];
+const KEEP_TIER_NAMES = ["A0–7", "A8+"];
 // What a turn starts with before the deck adds anything.
 const KEEP_BASE = { energy: 3, cards: 5 };
 let detailKeepCharts = [];
@@ -1620,7 +1615,7 @@ function measuredStrengthByNode(run, nodes) {
 const keepShare = (run, node) => !run.mp ? 1 : node.act === 1 ? 1.1 : node.act === 3 && node.type === "boss" ? 1.3 : 1.2;
 
 // How an ascension's monsters are tuned: fight_demand.py's tier.
-const keepTier = asc => (asc >= 8) + (asc >= 9);
+const keepTier = asc => +(asc >= 8);
 
 // A floor's damage taken with what it healed off it, down to 0: fight_demand.py's net_taken.
 const keepTaken = n => Math.max(0, (n.dmg || 0) - (n.healed || 0));
@@ -1693,35 +1688,43 @@ function fightReadings(run, nodes, measured) {
 
 const keepMark = (value, [low, high]) => value < low ? "behind" : value > high ? "ahead" : "meeting";
 
-// Where damage taken turns an act Hype or Low against winners' average: keepMark's edges on
+// Where the worst and best quarter of winning acts start, on guard and pace, for an act
+// counted from 1, or of winning runs: fight_demand.py's act_cut and cuts_of.
+const keepActCut = act => {
+  const cuts = DATA.fightDemand.cuts;
+  return cuts.acts[act - 1] || cuts.run;
+};
+
+// Where damage taken turns an act Hype or Low among winners: keepMark's edges on
 // guard = (winTaken+1)/(taken+1), solved for taken. Damage taken is a whole number, so
 // Hype is the most that still reads Hype and Low the least that reads Low. hype is -1
 // when winners took so little that no amount reads Hype.
-const keepCuts = winTaken => {
+const keepCuts = (winTaken, edges) => {
   const guard = taken => (winTaken + 1) / (taken + 1);
-  let hype = Math.ceil((winTaken + 1) / KEEP_EDGES[1] - 1) - 1, low = Math.floor((winTaken + 1) / KEEP_EDGES[0] - 1) + 1;
+  let hype = Math.ceil((winTaken + 1) / edges[1] - 1) - 1, low = Math.floor((winTaken + 1) / edges[0] - 1) + 1;
   // The division can land a hair either side of a whole number, so settle both on
   // keepMark's own comparison.
-  while (hype >= 0 && keepMark(guard(hype), KEEP_EDGES) !== "ahead") hype--;
-  while (keepMark(guard(hype + 1), KEEP_EDGES) === "ahead") hype++;
-  while (keepMark(guard(low), KEEP_EDGES) !== "behind") low++;
-  while (low > 0 && keepMark(guard(low - 1), KEEP_EDGES) === "behind") low--;
+  while (hype >= 0 && keepMark(guard(hype), edges) !== "ahead") hype--;
+  while (keepMark(guard(hype + 1), edges) === "ahead") hype++;
+  while (keepMark(guard(low), edges) !== "behind") low++;
+  while (low > 0 && keepMark(guard(low - 1), edges) === "behind") low--;
   return { hype, low };
 };
-// Turns that lift a Mid on damage to Hype: winners' turns over yours above FAST.
-const keepFastTurns = winTurns => Math.ceil(winTurns / KEEP_TURN_EDGES[1]) - 1;
+// Turns that lift a Mid on damage to Hype: winners' turns over yours past the best quarter.
+const keepFastTurns = (winTurns, edges) => Math.ceil(winTurns / edges[1]) - 1;
 
 // fight_demand.py's verdict.
-const keepVerdict = (pace, guard) => {
-  const held = keepMark(guard, KEEP_EDGES);
-  return held === "meeting" && pace > KEEP_TURN_EDGES[1] && guard >= 1 ? "ahead" : held;
+const keepVerdict = (pace, guard, cut) => {
+  const held = keepMark(guard, cut.guard);
+  return held === "meeting" && pace > cut.pace[1] && guard >= 1 ? "ahead" : held;
 };
 
 // fight_demand.py's act_readings and lacking: keep them together. Turns and damage taken
 // are the run file's on every run, logged or not, because winners' averages are built
 // from them. A log adds what a run file can't say.
 function actReadings(run, nodes, measured) {
-  if (!DATA.fightDemand) return [];
+  // A fight_demand.json from before the quarters has nothing to read an act against.
+  if (!DATA.fightDemand?.cuts) return [];
   const demand = DATA.fightDemand.encounters;
   const lastFight = nodes.findLastIndex(keepFight);
   const acts = new Map();
@@ -1752,22 +1755,24 @@ function actReadings(run, nodes, measured) {
   const short = (pace, each) => pace < each ? "damage" : "block";
   return [...acts.values()].filter(a => a.fights >= KEEP_ACT_MIN).map(a => {
     const pace = a.winTurns / a.turns, guard = (a.winTaken + 1) / (a.taken + 1), each = guard / pace;
-    const speed = keepMark(pace, KEEP_TURN_EDGES), held = keepMark(guard, KEEP_EDGES);
-    const verdict = keepVerdict(pace, guard);
-    return { ...a, pace, guard, each, speed, held, verdict, lacking: verdict === "behind" ? short(pace, each) : null };
+    const cut = keepActCut(a.act);
+    const speed = keepMark(pace, cut.pace), held = keepMark(guard, cut.guard);
+    const verdict = keepVerdict(pace, guard, cut);
+    return { ...a, cut, pace, guard, each, speed, held, verdict, lacking: verdict === "behind" ? short(pace, each) : null };
   });
 }
 
 // fight_demand.py's run_reading: keep them together. A run as a whole, its acts' totals
-// through the same verdict, so it follows from the act cards. OP is both of the late acts
-// reading ahead, and takes no win.
+// through the same verdict against winning runs' quarters, so it follows from the act
+// cards. OP is both of the late acts reading ahead, and takes no win.
 function runReading(acts) {
   if (!acts.length) return null;
   const sum = key => acts.reduce((total, a) => total + a[key], 0);
   const turns = sum("turns"), winTurns = sum("winTurns"), taken = sum("taken"), winTaken = sum("winTaken");
   const pace = winTurns / turns, guard = (winTaken + 1) / (taken + 1);
   const op = KEEP_OP_ACTS.every(act => acts.some(a => a.act === act && a.verdict === "ahead"));
-  return { turns, winTurns, taken, winTaken, pace, guard, verdict: keepVerdict(pace, guard), op };
+  const cut = DATA.fightDemand.cuts.run;
+  return { turns, winTurns, taken, winTaken, pace, guard, cut, verdict: keepVerdict(pace, guard, cut), op };
 }
 
 // The run list reads every run to fill a column and sort by it, so each is read once.
@@ -1787,10 +1792,10 @@ function runReadingRank(run) {
 const keepSignal = (tone, what) => `<span class="keep-signal ${tone}" role="img" aria-label="${what}" title="${what}">${KEEP_SIGNS[tone]}</span>`;
 
 // How the rating works, with this reading's two cut points, for a mark's hover.
-function keepRule(winTaken) {
-  const { hype, low } = keepCuts(winTaken);
+function keepRule(winTaken, cut) {
+  const { hype, low } = keepCuts(winTaken, cut.guard);
   return `The average win took ${+winTaken.toFixed(1)} damage on these fights. ${hype >= 0 ? `Hype: you took ${hype} or less. ` : ""}Mid: ${hype + 1} to ${low - 1}. Low: ${low} or more. ` +
-    `A Mid counts as Hype if you took no more than they did and finished in 4 turns or fewer for every 5 of theirs.`;
+    `A Mid counts as Hype if you took no more than they did and finished faster than 3 in 4 wins.`;
 }
 
 // A run's reading on its header, or just its mark in the run list (short). The numbers
@@ -1803,7 +1808,7 @@ function runReadingHtml(run, short = false) {
     r.op ? `OP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}` : `${word} against the average win on this run's fights`,
     `Fight turns: ${r.turns}, average win ${+r.winTurns.toFixed(1)}`,
     `Damage taken: ${Math.round(r.taken)}, average win ${Math.round(r.winTaken)}`,
-    keepRule(r.winTaken),
+    keepRule(r.winTaken, r.cut),
     ...(run.won ? [] : ["Not counting the fight that ended it"]),
   ].join("\n");
   const focus = short ? "" : ` tabindex="0"`;
@@ -1829,14 +1834,14 @@ function renderKeepActs(run, nodes, measured) {
   // and (when it has room) its word, the act's own figure on a pointer, and the two cut points under the zone edges they belong to. The meter runs a
   // little past Low.
   const meter = a => {
-    const { hype, low } = keepCuts(a.winTaken);
+    const { hype, low } = keepCuts(a.winTaken, a.cut.guard);
     const taken = Math.round(a.taken);
     const top = Math.max(low * 1.3, taken * 1.1, 1);
     const pct = v => Math.min(100, Math.max(0, v / top * 100));
     const hypeW = hype >= 0 ? pct(hype + 1) : 0, lowAt = pct(low);
     const zone = (tone, w, text) => `<span class="ks-zone ${tone}" style="flex:${w} 1 0"><b aria-hidden="true">${KEEP_SIGNS[tone]}</b><span class="ks-word">${text}</span></span>`;
     const cut = (cls, w, text) => `<span class="ks-cut ${cls}" style="flex:${w} 1 0">${text}</span>`;
-    const label = `Damage taken ${taken}: ${KEEP_WORDS[a.held]}. ${keepRule(a.winTaken)}`;
+    const label = `Damage taken ${taken}: ${KEEP_WORDS[a.held]}. ${keepRule(a.winTaken, a.cut)}`;
     const at = pct(taken);
     return `<div class="keep-meter" role="img" aria-label="${label}" title="${label}">` +
       `<div class="ks-bar">` +
@@ -1848,7 +1853,7 @@ function renderKeepActs(run, nodes, measured) {
   // How near a Mid is to either edge, said only when it is within a fifth of the meter. Hover only.
   const nearNote = a => {
     if (a.held !== "meeting") return "";
-    const { hype, low } = keepCuts(a.winTaken);
+    const { hype, low } = keepCuts(a.winTaken, a.cut.guard);
     const taken = Math.round(a.taken);
     const top = Math.max(low * 1.3, taken * 1.1, 1);
     const [gap, edge] = [[low - taken, "Low"], [hype >= 0 ? taken - hype : Infinity, "Hype"]].sort((x, y) => x[0] - y[0])[0];
@@ -1858,7 +1863,7 @@ function renderKeepActs(run, nodes, measured) {
   // more than the average win did. Said only while it can still matter, and ticked off once
   // it has. Hover only.
   const speedNote = a => {
-    const fast = keepFastTurns(a.winTurns), cap = Math.floor(a.winTaken);
+    const fast = keepFastTurns(a.winTurns, a.cut.pace), cap = Math.floor(a.winTaken);
     if (a.verdict === "ahead" && a.held === "meeting") return `Hype on speed (damage ≤ ${cap})`;
     if (a.verdict !== "meeting" || fast < 1) return "";
     return a.turns <= fast ? `Fast enough; Hype if damage ≤ ${cap}` : `Hype at ${fast} or fewer, with damage ≤ ${cap}`;
@@ -1873,7 +1878,7 @@ function renderKeepActs(run, nodes, measured) {
     const perTurn = v => (v / log.turns).toFixed(1);
     const tip = [
       `${KEEP_WORDS[a.verdict]}${a.lacking ? `, lacking ${a.lacking}` : ""}`,
-      `Took ${Math.round(a.taken)}, average win ${Math.round(a.winTaken)}. ${keepRule(a.winTaken)}`,
+      `Took ${Math.round(a.taken)}, average win ${Math.round(a.winTaken)}. ${keepRule(a.winTaken, a.cut)}`,
       ...(a.verdict === "ahead" && a.held === "meeting"
         ? [`Hype on speed: ${a.turns} turns against an average win of ${+a.winTurns.toFixed(1)}, with damage taken no higher.`] : []),
       ...[a.verdict === "meeting" ? speedNote(a) : "", nearNote(a), a.healed ? `After healing ${Math.round(a.healed)} HP` : ""].filter(Boolean),
@@ -1938,6 +1943,8 @@ function renderDetailKeepCharts(run) {
   if (!rows) { box.style.display = "none"; return; }
   box.style.display = "";
   document.getElementById("detail-keep-tier").textContent = KEEP_TIER_NAMES[keepTier(run.asc)];
+  // The caption's key draws the same marks as the pills, so the two can't drift apart.
+  for (const s of box.querySelectorAll(".chart-caption .keep-signal")) s.innerHTML = KEEP_SIGNS[s.classList[1]];
   renderKeepActs(run, nodes, measured);
 
   const changes = nodes.length && run.deckAdded && run.relicsAdded ? floorChanges(nodes,

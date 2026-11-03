@@ -1284,6 +1284,9 @@ h1 {
 .floor-tip .strength-chip.loss { border-color: #d97230; }
 .floor-tip .strength-measured { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.keep-key { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem; margin: 0 0 0.9rem; }
+.keep-key dt { color: var(--text); font-weight: 600; white-space: nowrap; }
+.keep-key dd { margin: 0; }
 /* Sized for three acts: auto-fill keeps the empty tracks, so a run that ended in Act 1 gets one
    card's width, not the whole row. Never more than three across; 340px minimum each. */
 .keep-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(340px, calc((100% - 1.7rem) / 3)), 1fr)); gap: 0.85rem; margin-bottom: 1rem; }

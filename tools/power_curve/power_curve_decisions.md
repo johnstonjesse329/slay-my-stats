@@ -1773,3 +1773,61 @@ not rated.
   the ones in Keeping Up by Floor: tap one for the full card or relic (the tapped card stays open, see above).
   Desktop keeps the rarity columns and the card faces / relic text. Resize closes the sheet only when the width
   changes: iOS fires resize as its address bar collapses on scroll, which closed it mid-scrub.
+
+### Keeping Up by Floor: quarters of winning acts (2026-11-03)
+
+The rule on the page (Low above 1.5× the average win, Hype under ⅔ of it, 25% faster lifts a Mid)
+read badly. The user asked for it the other way round: where an act sits among winning ones, the best
+quarter Hype, the middle half Mid, the worst quarter Low, and the same at every ascension.
+
+**The edges are the quarters of winning acts now.** `cuts_of` takes every winning player's acts, reads
+each the old way (guard and pace against its own tier's winners on each fight) and keeps where the worst
+and best quarter start, act by act, and for whole winning runs. They go in fight_demand.json as `cuts`
+and replace `EDGES` and `SLOW, FAST`. Low is guard under the first quarter, Hype over the third, or a Mid
+faster than the third quarter on pace with guard at least 1. Speed still lifts and never sinks: the
+user's call. A run reads against winning runs' quarters.
+
+**Every tier goes in together.** Each act is already held to its own tier's average win, so only the
+spread is shared, and it hardly differs: the quarters of guard are about .75 and 1.5 in every tier and
+act (solo under 8, acts 1 to 3: .77/.75/.73 and 1.35/1.48/1.55; 9 and up, 20 wins: .82/.77/.58 and
+1.22/1.41/1.46). Ascension 8 has 6 to 8 winning acts, too few for quarters of its own. On today's
+history: guard .781/.756/.715 and 1.377/1.532/1.525 by act, pace .92/.894/.867 and 1.11/1.137/1.173; runs
+.799 and 1.325 on guard, .909 and 1.11 on pace.
+
+**What moved.** 560 of 3,935 player-acts change reading: 406 Mid to Low (Low starts at about .75 now, not
+.67), 145 Mid to Hype and 9 Hype to Mid. By design about a quarter of winning acts read Low (416 of 1,666;
+259 before). Held out, every act and whole run still sorts Low < Mid < Hype on how often the run won,
+under 8 solo and co-op. 9 and up act 1 does not (Hype 3% of 35 against Mid 14%), and did not before
+either (4% against 11%). `held_out` takes its quarters from the training half too.
+
+**The page.** One caption has the rule, "Ranked against winning acts: ▲ Hype is less damage taken
+than 3 in 4 wins, or faster than 3 in 4 with no more damage than the average. – Mid is the middle half.
+▼ Low is more damage taken than 3 in 4 wins." That wording is a draft until the user OKs it. The bar and
+the "Hype at N or less, Low from M" hover come from the act's quarters (`keepActCut`), so the HP cut
+points are the same kind of number as before. A fight_demand.json with no `cuts` gives no reading.
+
+**Checked.** The page and the Python agree on all 633 of the user's solo runs, run and acts alike.
+Abandoned runs are read on the page only. The act cards were looked at on the logged Ironclad and on run
+1774189616 at 1920 and 390 px: no sideways scroll, no page errors.
+
+### Keeping Up by Floor: two tiers, under 8 and 8 and up (2026-11-03)
+
+**8, 9 and 10 read together now.** The user's call: those are the levels that change the enemies
+(Tough Enemies at 8, Deadly Enemies at 9, Double Boss at 10), and under 8 changes none. Each alone has
+too few wins (8 runs won at 8, 8 at 9, 12 at 10, all solo), and splitting 10 from 9 was measured first:
+fights with a line would drop from 78% to 55% at 9 and from 83% to 71% at 10. With the two tiers,
+86%, 81% and 86% of fights at 8, 9 and 10 have one. `TIERS` is 2, `tier` is `asc >= 8`, the page's
+`keepTier` the same, and the page names them A0–7 and A8+.
+
+**What it costs.** Monsters at 8 hit softer than at 9 and 10, and now share their line: winning acts at
+8 have a median guard of 1.32 against .83 at 9 and 1.01 at 10, so a run at 8 reads a little better than
+it would against its own level. Held out, solo at 8 and up sorts Low < Mid < Hype in act 1 (3%, 13%,
+16%), act 3 (29%, 69%, 73%) and whole runs (3%, 16%, 26%, OP 83% of 6). Act 2 doesn't: Hype 33% of 27
+against Mid 40% of 20. Act 1 at 9 and up no longer inverts. The quarters barely move: guard
+.78/.753/.715 and 1.391/1.537/1.521, pace .918/.891/.867 and 1.109/1.137/1.177, runs .799/1.337 and
+.909/1.11.
+
+**The page.** The rule under the heading is a key in two columns, a draft until the user OKs it:
+"Graded on: Damage taken after healing, against wins on the same fights at A0–7 (or A8+). Energy and
+draw aren't graded", then Hype, Mid and Low as before. Its marks are filled from `KEEP_SIGNS`, so they
+are the pills' marks, whatever those become.

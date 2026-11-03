@@ -7,18 +7,23 @@ and the average damage taken. Each floor reads against its own fight, never an a
 different monsters.
 
 An act reads the same way: each fight against its own winners, then summed, so an act of
-hard monsters isn't behind for being hard. Behind is on damage taken alone, since a poison
-deck wins slowly and is fine so long as damage taken holds. Ahead is much less damage
-taken, or killing much faster without taking more: speed can lift an act and never sinks
-one. A behind act says what was lacking from the same two numbers: damage taken is turns
+hard monsters isn't behind for being hard. Where it lands is among winning acts: behind
+is more damage taken than 3 in 4 of them, ahead less than 3 in 4, or faster than 3 in 4
+without taking more than the average win. Damage taken decides alone otherwise, since a
+poison deck wins slowly and is fine so long as damage taken holds: speed can lift an act
+and never sinks one. The quarters are of winning acts in every tier at once, since each
+is already held to its own tier's winners; a tier with few wins couldn't have its own.
+A behind act says what was lacking from the same two numbers: damage taken is turns
 times damage a turn, so it's damage if the fights ran long and block if too much came in
-each turn. A run reads the same way again, its acts summed, so it follows from them, and
-OP is reading ahead in both of the last two acts.
+each turn. A run reads the same way again, its acts summed, against the quarters of
+winning runs, so it follows from them, and OP is reading ahead in both of the last two
+acts.
 
-Ascension changes the fight itself: Tough Enemies at 8 raises enemy HP and Deadly Enemies
-at 9 raises their damage. So an encounter has one set of lines per tier of how its
-monsters are tuned, under 8, 8, and 9 and up, and a fight reads against its own tier's
-wins or not at all. Ascension 0 goes with 1 to 7, none of which touch a monster.
+Ascension changes the fight itself from 8: Tough Enemies at 8 raises enemy HP, Deadly
+Enemies at 9 raises their damage, and Double Boss at 10 adds a second boss fight. So an
+encounter has one set of lines for under 8 and one for 8 and up, and a fight reads against
+its own tier's wins or not at all. Ascension 0 goes with 1 to 7, none of which touch a
+monster. 8, 9 and 10 go together: each alone has too few wins to read against.
 
 Three findings shape the reading, and all are in power_curve_decisions.md:
 
@@ -62,11 +67,10 @@ import telemetry_report as tr
 
 OUT = pc.WT / "fight_demand.json"
 
-# Ascension levels the monsters change at: enemy HP, then enemy damage. Double Boss, at 10,
-# changes neither: the second boss is another boss fight, on the next floor.
-TOUGH, DEADLY = 8, tr.DEADLY
+# The ascension the enemies start to change at (Tough Enemies); every level from it on does.
+TOUGH = 8
 # Ways the monsters are tuned, one line per tier (see tier).
-TIERS = 3
+TIERS = 2
 # Winning fights a tier takes on an encounter before it has a line to read against.
 WON_MIN = 3
 # The player's own pets, listed in a room's monster_ids beside the enemies. Two of them
@@ -82,16 +86,9 @@ OVER_POOL = 1.25
 COOP_MIN = 5
 # Fights an act takes before it gets a reading. One fight against its line isn't an act.
 ACT_MIN = 3
-# Winners' damage taken over yours, where behind ends and ahead starts. About 1 in 6
-# winning acts and over half of losing acts read under the first, under 8 and at 9 and up
-# alike, each on its own tier's line.
-EDGES = (0.67, 1.5)
 # How close to the end of a lost run a fight has to be for --check to count it as part
 # of the loss.
 SOON = 3
-# Winners' turns over yours: much slower under the first, much faster over the second, the
-# same gap each way.
-SLOW, FAST = 0.8, 1.25
 # The acts a run has to read ahead in to be OP, counted from 0: the second and third, the
 # ones that sort runs best. Every held-out run under 8 ahead in both won, at the time of
 # writing, as did 5 of the 6 at 9 and up.
@@ -99,7 +96,7 @@ OP_ACTS = {1, 2}
 # The game version a room's monster_ids starts listing enemies that join mid-fight, not just
 # the opening line-up. The last run without them is v0.103.3, the first with them v0.106.1.
 SPAWNS_LISTED = (0, 106)
-TIER_NAMES = ("under 8", "ascension 8", "9 and up")
+TIER_NAMES = ("under 8", "8 and up")
 # What the game data gives a pet (see PETS). On anything else, a patch has added one.
 PLACEHOLDER_HP = 9999
 
@@ -200,9 +197,9 @@ def winners(fights):
 
 
 def tier(asc):
-    """How an ascension's monsters are tuned: 0 under Tough Enemies, 1 with it, 2 with
-    Deadly Enemies too. The page's keepTier is this function."""
-    return (asc >= TOUGH) + (asc >= DEADLY)
+    """How an ascension's monsters are tuned: 0 as the game made them, 1 from Tough
+    Enemies on. The page's keepTier is this function."""
+    return int(asc >= TOUGH)
 
 
 def winners_of(f, d):
@@ -287,15 +284,13 @@ def readings(fights, demand):
     return out
 
 
-def act_readings(fights, demand, taken=lambda f: f["taken"]):
+def act_totals(fights, demand, taken=lambda f: f["taken"]):
     """One row per act of a run, each fight held to its own winners and the act summed.
     Over 1 is better than winners on all three: pace is their turns over yours, guard is
     their damage taken over yours, with 1 added to both so an act with none still divides,
     and each is what's left of guard once pace is out of it, their damage a turn over
-    yours. pace and guard make the verdict and each has its own mark, speed and held; each
-    says why. The fight that ended the run is left out: it says how the run ended, and
-    every lost run would read behind for it. The page's actReadings is this function; keep
-    them together."""
+    yours. The fight that ended the run is left out: it says how the run ended, and every
+    lost run would read behind for it."""
     out = []
     for act in sorted({f["act"] for f in fights}):
         part = [(f, how) for f in fights if f["act"] == act and not f["died"] and f["enc"] in demand
@@ -307,46 +302,89 @@ def act_readings(fights, demand, taken=lambda f: f["taken"]):
         got = sum(taken(f) for f, _ in part)
         win_got = sum(how["taken"] for _, how in part)
         pace, guard = win_turns / turns, (win_got + 1) / (got + 1)
-        each = guard / pace
-        place = verdict(pace, guard)
         out.append({"act": act, "fights": len(part), "turns": turns, "winTurns": win_turns,
-                    "taken": got, "winTaken": win_got, "pace": pace, "guard": guard, "each": each,
-                    "speed": mark(pace, (SLOW, FAST)), "held": mark(guard, EDGES),
-                    "verdict": place, "lacking": lacking(pace, each) if place == "behind" else None})
+                    "taken": got, "winTaken": win_got, "pace": pace, "guard": guard, "each": guard / pace})
     return out
 
 
-def run_reading(acts):
-    """A run as a whole, from its act_readings: their totals through the same verdict, so
-    it follows from the acts it sits above. None with no act to read. op is both OP_ACTS
-    reading ahead, whichever way they got there, and takes no win: the fight that ended a
-    lost run is left out here as it is from an act. The page's runReading is this function;
-    keep them together."""
+def act_readings(fights, demand, cuts, taken=lambda f: f["taken"]):
+    """act_totals, each act read against its own act's quarters of winning acts. pace and
+    guard make the verdict and each has its own mark, speed and held; each says why. The
+    page's actReadings is this function; keep them together."""
+    out = []
+    for row in act_totals(fights, demand, taken):
+        cut = act_cut(cuts, row["act"])
+        place = verdict(row["pace"], row["guard"], cut)
+        out.append({**row, "speed": mark(row["pace"], cut["pace"]), "held": mark(row["guard"], cut["guard"]),
+                    "verdict": place, "lacking": lacking(row["pace"], row["each"]) if place == "behind" else None})
+    return out
+
+
+def run_totals(acts):
+    """A run's acts added up, with pace and guard on the totals. None with no act."""
     if not acts:
         return None
     turns, win_turns = (sum(a[key] for a in acts) for key in ("turns", "winTurns"))
     got, win_got = (sum(a[key] for a in acts) for key in ("taken", "winTaken"))
-    pace, guard = win_turns / turns, (win_got + 1) / (got + 1)
-    ahead = {a["act"] for a in acts if a["verdict"] == "ahead"}
     return {"turns": turns, "winTurns": win_turns, "taken": got, "winTaken": win_got,
-            "pace": pace, "guard": guard, "verdict": verdict(pace, guard), "op": OP_ACTS <= ahead}
+            "pace": win_turns / turns, "guard": (win_got + 1) / (got + 1)}
 
 
-def player_acts(runs, demand):
-    """(solo or coop, tier, won the run, act readings) for every player of every run. The
-    page reads the local player of a party, and any of them could be."""
+def run_reading(acts, cuts):
+    """A run as a whole, from its act_readings: their totals through the same verdict,
+    against the quarters of winning runs, so it follows from the acts it sits above. None
+    with no act to read. op is both OP_ACTS reading ahead, whichever way they got there,
+    and takes no win: the fight that ended a lost run is left out here as it is from an
+    act. The page's runReading is this function; keep them together."""
+    whole = run_totals(acts)
+    if not whole:
+        return None
+    ahead = {a["act"] for a in acts if a["verdict"] == "ahead"}
+    return {**whole, "verdict": verdict(whole["pace"], whole["guard"], cuts["run"]), "op": OP_ACTS <= ahead}
+
+
+def players(runs, demand, read):
+    """(solo or coop, tier, won the run, read(fights, demand, taken)) for every player of
+    every run. The page reads the local player of a party, and any of them could be."""
     for fights in runs:
         mode = "coop" if fights[0]["coop"] else "solo"
         for who in range(len(fights[0]["each"])):
-            acts = act_readings(fights, demand, lambda f: f["each"][who])
-            yield mode, tier(fights[0]["asc"]), not fights[-1]["died"], acts
+            yield mode, tier(fights[0]["asc"]), not fights[-1]["died"], read(fights, demand, lambda f: f["each"][who])
 
 
-def act_rows(runs, demand):
+def player_acts(runs, demand, cuts):
+    """(solo or coop, tier, won the run, act readings) for every player of every run."""
+    return players(runs, demand, lambda fights, d, taken: act_readings(fights, d, cuts, taken))
+
+
+def act_rows(runs, demand, cuts):
     """player_acts, one act to a row."""
-    for mode, level, won, acts in player_acts(runs, demand):
+    for mode, level, won, acts in player_acts(runs, demand, cuts):
         for row in acts:
             yield mode, level, won, row
+
+
+def quarters(rows):
+    """{guard, pace}: where the worst and best quarter of these rows start on each,
+    rounded so the page reads the same numbers."""
+    return {key: [round(q, 3) for q in statistics.quantiles([r[key] for r in rows], n=4)[::2]]
+            for key in ("guard", "pace")}
+
+
+def cuts_of(runs, demand):
+    """{acts: [one per act], run}: the quarters of winning players' acts, act by act, and
+    of winning runs as a whole. Every tier and both modes go in together: each act is
+    already held to its own tier's winners, and a tier with few wins couldn't have its
+    own quarters. Goes in fight_demand.json for the page."""
+    won = [acts for _, _, w, acts in players(runs, demand, act_totals) if w and acts]
+    acts = sorted({a["act"] for each in won for a in each})
+    return {"acts": [quarters([a for each in won for a in each if a["act"] == act]) for act in acts],
+            "run": quarters([run_totals(each) for each in won])}
+
+
+def act_cut(cuts, act):
+    """An act's quarters. An act past the last one winners reached has the run's."""
+    return cuts["acts"][act] if act < len(cuts["acts"]) else cuts["run"]
 
 
 def mark(value, edges):
@@ -354,11 +392,12 @@ def mark(value, edges):
     return "behind" if value < edges[0] else "ahead" if value > edges[1] else "meeting"
 
 
-def verdict(pace, guard):
-    """Where an act reads: by damage taken, unless it killed much faster without taking
-    more than winners. Speed only ever lifts a reading. `keepVerdict` on the page."""
-    held = mark(guard, EDGES)
-    return "ahead" if held == "meeting" and pace > FAST and guard >= 1 else held
+def verdict(pace, guard, cut):
+    """Where an act reads among winners: by damage taken, unless it killed faster than 3
+    in 4 of them without taking more than the average win. Speed only ever lifts a
+    reading. `keepVerdict` on the page."""
+    held = mark(guard, cut["guard"])
+    return "ahead" if held == "meeting" and pace > cut["pace"][1] and guard >= 1 else held
 
 
 def lacking(pace, each):
@@ -404,38 +443,42 @@ def check_rows(label, rows):
         band(part, damage, (0.7, 1, 1.3), "Damage", **soon)
 
 
-def held_out(runs):
-    """{(mode, tier, act, verdict): [(run won, pace), ...]}, and the same under
+def held_out(runs, cuts=None):
+    """{(mode, tier, act, verdict): [(run won, pace, much slower), ...]}, and the same under
     (mode, tier, "run", verdict) for whole runs and (mode, tier, "run", "op") for OP ones.
-    The averages come from half the runs and the reading is of the other half, both ways
-    round, so every run is read and none against a line it helped make. Tiers stay apart
-    because how often a run wins depends on the tier as much as on the reading: at the time
-    of writing, 35% under 8 and 5% at 9 and up."""
+    The averages and the quarters come from half the runs and the reading is of the other
+    half, both ways round, so every run is read and none against a line it helped make.
+    cuts, if given, stands in for the quarters. Tiers stay apart because how often a run
+    wins depends on the tier as much as on the reading: at the time of writing, 35% under 8
+    and 5% at 9 and up."""
     halves = runs[::2], runs[1::2]
     cells = defaultdict(list)
     for train, test in (halves, halves[::-1]):
-        for mode, level, won, acts in player_acts(test, table(train)):
+        demand = table(train)
+        cut = cuts or cuts_of(train, demand)
+        for mode, level, won, acts in player_acts(test, demand, cut):
             for row in acts:
-                cells[mode, level, row["act"], row["verdict"]].append((won, row["pace"]))
-            whole = run_reading(acts)
+                cells[mode, level, row["act"], row["verdict"]].append((won, row["pace"], row["speed"] == "behind"))
+            whole = run_reading(acts, cut)
             if whole:
-                cells[mode, level, "run", whole["verdict"]].append((won, whole["pace"]))
+                slow = mark(whole["pace"], cut["run"]["pace"]) == "behind"
+                cells[mode, level, "run", whole["verdict"]].append((won, whole["pace"], slow))
                 if whole["op"]:
-                    cells[mode, level, "run", "op"].append((won, whole["pace"]))
+                    cells[mode, level, "run", "op"].append((won, whole["pace"], slow))
     return cells
 
 
 def check_acts(runs):
-    """Run won, by how each act read, and on the acts much slower than winners alone,
+    """Run won, by how each act read, and on the acts slower than 3 in 4 winners alone,
     which is whether slow is safe. Then the same by how the whole run read, with OP runs
     among them."""
     cells = held_out(runs)
-    rate = lambda c: f"{sum(won for won, _ in c) / len(c):4.0%} ({len(c):3})" if c else "   -  "
+    rate = lambda c: f"{sum(won for won, *_ in c) / len(c):4.0%} ({len(c):3})" if c else "   -  "
     for mode, level, act in sorted({k[:3] for k in cells if k[2] != "run"}):
         print(f"\n{mode}, {TIER_NAMES[level]}, act {act + 1}, held out: run won, by reading")
         for place in ("behind", "meeting", "ahead"):
             c = cells[mode, level, act, place]
-            print(f"  {place:8}{rate(c)}   much slower {rate([x for x in c if x[1] < SLOW])}")
+            print(f"  {place:8}{rate(c)}   much slower {rate([x for x in c if x[2]])}")
     for mode, level in sorted({k[:2] for k in cells}):
         print(f"\n{mode}, {TIER_NAMES[level]}, whole run, held out: run won, by reading")
         for place in ("behind", "meeting", "ahead", "op"):
@@ -452,7 +495,10 @@ def main():
     if "--check" in sys.argv:
         check(runs, demand)
         return
-    OUT.write_text(json.dumps({"encounters": demand}, separators=(",", ":")), encoding="utf-8")
+    cuts = cuts_of(runs, demand)
+    OUT.write_text(json.dumps({"encounters": demand, "cuts": cuts}, separators=(",", ":")), encoding="utf-8")
+    print(f"quarters of winning acts, guard then pace: "
+          f"{[(c['guard'], c['pace']) for c in cuts['acts']]}; runs {cuts['run']['guard']}, {cuts['run']['pace']}")
     seen = {m for fights in runs for f in fights for m in f["ids"]}
     missing = sorted(m for m in seen if not body_pool(m)[0])
     print(f"{OUT.name}: {len(demand)} encounters from {len(runs)} runs, "
