@@ -220,9 +220,8 @@ const sharedAscGranularBtn = document.getElementById("shared-asc-granular");
 const sharedAscAll     = document.getElementById("shared-asc-all");
 const sharedAscNone    = document.getElementById("shared-asc-none");
 
-function setGold(btn, on) {
-  btn.style.color       = on ? "#e0c468" : "";
-  btn.style.borderColor = on ? "#e0c468" : "";
+function setActive(btn, on) {
+  btn.classList.toggle("active", on);
 }
 
 function syncAscControls() {
@@ -230,9 +229,9 @@ function syncAscControls() {
     cb.checked = sharedActiveAscs.has(+cb.value);
     cb.closest("label").classList.toggle("checked", cb.checked);
   });
-  setGold(sharedAscAll,  sharedActiveAscs.size === DATA.ascensions.length);
-  setGold(sharedAscNone, sharedActiveAscs.size === 0);
-  setGold(sharedAscGranularBtn, sharedAscGranular);
+  setActive(sharedAscAll,  sharedActiveAscs.size === DATA.ascensions.length);
+  setActive(sharedAscNone, sharedActiveAscs.size === 0);
+  setActive(sharedAscGranularBtn, sharedAscGranular);
   sharedAscGranularBtn.setAttribute("aria-pressed", String(sharedAscGranular));
   sharedAscBox.style.display = sharedAscGranular ? "flex" : "none";
   sharedAscAll.style.display = sharedAscNone.style.display = sharedAscGranular ? "" : "none";
@@ -343,11 +342,7 @@ const sharedModeButtons = {
 
 function setSharedMode(mode) {
   sharedActiveMode = mode;
-  Object.entries(sharedModeButtons).forEach(([key, btn]) => {
-    const active = key === mode;
-    btn.style.color       = active ? "#e0c468" : "";
-    btn.style.borderColor = active ? "#e0c468" : "";
-  });
+  Object.entries(sharedModeButtons).forEach(([key, btn]) => setActive(btn, key === mode));
   rerenderCurrentPage();
 }
 
@@ -363,12 +358,7 @@ document.getElementById("shared-date-to").value   = tsToDateStr(maxTs);
 
 const SHARED_DATE_BTN_IDS = ["shared-date-7d", "shared-date-30d", "shared-date-90d", "shared-date-today", "shared-date-alltime"];
 function setActiveSharedDateBtn(activeId) {
-  SHARED_DATE_BTN_IDS.forEach(id => {
-    const btn = document.getElementById(id);
-    const on  = id === activeId;
-    btn.style.color       = on ? "#e0c468" : "";
-    btn.style.borderColor = on ? "#e0c468" : "";
-  });
+  SHARED_DATE_BTN_IDS.forEach(id => setActive(document.getElementById(id), id === activeId));
 }
 
 document.getElementById("shared-date-from").addEventListener("change", e => {

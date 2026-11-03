@@ -328,7 +328,7 @@ function makeRestActChart(id) {
         legend: { labels: { color: "#ccc", boxWidth: 12 } },
         tooltip: {
           callbacks: {
-            title: items => `${items[0].label} times chosen`,
+            title: items => `${items[0].label} ${+items[0].label === 1 ? "time" : "times"} chosen`,
             label: ctx => {
               if (ctx.parsed.y == null) return null;
               const n = ctx.dataset.counts[ctx.dataIndex];
@@ -465,7 +465,7 @@ const eliteCheckpointChart = new Chart(document.getElementById("eliteCheckpointC
       legend: { labels: { color: "#ccc", boxWidth: 12 } },
       tooltip: {
         callbacks: {
-          title: items => `${items[0].label} elites defeated so far`,
+          title: items => `${items[0].label} ${+items[0].label === 1 ? "elite" : "elites"} defeated so far`,
           label: ctx => {
             if (ctx.parsed.y == null) return null;
             const n = ctx.dataset.counts[ctx.dataIndex];

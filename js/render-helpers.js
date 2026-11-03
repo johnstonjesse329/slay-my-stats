@@ -55,17 +55,17 @@ function renderCards(grand, charStats, restAvg) {
   const winPct = grand.win_pct !== null ? grand.win_pct + "%" : "—";
   const items = [
     { label: "Win %", value: winPct },
-    { label: "Best Win %", value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
-      tip: charStats[bestIdx].win_pct !== null ? `${fmtCharName(chars[bestIdx])} · ${charStats[bestIdx].wins}W / ${charStats[bestIdx].runs}L` : "No wins" },
-    { label: "Most Played",    value: fmtCharName(chars[mostIdx]),
+    { label: "Best win %", value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—",
+      tip: charStats[bestIdx].win_pct !== null ? `${fmtCharName(chars[bestIdx])} · ${charStats[bestIdx].wins}W / ${charStats[bestIdx].losses}L` : "No wins" },
+    { label: "Most played",    value: fmtCharName(chars[mostIdx]),
       // Run count is the Runs card's value — show only the share here.
       tip: `${mostPlayedPct}% of all runs` },
-    { label: "Gold Gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
+    { label: "Gold gained", value: grand.runs ? grand.total_gold.toLocaleString() : "—",
       tip: grand.runs ? `median ${grand.median_gold.toLocaleString()} per run` : "" },
     // Elites and bosses are a card each. The row stays at 8 cards, which
     // divides evenly into 4 + 4 instead of leaving a ragged edge.
-    { label: "Elites Defeated", value: grand.runs ? grand.total_elites_defeated.toLocaleString() : "—" },
-    { label: "Bosses Defeated", value: grand.runs ? grand.total_bosses_defeated.toLocaleString() : "—" },
+    { label: "Elites defeated", value: grand.runs ? grand.total_elites_defeated.toLocaleString() : "—" },
+    { label: "Bosses defeated", value: grand.runs ? grand.total_bosses_defeated.toLocaleString() : "—" },
   ];
 
   // The scope note is worth keeping — a filtered number must not read as a
@@ -81,21 +81,22 @@ function renderCards(grand, charStats, restAvg) {
     <div class="value">${grand.runs}</div>
   </div>`;
 
-  // Leads the row — total time invested is one of the most immediately
-  // relevant stats, ahead of even the Runs count.
   const timeCard = `<div class="card"${grand.runs ? ` data-tip="median ${grand.median_min}m per run" tabindex="0"` : ""}>
-    <div class="label">Time Played</div>
+    <div class="label">Time played</div>
     <div class="value">${grand.runs ? fmtHrsMin(grand.total_min) : "—"}</div>
   </div>`;
 
-  document.getElementById("summary-cards").innerHTML = timeCard + runsCard + items.map(card =>
-    // tabindex so the data-tip is reachable by keyboard and by a phone tap, the
-    // same way the Personal Bests rows do it.
+  // tabindex so the data-tip is reachable by keyboard and by a phone tap, the
+  // same way the Personal Bests rows do it.
+  const itemCard = card =>
     `<div class="card"${card.tip ? ` data-tip="${card.tip}" tabindex="0"` : ""}>
       <div class="label">${card.label}</div>
       <div class="value">${card.value}</div>
-    </div>`
-  ).join("");
+    </div>`;
+
+  // Win % first, totals last.
+  document.getElementById("summary-cards").innerHTML =
+    items.slice(0, 3).map(itemCard).join("") + timeCard + runsCard + items.slice(3).map(itemCard).join("");
 }
 
 function renderPersonalBests() {
@@ -182,7 +183,7 @@ function renderPersonalBests() {
 
   const heading = (title, note = "") =>
     `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;border-top:1px solid #3f4147;margin-top:0.4rem;padding-top:0.35rem;margin-bottom:0.15rem">
-      <span style="font-size:var(--fs-xs);color:#a8a2c4;text-transform:uppercase;letter-spacing:.06em;font-weight:600">${title}</span>
+      <span style="font-size:var(--fs-xs);color:#a8a2c4;font-weight:600">${title}</span>
       <span style="font-size:var(--fs-xs);color:#8a8aa0;text-align:right">${note}</span>
     </div>`;
 
@@ -193,7 +194,7 @@ function renderPersonalBests() {
   const colHead = text =>
     `<div style="font-size:var(--fs-xs);color:#a8a2c4;font-weight:600">${text}</div>`;
   const groupLabel = text =>
-    `<div style="grid-column:1/-1;font-size:var(--fs-xs);color:#8a8aa0;text-transform:uppercase;letter-spacing:.06em;margin-top:0.2rem">${text}</div>`;
+    `<div style="grid-column:1/-1;font-size:var(--fs-xs);color:#8a8aa0;margin-top:0.2rem">${text}</div>`;
   const favGrid = (headA, headB, groups) =>
     `<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:0.15rem 0.6rem;border-top:1px solid #3f4147;margin-top:0.4rem;padding-top:0.35rem">
       ${colHead(headA)}${colHead(headB)}
@@ -214,8 +215,8 @@ function renderPersonalBests() {
       : "—";
     const fav = favorites[char];
 
-    return `<div class="card" style="border-color:${color}55;box-sizing:border-box">
-      <div style="font-size:var(--fs-sm);font-weight:700;color:${color};letter-spacing:.04em;margin-bottom:0.35rem">${label.toUpperCase()}</div>
+    return `<div class="card" style="border-top:2px solid ${color};box-sizing:border-box">
+      <div style="font-size:var(--fs-sm);font-weight:700;color:${color};margin-bottom:0.35rem">${label}</div>
       ${row("Runs", b.gamesPlayed || "—")}
       ${row("Wins", b.gamesPlayed
         ? `${b.totalWins}<span style="color:#8a8aa0;font-weight:400"> · </span>${Math.round(b.totalWins / b.gamesPlayed * 100)}%`
@@ -273,7 +274,7 @@ function renderPersonalBests() {
 // for only the big difficulty jumps, A1 / A8 / A9 / A10, left a character on
 // one pip all the way from A1 to its A8 win.) A pip lights on a WON run at
 // that ascension or above: ascensions unlock in order, so an A10 win means
-// the earlier ones were beaten too.
+// the earlier ones were beaten too. The rung they're on now is outlined.
 const ASC_TRACKER_MAX = 10;
 const ASC_TRACKER_LEVELS = Array.from({ length: ASC_TRACKER_MAX }, (_, i) => i + 1);
 const ASC_TRACKER_MODES = [
@@ -306,8 +307,9 @@ function renderAscTracker() {
   const block = (char, color, mode) => {
     const t = aggregateAscTracker(standard.filter(run => run.char === char && mode.test(run)));
     const won = t && t.highestWin ? t.highestWin.value : -1;
-    const pips = ASC_TRACKER_LEVELS.map(level =>
-      `<span class="asc-pip" data-tip="A${level}"${won >= level ? ` style="background:${color}"` : ""}></span>`).join("");
+    const pips = ASC_TRACKER_LEVELS.map(level => {
+      return `<span class="asc-pip" data-tip="A${level}" style="--rung:${level}${won >= level ? `;background:${color}` : ""}"></span>`;
+    }).join("");
     if (!t) {
       return `<div class="asc-mode">
         <div class="asc-mode-label">${mode.label}</div>
@@ -564,7 +566,7 @@ function renderWinPivot(pivotData) {
   let html = `<thead><tr>
     <th class="char-head">Character</th>
     ${ascs.map(col => `<th>${col.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">All<br>Ascensions</th>
+    <th class="all-col" style="border-left:2px solid #3f4147">All<br>ascensions</th>
   </tr></thead><tbody>`;
 
   chars.forEach(char => {
@@ -575,7 +577,7 @@ function renderWinPivot(pivotData) {
   });
 
   html += `<tr class="total-row">
-    <td class="char-name" style="color:#e0c468">All Characters</td>`;
+    <td class="char-name" style="color:#e0c468">All characters</td>`;
   ascs.forEach(col => { html += winCell(pivotData["ALL"]?.[col.key], false); });
   html += winCell(pivotData["ALL"]?.["ALL"], true);
   html += `</tr></tbody>`;
@@ -680,7 +682,7 @@ function renderFinalBossWinPivot(filteredRuns) {
   let html = `<thead><tr>
     <th class="char-head">Character</th>
     ${cols.map(c => `<th>${c.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">All<br>Ascensions</th>
+    <th class="all-col" style="border-left:2px solid #3f4147">All<br>ascensions</th>
   </tr></thead><tbody>`;
 
   chars.forEach(char => {
@@ -691,7 +693,7 @@ function renderFinalBossWinPivot(filteredRuns) {
   });
 
   html += `<tr class="total-row">
-    <td class="char-name" style="color:#e0c468">All Characters</td>`;
+    <td class="char-name" style="color:#e0c468">All characters</td>`;
   cols.forEach(c => { html += finalBossWinCell(pivotData["ALL"]?.[c.key], false); });
   html += finalBossWinCell(pivotData["ALL"]?.["ALL"], true);
   html += `</tr></tbody>`;
@@ -769,7 +771,7 @@ function renderTimeLanes(pivotData) {
       `<span class="fl-fill" style="width:${width}%;background:${color}"></span>` +
       `<span class="fl-value" style="left:calc(${width}% + 8px)">${hrs}h · ${Math.round(share)}%</span></div>`;
   };
-  renderCharLanes("time-lanes", pivotData, ["Hours", `Median Run Length<span class="fl-legend">${LOST_WON_KEY}</span>`],
+  renderCharLanes("time-lanes", pivotData, ["Hours", `Median run length<span class="fl-legend">${LOST_WON_KEY}</span>`],
     (s, color) => [hoursLane(s, color), lostWonLane(s, color, s.median_loss_min, s.median_win_min, minMax, fmtHrsMin)],
     [charLaneAxis(hrsMax, v => `${v}h`), charLaneAxis(minMax, v => `${v}m`)]);
 }

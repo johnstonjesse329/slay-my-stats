@@ -21,7 +21,7 @@ Usage:
         Cleans dist/ and rebuilds it from card_data.json / relic_data.json /
         potion_data.json, dashboard.css, js/*.js, and site/ (boot.js and
         the upload button/panel, the player finder's CSS, the hand-written
-        pages in site/pages/ and site/home-intro.html). --ingest-url is the ingest Lambda's
+        pages in site/pages/, site/home-intro.html and its fonts and pictures). --ingest-url is the ingest Lambda's
         Function URL, written to dist/site-config.json for the upload page.
 """
 
@@ -50,6 +50,14 @@ SHARED_JS = ("map-bg.js", "tooltip.js", "item-tips.js")
 # same folder to route those URLs, and tools/serve_site.py reads it live.
 PAGES_DIR = _HERE / "site" / "pages"
 HOME_INTRO = _HERE / "site" / "home-intro.html"
+# Binary files published as they are, under their own names at the site root
+# (dashboard.css asks for the fonts there; site/home-intro.html and the link
+# preview tags for the images). site/fonts/OFL.txt is Kreon's licence.
+SITE_FILES = (_HERE / "site" / "fonts" / "kreon-400.woff2", _HERE / "site" / "fonts" / "kreon-700.woff2",
+              _HERE / "site" / "home-preview.webp", _HERE / "site" / "og-preview.png")
+SITE_URL = "https://slay-my-stats.com"
+SITE_DESCRIPTION = ("Slay your stats by uploading and reviewing your run history "
+                    "with a focus on you rather than aggregates.")
 _PAGE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # First-level paths the site already uses; a page there would shadow them.
 _RESERVED_PAGES = {"u", "users", "ids", "api", "index", "card_final", "card_portraits", "node_icons",
@@ -169,12 +177,20 @@ def build_index_html() -> str:
     links = [(f"/{name}", html.escape(label)) for name, _, label in site_pages() if label]
     body = run.dashboard_body_html(site_links=links)
     shared_scripts = "\n".join(f'<script src="/{name}"></script>' for name in SHARED_JS)
+    # Every URL serves this same file, so a shared link says what the site is
+    # rather than whose page it is: link previews don't run boot.js.
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Slay the Spire 2 — Run History</title>
+  <meta name="description" content="{SITE_DESCRIPTION}">
+  <meta property="og:title" content="Slay My Stats">
+  <meta property="og:description" content="{SITE_DESCRIPTION}">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="{SITE_URL}/og-preview.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/png" href="/node_icons/elite.png">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
   <link rel="stylesheet" href="/dashboard.css">
@@ -220,6 +236,8 @@ def main():
         print(f"WARNING: {_SITE_BOOT_JS} does not exist yet — dist/boot.js not written.")
     for name in ("upload.js", "upload.css", "players.css"):
         write(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
+    for f in SITE_FILES:
+        write(f.name, f.read_bytes())
     # Page bodies, fetched by boot.js. Flat names (not a pages/ folder) so
     # tools/deploy.py's top-level ETag check covers them.
     write("home-intro.html", HOME_INTRO.read_text(encoding="utf-8"))

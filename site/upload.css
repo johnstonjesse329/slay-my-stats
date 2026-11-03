@@ -1,22 +1,23 @@
 /* Upload button + panel (site/upload.js). Live site only, so it lives here
    rather than in dashboard.css, which run.py's local build inlines too. */
 
-.upload-btn {
+/* The one filled button on the site: the way to get your own page. Every page
+   carries it in the bar, through that entry's href, since the bar's links are
+   all built alike (run.py dashboard_body_html). */
+.upload-btn, .site-links .site-link[href='/upload'] {
   font: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--gold);
-  background: rgba(224,196,104,0.08);
-  border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent);
+  font-weight: 700;
+  color: var(--bg-deep);
+  background: var(--gold);
+  border: 1px solid var(--gold);
   border-radius: 6px;
-  padding: 0.45rem 0.9rem;
   cursor: pointer;
   display: inline-block;
-  /* The bar's entry and the Upload page's call to action are links now, so they
-     must not pick up the underline. */
   text-decoration: none;
 }
-.upload-btn:hover { background: rgba(224,196,104,0.16); box-shadow: 0 0 10px var(--gold-glow); }
+.upload-btn { padding: 0.65rem 1.25rem; }
+.site-links .site-link[href='/upload'] { font-size: 0.85rem; padding: 0.35rem 0.8rem; }
+.upload-btn:hover, .site-links .site-link[href='/upload']:hover { color: var(--bg-deep); background: var(--gold-bright); border-color: var(--gold-bright); }
 .upload-btn:focus-visible, .upload-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 .upload-link {
@@ -57,7 +58,6 @@
 .upload-steps { margin: 0 0 0.75rem 1.4rem; line-height: 1.5; }
 .upload-steps li { margin-bottom: 0.9rem; padding-left: 0.2rem; }
 .upload-steps li::marker { color: var(--gold); font-weight: 700; }
-.upload-steps strong { color: var(--text); }
 /* The path and its Copy button read as one field. */
 .upload-path { display: flex; align-items: stretch; margin-top: 0.4rem; max-width: 100%; }
 .upload-panel .upload-path code {

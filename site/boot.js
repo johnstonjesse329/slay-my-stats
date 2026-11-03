@@ -353,7 +353,7 @@
     return players;
   }
 
-  // ---- The root page: one line of intro, then the stats ---------------------
+  // ---- The root page: the hero, then the stats -------------------------------
   async function showFinder() {
     showFallback("");
     const main = document.getElementById("main-content");
@@ -361,7 +361,12 @@
     // site/home-intro.html. It sits above the stats; if the fetch fails this
     // stays an empty div, which costs nothing.
     const intro = el("div", { className: "finder-intro" });
-    fetchFragment("/home-intro.html").then(html => { if (html !== null) intro.replaceWith(fragment(html, "finder-intro")); });
+    fetchFragment("/home-intro.html").then(html => {
+      if (html === null) return;
+      const hero = fragment(html, "finder-intro");
+      offerOwnPage(hero);
+      intro.replaceWith(hero);
+    });
     main.textContent = "";
     main.append(intro);
     // The same list the bar's search just loaded.
@@ -369,12 +374,36 @@
     // A sign-in that arrived on /#upload has taken #main-content in the meantime.
     if (window.uploadPanelActive) return;
     if (players && players.length) {
-      await showSiteStats(main, players);
-      // Below the stats, never above the intro: the render pass measured the
-      // root page's h1 at 18.4px against 25.6px stat values, so the heading is
-      // already the third-largest thing on the page.
+      await showSiteStats(main);
       showRecentUploads(main, players);
     }
+  }
+
+  // The profile site/upload.js remembered after this browser's last upload,
+  // keyed by Steam ID, which this page doesn't know: hence the walk over keys.
+  function rememberedProfile() {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key.startsWith("sms-profile-")) continue;
+        const p = JSON.parse(localStorage.getItem(key));
+        if (p && /^[a-z0-9]{1,32}(-[1-9][0-9]{0,5})?$/.test(p.slug)) return p;
+      }
+    } catch (e) { /* private mode */ }
+    return null;
+  }
+
+  // Someone who has uploaded from this browser wants their own page, not the
+  // pitch: the hero's two links become that page and another upload.
+  function offerOwnPage(hero) {
+    const mine = rememberedProfile();
+    const [primary, secondary] = hero.querySelectorAll(".hero-actions a");
+    if (!mine || !secondary) return;
+    primary.textContent = "Go to your page";
+    primary.href = `/u/${mine.slug}`;
+    primary.removeAttribute("data-upload");
+    secondary.textContent = "Upload new runs";
+    secondary.href = "/upload";
   }
 
   // ---- Recent uploads (the root page, under the stats) ----------------------
@@ -432,7 +461,7 @@
     return out;
   }
 
-  async function showSiteStats(main, players) {
+  async function showSiteStats(main) {
     let stats, catalog;
     try {
       const [s, c] = await Promise.all([
@@ -468,14 +497,12 @@
     // remainder or the breakdown reads as if the headline total is wrong.
     const daily = Math.max(0, (stats.allRuns || 0) - (solo.runs || 0) - (multi.runs || 0));
     const cards = [
-      card("Players", num(players.length)),
       card("Runs uploaded", num(stats.allRuns),
         `${num(solo.runs)} solo · ${num(multi.runs)} multiplayer${daily ? ` · ${num(daily)} daily` : ""}`),
       card("Hours played", num(Math.round(((solo.minutes || 0) + (multi.minutes || 0)) / 60))),
       card("Solo win %", pct(solo.wins, solo.runs), `${num(solo.wins)} of ${num(solo.runs)}`),
-      // "Multi", not "Multiplayer": the row of five bars was measured with this
-      // label the same width as "Solo win %", so a longer one could break the
-      // label/value line. See .site-cards in players.css.
+      // "Multi", not "Multiplayer": the same width as "Solo win %", so the two
+      // labels line up. See .site-cards in players.css.
       card("Multi win %", pct(multi.wins, multi.runs), `${num(multi.wins)} of ${num(multi.runs)}`),
     ];
 
@@ -623,27 +650,28 @@
     showFallback("No runs have been uploaded for this profile yet.");
   }
 
-  // The tab title says whose runs these are, and so does the site bar: the
+  // The tab title says whose runs these are, and so does the page heading: the
   // name is the one piece of context every number on these pages depends on,
   // and a shared link otherwise shows five dashboards with no owner on them.
   // It can't be derived from the slug ("MiLwOrkZ"), so it always comes from
   // the profile document.
   //
-  // The bar also gets the run count and last upload, from the index entry the
+  // Under it go the run count and last upload, from the index entry the
   // finder uses. Those are lifetime figures, matching the finder's rows, not
   // the filter-scoped counts in the dashboard's own cards below.
   function showPlayerName(name, entry) {
     if (!name) return;
     document.title = `${name} — Slay the Spire 2 Run History`;
-    const slot = document.getElementById("site-player");
-    if (!slot) return;
-    const bits = [name];
+    const head = document.getElementById("player-head");
+    if (!head) return;
+    document.getElementById("player-name").textContent = name;
+    const bits = [];
     if (entry && entry.runs) {
       bits.push(`${entry.runs} run${entry.runs === 1 ? "" : "s"}`);
     }
     if (entry && entry.updated) bits.push(`updated ${whenLabel(entry.updated, true)}`);
-    slot.textContent = bits.join(" · ");
-    slot.hidden = false;
+    document.getElementById("player-meta").textContent = bits.join(" · ");
+    head.hidden = false;
   }
 
   function showError() {
@@ -692,7 +720,7 @@
       return;
     }
     // Any bar entry pointing at this page, whether it is a plain .site-link
-    // (about) or the Upload page's button-shaped entry (site/upload.js).
+    // (about) or the Upload page's button (upload.css).
     document.querySelectorAll(`.site-links a[href='/${name}']`)
       .forEach(a => a.setAttribute("aria-current", "page"));
     const main = document.getElementById("main-content");

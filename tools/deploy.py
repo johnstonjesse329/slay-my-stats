@@ -88,7 +88,7 @@ HTML_CACHE_CONTROL = "public, max-age=0, must-revalidate, s-maxage=86400"
 # to dist/, and the two image types the art folders hold.
 CONTENT_TYPES = {
     ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
-    ".png": "image/png", ".webp": "image/webp",
+    ".png": "image/png", ".webp": "image/webp", ".woff2": "font/woff2",
 }
 ART_EXTENSIONS = [".png", ".webp"]
 
@@ -250,6 +250,7 @@ def upload_changed_dist() -> list[str]:
         if remote.get(key) == hashlib.md5(f.read_bytes()).hexdigest():
             continue
         run(["aws", "s3", "cp", str(f), f"s3://{SITE_BUCKET}/{key}", "--no-progress",
+             "--content-type", CONTENT_TYPES[f.suffix],
              "--cache-control", dist_cache_control(key)])
         uploaded.append(key)
     return uploaded
