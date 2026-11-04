@@ -17,7 +17,10 @@ import statistics
 import sys
 from pathlib import Path
 
-_REPO = Path(__file__).resolve().parents[3]
+# The repo root when this runs from the repo; None in the Lambda, where the file sits at
+# /var/task/measured.py with nothing above it (indexing parents there raised at import).
+_parents = Path(__file__).resolve().parents
+_REPO = _parents[3] if len(_parents) > 3 else None
 try:
     import derive_telemetry as dt  # bundled beside this file in the Lambda
 except ImportError:  # the dev server and tests run from the repo
@@ -44,7 +47,7 @@ def card_table() -> dict:
                 import build_measured_cards
                 _cards = build_measured_cards.build(
                     json.loads(build_measured_cards.SOURCE.read_text(encoding="utf-8")))
-            except (OSError, ValueError, ImportError):
+            except (OSError, ValueError, ImportError, TypeError):
                 _cards = {"costs": {}, "junk": []}
         dt.JUNK = frozenset(_cards.get("junk") or ())
     return _cards
