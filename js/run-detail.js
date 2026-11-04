@@ -1596,8 +1596,6 @@ const KEEP_ICON = { min: 16, max: NODE_POINT };
 const KEEP_KINDS = { monster: "Normal", elite: "Elites", boss: "Boss" };
 // How each tier is named on the page: fight_demand.py's TIER_NAMES, for a reader.
 const KEEP_TIER_NAMES = ["A0–7", "A8+"];
-// What a turn starts with before the deck adds anything.
-const KEEP_BASE = { energy: 3, cards: 5 };
 let detailKeepCharts = [];
 
 // The measured series for this run, aligned to the chart's nodes by floor number. The run
@@ -1932,8 +1930,8 @@ function renderKeepActs(run, nodes, measured) {
       row(keepIcon("taken", KEEP_LINES.taken.color), "Damage taken", Math.round(a.taken),
         { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage") }) + meter(a) + `</div>` +
       (log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
-        perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)} · base ${KEEP_BASE.energy}`) +
-        perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, `base ${KEEP_BASE.cards}`) +
+        perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)}`) +
+        perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, "") +
         perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") + `</div>` : "") +
       `</div></div>`;
   }).join("");
