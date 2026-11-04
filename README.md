@@ -490,8 +490,10 @@ flowchart TB
     check -- yes --> diff["cdk diff"]
     diff -- "changes" --> ask{"Deploy these<br/>infra changes? y/N"}
     ask -- N --> abort2["push aborted"]
-    ask -- y --> deploy["cdk deploy"] --> build
-    diff -- "no differences" --> build
+    ask -- y --> deploy["cdk deploy"] --> smoke
+    diff -- "no differences" --> smoke
+    smoke{"ingest function answers an<br/>empty POST below 500?"} -- no --> abort3["push aborted"]
+    smoke -- yes --> build
     build["build_site.py<br/>(ingest URL from stack outputs)"] --> upload["upload dist/ files whose MD5<br/>differs from the S3 ETag;<br/>aws s3 sync the art folders"]
     upload --> inval["CloudFront invalidation<br/>of just those paths (/* past 10)"]
     inval --> done["push goes through"]
@@ -500,6 +502,14 @@ flowchart TB
 Any change to `run.py` or the handler shows up in `cdk diff` as new code for the Lambdas, since they bundle
 both, along with `measured.py`, `tools/power_curve/derive_telemetry.py` and a card-cost table cut from your local
 `card_data.json` (so synth needs the game data; without it the energy chart's Card cost line is flat). To skip deploying for one push, use `SKIP_DEPLOY=1 git push`.
+
+After the stack step, the deploy sends the ingest Function URL an empty POST. The function answers 401 (no
+Steam ticket), and anything under 500 passes; a 5xx, or no answer, stops the deploy before the site goes up.
+That is what a bundle that crashes on import looks like (a 502 for every upload from the mod), and the
+tests alone can't see it, since they import the code from the repo rather than from the Lambda's flat layout.
+Production only deploys a commit that gamma has already deployed and passed: a successful gamma deploy of a
+clean checkout records its commit inside the git directory, and a prod deploy of any other commit stops and
+says to push to gamma first. `DEPLOY_SKIP_GAMMA=1` overrides it for a hotfix.
 
 Set up once, outside CDK:
 

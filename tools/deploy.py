@@ -34,6 +34,16 @@ it can run with nobody at the terminal. Production only skips it for `DEPLOY_YES
 value nothing sets by accident: the prompt reads the console, so without it a push run by
 an agent or an editor just stalls there.
 
+After the stack step, the ingest Function URL gets an empty POST. Any answer below 500 means the
+function started (it answers 401 to a request with no Steam ticket); a 5xx or no answer fails the
+deploy before the site goes up, which is how a bundle that crashes on import (a 502 for every
+upload from the mod) gets caught on gamma rather than found in the mod's log.
+
+Production only deploys a commit that gamma has already deployed and passed that check on. A
+successful gamma deploy of a clean checkout writes its commit to `slay-my-stats-gamma-ok` inside
+the git directory (shared by worktrees); a prod deploy of any other commit stops. `DEPLOY_SKIP_GAMMA=1`
+overrides it for a hotfix.
+
 Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 `git push --no-verify`.
 """
@@ -44,6 +54,8 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent.parent
@@ -333,9 +345,59 @@ def ingest_function_url() -> str:
     return url
 
 
-def deploy_site() -> None:
+def smoke_test_ingest(url: str) -> None:
+    """
+    POST an empty body to the ingest Function URL. The function rejects it (401: no Steam
+    ticket), and that is the pass: it started and answered. A 5xx is Lambda reporting that the
+    code failed to load or crashed (a bad import answers 502 to every upload), and no answer at
+    all is as bad, so either fails the deploy.
+    """
+    print(f"Check: ingest function answers ({url})...", flush=True)
+    req = urllib.request.Request(url, data=b"{}", method="POST", headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            status = resp.status
+    except urllib.error.HTTPError as e:
+        status = e.code
+    except OSError as e:
+        raise DeployError(f"ingest function did not answer: {e}")
+    if status >= 500:
+        raise DeployError(f"ingest function answered {status} to an empty request -- it is failing "
+                          "(likely at import); every upload from the mod would get this. "
+                          f"See the {STACK_NAME} Ingest log group in CloudWatch.")
+    print(f"Check: ingest function answered {status}, so it starts.")
+
+
+def _gamma_ok_file() -> Path:
+    common = Path(git("rev-parse", "--git-common-dir"))
+    return (common if common.is_absolute() else _HERE / common) / "slay-my-stats-gamma-ok"
+
+
+def record_gamma_ok() -> None:
+    """Remember the commit gamma just deployed and passed the check on. A dirty tree isn't a commit, so it records nothing."""
+    if git("status", "--porcelain", "--untracked-files=no"):
+        return
+    _gamma_ok_file().write_text(git("rev-parse", "HEAD"), encoding="utf-8")
+
+
+def require_gamma_ok() -> None:
+    """Production only takes a commit gamma has already deployed and passed. DEPLOY_SKIP_GAMMA=1 overrides."""
+    if os.environ.get("DEPLOY_SKIP_GAMMA") == "1":
+        print("Check: skipping the gamma gate (DEPLOY_SKIP_GAMMA=1).")
+        return
+    head = git("rev-parse", "HEAD")
+    f = _gamma_ok_file()
+    ok = f.read_text(encoding="utf-8").strip() if f.exists() else ""
+    if ok != head:
+        raise DeployError(f"gamma hasn't deployed and passed this commit ({head[:7]}"
+                          + (f"; it last passed {ok[:7]}" if ok else "; it has no pass recorded") + "). "
+                          "Push it to gamma first: DEPLOY_YES=1 git push origin main:gamma. "
+                          "For a hotfix, DEPLOY_SKIP_GAMMA=1.")
+
+
+def deploy_site(ingest_url: str) -> None:
     print("Site: building dist/...", flush=True)
-    run([sys.executable, str(_HERE / "build_site.py"), "--ingest-url", ingest_function_url()])
+    run([sys.executable, str(_HERE / "build_site.py"), "--ingest-url", ingest_url])
     print("Site: uploading changed dist/ files...", flush=True)
     changed = upload_changed_dist()
     for d in ART_DIRS:
@@ -389,8 +451,14 @@ def main() -> int:
         if not pre_push and git("status", "--porcelain", "--untracked-files=no"):
             print("Note: deploying a working tree with uncommitted changes.")
         check_site_pages()
+        if stage == "prod":
+            require_gamma_ok()
         deploy_infra()
-        deploy_site()
+        ingest_url = ingest_function_url()
+        smoke_test_ingest(ingest_url)
+        deploy_site(ingest_url)
+        if stage == "gamma":
+            record_gamma_ok()
     except DeployError as e:
         print(f"Deploy failed: {e}", file=sys.stderr)
         if pre_push:
