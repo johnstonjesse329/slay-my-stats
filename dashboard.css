@@ -2172,22 +2172,9 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .nt-card-zoom { display: none; position: fixed; z-index: 101; pointer-events: none; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.7)); }
 .nt-card-zoom.open { display: block; }
 .nt-cardface-dim { opacity: 0.55; }
-/* A shop purchase: full brightness, with the same green "bought" tag the
-   relic and potion chips carry, laid over the card's foot. */
-.nt-cardface-bought { position: relative; }
-.nt-cardface-bought::after {
-  content: "bought";
-  position: absolute;
-  left: 50%;
-  bottom: 4px;
-  transform: translateX(-50%);
-  padding: 0 0.4em;
-  border-radius: 3px;
-  background: rgba(0,0,0,0.75);
-  color: #5cba7d;
-  font-size: var(--fs-sm);
-  font-style: italic;
-}
+/* A shop purchase: full brightness (the rest are dimmed) and a green glow in
+   the "bought" tag's colour. No text over the card. */
+.nt-cardface-bought { filter: drop-shadow(0 0 4px #5cba7d) drop-shadow(0 0 1px #5cba7d); }
 
 /* Visually hidden: screen-reader-only text that takes no layout space. Used to
    label the win/loss sides of colored value pairs so the meaning isn't
