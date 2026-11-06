@@ -6,6 +6,9 @@ deck, and what runs that won did on it, whoever played them: the average turns t
 and the average damage taken. Each floor reads against its own fight, never an average of
 different monsters.
 
+The best tenth of those wins (the quickest, the lightest) rides along for the page's ring on
+elite and boss floors, so the average win's icon has a zone to read against.
+
 An act reads the same way: each fight against its own winners, then summed, so an act of
 hard monsters isn't behind for being hard. Where it lands is among winning acts: behind
 is more damage taken than 3 in 4 of them, ahead less than 3 in 4, or faster than 3 in 4
@@ -57,6 +60,7 @@ per player, so those take the party to split it evenly.
     python fight_demand.py --check
 """
 import json
+import math
 import re
 import statistics
 import sys
@@ -190,10 +194,24 @@ def winners(fights):
     source, so a logged fight has to be held to this with the run file's number, not the
     log's."""
     turns = sum(swung(f) for f in fights)
-    return {"turns": round(statistics.mean(f["t"] for f in fights), 2),
-            "taken": round(statistics.mean(f["taken"] for f in fights), 2),
-            "rate": round(sum(f["taken"] for f in fights) / turns, 2) if turns else 0,
-            "n": len(fights)}
+    out = {"turns": round(statistics.mean(f["t"] for f in fights), 2),
+           "taken": round(statistics.mean(f["taken"] for f in fights), 2),
+           "rate": round(sum(f["taken"] for f in fights) / turns, 2) if turns else 0,
+           "n": len(fights)}
+    # The best tenth, for the ring on the page's elite and boss floors: turns of the quickest
+    # wins, and damage taken a turn of the lightest.
+    out["fast"] = round(best_tenth(f["t"] for f in fights), 2)
+    light = [f["taken"] / swung(f) for f in fights if swung(f)]
+    if light:
+        out["light"] = round(best_tenth(light), 2)
+    return out
+
+
+def best_tenth(values):
+    """The median of the lowest tenth of values, at least one of them: how the best wins
+    did, the way the Overview reads a player's lowest tenth of HP."""
+    low = sorted(values)
+    return statistics.median(low[:max(1, math.ceil(len(low) / 10))])
 
 
 def tier(asc):

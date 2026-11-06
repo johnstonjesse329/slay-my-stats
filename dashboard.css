@@ -1286,7 +1286,7 @@ h1 {
 .chart-wrap-short { height: 250px; }
 /* A chart's name inside a box that has several: a step under the box's own heading, not its size
    (`.chart-box > h3` would make it 24px, the same as the box title). */
-.chart-box > h3.strength-label { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 1.4rem 0 0.2rem; }
+.chart-box h3.strength-label { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 1.4rem 0 0.2rem; }
 .floor-tip .strength-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; max-width: 420px; }
 .floor-tip .strength-chip { display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 0; border-radius: 13px; border: 1px solid; white-space: nowrap; line-height: 24px; cursor: help; }
 .floor-tip .strength-chip:not(:has(img)) { padding-left: 9px; }
@@ -1384,6 +1384,8 @@ h1 {
   color: var(--text);
   box-shadow: 0 6px 24px #0008;
 }
+/* On a mouse, a box with nothing to hover in it never catches the pointer. */
+.floor-tip.passive:not(.docked) { pointer-events: none; }
 /* On touch: a sheet on the screen edge away from the chart (docked-top when the chart is in
    the lower half), so it never covers the chart being scrubbed. Placed by js/run-detail.js. */
 .floor-tip.docked {
@@ -1421,6 +1423,14 @@ h1 {
 .floor-tip .ft-split { position: relative; display: flex; gap: 2px; height: 10px; margin: 6px 0 8px; min-width: 240px; }
 .floor-tip .ft-split > span:first-child { border-radius: 5px 0 0 5px; }
 .floor-tip .ft-split > span:last-of-type { border-radius: 0 5px 5px 0; }
+/* HP entering a fight, 0 to max: the wins' zone between their lowest tenth (ring) and median (dot),
+   as the HP chart draws them, and a bar where this run went in. */
+.floor-tip .ft-lane { position: relative; height: 10px; margin: 8px 6px 8px 0; min-width: 240px; border-radius: 5px; background: var(--hairline); }
+.floor-tip .ft-lane > span { position: absolute; top: 50%; transform: translate(-50%, -50%); }
+.floor-tip .ft-lane > .ft-zone { height: 10px; transform: translateY(-50%); border-radius: 5px; background: #e6e2f244; }
+.floor-tip .ft-ring, .floor-tip .ft-dot { width: 11px; height: 11px; border-radius: 50%; box-sizing: border-box; }
+.floor-tip .ft-ring { border: 2px solid; background: var(--panel-2); }
+.floor-tip .ft-you { width: 4px; height: 18px; border-radius: 2px; }
 .floor-tip .ft-big {
   display: flex;
   flex-wrap: wrap;

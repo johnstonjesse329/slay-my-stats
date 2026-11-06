@@ -866,6 +866,16 @@ function actName(act, nodes) {
 // Each act's name centred above its floors, plus a faint dotted line up
 // through the plot where one act ends -- mirrors the act grouping of the
 // timeline rows.
+// A full run's floors in each act, as most runs play it (17, 16 and 15). Every floor chart is
+// as wide as one, so an act is the same width on a run that ended in Act 2 as on one that went
+// the distance, and the charts on the page line up floor for floor.
+const ACT_FLOORS = { 1: 17, 2: 16, 3: 15 };
+const FRAME_FLOORS = Object.values(ACT_FLOORS).reduce((a, b) => a + b, 0);
+// The x axis labels: one per floor played, then the floors the run never reached, so the axis
+// runs on empty where the run stopped. (No gaps in a timeline: node i is floor i + 1.)
+const floorLabels = nodes => Array.from({ length: Math.max(FRAME_FLOORS, nodes.length) },
+  (_, i) => nodes[i] ? nodes[i].floor + 1 : i + 1);
+
 function makeActBoundaryPlugin(nodes) {
   const spans = [];
   nodes.forEach((n, i) => {
@@ -873,6 +883,9 @@ function makeActBoundaryPlugin(nodes) {
     else spans[spans.length - 1].to = i;
   });
   spans.forEach(s => { s.name = actName(s.act, nodes); });
+  // The act the run ended in is named over where all of it would sit, not just what was played.
+  const last = spans[spans.length - 1];
+  if (last) last.reach = Math.min(floorLabels(nodes).length - 1, last.from + (ACT_FLOORS[last.act] || 1) - 1);
   return {
     id: "actBounds",
     // Before the datasets, so the line runs behind the data and the hover
@@ -895,8 +908,8 @@ function makeActBoundaryPlugin(nodes) {
       ctx.font = "600 15px 'Segoe UI', system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      spans.forEach(({ act, name, from, to }) => {
-        const left = x.getPixelForValue(from), right = x.getPixelForValue(to);
+      spans.forEach(({ act, name, from, to, reach }) => {
+        const left = x.getPixelForValue(from), right = x.getPixelForValue(Math.max(to, reach ?? to));
         // Just "Act N" when the name won't fit over the act's floors (a short
         // last act, or a narrow screen).
         const full = name ? `Act ${act} · ${name}` : `Act ${act}`;
@@ -910,7 +923,124 @@ function makeActBoundaryPlugin(nodes) {
 
 // ---- HP chart ----
 
-// Shared tooltip chrome for the Run Detail HP and Gold charts
+// What this player's wins on each elite and boss began with, as the Overview's HP Entering
+// Fight reads it (fight-tables.js hpLane): the median HP of the lowest tenth of wins, and of all
+// wins. From the same fights and the same summary, but only the ones tuned the way this run's were
+// (A0-7 or A8+), so a floor reads against fights it could have been. Per node: null on every
+// floor with no fight this player has won. Every fight floor gets the stats for its tooltip; only
+// the elites and bosses are `marked`, so only they are drawn on the chart.
+// Normal fights are not in a run's `fights` (elites and bosses only), so they come from the
+// timelines: the same hpBefore and damage, and a fight is won when HP is left after it.
+let normalFightsCache = null;
+function normalFights() {
+  return normalFightsCache ||= DATA.runsData.flatMap(run => (run.timeline || [])
+    .filter(n => n.type === "monster" && n.enc)
+    .map(n => ({ enc: n.enc, asc: run.asc, won: n.hpAfter > 0, hp: n.hpBefore, maxHp: n.maxHp, dmg: n.dmg,
+      cards: 0, relics: 0, potions: 0 })));   // unused here; addFight sums them
+}
+function hpWinsByNode(run, nodes) {
+  const tier = keepTier(run.asc), by = {};
+  ALL_FIGHTS.concat(normalFights()).forEach(f => { if (keepTier(f.asc) === tier) addFight(by[f.enc] ||= fightBucket(), f); });
+  const left = winsLeftWith(tier);
+  return nodes.map(n => {
+    const fought = n.type === "monster" || n.type === "elite" || n.type === "boss";
+    const s = fought && by[n.enc] ? summarizeFights(by[n.enc]) : null;
+    if (!s || !s.wins) return null;
+    // The HP the wins left it with, which is what the chart's HP line shows for the floor.
+    const out = (left[n.enc] || []).sort((a, b) => a - b);
+    const lowest = out.slice(0, Math.max(1, Math.round(out.length * LOW_WINS_SHARE)));
+    return { ...s, marked: n.type !== "monster", left_avg: median(out), left_low: median(lowest) };
+  });
+}
+
+// HP left after each won fight, by encounter, across every run at one tuning tier. Read off the
+// timelines (the fight records only carry the HP entering), so it counts healing after the fight.
+function winsLeftWith(tier) {
+  const by = {};
+  DATA.runsData.forEach(run => {
+    if (keepTier(run.asc) !== tier) return;
+    (run.timeline || []).forEach(n => {
+      if (n.enc && n.hpAfter > 0 && (n.type === "monster" || n.type === "elite" || n.type === "boss")) (by[n.enc] ||= []).push(n.hpAfter);
+    });
+  });
+  return by;
+}
+
+// On each of those floors, a ring at the lowest tenth's HP, a dot at the median, and a faint
+// floor-wide zone between: the Overview's lane stood on end, so the HP line reads as in it or out. Drawn before the datasets, so the floor's icon
+// and the HP line sit over it.
+const HP_WIN_COLOUR = "#e6e2f2";
+// marks[i] is {low, mid} for a floor, or null. A chart that draws the middle itself (the
+// damage charts' icon for the average win) passes dot: false.
+function makeWinRangePlugin(marks, { dot = true } = {}) {
+  return {
+    id: "winRanges",
+    beforeDatasetsDraw(chart) {
+      const { ctx, scales: { x, y } } = chart;
+      const panel = getComputedStyle(chart.canvas).getPropertyValue("--panel").trim() || "#1e1e2e";
+      ctx.save();
+      marks.forEach((m, i) => {
+        if (!m) return;
+        const px = x.getPixelForValue(i), low = y.getPixelForValue(m.low), mid = y.getPixelForValue(m.mid);
+        // The zone: a floor wide, from the ring up to the dot.
+        const half = Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) * 0.4;
+        ctx.beginPath();
+        ctx.roundRect(px - half, Math.min(low, mid), half * 2, Math.abs(low - mid) || 1, 4);
+        ctx.fillStyle = HP_WIN_COLOUR + "26";
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = HP_WIN_COLOUR + "55";
+        ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = HP_WIN_COLOUR;
+        ctx.fillStyle = panel;
+        ctx.beginPath();
+        ctx.arc(px, low, 5, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        if (!dot) return;
+        ctx.fillStyle = HP_WIN_COLOUR;
+        ctx.beginPath();
+        ctx.arc(px, mid, 5, 0, 2 * Math.PI);
+        ctx.fill();
+      });
+      ctx.restore();
+    },
+  };
+}
+
+// The HP chart's hover box. Every floor: the HP left after it. A fight this player has won: the
+// HP this run entered it with, beside the median and the lowest tenth of their wins, a lane to
+// see where it falls, and how often they won. `s` is hpWinsByNode's entry, or null.
+// A hover box's lane: a track from 0 to `top`, a bar where this run's figure is (`you`, in the
+// chart's own colour) and, in the HP chart's colour for wins, the dot for the median or average
+// win, with a ring at the lowest tenth and the zone between when there is one. `what` is the
+// reading for a screen reader.
+function tipLane(top, { you, youColour, dot, ring, what }) {
+  const at = v => (v / top * 100).toFixed(1) + "%";
+  return `<div class="ft-lane" role="img" aria-label="${what}">` +
+    (ring != null ? `<span class="ft-zone" style="left:${at(ring)};width:${at(dot - ring)}"></span>` +
+      `<span class="ft-ring" style="left:${at(ring)};border-color:${HP_WIN_COLOUR}"></span>` : "") +
+    `<span class="ft-dot" style="left:${at(dot)};background:${HP_WIN_COLOUR}"></span>` +
+    `<span class="ft-you" style="left:${at(you)};background:${youColour}"></span></div>`;
+}
+
+function hpTip(run, n, s) {
+  const head = floorTipHead(n);
+  const row = (label, you, med, low) => `<tr><td>${label}</td><td><b>${you}</b></td>` +
+    (s ? `<td class="ft-win">${med ?? ""}</td><td class="ft-win">${low ?? ""}</td>` : "") + `</tr>`;
+  const left = row("Left with", `${n.hpAfter}<small>/${n.maxHp}</small>`, s?.left_avg, s?.left_low);
+  const healed = n.healed > 0 ? row("Healed", `+${n.healed}`) : "";
+  if (!s) return `${head}<table>${healed}${left}</table>`;
+  // The chart's own comparison: HP left, on a track from 0 to whichever of max HP or the median is highest.
+  const lane = tipLane(Math.max(n.maxHp, s.left_avg), { you: n.hpAfter, youColour: "var(--gold)", dot: s.left_avg, ring: s.left_low,
+    what: `Left with ${n.hpAfter}; your wins' median ${s.left_avg}, lowest tenth ${s.left_low}` });
+  return `${head}<table><thead><tr><th></th><th colspan="1">This run</th><th colspan="2" class="ft-win">Your wins</th></tr>` +
+    `<tr class="ft-sub"><th></th><th></th><th class="ft-win">Median</th><th class="ft-win">Lowest 10%</th></tr></thead>` +
+    `${row("Entered with", n.hpBefore, s.avg_hp, s.low_wins_hp)}${healed}${left}</table>${lane}` +
+    `<div class="ft-cap">Won ${s.wins} of ${s.runs} (${s.win_pct}%) at ${KEEP_TIER_NAMES[keepTier(run.asc)]}</div>`;
+}
+
 function renderDetailHpChart(run) {
   const nodes = run.timeline || [];
   if (nodes.length === 0) {
@@ -922,21 +1052,35 @@ function renderDetailHpChart(run) {
   // Not the character's colour: Regent's is gold, which sat too close to the
   // gold chart under it, and the Silent's green reads as HP anyway.
   const color = HP_LINE;
-  const labels = nodes.map(n => n.floor + 1);
+  const labels = floorLabels(nodes);
   const hpData = nodes.map(n => n.hpAfter);
   const maxHpData = nodes.map(n => n.maxHp);
 
   if (detailHpChart) { detailHpChart.destroy(); detailHpChart = null; }
 
-  // HP's swatch is the area's own fill; Max HP's is the dashed line.
+  const wins = hpWinsByNode(run, nodes);
+  const anyWins = wins.some(s => s && s.marked);
+
+  // HP's swatch is the area's own fill; Max HP's is the dashed line. The ring and dot are the
+  // marks on the elite and boss floors: the HP this player's wins left that fight with.
+  const mark = (fill, what) => `<span class="fl-item"><span class="fl-ring" style="border-color:${HP_WIN_COLOUR};background:${fill};width:11px;height:11px"></span>${what}</span>`;
   document.getElementById("detail-hp-legend").innerHTML = `<div class="fl-items">` +
     `<span class="fl-item"><span class="fl-swatch" style="background:${color}33;border:2px solid ${color}"></span>HP</span>` +
-    `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #8a8aa0 0 4px, transparent 4px 7px)"></span>Max HP</span></div>`;
+    `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #8a8aa0 0 4px, transparent 4px 7px)"></span>Max HP</span>` +
+    (anyWins ? mark("transparent", "HP left, lowest 10% of your wins") + mark(HP_WIN_COLOUR, "HP left, median win") : "") + `</div>`;
+
+  // Room for a median win that finished above this run's own max HP.
+  const yAxis = iconAxis({ min: 0 });
+  const stretch = yAxis.afterDataLimits;
+  yAxis.afterDataLimits = scale => {
+    wins.forEach(s => { if (s && s.marked) scale.max = Math.max(scale.max, s.left_avg); });
+    stretch(scale);
+  };
 
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes)],
+    plugins: [makeActBoundaryPlugin(nodes), makeWinRangePlugin(wins.map(s => s && s.marked ? { low: s.left_low, mid: s.left_avg } : null))],
     data: {
       labels,
       datasets: [
@@ -973,26 +1117,12 @@ function renderDetailHpChart(run) {
         // The key sits under the chart as HTML, like the deck, relic and
         // keeping-up charts, so all of them read the same.
         legend: { display: false },
-        tooltip: {
-          // The "Max HP" dataset only exists to draw the dashed reference
-          // line — its value is already shown as the "/maxHp" half of the
-          // HP line below, so it's filtered out here rather than shown as
-          // its own redundant "Max HP: 99" row.
-          filter: item => item.dataset.label !== "Max HP",
-          callbacks: {
-            title: items => {
-              const idx = items[0].dataIndex;
-              const node = nodes[idx];
-              const enc = node.enc ? fmtNodeLabel(node.enc) : (NODE_ICONS[node.type] || "?") + " " + (node.type || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-              return `Floor ${node.floor + 1} — ${enc}`;
-            },
-            label: item => `HP: ${item.raw}/${nodes[item.dataIndex].maxHp}`,
-          },
-        },
+        // The same hover box as Keeping Up by Floor: the floor, a small table, what it means.
+        tooltip: { enabled: false, external: context => showFloorTip(context, i => hpTip(run, nodes[i], wins[i])) },
       },
       scales: {
         x: floorAxis({ grid: { color: "#2e3035" } }),
-        y: iconAxis({ min: 0 }),
+        y: yAxis,
       },
     },
   });
@@ -1010,7 +1140,7 @@ function renderDetailGoldChart(run) {
   }
   document.getElementById("detail-gold-box").style.display = "";
 
-  const labels   = nodes.map(n => n.floor + 1);
+  const labels   = floorLabels(nodes);
   const goldData = nodes.map(n => n.gold);
 
   if (detailGoldChart) { detailGoldChart.destroy(); detailGoldChart = null; }
@@ -1334,7 +1464,7 @@ function onTheWay(a, r, p) {
 function floorTipApproached() {
   // A finger has no heading for the box: the docked sheet sits at a screen edge, far from
   // where the last mouse opened one, and holding the floor for it froze the scrub.
-  if (floorTipTouch || !floorTip || floorTip.style.display !== "block") return false;
+  if (floorTipTouch || !floorTip || floorTip.style.display !== "block" || floorTip.classList.contains("passive")) return false;
   const { x, y } = floorTipPointer, a = floorTipAnchor;
   if (a.below ? y < a.y + 6 : y > a.y - 6) return false;
   return onTheWay(a, floorTip.getBoundingClientRect(), { x, y });
@@ -1421,10 +1551,20 @@ function showFloorTip(context, html) {
   const px = r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
   const w = floorTip.offsetWidth, h = floorTip.offsetHeight;
   const gap = 12;
-  const below = py + gap + h <= vh - 8 || py - gap - h < 8;
+  let below = py + gap + h <= vh - 8 || py - gap - h < 8;
+  let top = below ? py + gap : py - gap - h;
+  // A box with nothing to hover (no pickup chips) lets the pointer through, so it can't block
+  // scrubbing along the chart. One with chips has to be reachable, so it sits clear of the
+  // chart instead, under it or over it, and the pointer is never stopped on the way along.
+  const live = !!floorTip.querySelector("[data-pick]");
+  floorTip.classList.toggle("passive", !live);
+  if (live) {
+    if (r.bottom + 8 + h <= vh - 8) { top = r.bottom + 8; below = true; }
+    else if (r.top - 8 - h >= 8) { top = r.top - 8 - h; below = false; }
+  }
   floorTip.classList.toggle("above", !below);
   floorTip.style.left = Math.max(8, Math.min(px - w / 2, vw - 8 - w)) + "px";
-  floorTip.style.top = Math.max(8, below ? py + gap : py - gap - h) + "px";
+  floorTip.style.top = Math.max(8, top) + "px";
   Object.assign(floorTipAnchor, { x: floorTipPointer.x || px, y: py, below });
 }
 
@@ -1466,7 +1606,7 @@ function floorChartConfig(nodes, plugins, tip, y, datasets) {
   return {
     type: "line",
     plugins: [makeActBoundaryPlugin(nodes), ...plugins],
-    data: { labels: nodes.map(n => n.floor + 1), datasets },
+    data: { labels: floorLabels(nodes), datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -1625,7 +1765,8 @@ function renderDetailRelicChart(run) {
 
 // ---- Keeping up by floor ----
 
-// Three charts, each with its own hover box, and every point is the fight on that floor:
+// Charts in the order the box shows them (HP by floor leads, from renderDetailHpChart): damage
+// taken, damage done, deck composition, energy and cards. Each has its own hover box, and every point is the fight on that floor:
 // nothing is averaged across different monsters. An icon marks what winners did on that
 // fight, and shows what kind of fight it was. Above them each act is read the same way,
 // its fights summed against what winners did on each. DATA.fightDemand
@@ -1763,6 +1904,25 @@ function fightReadings(run, nodes, measured) {
     return row;
   });
   return rows.some(r => r) ? rows : null;
+}
+
+// The ring on the damage charts' elite and boss floors: the best tenth of the wins that the
+// average win's icon is the average of (fight_demand.py's fast and light), so the zone between
+// them says how far a win can be pushed. Damage done a turn is the fight's HP over turns, so
+// the quickest wins do the most. A ring needs enough wins to have a tenth, and sits on the
+// better side of the icon or isn't drawn. Per floor, {low, mid} or null.
+const KEEP_RANGE_MIN = 10;
+function keepRanges(run, nodes, rows) {
+  const demand = DATA.fightDemand.encounters;
+  const done = [], taken = [];
+  nodes.forEach((n, i) => {
+    const r = rows[i], d = demand[keepFight(n)], how = r && keepRank(n) && d && keepWinners(run, d);
+    const ok = how && how.n >= KEEP_RANGE_MIN;
+    const fast = ok && r.ask !== undefined && how.fast ? r.pool / how.fast : 0;
+    done.push(fast > r?.ask ? { low: fast, mid: r.ask } : null);
+    taken.push(ok && r.winRate !== undefined && how.light < r.winRate ? { low: how.light, mid: r.winRate } : null);
+  });
+  return { done, taken };
 }
 
 const keepMark = (value, [low, high]) => value < low ? "behind" : value > high ? "ahead" : "meeting";
@@ -2114,7 +2274,7 @@ function renderDetailKeepCharts(run) {
       : frow(swatch(KEEP_LINES.damage.color), "Damage done", hp, one(r.doing), r.ask === undefined ? "" : hp, one(r.ask));
     return `<table>${fightHead}${done}` +
       frow(swatch(KEEP_DEMAND_COLOR), "Fight turns", r.turns, "", r.ask === undefined ? "" : +r.winTurns.toFixed(1), "") +
-      `</table>${wins}${lost ? `<div class="ft-cap">Lost here, no log to say.</div>` : ""}`;
+      `</table>${wins}${lost ?`<div class="ft-cap">Lost here, no log to say.</div>` : ""}`;
   });
 
   // What arrived each turn, split into what was blocked, healed back, and got through. The
@@ -2159,17 +2319,50 @@ function renderDetailKeepCharts(run) {
         (n, key, i) => has(i), iconSize, keepIconKey),
     };
   };
-  const chart = (id, series, tipFor) => {
+  const ranges = keepRanges(run, nodes, rows);
+  const chart = (id, series, tipFor, marks) => {
     // Only the lines: the winners' icons explain themselves, and the caption says what they are.
+    // The ring, where the chart has any, is the HP chart's: the best tenth of the wins.
+    const ring = marks && marks.some(m => m)
+      ? `<span class="fl-item"><span class="fl-ring" style="border-color:${HP_WIN_COLOUR};background:transparent;width:11px;height:11px"></span>Best 10% of wins</span>` : "";
     document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(s =>
       `<span class="fl-item"><span class="strength-key" style="background:${s.borderDash?.length ? `repeating-linear-gradient(90deg, ${s.borderColor} 0 4px, transparent 4px 7px)` : s.borderColor}"></span>${s.label}</span>`
-    ).join("")}</div>`;
+    ).join("")}${ring}</div>`;
+    // Room for a ring that sits above everything else on the chart.
+    const yAxis = { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 } };
+    const stretch = yAxis.afterDataLimits;
+    yAxis.afterDataLimits = scale => {
+      (marks || []).forEach(m => { if (m) scale.max = Math.max(scale.max, m.low); });
+      stretch(scale);
+    };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
-      floorChartConfig(nodes, [], tipFor, { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 } }, series)));
+      floorChartConfig(nodes, marks ? [makeWinRangePlugin(marks, { dot: false })] : [], tipFor, yAxis, series)));
   };
 
-  chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0), winners("damage", r => r.ask)], damageTip);
-  chart("in", [line(KEEP_LINES.taken, r => r.taken), winners("in", r => r.winRate)], inTip);
+  // Cards in the deck after each floor: a line per type (the total is in the hover box, not drawn: it dwarfed the types), so what
+  // went in can be read against the HP and damage charts either side of it. Its hover box is
+  // the type counts and what the floor added, and works on every floor, fights or not.
+  const deckBox = document.getElementById("detail-keep-deck");
+  deckBox.style.display = run.deckAdded ? "" : "none";
+  if (run.deckAdded) {
+    const T = DECK_GROUPS.type;
+    const held = heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []);
+    const byT = countsByFloor(nodes, held, T);
+    const tKeys = usedKeys(byT, T.order);
+    const sizes = floorTotals(nodes, byT, T.order);
+    const deckTip = context => showFloorTip(context, i =>
+      `${floorTipHead({ ...nodes[i], enc: nodes[i].fight || nodes[i].enc }, sizes[i], "cards")}` +
+      `<table>${tKeys.filter(k => byT[k][i] > 0).map(k => row(k, T.color[k], byT[k][i])).join("")}</table>${changed(i)}`);
+    const deckLine = (label, color, data, dash) => ({
+      label, data, borderColor: color, pointHoverBackgroundColor: color,
+      borderWidth: 2, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 4,
+      cubicInterpolationMode: "monotone",
+    });
+    chart("deck", tKeys.map(k => deckLine(k, T.color[k], byT[k])), deckTip);
+  }
+
+  chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0), winners("damage", r => r.ask)], damageTip, ranges.done);
+  chart("in", [line(KEEP_LINES.taken, r => r.taken), winners("in", r => r.winRate)], inTip, ranges.taken);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";
