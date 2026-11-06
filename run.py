@@ -1544,7 +1544,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="keep-acts" id="detail-keep-acts"></div>
         <div id="detail-hp-box">
           <h3 class="strength-label">HP by floor</h3>
-          <p class="chart-caption">Your HP after each floor, against your max HP. The dots on elites and bosses represent your median win's HP entering that fight. The vertical bar runs from that median down to the lowest 10% of your winning runs, for comparison.</p>
+          <p class="chart-caption">Your HP after each floor, against your max HP. The dots on elites and bosses represent the HP your median win left that fight with. The vertical bar runs from that median down to the lowest 10% of your winning runs, for comparison.</p>
           <div class="chart-wrap"><canvas id="detail-hp-chart"></canvas></div>
           <div class="floor-legend" id="detail-hp-legend"></div>
         </div>

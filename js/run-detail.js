@@ -860,11 +860,29 @@ function normalFights() {
 function hpWinsByNode(run, nodes) {
   const tier = keepTier(run.asc), by = {};
   ALL_FIGHTS.concat(normalFights()).forEach(f => { if (keepTier(f.asc) === tier) addFight(by[f.enc] ||= fightBucket(), f); });
+  const left = winsLeftWith(tier);
   return nodes.map(n => {
     const fought = n.type === "monster" || n.type === "elite" || n.type === "boss";
     const s = fought && by[n.enc] ? summarizeFights(by[n.enc]) : null;
-    return s && s.wins ? { ...s, marked: n.type !== "monster" } : null;
+    if (!s || !s.wins) return null;
+    // The HP the wins left it with, which is what the chart's HP line shows for the floor.
+    const out = (left[n.enc] || []).sort((a, b) => a - b);
+    const lowest = out.slice(0, Math.max(1, Math.round(out.length * LOW_WINS_SHARE)));
+    return { ...s, marked: n.type !== "monster", left_avg: median(out), left_low: median(lowest) };
   });
+}
+
+// HP left after each won fight, by encounter, across every run at one tuning tier. Read off the
+// timelines (the fight records only carry the HP entering), so it counts healing after the fight.
+function winsLeftWith(tier) {
+  const by = {};
+  DATA.runsData.forEach(run => {
+    if (keepTier(run.asc) !== tier) return;
+    (run.timeline || []).forEach(n => {
+      if (n.enc && n.hpAfter > 0 && (n.type === "monster" || n.type === "elite" || n.type === "boss")) (by[n.enc] ||= []).push(n.hpAfter);
+    });
+  });
+  return by;
 }
 
 // On each of those floors, a ring at the lowest tenth's HP, a dot at the median, and a faint
@@ -930,12 +948,12 @@ function hpTip(run, n, s) {
   const head = floorTipHead(n);
   const row = (label, you, med, low) => `<tr><td>${label}</td><td><b>${you}</b></td>` +
     (s ? `<td class="ft-win">${med ?? ""}</td><td class="ft-win">${low ?? ""}</td>` : "") + `</tr>`;
-  const left = row("Left with", `${n.hpAfter}<small>/${n.maxHp}</small>`);
+  const left = row("Left with", `${n.hpAfter}<small>/${n.maxHp}</small>`, s?.left_avg, s?.left_low);
   const healed = n.healed > 0 ? row("Healed", `+${n.healed}`) : "";
   if (!s) return `${head}<table>${healed}${left}</table>`;
-  // On a track from 0 to whichever of max HP, median or entry is highest.
-  const lane = tipLane(Math.max(n.maxHp, s.avg_hp, n.hpBefore), { you: n.hpBefore, youColour: HP_LINE, dot: s.avg_hp, ring: s.low_wins_hp,
-    what: `Entered with ${n.hpBefore}; your wins' median ${s.avg_hp}, lowest tenth ${s.low_wins_hp}` });
+  // The chart's own comparison: HP left, on a track from 0 to whichever of max HP or the median is highest.
+  const lane = tipLane(Math.max(n.maxHp, s.left_avg), { you: n.hpAfter, youColour: "var(--gold)", dot: s.left_avg, ring: s.left_low,
+    what: `Left with ${n.hpAfter}; your wins' median ${s.left_avg}, lowest tenth ${s.left_low}` });
   return `${head}<table><thead><tr><th></th><th colspan="1">This run</th><th colspan="2" class="ft-win">Your wins</th></tr>` +
     `<tr class="ft-sub"><th></th><th></th><th class="ft-win">Median</th><th class="ft-win">Lowest 10%</th></tr></thead>` +
     `${row("Entered with", n.hpBefore, s.avg_hp, s.low_wins_hp)}${healed}${left}</table>${lane}` +
@@ -963,25 +981,25 @@ function renderDetailHpChart(run) {
   const anyWins = wins.some(s => s && s.marked);
 
   // HP's swatch is the area's own fill; Max HP's is the dashed line. The ring and dot are the
-  // marks on the elite and boss floors: the HP this player's wins entered that fight with.
+  // marks on the elite and boss floors: the HP this player's wins left that fight with.
   const mark = (fill, what) => `<span class="fl-item"><span class="fl-ring" style="border-color:${HP_WIN_COLOUR};background:${fill};width:11px;height:11px"></span>${what}</span>`;
   document.getElementById("detail-hp-legend").innerHTML = `<div class="fl-items">` +
     `<span class="fl-item"><span class="fl-swatch" style="background:${color}33;border:2px solid ${color}"></span>HP</span>` +
     `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #8a8aa0 0 4px, transparent 4px 7px)"></span>Max HP</span>` +
-    (anyWins ? mark("transparent", "Entering HP, lowest 10% of your wins") + mark(HP_WIN_COLOUR, "Entering HP, median win") : "") + `</div>`;
+    (anyWins ? mark("transparent", "HP left, lowest 10% of your wins") + mark(HP_WIN_COLOUR, "HP left, median win") : "") + `</div>`;
 
-  // Room for a median win that began above this run's own max HP.
+  // Room for a median win that finished above this run's own max HP.
   const yAxis = iconAxis({ min: 0 });
   const stretch = yAxis.afterDataLimits;
   yAxis.afterDataLimits = scale => {
-    wins.forEach(s => { if (s && s.marked) scale.max = Math.max(scale.max, s.avg_hp); });
+    wins.forEach(s => { if (s && s.marked) scale.max = Math.max(scale.max, s.left_avg); });
     stretch(scale);
   };
 
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeWinRangePlugin(wins.map(s => s && s.marked ? { low: s.low_wins_hp, mid: s.avg_hp } : null))],
+    plugins: [makeActBoundaryPlugin(nodes), makeWinRangePlugin(wins.map(s => s && s.marked ? { low: s.left_low, mid: s.left_avg } : null))],
     data: {
       labels,
       datasets: [
