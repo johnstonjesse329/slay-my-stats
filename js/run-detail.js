@@ -623,15 +623,24 @@ function buildNodeTooltip(node) {
   }
 
   const isShop = node.type === "shop";
+  const removed = node.cardsRemoved || [];
+  // Not dimmed: a removal really happened (at a shop it is a purchase).
+  const pushRemoved = () => {
+    if (!removed.length) return;
+    lines.push(`<div class="nt-section">${removed.length > 1 ? "Cards" : "Card"} removed:</div>`);
+    lines.push(cardRow(removed));
+  };
 
   if (isShop) {
     // Cards: bought (highlighted) + for sale (dimmed)
     const cardsBought  = node.cardsBought  || [];
     const cardsForSale = node.cardsSkipped || [];
     if (cardsBought.length + cardsForSale.length > 0) {
-      lines.push(`<div class="nt-section">Cards:</div>`);
+      lines.push(`<div class="nt-section">Cards offered:</div>`);
       lines.push(cardRow(cardsForSale, true, cardsBought));
     }
+    // The removal is the shop's other card purchase, so it sits right under the offers.
+    pushRemoved();
     // Relics, then potions: bought + for sale. Same reading as the cards
     // above: purchases glow, what was only on offer is dimmed.
     const relicChips = [
@@ -670,11 +679,7 @@ function buildNodeTooltip(node) {
     }
   }
 
-  if ((node.cardsRemoved || []).length > 0) {
-    lines.push(`<div class="nt-section">Removed:</div>`);
-    // Not dimmed: a removal really happened (at a shop it is a purchase).
-    lines.push(cardRow(node.cardsRemoved));
-  }
+  if (!isShop) pushRemoved();
 
   return lines.join("");
 }
