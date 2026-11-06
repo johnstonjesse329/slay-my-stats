@@ -550,13 +550,31 @@ document.addEventListener("mouseover", e => {
   else ntZoomHide();
 });
 
+// A relic or potion in a floor tooltip: the full tooltip (portrait, rarity,
+// description) as it shows elsewhere, in the shared floating box on <body> so
+// the floor tooltip's own clipping can't cut it.
+document.addEventListener("mouseover", e => {
+  const chip = e.target.closest?.(".node-tooltip [data-pick]");
+  if (!chip) return;
+  const [kind, id] = chip.dataset.pick.split(":");
+  showFloatingHtmlTooltip(chip, kind === "potion" ? buildPotionTooltip(id) : buildRelicTooltip(id));
+});
+document.addEventListener("mouseout", e => {
+  const chip = e.target.closest?.(".node-tooltip [data-pick]");
+  if (chip && !chip.contains(e.relatedTarget)) hideFloatingHtmlTooltip();
+});
+
 function buildNodeTooltip(node) {
   // Small art beside each named item, so a floor's rewards read at a glance
   // instead of as a wall of text. Cards get the real card face; relics and
   // potions get their own icons.
   const fmtPotion = fmtPotionLabel;
-  const iconRow = (cls, src, label, extra = "") =>
-    `<div class="${cls} nt-item">${src ? `<img loading="lazy" class="nt-item-icon" src="${thumbSrc(src)}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
+  // `pick` ("relic:ID" / "potion:ID") makes hovering the chip show the item's
+  // full tooltip, as it does elsewhere (see the mouseover listener above).
+  const iconRow = (cls, src, label, extra = "", pick = "") =>
+    `<div class="${cls} nt-item"${pick ? ` data-pick="${pick}"` : ""}>${src ? `<img loading="lazy" class="nt-item-icon" src="${thumbSrc(src)}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
+  const relicChip  = (cls, id) => iconRow(cls, relicImgSrc(id),  fmtRelicLabel(id), "", `relic:${id}`);
+  const potionChip = (cls, id) => iconRow(cls, potionImgSrc(id), fmtPotion(id),      "", `potion:${id}`);
   // Card faces size from --nt-card-w, which fitNodeTooltip sets as the
   // tooltip opens.
   const nodeCardHtml = (id, dim = false, bought = false) => cardFaceAvailable()
@@ -622,10 +640,10 @@ function buildNodeTooltip(node) {
     // Same reading as the cards above: purchases glow, what was only on offer
     // is dimmed.
     const chips = [
-      ...relicsBought.map(id => iconRow("nt-reward-relic nt-item-bought", relicImgSrc(id), fmtRelicLabel(id))),
-      ...potionsBought.map(id => iconRow("nt-reward-card nt-item-bought", potionImgSrc(id), fmtPotion(id))),
-      ...relicsForSale.map(id => iconRow("nt-skipped nt-item-dim", relicImgSrc(id), fmtRelicLabel(id))),
-      ...potionsForSale.map(id => iconRow("nt-skipped nt-item-dim", potionImgSrc(id), fmtPotion(id))),
+      ...relicsBought.map(id => relicChip("nt-reward-relic nt-item-bought", id)),
+      ...potionsBought.map(id => potionChip("nt-reward-card nt-item-bought", id)),
+      ...relicsForSale.map(id => relicChip("nt-skipped nt-item-dim", id)),
+      ...potionsForSale.map(id => potionChip("nt-skipped nt-item-dim", id)),
     ];
     if (chips.length) {
       lines.push(`<div class="nt-section">Relics & potions:</div>`);
@@ -641,8 +659,8 @@ function buildNodeTooltip(node) {
       lines.push(`<div class="nt-section">Rewards:</div>`);
       lines.push(cardRow(cardsRewarded));
       lines.push(itemRow([
-        ...relicsRewarded.map(id  => iconRow("nt-reward-relic", relicImgSrc(id), fmtRelicLabel(id))),
-        ...potionsRewarded.map(id => iconRow("nt-reward-card", potionImgSrc(id), fmtPotion(id))),
+        ...relicsRewarded.map(id  => relicChip("nt-reward-relic", id)),
+        ...potionsRewarded.map(id => potionChip("nt-reward-card", id)),
       ]));
     }
     if (hasSkipped) {
