@@ -1431,6 +1431,16 @@ h1 {
 .floor-tip .ft-ring, .floor-tip .ft-dot { width: 11px; height: 11px; border-radius: 50%; box-sizing: border-box; }
 .floor-tip .ft-ring { border: 2px solid; background: var(--panel-2); }
 .floor-tip .ft-you { width: 4px; height: 18px; border-radius: 2px; }
+/* What this fight cost, in a line, then the lanes it is read against, then the key to their marks. */
+.floor-tip .ft-lost { border-left: 1px solid var(--hairline); padding-left: 12px; margin: 8px 0 2px; }
+.floor-tip .ft-lost-big { font-size: 1.0625rem; font-weight: 600; white-space: nowrap; }
+.floor-tip .ft-worse { color: #e05c5c; }
+.floor-tip .ft-lanelabel { color: var(--text-dim); font-size: var(--fs-xs); margin-top: 8px; }
+.floor-tip .ft-lanelabel + .ft-lane { margin-top: 4px; }
+.floor-tip .ft-key { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 8px 0 4px; padding-top: 7px; border-top: 1px solid var(--hairline); color: var(--text-dim); font-size: var(--fs-xs); }
+.floor-tip .ft-key span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.floor-tip .ft-key i { display: inline-block; flex: none; }
+.floor-tip .ft-key .ft-you { height: 14px; }
 .floor-tip .ft-big {
   display: flex;
   flex-wrap: wrap;

@@ -119,6 +119,8 @@ function summarizeFights(bucket) {
   const w = bucket.wins;
   const l = n - w;
   const lowWins = [...bucket.winHpVals].sort((a, b) => a - b).slice(0, Math.max(1, Math.round(w * LOW_WINS_SHARE)));
+  // The other end of the same share: the wins that cost the most HP.
+  const heavyWins = [...bucket.winDmgVals].sort((a, b) => b - a).slice(0, Math.max(1, Math.round(w * LOW_WINS_SHARE)));
   return {
     wins:        w,
     losses:      l,
@@ -141,6 +143,7 @@ function summarizeFights(bucket) {
     min_win_potions: w ? bucket.minWinPotions : null,
     max_win_potions: w ? bucket.maxWinPotions : null,
     avg_dmg:         median(bucket.winDmgVals),
+    heavy_wins_dmg:  w ? median(heavyWins) : null,
     min_win_dmg:     w ? bucket.minWinDmg : null,
     max_win_dmg:     w ? bucket.maxWinDmg : null,
     loss_avg_hp:      median(bucket.lossHpVals),

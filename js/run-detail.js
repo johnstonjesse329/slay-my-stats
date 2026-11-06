@@ -1035,9 +1035,11 @@ function makeWinRangePlugin(marks, { dot = true } = {}) {
   };
 }
 
-// The HP chart's hover box. Every floor: the HP left after it. A fight this player has won: the
-// HP this run entered it with, beside the median and the lowest tenth of their wins, a lane to
-// see where it falls, and how often they won. `s` is hpWinsByNode's entry, or null.
+// The HP chart's hover box. Every floor: the HP left after it. A fight this player has won: first
+// what it cost this run beside what their wins lose, a lane each for HP lost and HP left to see
+// where this run falls, and a key to their marks; then the HP this run entered it with, beside the
+// median and the lowest tenth of their wins, and how often they won. `s` is hpWinsByNode's entry,
+// or null.
 // A hover box's lane: a track from 0 to `top`, a bar where this run's figure is (`you`, in the
 // chart's own colour) and, in the HP chart's colour for wins, the dot for the median or average
 // win, with a ring at the lowest tenth and the zone between when there is one. `what` is the
@@ -1045,10 +1047,18 @@ function makeWinRangePlugin(marks, { dot = true } = {}) {
 function tipLane(top, { you, youColour, dot, ring, what }) {
   const at = v => (v / top * 100).toFixed(1) + "%";
   return `<div class="ft-lane" role="img" aria-label="${what}">` +
-    (ring != null ? `<span class="ft-zone" style="left:${at(ring)};width:${at(dot - ring)}"></span>` +
+    (ring != null ? `<span class="ft-zone" style="left:${at(Math.min(ring, dot))};width:${at(Math.abs(dot - ring))}"></span>` +
       `<span class="ft-ring" style="left:${at(ring)};border-color:${HP_WIN_COLOUR}"></span>` : "") +
     `<span class="ft-dot" style="left:${at(dot)};background:${HP_WIN_COLOUR}"></span>` +
     `<span class="ft-you" style="left:${at(you)};background:${youColour}"></span></div>`;
+}
+
+// What the marks in a hover box's lanes are. One key, under every lane the box has, since the
+// same three marks mean the same thing in each.
+function tipKey() {
+  return `<div class="ft-key"><span><i class="ft-you" style="background:var(--gold)"></i>This run</span>` +
+    `<span><i class="ft-dot" style="background:${HP_WIN_COLOUR}"></i>Median win</span>` +
+    `<span><i class="ft-ring" style="border-color:${HP_WIN_COLOUR}"></i>Worst tenth of wins</span></div>`;
 }
 
 function hpTip(run, n, s) {
@@ -1058,12 +1068,20 @@ function hpTip(run, n, s) {
   const left = row("Left with", `${n.hpAfter}<small>/${n.maxHp}</small>`, s?.left_avg, s?.left_low);
   const healed = n.healed > 0 ? row("Healed", `+${n.healed}`) : "";
   if (!s) return `${head}<table>${healed}${left}</table>`;
-  // The chart's own comparison: HP left, on a track from 0 to whichever of max HP or the median is highest.
-  const lane = tipLane(Math.max(n.maxHp, s.left_avg), { you: n.hpAfter, youColour: "var(--gold)", dot: s.left_avg, ring: s.left_low,
+  // The lanes lead, then the table. Both share one track, 0 to whichever is highest of max HP, the
+  // wins' medians and this run's own figures, so HP lost and HP left read against each other. The
+  // worst tenth is at the high end for HP lost and the low end for HP left.
+  const top = Math.max(n.maxHp, s.left_avg, n.dmg, s.heavy_wins_dmg);
+  const lost = tipLane(top, { you: n.dmg, youColour: "var(--gold)", dot: s.avg_dmg, ring: s.heavy_wins_dmg,
+    what: `Lost ${n.dmg} HP; your wins' median ${s.avg_dmg}, heaviest tenth ${s.heavy_wins_dmg}` });
+  const kept = tipLane(top, { you: n.hpAfter, youColour: "var(--gold)", dot: s.left_avg, ring: s.left_low,
     what: `Left with ${n.hpAfter}; your wins' median ${s.left_avg}, lowest tenth ${s.left_low}` });
-  return `${head}<table><thead><tr><th></th><th colspan="1">This run</th><th colspan="2" class="ft-win">Your wins</th></tr>` +
+  return `${head}<div class="ft-lost"><div class="ft-lost-big">Lost <b${n.dmg > s.avg_dmg ? ` class="ft-worse"` : ""}>${n.dmg} HP</b></div>` +
+    `<div class="ft-cap">Wins usually lose ${s.avg_dmg} · the heaviest tenth lose ${s.heavy_wins_dmg}</div></div>` +
+    `<div class="ft-lanelabel">HP lost</div>${lost}<div class="ft-lanelabel">HP left</div>${kept}${tipKey()}` +
+    `<table><thead><tr><th></th><th colspan="1">This run</th><th colspan="2" class="ft-win">Your wins</th></tr>` +
     `<tr class="ft-sub"><th></th><th></th><th class="ft-win">Median</th><th class="ft-win">Lowest 10%</th></tr></thead>` +
-    `${row("Entered with", n.hpBefore, s.avg_hp, s.low_wins_hp)}${healed}${left}</table>${lane}` +
+    `${row("Entered with", n.hpBefore, s.avg_hp, s.low_wins_hp)}${healed}${left}</table>` +
     `<div class="ft-cap">Won ${s.wins} of ${s.runs} (${s.win_pct}%) at ${KEEP_TIER_NAMES[keepTier(run.asc)]}</div>`;
 }
 
