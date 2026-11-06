@@ -323,7 +323,23 @@ def player_stats_at(node: dict, idx: int) -> dict:
     list (older saves without per-player IDs), so a run always yields stats.
     """
     stats = node.get("player_stats") or [{}]
-    return stats[idx] if 0 <= idx < len(stats) else stats[0]
+    ps = stats[idx] if 0 <= idx < len(stats) else stats[0]
+    # The site writes these straight into page HTML, and a run file is whatever
+    # its uploader sent: anything that isn't a plain number becomes 0 (None for gold).
+    clean = dict(ps)
+    for key in ("current_hp", "damage_taken", "hp_healed", "max_hp", "gold_gained"):
+        if key in clean:
+            clean[key] = _plain_number(clean[key])
+    if clean.get("current_gold") is not None:
+        clean["current_gold"] = _plain_number(clean["current_gold"])
+    return clean
+
+
+def _plain_number(value):
+    """value if it is a real int or float (not bool, nan or inf), else 0."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return value if value == value and value not in (float("inf"), float("-inf")) else 0
 
 
 def extract_fights(data: dict, char: str, asc: int, won: bool, local_idx: int = 0) -> list[dict]:

@@ -1365,5 +1365,21 @@ class EventLogTests(Uploads, unittest.TestCase):
         self.assertIsNone(handler.clean_event_log({"v": 4, "log": [{"q": 1, "k": "hp"}]}))
 
 
+class PlayerStatsTests(unittest.TestCase):
+    """The site writes HP and gold into page HTML, so a run file can't smuggle markup in them."""
+
+    def test_non_numbers_in_the_numeric_stats_become_zero(self):
+        node = {"player_stats": [{"current_hp": "<img src=x onerror=alert(1)>", "max_hp": 80,
+                                  "damage_taken": True, "hp_healed": float("nan"),
+                                  "current_gold": "99", "gold_gained": [1], "cards_gained": ["kept"]}]}
+        ps = run.player_stats_at(node, 0)
+        self.assertEqual((ps["current_hp"], ps["max_hp"], ps["damage_taken"], ps["hp_healed"]), (0, 80, 0, 0))
+        self.assertEqual((ps["current_gold"], ps["gold_gained"]), (0, 0))
+        self.assertEqual(ps["cards_gained"], ["kept"])
+
+    def test_missing_gold_stays_missing(self):
+        self.assertIsNone(run.player_stats_at({"player_stats": [{"max_hp": 70}]}, 0).get("current_gold"))
+
+
 if __name__ == "__main__":
     unittest.main()
