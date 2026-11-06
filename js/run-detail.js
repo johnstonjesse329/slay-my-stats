@@ -785,6 +785,16 @@ function actName(act, nodes) {
 // Each act's name centred above its floors, plus a faint dotted line up
 // through the plot where one act ends -- mirrors the act grouping of the
 // timeline rows.
+// A full run's floors in each act, as most runs play it (17, 16 and 15). Every floor chart is
+// as wide as one, so an act is the same width on a run that ended in Act 2 as on one that went
+// the distance, and the charts on the page line up floor for floor.
+const ACT_FLOORS = { 1: 17, 2: 16, 3: 15 };
+const FRAME_FLOORS = Object.values(ACT_FLOORS).reduce((a, b) => a + b, 0);
+// The x axis labels: one per floor played, then the floors the run never reached, so the axis
+// runs on empty where the run stopped. (No gaps in a timeline: node i is floor i + 1.)
+const floorLabels = nodes => Array.from({ length: Math.max(FRAME_FLOORS, nodes.length) },
+  (_, i) => nodes[i] ? nodes[i].floor + 1 : i + 1);
+
 function makeActBoundaryPlugin(nodes) {
   const spans = [];
   nodes.forEach((n, i) => {
@@ -792,6 +802,9 @@ function makeActBoundaryPlugin(nodes) {
     else spans[spans.length - 1].to = i;
   });
   spans.forEach(s => { s.name = actName(s.act, nodes); });
+  // The act the run ended in is named over where all of it would sit, not just what was played.
+  const last = spans[spans.length - 1];
+  if (last) last.reach = Math.min(floorLabels(nodes).length - 1, last.from + (ACT_FLOORS[last.act] || 1) - 1);
   return {
     id: "actBounds",
     // Before the datasets, so the line runs behind the data and the hover
@@ -814,8 +827,8 @@ function makeActBoundaryPlugin(nodes) {
       ctx.font = "600 15px 'Segoe UI', system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      spans.forEach(({ act, name, from, to }) => {
-        const left = x.getPixelForValue(from), right = x.getPixelForValue(to);
+      spans.forEach(({ act, name, from, to, reach }) => {
+        const left = x.getPixelForValue(from), right = x.getPixelForValue(Math.max(to, reach ?? to));
         // Just "Act N" when the name won't fit over the act's floors (a short
         // last act, or a narrow screen).
         const full = name ? `Act ${act} · ${name}` : `Act ${act}`;
@@ -841,7 +854,7 @@ function renderDetailHpChart(run) {
   // Not the character's colour: Regent's is gold, which sat too close to the
   // gold chart under it, and the Silent's green reads as HP anyway.
   const color = HP_LINE;
-  const labels = nodes.map(n => n.floor + 1);
+  const labels = floorLabels(nodes);
   const hpData = nodes.map(n => n.hpAfter);
   const maxHpData = nodes.map(n => n.maxHp);
 
@@ -929,7 +942,7 @@ function renderDetailGoldChart(run) {
   }
   document.getElementById("detail-gold-box").style.display = "";
 
-  const labels   = nodes.map(n => n.floor + 1);
+  const labels   = floorLabels(nodes);
   const goldData = nodes.map(n => n.gold);
 
   if (detailGoldChart) { detailGoldChart.destroy(); detailGoldChart = null; }
@@ -1385,7 +1398,7 @@ function floorChartConfig(nodes, plugins, tip, y, datasets) {
   return {
     type: "line",
     plugins: [makeActBoundaryPlugin(nodes), ...plugins],
-    data: { labels: nodes.map(n => n.floor + 1), datasets },
+    data: { labels: floorLabels(nodes), datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -2088,7 +2101,7 @@ function renderDetailKeepCharts(run) {
       floorChartConfig(nodes, [], tipFor, { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 } }, series)));
   };
 
-  // Cards in the deck after each floor: a line per type, and the whole deck's size, so what
+  // Cards in the deck after each floor: a line per type (the total is in the hover box, not drawn: it dwarfed the types), so what
   // went in can be read against the HP and damage charts either side of it. Its hover box is
   // the type counts and what the floor added, and works on every floor, fights or not.
   const deckBox = document.getElementById("detail-keep-deck");
@@ -2107,10 +2120,7 @@ function renderDetailKeepCharts(run) {
       borderWidth: 2, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 4,
       cubicInterpolationMode: "monotone",
     });
-    chart("deck", [
-      deckLine("Deck size", KEEP_DEMAND_COLOR, sizes, [2, 4]),
-      ...tKeys.map(k => deckLine(k, T.color[k], byT[k])),
-    ], deckTip);
+    chart("deck", tKeys.map(k => deckLine(k, T.color[k], byT[k])), deckTip);
   }
 
   chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0), winners("damage", r => r.ask)], damageTip);
