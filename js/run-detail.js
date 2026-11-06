@@ -559,15 +559,20 @@ function buildNodeTooltip(node) {
     `<div class="${cls} nt-item">${src ? `<img loading="lazy" class="nt-item-icon" src="${thumbSrc(src)}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
   // Card faces size from --nt-card-w, which fitNodeTooltip sets as the
   // tooltip opens.
-  const nodeCardHtml = (id, dim = false) => cardFaceAvailable()
-    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}" data-card="${id}">${renderCardFace(id, 0, "var(--nt-card-w)")}</div>`
-    : `<div class="${dim ? "nt-skipped" : "nt-reward-card"}">${fmtCardLabel(id)}</div>`;
+  const nodeCardHtml = (id, dim = false, bought = false) => cardFaceAvailable()
+    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}${bought ? " nt-cardface-bought" : ""}" data-card="${id}">${renderCardFace(id, 0, "var(--nt-card-w)")}</div>`
+    : `<div class="${dim ? "nt-skipped" : "nt-reward-card"}">${fmtCardLabel(id)}${bought ? ` <span class="nt-bought-tag">bought</span>` : ""}</div>`;
   // Wraps a group of cards in one grid so they lay out side by side, as many
-  // a row as fitNodeTooltip picks, instead of stacking one per line.
-  const cardRow = (ids, dim = false) => {
-    if (!ids.length) return "";
-    return `<div class="nt-cardrow">${ids.map(id => nodeCardHtml(id, dim)).join("")}</div>`;
+  // a row as fitNodeTooltip picks, instead of stacking one per line. `bought`
+  // cards (a shop's purchases) lead the row, full brightness and tagged; the
+  // rest are dimmed.
+  const cardRow = (ids, dim = false, bought = []) => {
+    if (!ids.length && !bought.length) return "";
+    return `<div class="nt-cardrow">${bought.map(id => nodeCardHtml(id, false, true)).join("")}${ids.map(id => nodeCardHtml(id, dim)).join("")}</div>`;
   };
+  // Relics and potions share one wrapping row (it wraps at the width the cards
+  // or text set, never widening the tooltip) instead of one line apiece.
+  const itemRow = chips => chips.length ? `<div class="nt-itemrow">${chips.join("")}</div>` : "";
   const lines = [];
   lines.push(`<div class="nt-floor">Floor ${node.floor + 1}</div>`);
 
@@ -607,24 +612,23 @@ function buildNodeTooltip(node) {
     const cardsForSale = node.cardsSkipped || [];
     if (cardsBought.length + cardsForSale.length > 0) {
       lines.push(`<div class="nt-section">Cards:</div>`);
-      cardsBought.forEach(id => lines.push(`<div class="nt-reward-card">${fmtCardLabel(id)} <span class="nt-bought-tag">bought</span></div>`));
-      lines.push(cardRow(cardsForSale, true));
+      lines.push(cardRow(cardsForSale, true, cardsBought));
     }
-    // Relics: bought + for sale
-    const relicsBought  = node.relicsBought || [];
-    const relicsForSale = node.relicsForSale || [];
-    if (relicsBought.length + relicsForSale.length > 0) {
-      lines.push(`<div class="nt-section">Relics:</div>`);
-      relicsBought.forEach(id => lines.push(iconRow("nt-reward-relic", relicImgSrc(id), fmtRelicLabel(id), ` <span class="nt-bought-tag">bought</span>`)));
-      relicsForSale.forEach(id => lines.push(iconRow("nt-skipped", relicImgSrc(id), fmtRelicLabel(id))));
-    }
-    // Potions: bought + for sale
+    // Relics and potions: bought + for sale, in one wrapping row
+    const relicsBought   = node.relicsBought   || [];
+    const relicsForSale  = node.relicsForSale  || [];
     const potionsBought  = node.potionsBought  || [];
     const potionsForSale = node.potionsForSale || [];
-    if (potionsBought.length + potionsForSale.length > 0) {
-      lines.push(`<div class="nt-section">Potions:</div>`);
-      potionsBought.forEach(id => lines.push(iconRow("nt-reward-card", potionImgSrc(id), fmtPotion(id), ` <span class="nt-bought-tag">bought</span>`)));
-      potionsForSale.forEach(id => lines.push(iconRow("nt-skipped", potionImgSrc(id), fmtPotion(id))));
+    const bought = ` <span class="nt-bought-tag">bought</span>`;
+    const chips = [
+      ...relicsBought.map(id => iconRow("nt-reward-relic", relicImgSrc(id), fmtRelicLabel(id), bought)),
+      ...potionsBought.map(id => iconRow("nt-reward-card", potionImgSrc(id), fmtPotion(id), bought)),
+      ...relicsForSale.map(id => iconRow("nt-skipped", relicImgSrc(id), fmtRelicLabel(id))),
+      ...potionsForSale.map(id => iconRow("nt-skipped", potionImgSrc(id), fmtPotion(id))),
+    ];
+    if (chips.length) {
+      lines.push(`<div class="nt-section">Relics & potions:</div>`);
+      lines.push(itemRow(chips));
     }
   } else {
     const cardsRewarded   = node.cardsRewarded   || [];
@@ -635,8 +639,10 @@ function buildNodeTooltip(node) {
     if (hasRewards) {
       lines.push(`<div class="nt-section">Rewards:</div>`);
       lines.push(cardRow(cardsRewarded));
-      relicsRewarded.forEach(id  => lines.push(iconRow("nt-reward-relic", relicImgSrc(id), fmtRelicLabel(id))));
-      potionsRewarded.forEach(id => lines.push(iconRow("nt-reward-card", potionImgSrc(id), fmtPotion(id))));
+      lines.push(itemRow([
+        ...relicsRewarded.map(id  => iconRow("nt-reward-relic", relicImgSrc(id), fmtRelicLabel(id))),
+        ...potionsRewarded.map(id => iconRow("nt-reward-card", potionImgSrc(id), fmtPotion(id))),
+      ]));
     }
     if (hasSkipped) {
       lines.push(`<div class="nt-section">Skipped:</div>`);

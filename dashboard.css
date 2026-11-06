@@ -2120,6 +2120,17 @@ body.suppress-hover-tooltips .node-tooltip {
   object-fit: contain;
   flex: 0 0 auto;
 }
+/* Relics and potions together, wrapping. width:0 + min-width:100% keeps the
+   row out of the tooltip's intrinsic width, so it fills whatever width the
+   cards or text above set and wraps there instead of stretching the tooltip. */
+.nt-itemrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 0.9rem;
+  width: 0;
+  min-width: 100%;
+  margin-top: 2px;
+}
 /* Reward cards render a small card face. Skipped/removed/for-sale ones are
    dimmed so a floor's actual gains stay the thing you read first. */
 
@@ -2161,6 +2172,22 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .nt-card-zoom { display: none; position: fixed; z-index: 101; pointer-events: none; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.7)); }
 .nt-card-zoom.open { display: block; }
 .nt-cardface-dim { opacity: 0.55; }
+/* A shop purchase: full brightness, with the same green "bought" tag the
+   relic and potion chips carry, laid over the card's foot. */
+.nt-cardface-bought { position: relative; }
+.nt-cardface-bought::after {
+  content: "bought";
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  padding: 0 0.4em;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.75);
+  color: #5cba7d;
+  font-size: var(--fs-sm);
+  font-style: italic;
+}
 
 /* Visually hidden: screen-reader-only text that takes no layout space. Used to
    label the win/loss sides of colored value pairs so the meaning isn't
