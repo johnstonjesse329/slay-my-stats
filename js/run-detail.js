@@ -1544,7 +1544,8 @@ function renderDetailRelicChart(run) {
 
 // ---- Keeping up by floor ----
 
-// Three charts, each with its own hover box, and every point is the fight on that floor:
+// Charts in the order the box shows them (HP by floor leads, from renderDetailHpChart): damage
+// taken, damage done, deck composition, energy and cards. Each has its own hover box, and every point is the fight on that floor:
 // nothing is averaged across different monsters. An icon marks what winners did on that
 // fight, and shows what kind of fight it was. Above them each act is read the same way,
 // its fights summed against what winners did on each. DATA.fightDemand
@@ -2086,6 +2087,31 @@ function renderDetailKeepCharts(run) {
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
       floorChartConfig(nodes, [], tipFor, { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 } }, series)));
   };
+
+  // Cards in the deck after each floor: a line per type, and the whole deck's size, so what
+  // went in can be read against the HP and damage charts either side of it. Its hover box is
+  // the type counts and what the floor added, and works on every floor, fights or not.
+  const deckBox = document.getElementById("detail-keep-deck");
+  deckBox.style.display = run.deckAdded ? "" : "none";
+  if (run.deckAdded) {
+    const T = DECK_GROUPS.type;
+    const held = heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []);
+    const byT = countsByFloor(nodes, held, T);
+    const tKeys = usedKeys(byT, T.order);
+    const sizes = floorTotals(nodes, byT, T.order);
+    const deckTip = context => showFloorTip(context, i =>
+      `${floorTipHead({ ...nodes[i], enc: nodes[i].fight || nodes[i].enc }, sizes[i], "cards")}` +
+      `<table>${tKeys.filter(k => byT[k][i] > 0).map(k => row(k, T.color[k], byT[k][i])).join("")}</table>${changed(i)}`);
+    const deckLine = (label, color, data, dash) => ({
+      label, data, borderColor: color, pointHoverBackgroundColor: color,
+      borderWidth: 2, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 4,
+      cubicInterpolationMode: "monotone",
+    });
+    chart("deck", [
+      deckLine("Deck size", KEEP_DEMAND_COLOR, sizes, [2, 4]),
+      ...tKeys.map(k => deckLine(k, T.color[k], byT[k])),
+    ], deckTip);
+  }
 
   chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0), winners("damage", r => r.ask)], damageTip);
   chart("in", [line(KEEP_LINES.taken, r => r.taken), winners("in", r => r.winRate)], inTip);

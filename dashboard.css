@@ -1286,7 +1286,7 @@ h1 {
 .chart-wrap-short { height: 250px; }
 /* A chart's name inside a box that has several: a step under the box's own heading, not its size
    (`.chart-box > h3` would make it 24px, the same as the box title). */
-.chart-box > h3.strength-label { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 1.4rem 0 0.2rem; }
+.chart-box h3.strength-label { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 1.4rem 0 0.2rem; }
 .floor-tip .strength-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; max-width: 420px; }
 .floor-tip .strength-chip { display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 0; border-radius: 13px; border: 1px solid; white-space: nowrap; line-height: 24px; cursor: help; }
 .floor-tip .strength-chip:not(:has(img)) { padding-left: 9px; }

@@ -1852,3 +1852,9 @@ Sample: 8 usable logged runs (5 wins, 3 losses), all one player, A1, solo, 152 f
 Shape to try when there is data (your hypotheses): engine is skewed, since a peak-OP engine exists that a very good deck does not need, so a low engine does not mean a weak deck. If graded it lifts and never sinks: one high bar from the top of winners' acts, no quarters.
 
 Gate for grading: more than one player's logged winning acts, enough per act to cut a top-tail bar, losses past Act 1, and a held-out test showing it adds beyond damage taken and turns. Check first that X-cost cards, counted flat at 3 in `export_measured.py` and `infra/lambda/ingest/measured.py`, do not under-read banked energy.
+
+## Run page order: Keeping Up under the floor tiles, HP leads its charts (2026-11-05)
+
+Trying, not settled. Keeping Up by Floor now sits right after the floor-by-floor tiles, and HP by Floor moved out of its own box to be the first chart inside it, so the run reads as what was happening floor to floor, then how it kept up. Gold, Deck and Relics by Floor follow as before. The HP chart keeps its ids and render path; only its place in `run.py` changed, and `.chart-box h3.strength-label` no longer needs to be a direct child.
+
+The box now runs HP by floor, Damage taken per turn, Damage done per turn, Deck Composition by floor, Energy and cards per turn. Taken sits right under HP (the user's call). **Deck Composition by floor** (named so it is not mistaken for the stacked Deck by Floor) is the Deck by Floor numbers as lines: one per card type (Attack, Skill, Power, and Curse or Other when the run has them) plus a dotted Deck size line. Its hover box is the type counts for the floor and the cards and relics that floor added, on every floor, fights or not. The stacked Deck by Floor chart (type and rarity, card markers) stays where it was. Rarity is not drawn as lines.
