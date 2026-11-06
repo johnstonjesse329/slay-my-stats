@@ -653,7 +653,8 @@ function buildNodeTooltip(node) {
 
   if ((node.cardsRemoved || []).length > 0) {
     lines.push(`<div class="nt-section">Removed:</div>`);
-    lines.push(cardRow(node.cardsRemoved, true));
+    // Not dimmed: a removal really happened (at a shop it is a purchase).
+    lines.push(cardRow(node.cardsRemoved));
   }
 
   return lines.join("");
