@@ -1573,6 +1573,7 @@ h1 {
 /* Text tips and rich card/relic tips can be moved onto (tooltip.js drops this
    class whenever the box is hidden, so an invisible box never eats a click). */
 .chart-tooltip.tip-live { pointer-events: auto; }
+.chart-tooltip.tip-live.tip-passive { pointer-events: none; }
 .chart-tooltip-title { font-weight: 700; color: var(--gold); margin-bottom: 4px; }
 .chart-tooltip-row { display: flex; align-items: flex-start; gap: 6px; }
 .chart-tooltip-row + .chart-tooltip-row { margin-top: 3px; }

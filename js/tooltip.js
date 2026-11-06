@@ -199,12 +199,16 @@ document.addEventListener("focusout", e => {
 // sit inside a scrolling `.pivot-wrap` (overflow-y:auto clips an absolutely-
 // positioned .card-tooltip-wrap child) -- appending to document.body instead
 // sidesteps that clipping entirely, same as the chart tooltip above.
-function showFloatingHtmlTooltip(target, html) {
+// `passive`: the box can't be entered (pointer-events:none), for triggers that sit
+// inside another hover tooltip -- a box the pointer can land on would take the
+// hover away from that tooltip and close it.
+function showFloatingHtmlTooltip(target, html, passive = false) {
   if (!html) return;
   const el = getFloatingTooltipEl();
   cancelTipHide();
   tipTrigger = target;
   el.classList.add("chart-tooltip-rich", "tip-live");
+  el.classList.toggle("tip-passive", passive);
   el.innerHTML = html;
   loadDeferredImages(el);
   el.style.left = "0px";

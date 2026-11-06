@@ -557,7 +557,9 @@ document.addEventListener("mouseover", e => {
   const chip = e.target.closest?.(".node-tooltip [data-pick]");
   if (!chip) return;
   const [kind, id] = chip.dataset.pick.split(":");
-  showFloatingHtmlTooltip(chip, kind === "potion" ? buildPotionTooltip(id) : buildRelicTooltip(id));
+  // Passive: the box opens over the tooltip's lower rows, and one the pointer
+  // can land on would take the hover from the floor tooltip and close it.
+  showFloatingHtmlTooltip(chip, kind === "potion" ? buildPotionTooltip(id) : buildRelicTooltip(id), true);
 });
 document.addEventListener("mouseout", e => {
   const chip = e.target.closest?.(".node-tooltip [data-pick]");
