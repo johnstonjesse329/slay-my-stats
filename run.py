@@ -1518,6 +1518,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="detail-timeline"></div>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
+        <p class="chart-caption">This data highlights how your deck is performing per act against broad buckets of effectiveness: how much damage you put out and how much you mitigate. Cards played per turn is shown alongside, not graded.</p>
         <dl class="chart-caption keep-key">
           <dt>Graded on</dt><dd>Damage taken after healing, against wins on the same fights at <span id="detail-keep-tier"></span>. Energy and draw aren't graded</dd>
           <dt><span class="keep-signal ahead"></span> Hype</dt><dd>Less damage taken than 3 in 4 wins, or faster than 3 in 4 with no more damage than the average</dd>
@@ -1527,24 +1528,27 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="keep-acts" id="detail-keep-acts"></div>
         <div id="detail-hp-box">
           <h3 class="strength-label">HP by floor</h3>
-          <p class="chart-caption">Your HP after each floor, against your max HP.</p>
+          <p class="chart-caption">Your HP after each floor, against your max HP. The dots on elites and bosses represent your median win's HP entering that fight. The vertical bar runs from that median down to the lowest 10% of your winning runs, for comparison.</p>
           <div class="chart-wrap"><canvas id="detail-hp-chart"></canvas></div>
           <div class="floor-legend" id="detail-hp-legend"></div>
         </div>
-        <p class="chart-caption">Each icon is the average win for that fight; none means too few wins. Damage done: above it means faster. Damage taken: below it means less.</p>
         <h3 class="strength-label">Damage taken per turn</h3>
+        <p class="chart-caption">Damage that got through each turn, after healing. The fight icons represent the average win for that fight. The vertical bar runs from that average to the best 10% of winning runs, for comparison.</p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-in-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-in-legend"></div>
         <h3 class="strength-label">Damage done per turn</h3>
+        <p class="chart-caption">Enemy HP taken off each turn. The fight icons represent the average win for that fight. The vertical bar runs from that average to the best 10% of winning runs, for comparison.</p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
         <div id="detail-keep-deck">
           <h3 class="strength-label">Deck Composition by floor</h3>
+          <p class="chart-caption">Cards in your deck after each floor, by type.</p>
           <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-deck-chart"></canvas></div>
           <div class="floor-legend" id="detail-keep-deck-legend"></div>
         </div>
         <h3 class="strength-label">Energy and cards per turn</h3>
         <div id="detail-keep-play">
+          <p class="chart-caption">Cards drawn, cards played and the printed cost of those played, each turn.</p>
           <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-play-chart"></canvas></div>
           <div class="floor-legend" id="detail-keep-play-legend"></div>
         </div>
