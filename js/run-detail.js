@@ -411,10 +411,20 @@ function cardTypeColor(id) {
 // A card face's height over its width, if one hasn't rendered to measure.
 const NT_CARD_ASPECT = 1.37;
 const NT_CARD_GAP = 4; // .nt-cardrow's gap, px
+// Most cards a row holds. Past this a floor with a long reward/skip list made
+// a hover panel that covered most of a wide desktop window.
+const NT_MAX_COLS = 5;
+// Widest a card gets, px. The deck's hover-card size (up to 210px) dwarfs the
+// tooltip's 14px text, so a floor's cards stay a glanceable size.
+const NT_MAX_CARD_W = 120;
+// Gap kept to the window's edge, and the least room beside a node (content
+// width, px) that is worth anchoring the tooltip there for.
+const NT_EDGE = 8;
+const NT_MIN_ANCHOR_W = 260;
 
 // Sizes a card-bearing node tooltip to the room the window actually has:
-// picks how many cards a row holds and how wide each is, so the cards are as
-// big as possible -- up to the deck's hover-card size -- while the whole
+// picks how many cards a row holds (at most NT_MAX_COLS) and how wide each is,
+// so the cards are as big as possible -- up to NT_MAX_CARD_W -- while the whole
 // tooltip fits on screen. It can't be scrolled (hovering is all it takes to
 // show it), so height matters as much as width. Runs each time a tooltip
 // opens and on resize, which is also what browser zoom fires.
@@ -438,15 +448,23 @@ function fitNodeTooltip(tip) {
   rows.forEach(r => { r.style.display = ""; });
   const cs = getComputedStyle(tip);
   const chromeW = tip.offsetWidth - tip.clientWidth + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-  const roomW = parseFloat(cs.maxWidth) - chromeW;
+  // Beside its node when there's room: the tooltip touches the node, so the
+  // pointer can move straight from one into the other (to hover a card) without
+  // crossing a gap that would close it. Only the room on the roomier side
+  // counts. Too narrow for that (a phone) and it stays centred on the screen.
+  const node = tip.closest(".node-card");
+  const nr = node.getBoundingClientRect();
+  const sideRoom = Math.max(document.documentElement.clientWidth - nr.right, nr.left) - NT_EDGE;
+  const anchored = sideRoom - chromeW >= NT_MIN_ANCHOR_W;
+  const roomW = Math.min(parseFloat(cs.maxWidth), anchored ? sideRoom : Infinity) - chromeW;
   const roomH = parseFloat(cs.maxHeight) - textH;
   tip.classList.remove("nt-measuring");
 
   const counts = rows.map(r => r.children.length);
   let best = { cols: 1, w: 0 };
-  for (let cols = 1; cols <= Math.max(...counts); cols++) {
+  for (let cols = 1; cols <= Math.min(NT_MAX_COLS, Math.max(...counts)); cols++) {
     const lines = counts.reduce((n, c) => n + Math.ceil(c / cols), 0);
-    const w = Math.min(deckW,
+    const w = Math.min(deckW, NT_MAX_CARD_W,
       (roomW - (cols - 1) * NT_CARD_GAP) / cols,
       (roomH - (lines - rows.length) * NT_CARD_GAP) / lines / aspect);
     // >=: on a tie, more per row -- fewer, wider rows suit a landscape screen.
@@ -454,6 +472,23 @@ function fitNodeTooltip(tip) {
   }
   tip.style.setProperty("--nt-cols", best.cols);
   tip.style.setProperty("--nt-card-w", `${Math.floor(best.w)}px`);
+
+  tip.classList.toggle("nt-anchored", anchored);
+  if (!anchored) {
+    tip.style.left = tip.style.top = "";
+    return;
+  }
+  // Sized now, so its real box can be placed: right of the node, else left,
+  // vertically centred on it but kept on screen (it is always tall enough
+  // that the node stays alongside it).
+  tip.classList.add("nt-measuring");
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.classList.remove("nt-measuring");
+  const vw = document.documentElement.clientWidth;
+  const left = vw - nr.right - NT_EDGE >= w ? nr.right - 1 : nr.left - w + 1;
+  const top = Math.min(Math.max(NT_EDGE, nr.top + nr.height / 2 - h / 2), window.innerHeight - h - NT_EDGE);
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
 }
 
 // The open tooltip is the hovered or focused node's; fit it as it opens.
@@ -472,9 +507,47 @@ document.addEventListener("focusin", e => {
   const nodeCard = e.target.closest?.(".node-card");
   if (nodeCard) fitNodeTooltipOf(nodeCard);
 });
+// Anchored tooltips are placed from where the node sat; scrolling moves it.
+window.addEventListener("scroll", () => { _fittedNode = null; }, { passive: true });
 window.addEventListener("resize", () => {
   const open = document.querySelector(".node-card:hover, .node-card:focus");
   if (open) fitNodeTooltipOf(open);
+});
+
+// The tooltip's cards are small so a floor's whole list fits, which leaves
+// their text too small to read. Hovering (or tapping) one pops it at the
+// deck's full size beside it. One popup on <body> rather than one per card:
+// the tooltip scrolls and clips, so a popup inside it would be cut off, and
+// pointer-events:none keeps the pointer "on" the node so the tooltip stays open.
+let _ntZoom = null;
+function ntZoomHide() {
+  if (_ntZoom) _ntZoom.classList.remove("open");
+}
+function ntZoomShow(face) {
+  if (!_ntZoom) {
+    _ntZoom = document.createElement("div");
+    _ntZoom.className = "nt-card-zoom";
+    document.body.appendChild(_ntZoom);
+  }
+  _ntZoom.innerHTML = renderCardFace(face.dataset.card, 0, cardFaceWidth(150, 210));
+  _ntZoom.style.visibility = "hidden";
+  _ntZoom.classList.add("open");
+  const r = face.getBoundingClientRect();
+  const w = _ntZoom.offsetWidth, h = _ntZoom.offsetHeight, gap = 8;
+  // Nothing to gain when the tooltip's card is already about this size.
+  if (r.width >= w * 0.9) { ntZoomHide(); return; }
+  let left = r.right + gap;
+  if (left + w > window.innerWidth - gap) left = r.left - gap - w;
+  left = Math.max(gap, left);
+  const top = Math.min(Math.max(gap, r.top + r.height / 2 - h / 2), window.innerHeight - h - gap);
+  _ntZoom.style.left = `${left}px`;
+  _ntZoom.style.top = `${top}px`;
+  _ntZoom.style.visibility = "";
+}
+document.addEventListener("mouseover", e => {
+  const face = e.target.closest?.(".node-tooltip .nt-cardface");
+  if (face && face.dataset.card) ntZoomShow(face);
+  else ntZoomHide();
 });
 
 function buildNodeTooltip(node) {
@@ -487,7 +560,7 @@ function buildNodeTooltip(node) {
   // Card faces size from --nt-card-w, which fitNodeTooltip sets as the
   // tooltip opens.
   const nodeCardHtml = (id, dim = false) => cardFaceAvailable()
-    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}">${renderCardFace(id, 0, "var(--nt-card-w)")}</div>`
+    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}" data-card="${id}">${renderCardFace(id, 0, "var(--nt-card-w)")}</div>`
     : `<div class="${dim ? "nt-skipped" : "nt-reward-card"}">${fmtCardLabel(id)}</div>`;
   // Wraps a group of cards in one grid so they lay out side by side, as many
   // a row as fitNodeTooltip picks, instead of stacking one per line.
