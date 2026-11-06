@@ -2148,10 +2148,12 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .node-tooltip:has(.nt-cardrow) {
   /* max-content, not shrink-to-fit: anchored under a 100px node the tooltip
      would otherwise sit at its 160px min-width. 92vw is a backstop. */
-  /* A panel this size cannot be both anchored to a 100px node and on screen:
-     centred on the viewport it always fits, at any zoom or window size. Plain
-     text tooltips keep their anchored position -- only card-bearing ones,
-     which are the tall ones, move. */
+  /* A panel this size cannot hang below a 100px node and stay on screen, so
+     card-bearing tooltips are fixed instead (plain text ones keep hanging
+     under their node). fitNodeTooltip puts them beside the node when there is
+     room, so the pointer can move into them; this centred-on-the-viewport
+     position is the fallback for windows too narrow for that, where it always
+     fits at any zoom. */
   position: fixed;
   top: 50%;
   left: 50%;
@@ -2161,7 +2163,13 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   max-height: 88vh;
   white-space: normal;
 }
+/* Beside its node (fitNodeTooltip sets left/top): no centring transform. */
+.node-tooltip.nt-anchored { transform: none; }
 .nt-cardface { margin: 0; }
+/* Full-size card beside the one hovered in a node tooltip (ntZoomShow). Above
+   the tooltip's z-index:100; ignores the pointer so the tooltip stays open. */
+.nt-card-zoom { display: none; position: fixed; z-index: 101; pointer-events: none; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.7)); }
+.nt-card-zoom.open { display: block; }
 .nt-cardface-dim { opacity: 0.55; }
 
 /* Visually hidden: screen-reader-only text that takes no layout space. Used to
