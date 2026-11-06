@@ -2120,6 +2120,10 @@ body.suppress-hover-tooltips .node-tooltip {
   object-fit: contain;
   flex: 0 0 auto;
 }
+/* Shop relics/potions, read like the shop's cards: a purchase glows, an
+   offer that was passed up is dimmed. */
+.nt-item-dim { opacity: 0.55; }
+.nt-item-bought .nt-item-icon { filter: drop-shadow(0 0 4px #5cba7d) drop-shadow(0 0 1px #5cba7d); }
 /* Relics and potions together, wrapping. width:0 + min-width:100% keeps the
    row out of the tooltip's intrinsic width, so it fills whatever width the
    cards or text above set and wraps there instead of stretching the tooltip. */

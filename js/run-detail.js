@@ -619,12 +619,13 @@ function buildNodeTooltip(node) {
     const relicsForSale  = node.relicsForSale  || [];
     const potionsBought  = node.potionsBought  || [];
     const potionsForSale = node.potionsForSale || [];
-    const bought = ` <span class="nt-bought-tag">bought</span>`;
+    // Same reading as the cards above: purchases glow, what was only on offer
+    // is dimmed.
     const chips = [
-      ...relicsBought.map(id => iconRow("nt-reward-relic", relicImgSrc(id), fmtRelicLabel(id), bought)),
-      ...potionsBought.map(id => iconRow("nt-reward-card", potionImgSrc(id), fmtPotion(id), bought)),
-      ...relicsForSale.map(id => iconRow("nt-skipped", relicImgSrc(id), fmtRelicLabel(id))),
-      ...potionsForSale.map(id => iconRow("nt-skipped", potionImgSrc(id), fmtPotion(id))),
+      ...relicsBought.map(id => iconRow("nt-reward-relic nt-item-bought", relicImgSrc(id), fmtRelicLabel(id))),
+      ...potionsBought.map(id => iconRow("nt-reward-card nt-item-bought", potionImgSrc(id), fmtPotion(id))),
+      ...relicsForSale.map(id => iconRow("nt-skipped nt-item-dim", relicImgSrc(id), fmtRelicLabel(id))),
+      ...potionsForSale.map(id => iconRow("nt-skipped nt-item-dim", potionImgSrc(id), fmtPotion(id))),
     ];
     if (chips.length) {
       lines.push(`<div class="nt-section">Relics & potions:</div>`);
