@@ -1139,22 +1139,33 @@ h1 {
   color: var(--text-dim);
 }
 
-.detail-run-header-stats {
+/* The ancient boons join the headline numbers: icons where the number goes. */
+.detail-run-headline-stats { align-items: flex-end; }
+.run-boon-icons {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.75rem;
-  padding-bottom: 0.75rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid var(--hairline);
-  font-size: var(--fs-sm);
+  gap: 6px;
+  height: 32px;
 }
 
-.run-header-stat-divider {
-  width: 1px;
-  height: 14px;
-  background: var(--hairline);
-  flex-shrink: 0;
+/* The rest of the stats: the same pairing as the headline, a size down so the
+   headline stays the loudest. */
+.detail-run-header-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 2.5rem;
+  padding: 0.55rem 0 0.8rem;
+  margin-bottom: 1rem;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+.detail-run-header-stats .run-headline-value { font-size: 1.125rem; }
+.detail-run-header-stats .run-headline-label { font-size: var(--fs-xs); }
+
+.run-stat-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.35rem;
 }
 
 /* ---- Placeholder ---- */
@@ -1580,20 +1591,11 @@ h1 {
   max-width: none;
 }
 
-/* ---- Run header stat chips ---- */
-
-.run-summary-stat {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.3rem;
-}
-
-.run-summary-label { color: var(--text-dim); }
-.run-summary-value { color: var(--text); font-weight: 600; }
+/* ---- Run header ancient boons ---- */
 
 .run-boon-icon {
-  /* Twice the size they were at (16px): the boons are the one thing in this
-     row worth looking at, so they get picture size, not text size. */
+  /* Twice the size they were at (16px): the boons are the one thing in the
+     header worth looking at, so they get picture size, not text size. */
   width: 32px;
   height: 32px;
   object-fit: contain;
@@ -1605,14 +1607,14 @@ h1 {
   display: inline-block;
 }
 .run-boon-wrap .relic-tooltip-wrap {
-  /* Anchored to the right edge rather than centered -- these icons sit at
-     the header's right edge, where a centered 180px tooltip would run off
-     the viewport. */
+  /* Anchored to the icon's left edge rather than centered -- a centered
+     180px popup runs off the viewport when the boons wrap to the left edge
+     on a phone. */
   visibility: hidden;
   position: absolute;
   bottom: calc(100% + 6px);
-  left: auto;
-  right: 0;
+  left: 0;
+  right: auto;
   transform: none;
   z-index: 200;
 }
