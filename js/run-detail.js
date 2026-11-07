@@ -316,13 +316,9 @@ function renderDetailRun(run) {
   const allGroups = [statItems, purchaseItems, summaryItems].filter(g => g.length > 0);
   const statsInner = allGroups.map(statHtml).join(`<span class="run-header-stat-divider"></span>`)
     + (ancientBoonsHtml ? `<span class="run-header-stat-divider"></span>${ancientBoonsHtml}` : "");
-  // Fights/events/shop counts, buys and damage/healing totals would stretch
-  // the header into a wall of small text — the big numbers above (elites,
-  // cards, relics, gold) are the at-a-glance story. Tuck the rest behind a
-  // native disclosure so it's one tap away rather than always on screen.
-  const summaryHtml = statsInner
-    ? `<details class="run-detail-stats"><summary>Damage, fights &amp; purchases</summary><div class="run-detail-stats-body">${statsInner}</div></details>`
-    : "";
+  // Fights/events/shop counts, buys and damage/healing totals sit in the
+  // header's stat row as they are, with no disclosure to open first.
+  const summaryHtml = statsInner;
 
   document.getElementById("detail-run-header").innerHTML = `
     <div class="detail-run-header-bar">

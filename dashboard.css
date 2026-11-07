@@ -1157,36 +1157,6 @@ h1 {
   flex-shrink: 0;
 }
 
-/* The secondary stat tail (fight/event counts, buys, damage/heal totals)
-   collapses into a disclosure under the headline stats; when open the body
-   restores the same wrapped chip layout it had as a flat row. */
-.run-detail-stats { flex-basis: 100%; }
-.run-detail-stats > summary {
-  cursor: pointer;
-  user-select: none;
-  color: var(--text-dim);
-  font-size: var(--fs-sm);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-.run-detail-stats > summary::before { content: "▸"; }
-.run-detail-stats[open] > summary::before { content: "▾"; }
-.run-detail-stats > summary:hover { color: var(--text); }
-.run-detail-stats > summary:focus-visible {
-  outline: 2px solid var(--gold);
-  outline-offset: 2px;
-  border-radius: 3px;
-}
-.run-detail-stats-body {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.75rem;
-  padding-top: 0.55rem;
-}
-.run-detail-stats[open] > summary { margin-bottom: 0.1rem; }
-
 /* ---- Placeholder ---- */
 
 .detail-placeholder {
@@ -1612,11 +1582,10 @@ h1 {
 .run-summary-value { color: var(--text); font-weight: 600; }
 
 .run-boon-icon {
-  /* Sized against this row's own 14px divider height, not the 22px used for
-     relic icons elsewhere -- at 22px these overpowered the header's compact
-     text stats next to them. */
-  width: 16px;
-  height: 16px;
+  /* Twice the size they were at (16px): the boons are the one thing in this
+     row worth looking at, so they get picture size, not text size. */
+  width: 32px;
+  height: 32px;
   object-fit: contain;
   vertical-align: middle;
   border-radius: 3px;
