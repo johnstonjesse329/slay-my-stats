@@ -308,9 +308,12 @@ function renderDetailRun(run) {
     ? `<span class="run-headline-stat run-boon-stat"><span class="run-boon-icons">${ancientRelics.map(id => {
         const src = relicImgSrc(id);
         const tip = buildRelicTooltip(id);
+        // The id comes from the uploaded run, so its label is escaped before
+        // it goes into the markup.
+        const safeLabel = String(fmtRelicLabel(id)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         const iconHtml = src
-          ? `<img loading="lazy" class="run-boon-icon" src="${thumbSrc(src)}" alt="${fmtRelicLabel(id)}">`
-          : `<span class="run-headline-value">${fmtRelicLabel(id)}</span>`;
+          ? `<img loading="lazy" class="run-boon-icon" src="${thumbSrc(src)}" alt="${safeLabel}">`
+          : `<span class="run-headline-value">${safeLabel}</span>`;
         // tabindex: same touch/keyboard tooltip-reveal parity as .relic-tile.
         return `<span class="run-boon-wrap" tabindex="0">${iconHtml}${tip ? `<span class="relic-tooltip-wrap">${tip}</span>` : ""}</span>`;
       }).join("")}</span><span class="run-headline-label">Ancient boons</span></span>`
