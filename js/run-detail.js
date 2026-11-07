@@ -291,34 +291,39 @@ function renderDetailRun(run) {
     { label: "Potions gained", value: totalPotionsGained },
   ];
 
+  // Same number-over-label pairing as the headline row above, a size down.
   const statHtml = items => items.map(i =>
-    `<span class="run-summary-stat"><span class="run-summary-label">${i.label}</span><span class="run-summary-value">${i.value}</span></span>`
+    `<span class="run-headline-stat"><span class="run-headline-value">${i.value}</span><span class="run-headline-label">${i.label}</span></span>`
   ).join("");
 
   // Same rich hover tooltip (portrait, rarity, description) as the Relics
   // grid further down the page, not the old plain-text data-tip bubble --
   // a one-line description doesn't tell you what an ancient boon actually
-  // does. .run-boon-wrap right-aligns the popup instead of centering it,
-  // since these icons sit at the header's right edge and a centered 180px
-  // tooltip would run off the viewport there.
+  // does. .run-boon-wrap left-aligns the popup instead of centering it, since
+  // a centered 180px popup runs off the viewport when the boons wrap to the
+  // left edge on a phone.
+  // The boons are what the run opened with, so they sit with the headline
+  // numbers (the icons in the value slot, "Ancient boons" as the label).
   const ancientBoonsHtml = ancientRelics.length > 0
-    ? `<span class="run-summary-stat"><span class="run-summary-label">Ancient boons</span>${ancientRelics.map(id => {
+    ? `<span class="run-headline-stat run-boon-stat"><span class="run-boon-icons">${ancientRelics.map(id => {
         const src = relicImgSrc(id);
         const tip = buildRelicTooltip(id);
+        // The id comes from the uploaded run, so its label is escaped before
+        // it goes into the markup.
+        const safeLabel = String(fmtRelicLabel(id)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         const iconHtml = src
-          ? `<img loading="lazy" class="run-boon-icon" src="${thumbSrc(src)}" alt="${fmtRelicLabel(id)}">`
-          : `<span class="run-summary-value">${fmtRelicLabel(id)}</span>`;
+          ? `<img loading="lazy" class="run-boon-icon" src="${thumbSrc(src)}" alt="${safeLabel}">`
+          : `<span class="run-headline-value">${safeLabel}</span>`;
         // tabindex: same touch/keyboard tooltip-reveal parity as .relic-tile.
         return `<span class="run-boon-wrap" tabindex="0">${iconHtml}${tip ? `<span class="relic-tooltip-wrap">${tip}</span>` : ""}</span>`;
-      }).join("")}</span>`
+      }).join("")}</span><span class="run-headline-label">Ancient boons</span></span>`
     : "";
 
   const allGroups = [statItems, purchaseItems, summaryItems].filter(g => g.length > 0);
-  const statsInner = allGroups.map(statHtml).join(`<span class="run-header-stat-divider"></span>`)
-    + (ancientBoonsHtml ? `<span class="run-header-stat-divider"></span>${ancientBoonsHtml}` : "");
-  // Fights/events/shop counts, buys and damage/healing totals sit in the
-  // header's stat row as they are, with no disclosure to open first.
-  const summaryHtml = statsInner;
+  // Fights/events/shop counts, buys and damage/healing totals sit in their own
+  // row as they are, with no disclosure to open first.
+  // Each group wraps as a unit, so a group is never split across two lines.
+  const summaryHtml = allGroups.map(g => `<div class="run-stat-group">${statHtml(g)}</div>`).join("");
 
   document.getElementById("detail-run-header").innerHTML = `
     <div class="detail-run-header-bar">
@@ -335,11 +340,26 @@ function renderDetailRun(run) {
       ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
     </div>
     <div class="detail-run-headline-stats">
-      ${headlineHtml}
+      ${headlineHtml}${ancientBoonsHtml}
     </div>
     <div class="detail-run-header-stats">
       ${summaryHtml}
     </div>`;
+
+  // The boons' popup starts at the icon's left edge; slide it back in when that
+  // would push it past the right edge of the screen (a phone, where the icons
+  // sit well to the right).
+  document.querySelectorAll("#detail-run-header .run-boon-wrap").forEach(wrap => {
+    const tipEl = wrap.querySelector(".relic-tooltip-wrap");
+    if (!tipEl) return;
+    const fit = () => {
+      tipEl.style.transform = "";
+      const over = tipEl.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
+      if (over > 0) tipEl.style.transform = `translateX(${-over}px)`;
+    };
+    wrap.addEventListener("mouseenter", fit);
+    wrap.addEventListener("focusin", fit);
+  });
 
   const copyBtn = document.querySelector("#detail-run-header .run-copy-link");
   if (copyBtn) copyBtn.addEventListener("click", () => copyRunLink(run.ts, copyBtn));
