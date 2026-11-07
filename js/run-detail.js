@@ -357,8 +357,11 @@ function renderDetailRun(run) {
       const over = tipEl.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
       if (over > 0) tipEl.style.transform = `translateX(${-over}px)`;
     };
-    wrap.addEventListener("mouseenter", fit);
-    wrap.addEventListener("focusin", fit);
+    // The popup is display:none until :hover/:focus-within applies, which may land
+    // after this handler runs, so measure again a frame later.
+    const fitSoon = () => { fit(); requestAnimationFrame(fit); };
+    wrap.addEventListener("mouseenter", fitSoon);
+    wrap.addEventListener("focusin", fitSoon);
   });
 
   const copyBtn = document.querySelector("#detail-run-header .run-copy-link");

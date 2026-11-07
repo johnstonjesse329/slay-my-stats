@@ -1630,7 +1630,9 @@ h1 {
   /* Anchored to the icon's left edge rather than centered -- a centered
      180px popup runs off the viewport when the boons wrap to the left edge
      on a phone. */
-  visibility: hidden;
+  /* display:none, not visibility:hidden: a hidden popup still counts toward the
+     page's scroll width, and the later boons' popups run past a phone's edge. */
+  display: none;
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
@@ -1640,6 +1642,7 @@ h1 {
 }
 .run-boon-wrap:hover .relic-tooltip-wrap,
 .run-boon-wrap:focus-within .relic-tooltip-wrap {
+  display: block;
   visibility: visible;
 }
 
@@ -1693,6 +1696,11 @@ h1 {
     gap: 4px;
   }
   .deck-tile-row .card-tile-face .cardface { width: 100% !important; height: auto; }
+  /* The hover popups are wider than a 103px tile, and centred they poke past the
+     page edge from the outer columns -- even while hidden, which is enough to
+     make the whole page scroll sideways. Outer columns anchor to their own edge. */
+  .deck-tile-row .card-tile:nth-child(3n + 1) .card-tooltip-wrap { left: 0; transform: none; }
+  .deck-tile-row .card-tile:nth-child(3n) .card-tooltip-wrap { left: auto; right: 0; transform: none; }
 }
 
 .card-tile {
