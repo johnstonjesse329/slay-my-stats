@@ -1168,6 +1168,17 @@ h1 {
   gap: 0.6rem 1.35rem;
 }
 
+/* On a phone the groups' uneven runs left short, ragged lines, so the stats
+   run as one even three-column grid instead. */
+@media (max-width: 700px) {
+  .detail-run-header-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem 0.5rem;
+  }
+  .run-stat-group { display: contents; }
+}
+
 /* ---- Placeholder ---- */
 
 .detail-placeholder {
