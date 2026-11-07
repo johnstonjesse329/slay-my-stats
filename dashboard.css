@@ -1153,7 +1153,7 @@ h1 {
 .detail-run-header-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem 2.5rem;
+  gap: 0.6rem 2rem;
   padding: 0.55rem 0 0.8rem;
   margin-bottom: 1rem;
   border-top: 1px solid var(--hairline);
@@ -1165,16 +1165,23 @@ h1 {
 .run-stat-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem 1.35rem;
+  gap: 0.6rem 1.1rem;
 }
 
 /* On a phone the groups' uneven runs left short, ragged lines, so the stats
-   run as one even three-column grid instead. */
+   run as one even three-column grid instead. The header is tightened so the
+   headline numbers and the ancient boons share one line (a 360px phone leaves
+   about 317px for them) and the rows above and below take fewer lines. */
 @media (max-width: 700px) {
+  .detail-run-header-bar { gap: 0.4rem 0.6rem; padding-top: 0.5rem; }
+  .detail-run-headline-stats { gap: 0.9rem; padding-bottom: 0.5rem; }
+  .detail-run-headline-stats .run-headline-value { font-size: 1.25rem; }
+  .detail-run-headline-stats .run-headline-label { font-size: var(--fs-xs); }
   .detail-run-header-stats {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem 0.5rem;
+    gap: 0.55rem 0.5rem;
+    padding: 0.5rem 0 0.6rem;
   }
   .run-stat-group { display: contents; }
 }
@@ -1673,6 +1680,17 @@ h1 {
   flex-wrap: wrap;
   gap: 8px;
   align-items: flex-start;
+}
+/* On a phone the faces' 166px minimum (set inline) leaves one card per row, so
+   the deck is three even columns and each face fills its column. The inline
+   width has to be beaten with !important. */
+@media (max-width: 560px) {
+  .deck-tile-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .deck-tile-row .card-tile-face .cardface { width: 100% !important; height: auto; }
 }
 
 .card-tile {
