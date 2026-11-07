@@ -1266,6 +1266,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <button class="toggle-btn" id="shared-mode-multi">Multi</button>
       <button class="toggle-btn" id="shared-mode-daily">Daily</button>
     </div>
+    <div class="filter-group" id="shared-mods-group" style="display:none">
+      <span class="filter-label">Mods</span>
+      <button class="toggle-btn" id="shared-mods-all">All</button>
+      <button class="toggle-btn" id="shared-mods-vanilla">Unmodded</button>
+      <button class="toggle-btn" id="shared-mods-modded">Modded</button>
+    </div>
   </div>
   <div class="filter-row">
     <div class="filter-group">

@@ -971,10 +971,8 @@ h1 {
   align-items: start;
 }
 /* 340px fits the widest columns (Necrobinder, A10, F48, an OP tag, a two-digit
-   month and day) beside a scrollbar; the modded tag ("M") in the list adds its
-   own column, hence 370px. A variable, so the phone layout's single column
-   still wins. */
-#detail-layout:has(.detail-run-item .run-modded-tag) { --run-list-width: 370px; }
+   month and day) beside a scrollbar. A variable, so the phone layout's single
+   column still wins. */
 
 /* ---- Run list (left column) ---- */
 
@@ -988,11 +986,13 @@ h1 {
   box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
   /* One set of columns for every row (each row is a subgrid of it), so each
      column is as wide as its widest entry and they line up down the list:
-     char, asc, W/L, floor, reading, modded tag (empty unless modded), date.
-     Spacing is each cell's left padding, not a column gap, so the empty tag
-     column takes no room. */
+     char, asc, W/L, floor, reading, date. Spacing is each cell's left padding,
+     not a column gap. */
   display: grid;
-  grid-template-columns: auto auto auto auto auto auto 1fr;
+  /* Char takes what it needs; the five columns after it share whatever room
+     is left equally, so the spacing is even across the row instead of all of
+     it piling up before the date. */
+  grid-template-columns: auto repeat(5, minmax(min-content, 1fr));
   align-content: start;
 }
 #detail-run-list > * { grid-column: 1 / -1; }
@@ -1041,11 +1041,11 @@ h1 {
 .detail-run-item > :not(:first-child, :empty),
 .detail-run-header-row > :not(:first-child, :empty) { padding-left: 0.5rem; }
 .detail-run-char { font-weight: 600; }
-.detail-run-asc  { font-size: var(--fs-sm); text-align: right; }
+.detail-run-asc  { font-size: var(--fs-sm); text-align: center; }
 .detail-run-won  { font-weight: 700; font-size: var(--fs-sm); text-align: center; }
-.detail-run-floor { font-size: var(--fs-sm); text-align: right; }
+.detail-run-floor { font-size: var(--fs-sm); text-align: center; }
 .detail-run-read  { text-align: center; }
-.detail-run-date  { font-size: var(--fs-sm); text-align: right; }
+.detail-run-date  { font-size: var(--fs-sm); text-align: center; }
 
 /* How the whole run read: a round mark in the run list, a pill on the run's
    header. OP is the same green filled in, so it reads as more of ahead and
@@ -1110,6 +1110,10 @@ h1 {
   font-size: var(--fs-md);
 }
 
+/* Date, seed and Copy link: just part of the header's one flowing line on a
+   wide screen; the phone breaks them onto a line of their own (see below). */
+.rh-meta { display: contents; }
+.run-copy-link-icon { display: none; }
 .rh-date { color:var(--text-dim); font-size: var(--fs-sm); }
 .rh-seed { color:var(--text-dim); font-size: var(--fs-sm); font-family: monospace; }
 
@@ -1151,14 +1155,17 @@ h1 {
 /* The rest of the stats: the same pairing as the headline, a size down so the
    headline stays the loudest. */
 .detail-run-header-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem 2rem;
   padding: 0.55rem 0 0.8rem;
   margin-bottom: 1rem;
   border-top: 1px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
 }
+.rh-stats-wide {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 2rem;
+}
+.rh-stats-phone { display: none; }
 .detail-run-header-stats .run-headline-value { font-size: 1.125rem; }
 .detail-run-header-stats .run-headline-label { font-size: var(--fs-xs); }
 
@@ -1169,21 +1176,24 @@ h1 {
 }
 
 /* On a phone the groups' uneven runs left short, ragged lines, so the stats
-   run as one even three-column grid instead. The header is tightened so the
-   headline numbers and the ancient boons share one line (a 360px phone leaves
-   about 317px for them) and the rows above and below take fewer lines. */
+   run as one even three-column grid instead (js/run-detail.js joins a few
+   neighbouring pairs into one cell so the last row isn't left short). The
+   header is tightened so the headline numbers and the ancient boons share one
+   line (a 360px phone leaves about 317px for them) and the rows above and
+   below take fewer lines. */
 @media (max-width: 700px) {
   .detail-run-header-bar { gap: 0.4rem 0.6rem; padding-top: 0.5rem; }
   .detail-run-headline-stats { gap: 0.9rem; padding-bottom: 0.5rem; }
   .detail-run-headline-stats .run-headline-value { font-size: 1.25rem; }
   .detail-run-headline-stats .run-headline-label { font-size: var(--fs-xs); }
-  .detail-run-header-stats {
+  .detail-run-header-stats { padding: 0.5rem 0 0.6rem; }
+  .rh-stats-wide { display: none; }
+  .rh-stats-phone {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.55rem 0.5rem;
-    padding: 0.5rem 0 0.6rem;
+    align-items: start;
   }
-  .run-stat-group { display: contents; }
 }
 
 /* ---- Placeholder ---- */
@@ -1701,6 +1711,9 @@ h1 {
      make the whole page scroll sideways. Outer columns anchor to their own edge. */
   .deck-tile-row .card-tile:nth-child(3n + 1) .card-tooltip-wrap { left: 0; transform: none; }
   .deck-tile-row .card-tile:nth-child(3n) .card-tooltip-wrap { left: auto; right: 0; transform: none; }
+  /* A tap opens the card large instead (js/card-face.js), enchantment rule
+     included, so the face tile's own enchantment popup would only double it. */
+  .deck-tile-row .card-tile-face .card-tooltip-wrap { display: none; }
 }
 
 .card-tile {
@@ -2000,6 +2013,70 @@ h1 {
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;
+}
+/* A deck relic tile already shows its text, so its popup only exists for the
+   phone, which turns the tile into an icon (see the 560px block below). */
+.relic-tile { position: relative; }
+.relic-tile > .relic-tooltip-wrap { display: none; }
+
+/* Relics on a phone: icons only, five to a row, each a tap target about 58px
+   wide. A tap opens the same popup the ancient boons use, anchored to the
+   column's own edge so it stays on screen: the outer two columns on each side
+   line up with their edge, the middle one centres. */
+@media (max-width: 560px) {
+  #detail-deck-relics .deck-relic-list {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+  }
+  #detail-deck-relics .relic-tile {
+    justify-content: center;
+    align-items: center;
+    aspect-ratio: 1;
+    padding: 4px;
+    border-left-width: 1px;
+    cursor: pointer;
+  }
+  #detail-deck-relics .relic-tile-text { display: none; }
+  #detail-deck-relics .relic-tile-art { width: 100%; height: 100%; }
+  #detail-deck-relics .relic-tile:focus { outline: 1px solid var(--gold); }
+  #detail-deck-relics .relic-tile:hover > .relic-tooltip-wrap,
+  #detail-deck-relics .relic-tile:focus-within > .relic-tooltip-wrap {
+    display: block;
+    visibility: visible;
+    pointer-events: none; /* a tap on the popup reaches the relic under it */
+  }
+  #detail-deck-relics .relic-tile:nth-child(5n + 1) > .relic-tooltip-wrap,
+  #detail-deck-relics .relic-tile:nth-child(5n + 2) > .relic-tooltip-wrap { left: 0; transform: none; }
+  #detail-deck-relics .relic-tile:nth-child(5n + 4) > .relic-tooltip-wrap,
+  #detail-deck-relics .relic-tile:nth-child(5n) > .relic-tooltip-wrap { left: auto; right: 0; transform: none; }
+}
+
+/* The card a tap on the phone's deck opens, large, over a dimmed page. */
+.card-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.82);
+  overscroll-behavior: contain;
+}
+.card-lightbox-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-height: 100%;
+  overflow-y: auto;
+}
+.card-lightbox .cardface { max-width: 100%; height: auto; }
+.card-lightbox-ench {
+  width: min(86vw, 340px);
+  margin-top: 8px;
+  border: 1px solid #6a5a3a;
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 /* While scrolling, :hover can point at a stale element (Chrome doesn't
@@ -2349,25 +2426,45 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 
 }
 
-/* Small phones upright: the run list has room for what tells runs apart. The
-   tag goes rather than its cell, or the date would slide into its column. The
-   run's own header still says MODDED, and turning the phone brings both back. */
+/* Small phones upright: the run list has room for what tells runs apart, so
+   the date drops its year; turning the phone brings it back. */
 @media (max-width: 380px) {
-  .detail-run-item .run-modded-tag, .detail-run-year { display: none; }
+  .detail-run-year { display: none; }
   .detail-run-item > :not(:first-child, :empty),
   .detail-run-header-row > :not(:first-child, :empty) { padding-left: 0.2rem; }
-  .detail-run-item > .detail-run-mod { padding-left: 0; }
 }
 
 /* Narrow screens only, not a phone turned sideways: landscape has room for
    the full tables. */
 @media (max-width: 700px) {
-  /* Run header: date, seed and Copy link share one row under the run's
-     name line, instead of the seed and the button each wrapping alone. */
+  /* Run header: date and seed share a line of their own. */
   .detail-run-header-bar { gap: 0.3rem 0.6rem; }
+  .rh-meta { display: flex; align-items: center; gap: 0.3rem 0.6rem; flex: 1 0 100%; }
   .rh-date, .rh-seed { font-size: 0.72rem; white-space: nowrap; }
   .rh-seed-label { display: none; }
-  .run-copy-link { font-size: 0.7rem; padding: 0.12rem 0.4rem; white-space: nowrap; }
+  .detail-run-header-bar .run-copy-link { display: none; }
+  /* Phone: Copy link becomes an icon button at the top right of the header's
+     first line (the small text button in the bar is hidden). */
+  .detail-run-header-bar { position: relative; padding-right: 2.6rem; }
+  .run-copy-link-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 0.3rem;
+    right: 0;
+    width: 2.4rem;
+    height: 2.4rem;
+    padding: 0;
+    color: #1a1208;
+    background: var(--gold);
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .run-copy-link-icon:active { background: var(--gold-bright); }
+  .run-copy-link-icon .rci-done, .run-copy-link-icon.copied .rci-share { display: none; }
+  .run-copy-link-icon.copied .rci-done { display: block; }
 
   /* Tables fit the screen instead of scrolling sideways. */
 

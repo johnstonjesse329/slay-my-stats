@@ -75,9 +75,11 @@ function renderCards(grand, charStats, restAvg) {
 
   // A filtered number must not read as a lifetime one, so the active mode is
   // in the label where a phone sees it.
-  const scopeName = sharedActiveMode !== "all"
+  const modeName = sharedActiveMode !== "all"
     ? ({ solo: "Solo", multi: "Multiplayer", daily: "Daily" }[sharedActiveMode] || sharedActiveMode)
     : "";
+  const modsName = sharedActiveMods === "modded" ? "modded" : sharedActiveMods === "vanilla" ? "unmodded" : "";
+  const scopeName = [modeName, modsName].filter(Boolean).join(", ").replace(/^./, c => c.toUpperCase());
   // One card builder, three weights: `label` is what the stat is (bold), `what`
   // is who or what it is about (bold, in a character's colour), `detail` is the
   // figure behind the value (dim). Everything is on the card, nothing on hover.

@@ -148,7 +148,10 @@ function renderCardTile(c) {
     const enchTip = enchLabel
       ? `<div class="card-tooltip-wrap">${buildEnchantmentStrip(c.enchantment)}</div>`
       : "";
-    return `<div class="card-tile card-tile-face">
+    // data-tile-card: what a phone's tap-to-enlarge needs to draw the card again
+    // (see openCardLightbox).
+    const tileData = encodeURIComponent(JSON.stringify({ id: c.id, upgrade: c.upgrade, props: c.props, enchantment: c.enchantment }));
+    return `<div class="card-tile card-tile-face" data-tile-card="${tileData}">
       ${renderCardFace(c.id, c.upgrade, TILE_FACE_W, { props: c.props })}
       ${(enchLabel || countLabel) ? `<div class="tile-badges">${enchLabel}${countLabel}</div>` : ""}
       ${enchTip}
@@ -176,6 +179,10 @@ function renderCardTile(c) {
   </div>`;
 }
 
+// Higher is rarer; anything unrecognised sorts last.
+const RARITY_RANK = { Ancient: 8, Boss: 7, Event: 6, Rare: 5, Uncommon: 4, Common: 3, Shop: 2, Starter: 1 };
+function rarityRank(r) { return RARITY_RANK[r] || 0; }
+
 // Deduplicates a deck array (entries with {id, upgrade}) into one row per
 // id+upgrade combo, with a .count of how many copies are in the deck. Per-instance
 // props are part of a card's rendered identity -- two Mad Sciences with different
@@ -195,7 +202,10 @@ function dedupeCardCounts(deck) {
     }
     cardMap.get(key).count++;
   });
+  // Rarest first within a deck group; the same rarity falls back to name order.
   return [...cardMap.values()].sort((a, b) => {
+    const dr = rarityRank(cardInfo(b.id)?.rarity) - rarityRank(cardInfo(a.id)?.rarity);
+    if (dr) return dr;
     const na = (cardInfo(a.id)?.title) || fmtCardLabel(a.id);
     const nb = (cardInfo(b.id)?.title) || fmtCardLabel(b.id);
     return na.localeCompare(nb);
@@ -251,26 +261,32 @@ function renderCardGroupsHtml(cardList) {
     }).join("");
 }
 
-// A relic tile carries its own rarity and description, so it has no hover
-// preview.
+// A relic tile carries its own rarity and description, so on a wide screen it
+// needs no hover preview. On a phone the tile shrinks to its icon (five to a
+// row) and the same popup the ancient boons use opens on a tap; the popup is
+// display:none everywhere else (see .relic-tile in dashboard.css).
 function renderRelicTiles(relics) {
   return relics.map(r => {
     const src   = relicImgSrc(r.id);
     const parts = relicTextParts(r.id);
     const label = parts ? parts.name : fmtRelicLabel(r.id);
-    return `<div class="relic-tile">
-      ${src ? `<img loading="lazy" class="relic-tile-art" src="${src}" alt="">` : ""}
+    const tip   = buildRelicTooltip(r.id);
+    return `<div class="relic-tile" tabindex="0">
+      ${src ? `<img loading="lazy" class="relic-tile-art" src="${src}" alt="${String(label).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}">` : ""}
       <div class="relic-tile-text">
         <div class="relic-tile-name">${label}${parts ? parts.rarHtml : ""}</div>
         ${parts && parts.desc ? `<div class="relic-tile-desc">${parts.desc}</div>` : ""}
       </div>
+      ${tip ? `<div class="relic-tooltip-wrap">${tip}</div>` : ""}
     </div>`;
   }).join("");
 }
 
 function renderDetailDeckRelics(run) {
   const deck   = run.finalDeck   || [];
-  const relics = run.finalRelics || [];
+  // Rarest first; Array.sort is stable, so the order picked up in is kept within a rarity.
+  const relics = [...(run.finalRelics || [])]
+    .sort((a, b) => rarityRank(relicInfo(b.id)?.rarity) - rarityRank(relicInfo(a.id)?.rarity));
 
   if (deck.length === 0 && relics.length === 0) {
     document.getElementById("detail-deck-relics").innerHTML = "";
@@ -286,6 +302,41 @@ function renderDetailDeckRelics(run) {
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
 }
+
+// A phone can't hover a card, and its three-per-row tiles are small for the
+// card's text, so a tap opens the card large, with its enchantment's rule under
+// it. Anything tapped (or Escape) closes it. Wider screens draw the cards at
+// full size and use hover, so they never get this.
+const PHONE_DECK_MQ = window.matchMedia("(max-width: 560px)");
+
+function closeCardLightbox() {
+  document.querySelector(".card-lightbox")?.remove();
+}
+
+function openCardLightbox(card) {
+  closeCardLightbox();
+  const ench = buildEnchantmentStrip(card.enchantment);
+  const box = document.createElement("div");
+  box.className = "card-lightbox";
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "true");
+  box.setAttribute("aria-label", "Card preview");
+  box.innerHTML = `<div class="card-lightbox-body">${
+    renderCardFace(card.id, card.upgrade, "min(86vw, 340px)", { props: card.props })
+  }${ench ? `<div class="card-lightbox-ench">${ench}</div>` : ""}</div>`;
+  box.addEventListener("click", closeCardLightbox);
+  // The enchantment's icon is built deferred (data-src) for hover popups; load it now.
+  loadDeferredImages(box);
+  document.body.appendChild(box);
+}
+
+document.addEventListener("click", e => {
+  if (!PHONE_DECK_MQ.matches) return;
+  const tile = e.target.closest?.(".card-tile-face[data-tile-card]");
+  if (!tile) return;
+  try { openCardLightbox(JSON.parse(decodeURIComponent(tile.dataset.tileCard))); } catch { /* leave the tile as it is */ }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeCardLightbox(); });
 
 renderPersonalBests();
 

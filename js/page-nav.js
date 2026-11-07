@@ -61,6 +61,7 @@ function updateFilterSummary() {
   const parts = [
     sharedActiveChar === "ALL" ? "All characters" : fmtCharName(sharedActiveChar),
     modeLabels[sharedActiveMode],
+    ...(sharedActiveMods !== "all" ? [sharedActiveMods === "modded" ? "Modded" : "Unmodded"] : []),
     asc,
     sharedBuildSummary(),
     date,
@@ -137,6 +138,7 @@ function openRunLink(ts) {
     if (!sharedActiveBuilds.has(run.build)) widen.builds = [...DATA.builds];
     if (run.ts < state.tsFrom || run.ts > state.tsTo) { widen.tsFrom = 0; widen.tsTo = TS_NO_UPPER_BOUND; }
     if (!modeShowsRun(state.mode, run)) widen.mode = run.mode === "daily" ? "daily" : run.mp ? "multi" : "solo";
+    if (!modsShowRun(state.mods, run)) widen.mods = "all";
     if (Object.keys(widen).length > 0) {
       applySharedFilterState({ ...state, ...widen }, "detail");
       // applySharedFilterState() re-rendered the page behind this one partway
@@ -352,6 +354,28 @@ Object.entries(sharedModeButtons).forEach(([mode, btn]) => {
 
 setSharedMode("all");
 
+// ---- Shared mods buttons ----
+// The group only shows when some run has loaded mods; with none, it would be
+// a filter that can't do anything.
+const sharedModsButtons = {
+  "all":     document.getElementById("shared-mods-all"),
+  "vanilla": document.getElementById("shared-mods-vanilla"),
+  "modded":  document.getElementById("shared-mods-modded"),
+};
+document.getElementById("shared-mods-group").style.display = DATA.runsData.some(runIsModded) ? "" : "none";
+
+function setSharedMods(mods) {
+  sharedActiveMods = mods;
+  Object.entries(sharedModsButtons).forEach(([key, btn]) => setActive(btn, key === mods));
+  rerenderCurrentPage();
+}
+
+Object.entries(sharedModsButtons).forEach(([mods, btn]) => {
+  btn.addEventListener("click", () => setSharedMods(mods));
+});
+
+setSharedMods("all");
+
 // ---- Shared date range ----
 document.getElementById("shared-date-from").value = tsToDateStr(minTs);
 document.getElementById("shared-date-to").value   = tsToDateStr(maxTs);
@@ -428,6 +452,7 @@ function currentSharedFilterState() {
     ...(sharedAscGranular && { ascs: [...sharedActiveAscs] }),
     builds: [...sharedActiveBuilds],
     mode:   sharedActiveMode,
+    mods:   sharedActiveMods,
     tsFrom: sharedTsFrom,
     tsTo:   sharedTsTo,
   };
@@ -492,6 +517,7 @@ function applySharedFilterState(state, targetPage = currentPage) {
   });
   updateSharedBuildLabel();
 
+  setSharedMods(state.mods ?? "all");
   setSharedMode(state.mode);
 
   sharedTsFrom = state.tsFrom;
@@ -550,6 +576,7 @@ function sameAscState(a, b) {
 function sharedFilterStateEquals(a, b) {
   return a.char === b.char
     && a.mode === b.mode
+    && (a.mods ?? "all") === (b.mods ?? "all")
     && sameAscState(savedAscState(a), savedAscState(b))
     && a.tsFrom === b.tsFrom
     && a.tsTo === b.tsTo
