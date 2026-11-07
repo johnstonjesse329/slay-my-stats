@@ -92,12 +92,12 @@ function getDetailRuns() {
 // says nothing about mods, so a run without the tag isn't known to be
 // unmodded. The ids and versions are cut down to plain characters by the
 // parser, which is what makes them safe to drop into data-tip here.
-// The run list shows it as just "M" (short), so it doesn't take a wide column.
-function moddedTagHtml(run, focusable = false, short = false) {
+// The run list doesn't show it; the Mods filter and this header do.
+function moddedTagHtml(run, focusable = false) {
   const mods = run.mods || [];
   if (mods.length === 0) return "";
   const lines = mods.map(m => `${m.id}${m.version ? ` ${m.version}` : ""}${m.gameplay ? " (changes gameplay)" : ""}`);
-  return `<span class="run-modded-tag" data-tip="${["Mods loaded:", ...lines].join("\n")}"${focusable ? ` tabindex="0"` : ""}>${short ? "M" : "Modded"}</span>`;
+  return `<span class="run-modded-tag" data-tip="${["Mods loaded:", ...lines].join("\n")}"${focusable ? ` tabindex="0"` : ""}>Modded</span>`;
 }
 
 // Keeps the address bar on the run being shown (#detail/<ts>, see
@@ -115,6 +115,11 @@ function syncRunHash() {
 function copyRunLink(ts, btn) {
   const url = location.href.split("#")[0] + `#detail/${ts}`;
   navigator.clipboard.writeText(url).then(() => {
+    if (btn.classList.contains("run-copy-link-icon")) {
+      btn.classList.add("copied");
+      setTimeout(() => btn.classList.remove("copied"), 1200);
+      return;
+    }
     btn.textContent = "Copied!";
     setTimeout(() => { btn.textContent = "Copy link"; }, 1200);
   });
@@ -146,7 +151,6 @@ function renderDetailRunList() {
     ${sortHead("won", "W/L")}
     ${sortHead("floor", "Floor")}
     ${sortHead("read", "+/–", `Hype, Mid or Rough against the average win on this run's fights.\nOP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
-    <span></span>
     ${sortHead("date", "Date")}
   </div>` + runs.map((run, i) => {
     const won    = run.won;
@@ -158,7 +162,6 @@ function renderDetailRunList() {
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
-      <span class="detail-run-mod">${moddedTagHtml(run, false, true)}</span>
       <span class="detail-run-date" style="color:var(--text-dim)">${fmtDate(run.ts).replace(/\/\d+$/, `<span class="detail-run-year">$&</span>`)}</span>
     </div>`;
   }).join("");
@@ -325,8 +328,33 @@ function renderDetailRun(run) {
   // Each group wraps as a unit, so a group is never split across two lines.
   const summaryHtml = allGroups.map(g => `<div class="run-stat-group">${statHtml(g)}</div>`).join("");
 
+  // The phone's version of the same stats: some neighbouring pairs share a cell,
+  // so there are fewer rows of three. Just enough pairs join (never more than
+  // two) that the last row isn't left holding one or two stats on their own;
+  // when the count already divides by three, none do. Desktop keeps them all
+  // separate (both are in the page, CSS shows one).
+  const PHONE_PAIRS = [["Damage taken", "HP healed"], ["Fights", "Events"], ["Cards bought", "Cards skipped"]];
+  const flatStats = allGroups.flat();
+  const pairsToJoin = flatStats.length % 3;
+  // Pairs are picked in list order, by where the first stat of each sits.
+  const joinAt = new Set();
+  for (const [x, y] of PHONE_PAIRS) {
+    if (joinAt.size >= pairsToJoin) break;
+    const i = flatStats.findIndex((s, k) => s.label === x && flatStats[k + 1]?.label === y);
+    if (i >= 0) joinAt.add(i);
+  }
+  const phoneHtml = flatStats.map((s, i) => {
+    if (joinAt.has(i - 1)) return "";
+    if (joinAt.has(i)) {
+      const n = flatStats[i + 1];
+      return `<span class="run-headline-stat"><span class="run-headline-value">${s.value} / ${n.value}</span><span class="run-headline-label">${s.label} / ${n.label}</span></span>`;
+    }
+    return statHtml([s]);
+  }).join("");
+
   document.getElementById("detail-run-header").innerHTML = `
     <div class="detail-run-header-bar">
+      ${navigator.clipboard ? `<button type="button" class="run-copy-link-icon" aria-label="Copy link to this run" title="Copy link"><svg class="rci-share" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg><svg class="rci-done" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button>` : ""}
       <span class="dot" style="background:${color};width:14px;height:14px"></span>
       <span style="font-weight:700;font-size:1.1rem">${label}</span>
       <span style="color:var(--text-dim)">A${run.asc}</span>
@@ -334,16 +362,19 @@ function renderDetailRun(run) {
       ${runReadingHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
       <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
-      <span class="rh-date">${fmtDate(run.ts)}</span>
-      ${run.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed: </span>${run.seed}</span>` : ""}
       ${moddedTagHtml(run, true)}
-      ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
+      <span class="rh-meta">
+        <span class="rh-date">${fmtDate(run.ts)}</span>
+        ${run.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed: </span>${run.seed}</span>` : ""}
+        ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
+      </span>
     </div>
     <div class="detail-run-headline-stats">
       ${headlineHtml}${ancientBoonsHtml}
     </div>
     <div class="detail-run-header-stats">
-      ${summaryHtml}
+      <div class="rh-stats-wide">${summaryHtml}</div>
+      <div class="rh-stats-phone">${phoneHtml}</div>
     </div>`;
 
   // The boons' popup starts at the icon's left edge; slide it back in when that
@@ -364,8 +395,8 @@ function renderDetailRun(run) {
     wrap.addEventListener("focusin", fitSoon);
   });
 
-  const copyBtn = document.querySelector("#detail-run-header .run-copy-link");
-  if (copyBtn) copyBtn.addEventListener("click", () => copyRunLink(run.ts, copyBtn));
+  document.querySelectorAll("#detail-run-header .run-copy-link, #detail-run-header .run-copy-link-icon").forEach(copyBtn =>
+    copyBtn.addEventListener("click", () => copyRunLink(run.ts, copyBtn)));
 
   renderDetailTimeline(run);
   renderDetailHpChart(run);

@@ -77,6 +77,9 @@ function ascColumnKey(asc) {
 }
 let sharedActiveBuilds = new Set(DATA.builds);
 let sharedActiveMode   = "all";
+// "all" | "vanilla" | "modded": whether runs the game mod reported loaded mods
+// for are shown (see modsShowRun).
+let sharedActiveMods   = "all";
 // 0 / TS_NO_UPPER_BOUND mean "no bound" rather than a snapshot of the
 // current file's actual min/max run timestamp — this matters because a
 // saved preference (see Save/Reset below) has to survive future
@@ -100,7 +103,7 @@ let sharedTsTo         = TS_NO_UPPER_BOUND;
 const SHARED_FILTER_STORAGE_KEY = "sts2_filter_prefs";
 const SHARED_FILTER_HARDCODED_DEFAULTS = {
   char: "ALL", ascGranular: false, builds: [...DATA.builds],
-  mode: "all", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
+  mode: "all", mods: "all", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
 };
 
 // Whether the Solo / Multi / Daily / All filter lets a run through.
@@ -111,13 +114,22 @@ function modeShowsRun(mode, run) {
   return true;
 }
 
+// Whether the Mods filter lets a run through. A run uploaded from files says
+// nothing about mods (no run.mods), so "unmodded" means "not known to be modded".
+function runIsModded(run) { return (run.mods || []).length > 0; }
+function modsShowRun(mods, run) {
+  if (mods === "modded")  return runIsModded(run);
+  if (mods === "vanilla") return !runIsModded(run);
+  return true;
+}
+
 function filterRuns() {
   return DATA.runsData.filter(run => {
     if (sharedActiveChar !== "ALL" && run.char !== sharedActiveChar) return false;
     if (!sharedActiveAscs.has(run.asc))     return false;
     if (!sharedActiveBuilds.has(run.build)) return false;
     if (run.ts < sharedTsFrom || run.ts > sharedTsTo) return false;
-    return modeShowsRun(sharedActiveMode, run);
+    return modeShowsRun(sharedActiveMode, run) && modsShowRun(sharedActiveMods, run);
   });
 }
 
