@@ -1269,11 +1269,13 @@ h1 {
 .keep-key dt { color: var(--text); font-weight: 600; white-space: nowrap; }
 .keep-key dd { margin: 0; }
 /* Sized for three acts: auto-fill keeps the empty tracks, so a run that ended in Act 1 gets one
-   card's width, not the whole row. Never more than three across; 340px minimum each. */
-.keep-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(340px, calc((100% - 1.7rem) / 3)), 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
+   card's width, not the whole row. Never more than three across; 340px minimum each, except
+   that a card is never wider than the row (min(100%, ...)): on a 360px phone the row is
+   narrower than 340px and the cards pushed the whole page sideways. */
+.keep-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, max(340px, calc((100% - 1.7rem) / 3))), 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
 .keep-act { border: 1px solid var(--hairline); border-radius: 8px; padding: 0.8rem 1rem 0.9rem; font-size: var(--fs-md); }
 .keep-act h3 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: var(--fs-md); font-weight: 600; margin: 0 0 0.35rem; }
-.ka-title { display: inline-flex; align-items: center; gap: 0.75rem; }
+.ka-title { display: inline-flex; align-items: center; gap: 0.75rem; white-space: nowrap; }
 .keep-kinds { display: inline-flex; gap: 0.6rem; color: var(--text-dim); font-size: var(--fs-sm); font-weight: 400; }
 .keep-kind { display: inline-flex; align-items: center; gap: 0.25rem; }
 /* A card is two halves: what the act took and how long it took against the average win, then
