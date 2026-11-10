@@ -485,9 +485,16 @@ function fitNodeTooltip(tip) {
     // A text-only tooltip hangs centred under its node, which on a phone's
     // left or right column runs off that edge: nudge it back inside.
     tip.style.marginLeft = "";
+    tip.style.top = tip.style.bottom = "";
     tip.classList.add("nt-measuring");
     const r = tip.getBoundingClientRect(), vw = document.documentElement.clientWidth;
     tip.classList.remove("nt-measuring");
+    // Tile near the bottom of the screen: hang above it instead, when there is room.
+    const nr = tip.closest(".node-card").getBoundingClientRect();
+    if (r.bottom > window.innerHeight - NT_EDGE && nr.top - r.height - 4 >= NT_EDGE) {
+      tip.style.top = "auto";
+      tip.style.bottom = "calc(100% + 4px)";
+    }
     const dx = r.left < NT_EDGE ? NT_EDGE - r.left : r.right > vw - NT_EDGE ? vw - NT_EDGE - r.right : 0;
     if (dx) tip.style.marginLeft = `${Math.round(dx)}px`;
     return;
