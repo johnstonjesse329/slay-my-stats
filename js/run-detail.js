@@ -1168,11 +1168,11 @@ function renderDetailHpChart(run) {
     `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #b9b9c4 0 2px, transparent 2px 6px)"></span>HP left, median win</span>` +
     (anyWins ? rangeKey("Best and worst 10% of wins", false) : "") + `</div>`;
 
-  // Room for a median win that finished above this run's own max HP.
+  // Room for a median win, or the best tenth's bar, that finished above this run's own max HP.
   const yAxis = iconAxis({ min: 0 });
   const stretch = yAxis.afterDataLimits;
   yAxis.afterDataLimits = scale => {
-    wins.forEach(s => { if (s) scale.max = Math.max(scale.max, s.left_avg); });
+    wins.forEach(s => { if (s) scale.max = Math.max(scale.max, s.left_avg, s.left_high); });
     stretch(scale);
   };
 
