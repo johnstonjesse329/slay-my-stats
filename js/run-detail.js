@@ -481,7 +481,17 @@ const NT_MIN_ANCHOR_W = 260;
 // opens and on resize, which is also what browser zoom fires.
 function fitNodeTooltip(tip) {
   const rows = [...tip.querySelectorAll(".nt-cardrow")];
-  if (!rows.length) return;
+  if (!rows.length) {
+    // A text-only tooltip hangs centred under its node, which on a phone's
+    // left or right column runs off that edge: nudge it back inside.
+    tip.style.marginLeft = "";
+    tip.classList.add("nt-measuring");
+    const r = tip.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+    tip.classList.remove("nt-measuring");
+    const dx = r.left < NT_EDGE ? NT_EDGE - r.left : r.right > vw - NT_EDGE ? vw - NT_EDGE - r.right : 0;
+    if (dx) tip.style.marginLeft = `${Math.round(dx)}px`;
+    return;
+  }
   // Laid out (unseen) while measuring: on mouseover the browser hasn't
   // applied :hover yet, so the tooltip may still be display:none.
   tip.classList.add("nt-measuring");
