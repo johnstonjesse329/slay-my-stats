@@ -107,7 +107,7 @@ paths:
 ├── potion_data.json         potion metadata
 ├── card_variants.json       what a card's saved per-instance state makes it (e.g. Mad Science's roll)
 ├── enchantments_data.json   enchantment titles and per-amount text
-├── power_data.json          what each power does, for the offline deck-strength formula
+├── power_data.json          what each power does, for the offline deck-strength formula (also feeds the run page's "Deck links" via build_site.py's build_synergy)
 ├── deck_strength.json       every card's and relic's numbers, for the offline tools; the site doesn't read it
 ├── fight_demand.json        each encounter's HP and what winning runs did on it (averages, and the best tenth), per ascension tier, and the quarters of winning acts, for the Runs page's Keeping Up section
 ├── measured_runs.json       what the owner's local logs did, for the same charts (uploaded runs carry theirs as `measured`)
