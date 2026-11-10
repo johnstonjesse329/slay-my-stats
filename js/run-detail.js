@@ -2192,6 +2192,15 @@ function keepTipMeter(name, value, vs, aheadEnd, behindAt, cuts) {
     `<div class='kt-cuts'>${aheadW ? cut(aheadW, cuts[0]) : ""}${cut(lowAt - aheadW, "")}${cut(100 - lowAt, cuts[1], "low")}</div></div>`;
 }
 
+// Turns where winners' pace tips into fast or slow, settled on keepMark's own comparison.
+function keepTurnCuts(x) {
+  const fast = keepFastTurns(x.winTurns, x.cut.pace);
+  let slow = Math.floor(x.winTurns / x.cut.pace[0]) + 1;
+  while (slow > 1 && keepMark(x.winTurns / (slow - 1), x.cut.pace) === "behind") slow--;
+  while (keepMark(x.winTurns / slow, x.cut.pace) !== "behind") slow++;
+  return { fast, slow };
+}
+
 // The hover for a run's or an act's reading, built to read at a glance: the verdict, then
 // damage taken and fight turns each on a Hype/Mid/Rough meter against the average win, then
 // the one line that says why. x is a run's or act's totals (turns, winTurns, taken, winTaken,
@@ -2201,11 +2210,7 @@ function keepReadingTip(x, head, why, extra = []) {
   const { hype, low } = keepCuts(x.winTaken, x.cut.guard);
   const taken = Math.round(x.taken);
   const held = keepMark((x.winTaken + 1) / (x.taken + 1), x.cut.guard), speed = keepMark(x.winTurns / x.turns, x.cut.pace);
-  // Turns where winners' pace tips into fast or slow, settled on keepMark's own comparison.
-  const fast = keepFastTurns(x.winTurns, x.cut.pace);
-  let slow = Math.floor(x.winTurns / x.cut.pace[0]) + 1;
-  while (slow > 1 && keepMark(x.winTurns / (slow - 1), x.cut.pace) === "behind") slow--;
-  while (keepMark(x.winTurns / slow, x.cut.pace) !== "behind") slow++;
+  const { fast, slow } = keepTurnCuts(x);
   const html = [
     head,
     keepTipMeter("Damage taken", taken, Math.round(x.winTaken), hype + 1, low, [`≤ ${hype}`, `≥ ${low}`]),
@@ -2255,15 +2260,14 @@ function renderKeepActs(run, nodes, measured) {
   // Damage taken on a three-zone meter the card's width: Hype, Mid, Rough, each with its mark
   // and (when it has room) its word, the act's own figure on a pointer, and the two cut points under the zone edges they belong to. The meter runs a
   // little past Rough.
-  const meter = a => {
-    const { hype, low } = keepCuts(a.winTaken, a.cut.guard);
-    const taken = Math.round(a.taken);
+  // aheadEnd is where the Hype zone stops (0 for none), low where Rough starts.
+  const meter = (taken, aheadEnd, low, label) => {
     const top = Math.max(low * 1.3, taken * 1.1, 1);
     const pct = v => Math.min(100, Math.max(0, v / top * 100));
-    const hypeW = hype >= 0 ? pct(hype + 1) : 0, lowAt = pct(low);
+    const hype = aheadEnd - 1;
+    const hypeW = aheadEnd > 0 ? pct(aheadEnd) : 0, lowAt = pct(low);
     const zone = (tone, w, text) => `<span class="ks-zone ${tone}" style="flex:${w} 1 0"><b aria-hidden="true">${KEEP_SIGNS[tone]}</b><span class="ks-word">${text}</span></span>`;
     const cut = (cls, w, text) => `<span class="ks-cut ${cls}" style="flex:${w} 1 0">${text}</span>`;
-    const label = `Damage taken ${taken}: ${KEEP_WORDS[a.held]}. ${keepRule(a.winTaken, a.cut)}`;
     const at = pct(taken);
     return `<div class="keep-meter" role="img" aria-label="${label}" title="${label}">` +
       `<div class="ks-bar">` +
@@ -2298,6 +2302,7 @@ function renderKeepActs(run, nodes, measured) {
   box.innerHTML = acts.map(a => {
     const log = a.log;
     const perTurn = v => (v / log.turns).toFixed(1);
+    const dmgCuts = keepCuts(a.winTaken, a.cut.guard), { fast: turnFast, slow: turnSlow } = keepTurnCuts(a);
     const tip = keepReadingTip(a, `${KEEP_WORDS[a.verdict]}${a.lacking ? `, lacking ${a.lacking}` : ""}`, keepWhy(a),
       [a.healed ? `After healing ${Math.round(a.healed)} HP.` : ""].filter(Boolean));
     const pill = `<span class="run-reading ${a.verdict}" data-tip="${tip}" tabindex="0"><span class="keep-signal ${a.verdict}" aria-hidden="true">${KEEP_SIGNS[a.verdict]}</span>${KEEP_WORDS[a.verdict]}</span>`;
@@ -2308,8 +2313,10 @@ function renderKeepActs(run, nodes, measured) {
       `<div class="ka-body"><div class="ka-half ka-main">` +
       row(keepIcon("turns", KEEP_DEMAND_COLOR), "Fight turns", a.turns,
         { mark: keepSignal(a.speed, `Fight turns: ${KEEP_WORDS[a.speed]}`), vs: vs(a.winTurns, "turns") }) +
+      meter(a.turns, turnFast >= 1 ? turnFast + 1 : 0, turnSlow, `Fight turns ${a.turns}: ${KEEP_WORDS[a.speed]}. Hype at ${turnFast} or fewer, Rough at ${turnSlow} or more.`) +
       row(keepIcon("taken", KEEP_LINES.taken.color), "Damage taken", Math.round(a.taken),
-        { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage") }) + meter(a) + `</div>` +
+        { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage") }) +
+      meter(Math.round(a.taken), dmgCuts.hype >= 0 ? dmgCuts.hype + 1 : 0, dmgCuts.low, `Damage taken ${Math.round(a.taken)}: ${KEEP_WORDS[a.held]}. ${keepRule(a.winTaken, a.cut)}`) + `</div>` +
       (log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
         perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)}`) +
         perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, "") +
