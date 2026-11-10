@@ -480,7 +480,7 @@
       return;
     }
 
-    step(status, "send", `${(body.length / 1048576).toFixed(1)} MB`);
+    step(status, "send", body.length < 1048576 ? `${Math.max(1, Math.round(body.length / 1024))} KB` : `${(body.length / 1048576).toFixed(1)} MB`);
     const form = new FormData();
     for (const [k, v] of Object.entries(auth.fields)) form.append(k, v);
     form.append("file", new Blob([body], { type: "application/gzip" }), "runs.ndjson.gz");  // must come last
