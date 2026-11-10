@@ -1004,8 +1004,8 @@ function makeActBoundaryPlugin(nodes) {
 // Fight reads it (fight-tables.js hpLane): the median HP of the lowest tenth of wins, and of all
 // wins. From the same fights and the same summary, but only the ones tuned the way this run's were
 // (A0-7 or A8+), so a floor reads against fights it could have been. Per node: null on every
-// floor with no fight this player has won. Every fight floor gets the stats for its tooltip; only
-// the elites and bosses are `marked`, so only they are drawn on the chart.
+// floor with no fight this player has won. Every fight floor gets the stats for its tooltip and
+// is drawn on the chart.
 // Normal fights are not in a run's `fights` (elites and bosses only), so they come from the
 // timelines: the same hpBefore and damage, and a fight is won when HP is left after it.
 let normalFightsCache = null;
@@ -1026,7 +1026,7 @@ function hpWinsByNode(run, nodes) {
     // The HP the wins left it with, which is what the chart's HP line shows for the floor.
     const out = (left[n.enc] || []).sort((a, b) => a - b);
     const lowest = out.slice(0, Math.max(1, Math.round(out.length * LOW_WINS_SHARE)));
-    return { ...s, marked: n.type !== "monster", left_avg: median(out), left_low: median(lowest) };
+    return { ...s, left_avg: median(out), left_low: median(lowest) };
   });
 }
 
@@ -1047,9 +1047,9 @@ function winsLeftWith(tier) {
 // floor-wide zone between: the Overview's lane stood on end, so the HP line reads as in it or out. Drawn before the datasets, so the floor's icon
 // and the HP line sit over it.
 const HP_WIN_COLOUR = "#e6e2f2";
-// marks[i] is {low, mid} for a floor, or null. A chart that draws the middle itself (the
-// damage charts' icon for the average win) passes dot: false.
-function makeWinRangePlugin(marks, { dot = true, width = 0.4 } = {}) {
+// marks[i] is {low, mid} for a floor, or null. The same narrow bar, ring and dot on all three
+// charts.
+function makeWinRangePlugin(marks, { width = 0.12 } = {}) {
   return {
     id: "winRanges",
     beforeDatasetsDraw(chart) {
@@ -1075,7 +1075,6 @@ function makeWinRangePlugin(marks, { dot = true, width = 0.4 } = {}) {
         ctx.arc(px, low, 5, 0, 2 * Math.PI);
         ctx.fill();
         ctx.stroke();
-        if (!dot) return;
         ctx.fillStyle = HP_WIN_COLOUR;
         ctx.beginPath();
         ctx.arc(px, mid, 5, 0, 2 * Math.PI);
@@ -1154,7 +1153,7 @@ function renderDetailHpChart(run) {
   if (detailHpChart) { detailHpChart.destroy(); detailHpChart = null; }
 
   const wins = hpWinsByNode(run, nodes);
-  const anyWins = wins.some(s => s && s.marked);
+  const anyWins = wins.some(s => s);
   // The HP your wins left each fight with, floor by floor: a dotted line, the same dotted grey as
   // "Average win" on the damage charts. Floors with no fight, or no win to read, are skipped over.
   const winHp = wins.map(w => w ? w.left_avg : null);
@@ -1172,14 +1171,14 @@ function renderDetailHpChart(run) {
   const yAxis = iconAxis({ min: 0 });
   const stretch = yAxis.afterDataLimits;
   yAxis.afterDataLimits = scale => {
-    wins.forEach(s => { if (s && s.marked) scale.max = Math.max(scale.max, s.left_avg); });
+    wins.forEach(s => { if (s) scale.max = Math.max(scale.max, s.left_avg); });
     stretch(scale);
   };
 
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeWinRangePlugin(wins.map(s => s && s.marked ? { low: s.left_low, mid: s.left_avg } : null))],
+    plugins: [makeActBoundaryPlugin(nodes), makeWinRangePlugin(wins.map(s => s ? { low: s.left_low, mid: s.left_avg } : null))],
     data: {
       labels,
       datasets: [
@@ -2448,7 +2447,7 @@ function renderDetailKeepCharts(run) {
       stretch(scale);
     };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
-      floorChartConfig(nodes, marks ? [makeWinRangePlugin(marks, { dot: false, width: 0.12 })] : [], tipFor, yAxis, series)));
+      floorChartConfig(nodes, marks ? [makeWinRangePlugin(marks)] : [], tipFor, yAxis, series)));
   };
 
   // Cards in the deck after each floor: a line per type (the total is in the hover box, not drawn: it dwarfed the types), so what
