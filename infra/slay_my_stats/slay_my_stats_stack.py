@@ -227,8 +227,12 @@ class SlayMyStatsStack(Stack):
                 allowed_headers=["*"],
             )],
             # Upload results are only read while the page waits for them.
-            # Nothing else here expires: raw/ is kept for good.
-            lifecycle_rules=[s3.LifecycleRule(prefix="users/_uploads/", expiration=Duration.days(7))],
+            # Only analytics/ and these expire: raw/ is kept for good.
+            lifecycle_rules=[
+                s3.LifecycleRule(prefix="users/_uploads/", expiration=Duration.days(7)),
+                # Per-upload analytics notes (see record_upload()): a year is plenty.
+                s3.LifecycleRule(prefix="analytics/", expiration=Duration.days(365)),
+            ],
         )
 
         # Built static site (index.html, js/*.js, dashboard.css, game art).
@@ -283,8 +287,26 @@ class SlayMyStatsStack(Stack):
             ],
         )
 
+        # Who reaches the site and from where: CloudFront's standard access
+        # logs (one line per request: time, edge location, URL, Referer,
+        # User-Agent), nothing added to the pages and no cookies. CloudFront
+        # only writes these with ACLs on, hence BUCKET_OWNER_PREFERRED. Kept
+        # 90 days; tools/visit_sources.py summarizes them.
+        log_bucket = s3.Bucket(
+            self, "AccessLogBucket",
+            bucket_name=f"{name_prefix}-access-logs",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            object_ownership=s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+            lifecycle_rules=[s3.LifecycleRule(expiration=Duration.days(90))],
+        )
+
         distribution = cloudfront.Distribution(
             self, "Distribution",
+            enable_logging=True,
+            log_bucket=log_bucket,
+            log_file_prefix="site/",
             domain_names=[domain_name],
             certificate=certificate,
             default_root_object="index.html",
