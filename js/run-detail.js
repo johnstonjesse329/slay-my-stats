@@ -822,10 +822,11 @@ const ACT_COLOUR = "#e6e2f2";
 // legend at the bottom.
 const ACT_BAND = 34;
 
-// The HP line's colour, in every run whatever the character. The character
-// colours put the Regent's HP line a shade off the gold chart's, and HP reads
-// as green at a glance. #5cba7d is the dashboard's own "good" green.
-const HP_LINE = "#5cba7d";
+// Your run, as a line, on the HP, damage done and damage taken charts, whatever the character:
+// the site's gold (the "This run" colour in the hover boxes), so one colour and one style always
+// means you. Not red: that is the Attack cards' and a rough act's.
+const YOUR_LINE = "#e0c468";
+const HP_LINE = YOUR_LINE;
 
 // The floors behind each chart's big swings get the floor map's own icon as
 // their point: elites, bosses, rest sites and events on HP, shops and events
@@ -1048,7 +1049,7 @@ function winsLeftWith(tier) {
 const HP_WIN_COLOUR = "#e6e2f2";
 // marks[i] is {low, mid} for a floor, or null. A chart that draws the middle itself (the
 // damage charts' icon for the average win) passes dot: false.
-function makeWinRangePlugin(marks, { dot = true } = {}) {
+function makeWinRangePlugin(marks, { dot = true, width = 0.4 } = {}) {
   return {
     id: "winRanges",
     beforeDatasetsDraw(chart) {
@@ -1059,7 +1060,7 @@ function makeWinRangePlugin(marks, { dot = true } = {}) {
         if (!m) return;
         const px = x.getPixelForValue(i), low = y.getPixelForValue(m.low), mid = y.getPixelForValue(m.mid);
         // The zone: a floor wide, from the ring up to the dot.
-        const half = Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) * 0.4;
+        const half = Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) * width;
         ctx.beginPath();
         ctx.roundRect(px - half, Math.min(low, mid), half * 2, Math.abs(low - mid) || 1, 4);
         ctx.fillStyle = HP_WIN_COLOUR + "26";
@@ -1154,14 +1155,18 @@ function renderDetailHpChart(run) {
 
   const wins = hpWinsByNode(run, nodes);
   const anyWins = wins.some(s => s && s.marked);
+  // The HP your wins left each fight with, floor by floor: a dotted line, the same dotted grey as
+  // "Average win" on the damage charts. Floors with no fight, or no win to read, are skipped over.
+  const winHp = wins.map(w => w ? w.left_avg : null);
 
-  // HP's swatch is the area's own fill; Max HP's is the dashed line. The ring and dot are the
+  // HP's swatch is the area's own fill; Max HP's is its thin line. The ring and dot are the
   // marks on the elite and boss floors: the HP this player's wins left that fight with.
   const mark = (fill, what) => `<span class="fl-item"><span class="fl-ring" style="border-color:${HP_WIN_COLOUR};background:${fill};width:11px;height:11px"></span>${what}</span>`;
   document.getElementById("detail-hp-legend").innerHTML = `<div class="fl-items">` +
     `<span class="fl-item"><span class="fl-swatch" style="background:${color}33;border:2px solid ${color}"></span>HP</span>` +
-    `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #8a8aa0 0 4px, transparent 4px 7px)"></span>Max HP</span>` +
-    (anyWins ? mark("transparent", "HP left, lowest 10% of your wins") + mark(HP_WIN_COLOUR, "HP left, median win") : "") + `</div>`;
+    `<span class="fl-item"><span class="strength-key" style="background:#8a8aa0"></span>Max HP</span>` +
+    `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #b9b9c4 0 2px, transparent 2px 6px)"></span>HP left, median win</span>` +
+    (anyWins ? mark("transparent", "HP left, lowest 10% of your wins") : "") + `</div>`;
 
   // Room for a median win that finished above this run's own max HP.
   const yAxis = iconAxis({ min: 0 });
@@ -1193,9 +1198,21 @@ function renderDetailHpChart(run) {
           label: "Max HP",
           data: maxHpData,
           borderColor: "#8a8aa0",
-          borderDash: [4, 4],
           borderWidth: 1,
           pointRadius: 0,
+          stepped: "before",
+          fill: false,
+        },
+        {
+          label: "HP left, median win",
+          data: winHp,
+          borderColor: "#b9b9c4",
+          borderDash: [2, 4],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          spanGaps: true,
+          cubicInterpolationMode: "monotone",
           fill: false,
         },
       ],
@@ -1870,15 +1887,14 @@ function renderDetailRelicChart(run) {
 // site, DATA.measuredRuns for local logs; tools/power_curve/export_measured.py), and only
 // those runs can show energy and cards: a run file doesn't say.
 const KEEP_LINES = {
-  damage: { label: "Damage done", color: "#e05252" },
-  taken:  { label: "Damage taken", color: "#e8a83a", dash: [6, 4] },
+  damage: { label: "Damage done", color: YOUR_LINE },
+  taken:  { label: "Damage taken", color: YOUR_LINE },
   drawn:  { label: "Cards drawn", color: "#9b7fe0" },
   played: { label: "Cards played", color: "#2fa384" },
   energy: { label: "Card cost", color: "#b5861a" },
 };
-// The damage chart's line is red and the damage taken line gold (dashed too, so colour is not the
-// only cue; ΔE 20 normal, 15 colour-blind). In the tip's split bar it is the incoming damage that
-// is red, next to blocked in blue and healed in green.
+// Your run is the same solid gold line (YOUR_LINE) on the HP, damage done and damage taken charts.
+// In the tip's split bar the incoming damage is red, next to blocked in blue and healed in green.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
 // What arrived on a turn, split: blocked, healed off, and what got through (red). Each has an icon and a label as well, so colour is never the only cue.
 const KEEP_SPLIT = { blocked: "#5aa0e6", healed: "#5cba7d", through: "#e05252" };
@@ -2000,7 +2016,7 @@ function fightReadings(run, nodes, measured) {
   return rows.some(r => r) ? rows : null;
 }
 
-// The ring on the damage charts' elite and boss floors: the best tenth of the wins that the
+// The ring on the damage charts' fight floors: the best tenth of the wins that the
 // average win's icon is the average of (fight_demand.py's fast and light), so the zone between
 // them says how far a win can be pushed. Damage done a turn is the fight's HP over turns, so
 // the quickest wins do the most. A ring needs enough wins to have a tenth, and sits on the
@@ -2010,7 +2026,7 @@ function keepRanges(run, nodes, rows) {
   const demand = DATA.fightDemand.encounters;
   const done = [], taken = [];
   nodes.forEach((n, i) => {
-    const r = rows[i], d = demand[keepFight(n)], how = r && keepRank(n) && d && keepWinners(run, d);
+    const r = rows[i], d = demand[keepFight(n)], how = r && d && keepWinners(run, d);
     const ok = how && how.n >= KEEP_RANGE_MIN;
     const fast = ok && r.ask !== undefined && how.fast ? r.pool / how.fast : 0;
     done.push(fast > r?.ask ? { low: fast, mid: r.ask } : null);
@@ -2397,25 +2413,27 @@ function renderDetailKeepCharts(run) {
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
   ] : []));
 
-  const line = ({ label, color, dash }, pick) => ({
+  const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * box.clientWidth / nodes.length)));
+  // `icons` is the chart's id when its floors carry the fight icons: always on your own line,
+  // as on the HP chart, so the icon never moves to somewhere else on the chart.
+  const line = ({ label, color, dash }, pick, icons) => ({
     label, data: rows.map(r => { const v = r ? pick(r) : null; return v === undefined ? null : v; }),
     borderColor: color, pointHoverBackgroundColor: color,
     borderWidth: 2, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 4, spanGaps: true,
     cubicInterpolationMode: "monotone",
+    ...(icons && nodePoints(nodes, () => detailKeepCharts.find(c => c.canvas.id === `detail-keep-${icons}-chart`),
+      (n, key, i) => rows[i] && pick(rows[i]) !== undefined, iconSize, keepIconKey)),
   });
-  const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * box.clientWidth / nodes.length)));
-  const winners = (id, pick) => {
-    const has = i => rows[i] && pick(rows[i]) !== undefined;
-    return {
-      label: "Average win", showLine: false,
-      data: rows.map((r, i) => has(i) ? pick(r) : null),
-      ...nodePoints(nodes, () => detailKeepCharts.find(c => c.canvas.id === `detail-keep-${id}-chart`),
-        (n, key, i) => has(i), iconSize, keepIconKey),
-    };
-  };
+  // The average win: a faint dotted line, no icons.
+  const winners = pick => ({
+    label: "Average win", data: rows.map(r => { const v = r ? pick(r) : null; return v === undefined ? null : v; }),
+    borderColor: "#b9b9c4", pointHoverBackgroundColor: "#b9b9c4",
+    borderWidth: 1.5, borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 3, spanGaps: true,
+    cubicInterpolationMode: "monotone",
+  });
   const ranges = keepRanges(run, nodes, rows);
   const chart = (id, series, tipFor, marks) => {
-    // Only the lines: the winners' icons explain themselves, and the caption says what they are.
+    // Only the lines.
     // The ring, where the chart has any, is the HP chart's: the best tenth of the wins.
     const ring = marks && marks.some(m => m)
       ? `<span class="fl-item"><span class="fl-ring" style="border-color:${HP_WIN_COLOUR};background:transparent;width:11px;height:11px"></span>Best 10% of wins</span>` : "";
@@ -2430,7 +2448,7 @@ function renderDetailKeepCharts(run) {
       stretch(scale);
     };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
-      floorChartConfig(nodes, marks ? [makeWinRangePlugin(marks, { dot: false })] : [], tipFor, yAxis, series)));
+      floorChartConfig(nodes, marks ? [makeWinRangePlugin(marks, { dot: false, width: 0.12 })] : [], tipFor, yAxis, series)));
   };
 
   // Cards in the deck after each floor: a line per type (the total is in the hover box, not drawn: it dwarfed the types), so what
@@ -2455,8 +2473,8 @@ function renderDetailKeepCharts(run) {
     chart("deck", tKeys.map(k => deckLine(k, T.color[k], byT[k])), deckTip);
   }
 
-  chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0), winners("damage", r => r.ask)], damageTip, ranges.done);
-  chart("in", [line(KEEP_LINES.taken, r => r.taken), winners("in", r => r.winRate)], inTip, ranges.taken);
+  chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0, "damage"), winners(r => r.ask)], damageTip, ranges.done);
+  chart("in", [line(KEEP_LINES.taken, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";
