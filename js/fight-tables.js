@@ -112,6 +112,8 @@ function addFight(bucket, fight) {
 // A share, not a fixed count, so it is the same kind of number for a fight
 // with 200 wins and one with 20.
 const LOW_WINS_SHARE = 0.1;
+// The ends of the Keeping Up charts' bars and hover lanes: the best and worst quarter of wins.
+const BAND_SHARE = 0.25;
 
 function summarizeFights(bucket) {
   const n = bucket.runs;
@@ -119,9 +121,12 @@ function summarizeFights(bucket) {
   const w = bucket.wins;
   const l = n - w;
   const lowWins = [...bucket.winHpVals].sort((a, b) => a - b).slice(0, Math.max(1, Math.round(w * LOW_WINS_SHARE)));
-  // The other end of the same share: the wins that cost the most HP.
-  const heavyWins = [...bucket.winDmgVals].sort((a, b) => b - a).slice(0, Math.max(1, Math.round(w * LOW_WINS_SHARE)));
-  const lightWins = [...bucket.winDmgVals].sort((a, b) => a - b).slice(0, Math.max(1, Math.round(w * LOW_WINS_SHARE)));
+  // The Keeping Up bands: the quarter of wins that cost the most HP, the quarter that cost the
+  // least, and the quarter that entered with the least.
+  const bandSize = Math.max(1, Math.round(w * BAND_SHARE));
+  const heavyWins = [...bucket.winDmgVals].sort((a, b) => b - a).slice(0, bandSize);
+  const lightWins = [...bucket.winDmgVals].sort((a, b) => a - b).slice(0, bandSize);
+  const thinWins = [...bucket.winHpVals].sort((a, b) => a - b).slice(0, bandSize);
   return {
     wins:        w,
     losses:      l,
@@ -146,6 +151,7 @@ function summarizeFights(bucket) {
     avg_dmg:         median(bucket.winDmgVals),
     heavy_wins_dmg:  w ? median(heavyWins) : null,
     light_wins_dmg:  w ? median(lightWins) : null,
+    band_wins_hp:    w ? median(thinWins) : null,
     min_win_dmg:     w ? bucket.minWinDmg : null,
     max_win_dmg:     w ? bucket.maxWinDmg : null,
     loss_avg_hp:      median(bucket.lossHpVals),

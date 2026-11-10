@@ -1025,7 +1025,7 @@ function hpWinsByNode(run, nodes) {
     if (!s || !s.wins) return null;
     // The HP the wins left it with, which is what the chart's HP line shows for the floor.
     const out = (left[n.enc] || []).sort((a, b) => a - b);
-    const lowest = out.slice(0, Math.max(1, Math.round(out.length * LOW_WINS_SHARE)));
+    const lowest = out.slice(0, Math.max(1, Math.round(out.length * BAND_SHARE)));
     const highest = out.slice(-lowest.length);
     return { ...s, left_avg: median(out), left_low: median(lowest), left_high: median(highest) };
   });
@@ -1044,7 +1044,7 @@ function winsLeftWith(tier) {
   return by;
 }
 
-// On each fight floor, a bar from the best tenth of this player's wins to the worst: a green cap at
+// On each fight floor, a bar from the best quarter of this player's wins to the worst: a green cap at
 // the good end, a red cap at the bad one. Drawn before the datasets, so the floor's icon and the
 // line sit over it; the dotted average line crosses it where the middle is.
 const HP_WIN_COLOUR = "#e6e2f2";
@@ -1088,10 +1088,10 @@ function makeWinRangePlugin(marks, { width = 0.12 } = {}) {
 // The HP chart's hover box. Every floor: the HP left after it. A fight this player has won: first
 // what it cost this run beside what their wins lose, a lane each for HP lost and HP left to see
 // where this run falls, and a key to their marks; then the HP this run entered it with, beside the
-// median and the lowest tenth of their wins, and how often they won. `s` is hpWinsByNode's entry,
+// median and the worst quarter of their wins, and how often they won. `s` is hpWinsByNode's entry,
 // or null.
 // A hover box's lane: a track from 0 to `top`, a bar where this run's figure is (`you`, in the
-// chart's own colour), the zone of the wins from their best tenth to their worst, a green cap at the
+// chart's own colour), the zone of the wins from their best quarter to their worst, a green cap at the
 // good end, a red one at the bad end, and a thin line at the median or average win. `what` is the
 // reading for a screen reader.
 function tipLane(top, { you, youColour, mid, good, bad, what }) {
@@ -1109,8 +1109,8 @@ function tipLane(top, { you, youColour, mid, good, bad, what }) {
 function tipKey() {
   return `<div class="ft-key"><span><i class="ft-you" style="background:var(--gold)"></i>This run</span>` +
     `<span><i class="ft-med"></i>Median win</span>` +
-    `<span><i class="ft-end" style="background:${GOOD_COLOUR}"></i>Best 10% of wins</span>` +
-    `<span><i class="ft-end" style="background:${BAD_COLOUR}"></i>Worst 10% of wins</span></div>`;
+    `<span><i class="ft-end" style="background:${GOOD_COLOUR}"></i>Best 25% of wins</span>` +
+    `<span><i class="ft-end" style="background:${BAD_COLOUR}"></i>Worst 25% of wins</span></div>`;
 }
 
 function hpTip(run, n, s) {
@@ -1122,18 +1122,18 @@ function hpTip(run, n, s) {
   if (!s) return `${head}<table>${healed}${left}</table>`;
   // The lanes lead, then the table. Both share one track, 0 to whichever is highest of max HP, the
   // wins' medians and this run's own figures, so HP lost and HP left read against each other. The
-  // worst tenth is at the high end for HP lost and the low end for HP left.
+  // worst quarter is at the high end for HP lost and the low end for HP left.
   const top = Math.max(n.maxHp, s.left_avg, s.left_high, n.dmg, s.heavy_wins_dmg);
   const lost = tipLane(top, { you: n.dmg, youColour: "var(--gold)", mid: s.avg_dmg, good: s.light_wins_dmg, bad: s.heavy_wins_dmg,
-    what: `Lost ${n.dmg} HP; your wins' median ${s.avg_dmg}, worst tenth ${s.heavy_wins_dmg}, best tenth ${s.light_wins_dmg}` });
+    what: `Lost ${n.dmg} HP; your wins' median ${s.avg_dmg}, worst quarter ${s.heavy_wins_dmg}, best quarter ${s.light_wins_dmg}` });
   const kept = tipLane(top, { you: n.hpAfter, youColour: "var(--gold)", mid: s.left_avg, good: s.left_high, bad: s.left_low,
-    what: `Left with ${n.hpAfter}; your wins' median ${s.left_avg}, worst tenth ${s.left_low}, best tenth ${s.left_high}` });
+    what: `Left with ${n.hpAfter}; your wins' median ${s.left_avg}, worst quarter ${s.left_low}, best quarter ${s.left_high}` });
   return `${head}<div class="ft-lost"><div class="ft-lost-big">Lost <b${n.dmg > s.avg_dmg ? ` class="ft-worse"` : ""}>${n.dmg} HP</b></div>` +
-    `<div class="ft-cap">Wins usually lose ${s.avg_dmg} · the worst tenth lose ${s.heavy_wins_dmg}</div></div>` +
+    `<div class="ft-cap">Wins usually lose ${s.avg_dmg} · the worst quarter lose ${s.heavy_wins_dmg}</div></div>` +
     `<div class="ft-lanelabel">HP lost</div>${lost}<div class="ft-lanelabel">HP left</div>${kept}${tipKey()}` +
     `<table><thead><tr><th></th><th colspan="1">This run</th><th colspan="2" class="ft-win">Your wins</th></tr>` +
-    `<tr class="ft-sub"><th></th><th></th><th class="ft-win">Median</th><th class="ft-win">Lowest 10%</th></tr></thead>` +
-    `${row("Entered with", n.hpBefore, s.avg_hp, s.low_wins_hp)}${healed}${left}</table>` +
+    `<tr class="ft-sub"><th></th><th></th><th class="ft-win">Median</th><th class="ft-win">Worst 25%</th></tr></thead>` +
+    `${row("Entered with", n.hpBefore, s.avg_hp, s.band_wins_hp)}${healed}${left}</table>` +
     `<div class="ft-cap">Won ${s.wins} of ${s.runs} (${s.win_pct}%) at ${KEEP_TIER_NAMES[keepTier(run.asc)]}</div>`;
 }
 
@@ -1161,14 +1161,14 @@ function renderDetailHpChart(run) {
   const winHp = wins.map(w => w ? w.left_avg : null);
 
   // HP's swatch is the area's own fill; Max HP's is its thin line. The dot on each fight floor is
-  // the HP this player's wins left that fight with; its bar runs down to the lowest tenth.
+  // the HP this player's wins left that fight with; its bar runs down to the worst quarter.
   document.getElementById("detail-hp-legend").innerHTML = `<div class="fl-items">` +
     `<span class="fl-item"><span class="fl-swatch" style="background:${color}33;border:2px solid ${color}"></span>HP</span>` +
     `<span class="fl-item"><span class="strength-key" style="background:#8a8aa0"></span>Max HP</span>` +
     `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #b9b9c4 0 2px, transparent 2px 6px)"></span>HP left, median win</span>` +
-    (anyWins ? rangeKey("Best and worst 10% of wins", false) : "") + `</div>`;
+    (anyWins ? rangeKey("Best and worst 25% of wins", false) : "") + `</div>`;
 
-  // Room for a median win, or the best tenth's bar, that finished above this run's own max HP.
+  // Room for a median win, or the best quarter's bar, that finished above this run's own max HP.
   const yAxis = iconAxis({ min: 0 });
   const stretch = yAxis.afterDataLimits;
   yAxis.afterDataLimits = scale => {
@@ -2016,10 +2016,10 @@ function fightReadings(run, nodes, measured) {
   return rows.some(r => r) ? rows : null;
 }
 
-// The bars on the damage charts' fight floors: from the best tenth of the wins the average win is of
+// The bars on the damage charts' fight floors: from the best quarter of the wins the average win is of
 // to the worst (fight_demand.py's fast and slow, light and heavy), so the bar says how far a win can
 // go either way. Damage done a turn is the fight's HP over turns, so the quickest wins do the most.
-// A bar needs enough wins to have a tenth. Per floor, {bad, good} or null.
+// A bar needs enough wins to have a quarter. Per floor, {bad, good} or null.
 const KEEP_RANGE_MIN = 10;
 function keepRanges(run, nodes, rows) {
   const demand = DATA.fightDemand.encounters;
@@ -2432,8 +2432,8 @@ function renderDetailKeepCharts(run) {
   const ranges = keepRanges(run, nodes, rows);
   const chart = (id, series, tipFor, marks, up) => {
     // Only the lines.
-    // The ring, where the chart has any, is the HP chart's: the best tenth of the wins.
-    const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 10% of wins", false) : "";
+    // The ring, where the chart has any, is the HP chart's: the best quarter of the wins.
+    const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 25% of wins", false) : "";
     document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(s =>
       `<span class="fl-item"><span class="strength-key" style="background:${s.borderDash?.length ? `repeating-linear-gradient(90deg, ${s.borderColor} 0 4px, transparent 4px 7px)` : s.borderColor}"></span>${s.label}</span>`
     ).join("")}${ring}</div>`;

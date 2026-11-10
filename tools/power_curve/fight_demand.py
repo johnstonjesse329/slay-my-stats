@@ -6,7 +6,7 @@ deck, and what runs that won did on it, whoever played them: the average turns t
 and the average damage taken. Each floor reads against its own fight, never an average of
 different monsters.
 
-The best and worst tenth of those wins (quickest and lightest, slowest and heaviest) ride
+The best and worst quarter of those wins (quickest and lightest, slowest and heaviest) ride
 along for the min/max bars on every fight, so the average win has a range to read against.
 
 An act reads the same way: each fight against its own winners, then summed, so an act of
@@ -198,31 +198,31 @@ def winners(fights):
            "taken": round(statistics.mean(f["taken"] for f in fights), 2),
            "rate": round(sum(f["taken"] for f in fights) / turns, 2) if turns else 0,
            "n": len(fights)}
-    # The best tenth, for the green cap of the page's min/max bars: turns of the quickest
-    # wins, and damage taken a turn of the lightest. The worst tenth (red cap) follows.
-    out["fast"] = round(best_tenth(f["t"] for f in fights), 2)
+    # The best quarter, for the green cap of the page's min/max bars: turns of the quickest
+    # wins, and damage taken a turn of the lightest. The worst quarter (red cap) follows.
+    out["fast"] = round(best_quarter(f["t"] for f in fights), 2)
     light = [f["taken"] / swung(f) for f in fights if swung(f)]
     if light:
-        out["light"] = round(best_tenth(light), 2)
-    # And the worst tenth, the far end of the page's bars: the slowest wins' turns, and the
+        out["light"] = round(best_quarter(light), 2)
+    # And the worst quarter, the far end of the page's bars: the slowest wins' turns, and the
     # heaviest wins' damage taken a turn. How bad a win can get and still be one.
-    out["slow"] = round(worst_tenth(f["t"] for f in fights), 2)
+    out["slow"] = round(worst_quarter(f["t"] for f in fights), 2)
     if light:
-        out["heavy"] = round(worst_tenth(light), 2)
+        out["heavy"] = round(worst_quarter(light), 2)
     return out
 
 
-def best_tenth(values):
-    """The median of the lowest tenth of values, at least one of them: how the best wins
-    did, the way the Overview reads a player's lowest tenth of HP."""
+def best_quarter(values):
+    """The median of the lowest quarter of values, at least one of them: how the best wins
+    did."""
     low = sorted(values)
-    return statistics.median(low[:max(1, math.ceil(len(low) / 10))])
+    return statistics.median(low[:max(1, math.ceil(len(low) / 4))])
 
 
-def worst_tenth(values):
-    """The median of the highest tenth of values, at least one of them: best_tenth's other end."""
+def worst_quarter(values):
+    """The median of the highest quarter of values, at least one of them: best_quarter's other end."""
     high = sorted(values)
-    return statistics.median(high[-max(1, math.ceil(len(high) / 10)):])
+    return statistics.median(high[-max(1, math.ceil(len(high) / 4)):])
 
 
 def tier(asc):

@@ -136,17 +136,17 @@ class Table(unittest.TestCase):
         runs = [[fight(t=2)], [fight(t=3)], [fight(t=7)]]
         self.assertEqual(line_of(runs)["turns"], 4)
 
-    def test_the_best_tenth_is_the_median_of_the_quickest_and_the_lightest(self):
+    def test_the_best_quarter_is_the_median_of_the_quickest_and_the_lightest(self):
         wins = [fight(t=t, taken=t * 2) for t in range(1, 21)]
         line = line_of([wins])
-        self.assertEqual(line["fast"], 1.5)
-        self.assertEqual(line["light"], 2.11)
+        self.assertEqual(line["fast"], 3)
+        self.assertEqual(line["light"], 2.12)
 
-    def test_the_worst_tenth_is_the_median_of_the_slowest_and_the_heaviest(self):
+    def test_the_worst_quarter_is_the_median_of_the_slowest_and_the_heaviest(self):
         wins = [fight(t=t, taken=t * 2) for t in range(1, 21)]
         line = line_of([wins])
-        self.assertEqual(line["slow"], 19.5)
-        self.assertEqual(line["heavy"], 3.5)
+        self.assertEqual(line["slow"], 18)
+        self.assertEqual(line["heavy"], 2.67)
 
     def test_fewer_than_ten_wins_still_have_a_best_one(self):
         line = line_of([[fight(t=4, taken=8), fight(t=6, taken=6), fight(t=5, taken=5)]])
