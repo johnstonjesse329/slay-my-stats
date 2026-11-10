@@ -369,6 +369,7 @@ function renderDetailRun(run) {
         ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
       </span>
     </div>
+    ${runActMarksHtml(run)}
     <div class="detail-run-headline-stats">
       ${headlineHtml}${ancientBoonsHtml}
     </div>
@@ -2207,18 +2208,22 @@ function keepTurnCuts(x) {
 // cut, verdict); extra are plain lines after it. Lines are joined by a newline for data-tip,
 // so the markup has no newlines and quotes are escaped for the attribute.
 function keepReadingTip(x, head, why, extra = []) {
+  const { damage, turns, held, speed } = keepReadingMeters(x);
+  const html = [head, damage, turns, why(held, speed), ...extra].join("\n");
+  return html.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+// A run's or act's damage taken and fight turns as two Hype/Mid/Rough meters, and how each
+// holds against the average win.
+function keepReadingMeters(x) {
   const { hype, low } = keepCuts(x.winTaken, x.cut.guard);
-  const taken = Math.round(x.taken);
   const held = keepMark((x.winTaken + 1) / (x.taken + 1), x.cut.guard), speed = keepMark(x.winTurns / x.turns, x.cut.pace);
   const { fast, slow } = keepTurnCuts(x);
-  const html = [
-    head,
-    keepTipMeter("Damage taken", taken, Math.round(x.winTaken), hype + 1, low, [`≤ ${hype}`, `≥ ${low}`]),
-    keepTipMeter("Fight turns", x.turns, +x.winTurns.toFixed(1), fast + 1, slow, [`≤ ${fast}`, `≥ ${slow}`]),
-    why(held, speed),
-    ...extra,
-  ].join("\n");
-  return html.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  return {
+    held, speed,
+    damage: keepTipMeter("Damage taken", Math.round(x.taken), Math.round(x.winTaken), hype + 1, low, [`≤ ${hype}`, `≥ ${low}`]),
+    turns: keepTipMeter("Fight turns", x.turns, +x.winTurns.toFixed(1), fast + 1, slow, [`≤ ${fast}`, `≥ ${slow}`]),
+  };
 }
 
 // What a reading comes to, in a line: damage taken, and whether the turns back it up.
@@ -2235,13 +2240,28 @@ function runReadingHtml(run, short = false) {
   const r = runReadingOf(run);
   if (!r) return "";
   const word = KEEP_WORDS[r.verdict];
-  const tip = keepReadingTip(r,
-    r.op ? `OP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}` : `${word} against the average win on this run's fights`,
-    keepWhy(r), run.won ? [] : ["Not counting the fight that ended it."]);
-  const focus = short ? "" : ` tabindex="0"`;
-  if (r.op) return `<span class="run-reading op" data-tip="${tip}"${focus}>${short ? "" : `<span aria-hidden="true">▲▲</span>`}OP</span>`;
-  if (short) return `<span class="keep-signal ${r.verdict}" role="img" aria-label="${word}" data-tip="${tip}">${KEEP_SIGNS[r.verdict]}</span>`;
-  return `<span class="run-reading ${r.verdict}" data-tip="${tip}"${focus}><span class="keep-signal ${r.verdict}" aria-hidden="true">${KEEP_SIGNS[r.verdict]}</span>${word}</span>`;
+  const opLine = `OP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}`;
+  if (short) {
+    const tip = keepReadingTip(r, r.op ? opLine : `${word} against the average win on this run's fights`,
+      keepWhy(r), run.won ? [] : ["Not counting the fight that ended it."]);
+    if (r.op) return `<span class="run-reading op" data-tip="${tip}">OP</span>`;
+    return `<span class="keep-signal ${r.verdict}" role="img" aria-label="${word}" data-tip="${tip}">${KEEP_SIGNS[r.verdict]}</span>`;
+  }
+  // On the header the meters are shown (runReadingMetersHtml), so the pill's hover keeps only
+  // what they don't say.
+  const note = [r.op ? opLine : "", run.won ? "" : "Not counting the fight that ended it."].filter(Boolean).join("\n");
+  const attrs = note ? ` data-tip="${note.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" tabindex="0"` : "";
+  if (r.op) return `<span class="run-reading op"${attrs}><span aria-hidden="true">▲▲</span>OP</span>`;
+  return `<span class="run-reading ${r.verdict}"${attrs}><span class="keep-signal ${r.verdict}" aria-hidden="true">${KEEP_SIGNS[r.verdict]}</span>${word}</span>`;
+}
+
+// Each act's own mark under the run's header, so where the run's rating comes from shows
+// (OP is Acts 2 and 3 both Hype).
+function runActMarksHtml(run) {
+  const acts = actReadings(run, run.timeline || [], null);
+  if (!acts.length) return "";
+  return `<div class="run-act-marks"><span class="ram-title">By act</span>` + acts.map(a =>
+    `<span class="ram-act">Act ${a.act}${keepSignal(a.verdict, `Act ${a.act}: ${KEEP_WORDS[a.verdict]}`)}</span>`).join("") + `</div>`;
 }
 
 function renderKeepActs(run, nodes, measured) {
@@ -2299,13 +2319,17 @@ function renderKeepActs(run, nodes, measured) {
   const order = Object.keys(KEEP_KINDS);
   const kinds = a => Object.entries(a.kinds).sort(([x], [y]) => order.indexOf(kindOf(x)) - order.indexOf(kindOf(y))).map(([key, n]) =>
     `<span class="keep-kind" title="${KEEP_KINDS[kindOf(key)]}: ${n}">${nodeIconHtml(key, 20, kindOf(key))}${n}</span>`).join("");
-  box.innerHTML = acts.map(a => {
+  // The run's rating first, across the grid: its totals on the same two meters, and how it is read.
+  const whole = runReadingOf(run);
+  const wholeMeters = whole ? keepReadingMeters(whole) : null;
+  const wholeCard = whole ? `<div class="keep-run keep-act"><h3><span class="ka-title">Run rating</span>${runReadingHtml(run)}</h3>` +
+    `<p class="kr-desc">Damage taken and fight turns from every act added up, against the average win on the same fights. OP means a Hype rating in both Acts ${KEEP_OP_ACTS.join(" and ")} which signals a consistently strong deck through mid and late game.</p>` +
+    `<div class="kr-meters">${wholeMeters.damage}${wholeMeters.turns}</div></div>` : "";
+  box.innerHTML = wholeCard + acts.map(a => {
     const log = a.log;
     const perTurn = v => (v / log.turns).toFixed(1);
     const dmgCuts = keepCuts(a.winTaken, a.cut.guard), { fast: turnFast, slow: turnSlow } = keepTurnCuts(a);
-    const tip = keepReadingTip(a, `${KEEP_WORDS[a.verdict]}${a.lacking ? `, lacking ${a.lacking}` : ""}`, keepWhy(a),
-      [a.healed ? `After healing ${Math.round(a.healed)} HP.` : ""].filter(Boolean));
-    const pill = `<span class="run-reading ${a.verdict}" data-tip="${tip}" tabindex="0"><span class="keep-signal ${a.verdict}" aria-hidden="true">${KEEP_SIGNS[a.verdict]}</span>${KEEP_WORDS[a.verdict]}</span>`;
+    const pill = `<span class="run-reading ${a.verdict}"><span class="keep-signal ${a.verdict}" aria-hidden="true">${KEEP_SIGNS[a.verdict]}</span>${KEEP_WORDS[a.verdict]}</span>`;
     const perTurnRow = (icon, label, value, note) => row(icon, label, `${perTurn(value)}<small>/turn</small>`, { note });
     // Against the average win on the left, what the deck did per turn on the right; a card
     // too narrow for two columns stacks them.

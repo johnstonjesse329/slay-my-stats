@@ -2525,6 +2525,17 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #seeds-table .seed-detail-cards .cardface { width: 100% !important; }
 }
 
+/* The run's reading under its header: the same two meters as the hover. */
+.run-act-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 1rem; margin: 0.35rem 0; font-size: var(--fs-sm); }
+.ram-title { color: var(--text-dim); }
+.ram-act { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+/* The whole run's card in the Keeping Up grid: both meters side by side, then its rule. */
+.keep-run { grid-column: 1 / -1; }
+.kr-meters { display: flex; flex-wrap: wrap; gap: 0.2rem 2rem; font-size: var(--fs-sm); }
+.kr-meters .kt-row { flex: 1 1 220px; max-width: 360px; width: auto; margin: 0.3rem 0 0.2rem; }
+.kr-desc { margin: 0 0 0.2rem; color: var(--text-dim); font-size: var(--fs-sm); }
+
 /* A reading's hover: damage taken and fight turns, each on a Hype/Mid/Low meter. */
 .kt-row { width: 260px; margin: 0.5rem 0 0.2rem; font-variant-numeric: tabular-nums; }
 .kt-head { display: flex; align-items: baseline; gap: 0.4rem; margin-bottom: 0.25rem; }
