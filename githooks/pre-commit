@@ -18,4 +18,11 @@ if [ -z "$py" ]; then
     echo "check_secrets: no python found, skipping the secrets check." >&2
     exit 0
 fi
-exec "$py" "$root/tools/check_secrets.py" --staged
+"$py" "$root/tools/check_secrets.py" --staged || exit 1
+
+# Docs stay in step with the stack: when infra, the diagram or the README is
+# part of the commit, check that the diagram still shows what the stack builds
+# (see tools/check_docs.py).
+if git diff --cached --name-only | grep -qE '^(infra/slay_my_stats/|docs/|README.md|tools/check_docs.py)'; then
+    "$py" "$root/tools/check_docs.py" || exit 1
+fi
