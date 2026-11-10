@@ -169,6 +169,28 @@ class Facts(unittest.TestCase):
         self.assertEqual(t["attacks"], 2)
         self.assertEqual(t["hits"], 4)
 
+    def test_a_pet_is_not_an_enemy_and_its_damage_is_nobodys(self):
+        # Osty soaking a hit, then dying to the same blow's overflow: the enemy's blow on
+        # it is neither damage to the player nor damage the deck dealt, and its HP is
+        # not enemy HP. Byrdpip is caught by the placeholder HP, not by name.
+        snap = ev(3, "snap", why="fight0", round=1, creatures=[
+            {"c": "P", "you": True, "hp": 80, "max": 80, "blk": 0, "pow": {}},
+            {"c": "Osty", "you": False, "hp": 1, "max": 1, "blk": 0, "pow": {}},
+            {"c": "Newpet", "you": False, "hp": 9999, "max": 9999, "blk": 0, "pow": {}},
+            {"c": "E0", "you": False, "hp": 40, "max": 40, "blk": 0, "pow": {}}])
+        log = self._with(
+            snap,
+            ev(20, "hp", c="Osty", d=-5, hp=0),
+            ev(21, "hit", by="E0", t="Osty", total=5, blk=0, unb=5, ovk=3),
+            ev(22, "hp", c="Newpet", d=-5, hp=9994),
+            ev(23, "hit", by="E0", t="Newpet", total=5, blk=0, unb=5, ovk=0))
+        f = dt.derive({"v": 3, "log": log})["fights"][0]
+        base = dt.derive({"v": 3, "log": self.log})["fights"][0]
+        self.assertEqual(f["pool"], 40)
+        self.assertEqual(f["enemy_lost"], base["enemy_lost"])
+        self.assertEqual(f["dmg_other"], base["dmg_other"])
+        self.assertEqual(f["taken"], base["taken"])
+
     def test_enemy_attacks_are_not_the_players(self):
         log = self._with(ev(20, "atk", by="E0", src="MONSTER.X", side="Player", done=False, hits=0))
         t = dt.derive({"v": 3, "log": log})["fights"][0]["turns"][0]

@@ -22,6 +22,13 @@ import sys
 from pathlib import Path
 
 PLAYER = "P"
+# The player's own pets, which the log lists beside the enemies (`you` is only the player).
+# Osty is an HP buffer in front of you; Byrdpip and Paels' Legion carry a placeholder 9999 HP
+# in the game data (fight_demand.PETS). Hits they take are not damage to the player and not
+# damage the deck dealt, and they are not enemies to kill. Any other creature that opens a
+# fight with the placeholder HP is taken for a pet too, so a new one does not need a release.
+PETS = {"Osty", "Byrdpip", "Paels Legion"}
+PET_HP = 9999
 
 # A single HP delta this large is the game saying "infinite", not damage. Waterfall
 # Giant's HP is set to a billion when it dies, for the turn it stays up before it
@@ -116,6 +123,7 @@ def derive(log, moves=None):
     guessed.
     """
     moves = moves or {}
+    pets = set(PETS)
     events = log.get("log") or []
     events = sorted((e for e in events if isinstance(e, dict)), key=lambda e: e.get("q", 0))
     fights = []
@@ -199,10 +207,12 @@ def derive(log, moves=None):
         # open turn when there is one.
         if kind == "snap":
             fight.setdefault("snaps", []).append(a)
+            pets.update(c.get("c") for c in a.get("creatures") or []
+                        if not c.get("you") and (c.get("max") or 0) >= PET_HP)
             if fight["pool"] is None:
                 # The opening state of the fight: what stood in front of us.
                 fight["pool"] = sum((c.get("max") or 0) for c in a.get("creatures") or []
-                                    if not c.get("you"))
+                                    if not c.get("you") and c.get("c") not in pets)
             if turn is not None:
                 why = a.get("why") or ""
                 if why == "side1":
@@ -227,7 +237,7 @@ def derive(log, moves=None):
                     tainted = (you.get("pow") or {}).get(TAINTED, 0) or 0
                     aiming.clear()
                     for c in a.get("creatures") or []:
-                        if c.get("you") or not c.get("hp"):
+                        if c.get("you") or not c.get("hp") or c.get("c") in pets:
                             continue
                         turn["alive"] += 1
                         # Keyed by encounter because a move id is not unique: 21
@@ -265,7 +275,7 @@ def derive(log, moves=None):
                     # credit hits that were never boosted.
                     vuln.clear()
                     for c in a.get("creatures") or []:
-                        if c.get("you") or not c.get("hp"):
+                        if c.get("you") or not c.get("hp") or c.get("c") in pets:
                             continue
                         for name, amount in (c.get("pow") or {}).items():
                             if name.endswith("VULNERABLE_POWER") or name == "POWER.VULNERABLE":
@@ -321,7 +331,10 @@ def derive(log, moves=None):
                 if enemy["c"] == a.get("by") and enemy["move"] in GROWS:
                     fired.setdefault((enemy["c"], enemy["move"]), set()).add(turn["n"])
 
-        if kind == "hit" and a.get("by") == PLAYER and (a.get("t") or "") != PLAYER:
+        if kind == "hit" and a.get("t") in pets:
+            # A pet soaking a blow (or the deck sacrificing Osty): neither side's damage.
+            pass
+        elif kind == "hit" and a.get("by") == PLAYER and (a.get("t") or "") != PLAYER:
             turn["dmg"] += a.get("total") or 0
             # `unb` is the HP the hit really took, overkill already left out: it equals
             # the HP delta beside it on every hit of both logged runs.
@@ -367,7 +380,9 @@ def derive(log, moves=None):
                 turn["blocked"] += a.get("blk") or 0
         elif kind == "hp":
             delta = a.get("d") or 0
-            if a.get("c") == PLAYER:
+            if a.get("c") in pets:
+                pass  # a pet's HP is not the player's and not an enemy's
+            elif a.get("c") == PLAYER:
                 if delta < 0:
                     fight["hp_in"] += -delta
                 else:
