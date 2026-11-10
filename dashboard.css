@@ -2552,3 +2552,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .kt-cuts { display: flex; gap: 2px; margin-top: 0.15rem; color: var(--text-dim); font-size: var(--fs-sm); }
 .kt-cut { display: flex; justify-content: flex-end; white-space: nowrap; min-width: 0; }
 .kt-cut.low { justify-content: flex-start; }
+
+/* An ancient boon's name beside its icon, so the icons read without hovering. */
+.run-boon-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.run-boon-name { font-size: var(--fs-sm, 0.85rem); color: var(--text, #e8e4ff); white-space: nowrap; }
