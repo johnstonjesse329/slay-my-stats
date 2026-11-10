@@ -36,6 +36,7 @@ DRAWN = {
     "ProcessLogGroup": "CloudWatch",
     "ProcessFailureLogGroup": "CloudWatch",
     "KillSwitchLogGroup": "CloudWatch",
+    "AccessLogBucket": "access logs",
 }
 NOT_DRAWN = {  # plumbing inside a drawn box, or an output
     "SiteCertificate": "the ACM cert is noted inside the CloudFront box",
