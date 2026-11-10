@@ -1434,13 +1434,13 @@ h1 {
 .floor-tip .ft-split { position: relative; display: flex; gap: 2px; height: 10px; margin: 6px 0 8px; min-width: 240px; }
 .floor-tip .ft-split > span:first-child { border-radius: 5px 0 0 5px; }
 .floor-tip .ft-split > span:last-of-type { border-radius: 0 5px 5px 0; }
-/* HP entering a fight, 0 to max: the wins' zone between their lowest tenth (ring) and median (dot),
-   as the HP chart draws them, and a bar where this run went in. */
+/* A lane, 0 to max: the wins' zone from their best tenth (green cap) to their worst (red cap), as the
+   charts draw them, a thin line at the median win, and a bar where this run went in. */
 .floor-tip .ft-lane { position: relative; height: 10px; margin: 8px 6px 8px 0; min-width: 240px; border-radius: 5px; background: var(--hairline); }
 .floor-tip .ft-lane > span { position: absolute; top: 50%; transform: translate(-50%, -50%); }
 .floor-tip .ft-lane > .ft-zone { height: 10px; transform: translateY(-50%); border-radius: 5px; background: #e6e2f244; }
-.floor-tip .ft-ring, .floor-tip .ft-dot { width: 11px; height: 11px; border-radius: 50%; box-sizing: border-box; }
-.floor-tip .ft-ring { border: 2px solid; background: var(--panel-2); }
+.floor-tip .ft-end { width: 3px; height: 16px; border-radius: 2px; }
+.floor-tip .ft-med { width: 2px; height: 12px; border-radius: 1px; background: #e6e2f2; }
 .floor-tip .ft-you { width: 4px; height: 18px; border-radius: 2px; }
 /* What this fight cost, in a line, then the lanes it is read against, then the key to their marks. */
 .floor-tip .ft-lost { border-left: 1px solid var(--hairline); padding-left: 12px; margin: 8px 0 2px; }

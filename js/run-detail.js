@@ -886,7 +886,7 @@ function iconAxis(extra = {}) {
     // Chart.js counts its steps from the stretched bottom (2, 12, 22...);
     // put them back on round numbers from zero, none below it.
     afterBuildTicks(scale) {
-      const step = scale.ticks.length > 1 ? scale.ticks[1].value - scale.ticks[0].value : 0;
+      const step = scale.ticks.length > 1 ? Math.abs(scale.ticks[1].value - scale.ticks[0].value) : 0;
       if (!step) return;
       const nice = Math.pow(10, Math.floor(Math.log10(step)));
       const s = [1, 2, 2.5, 5, 10].map(m => m * nice).find(m => m >= step - 1e-9);
@@ -1026,7 +1026,8 @@ function hpWinsByNode(run, nodes) {
     // The HP the wins left it with, which is what the chart's HP line shows for the floor.
     const out = (left[n.enc] || []).sort((a, b) => a - b);
     const lowest = out.slice(0, Math.max(1, Math.round(out.length * LOW_WINS_SHARE)));
-    return { ...s, left_avg: median(out), left_low: median(lowest) };
+    const highest = out.slice(-lowest.length);
+    return { ...s, left_avg: median(out), left_low: median(lowest), left_high: median(highest) };
   });
 }
 
@@ -1043,42 +1044,41 @@ function winsLeftWith(tier) {
   return by;
 }
 
-// On each of those floors, a ring at the lowest tenth's HP, a dot at the median, and a faint
-// floor-wide zone between: the Overview's lane stood on end, so the HP line reads as in it or out. Drawn before the datasets, so the floor's icon
-// and the HP line sit over it.
+// On each fight floor, a bar from the best tenth of this player's wins to the worst: a green cap at
+// the good end, a red cap at the bad one. Drawn before the datasets, so the floor's icon and the
+// line sit over it; the dotted average line crosses it where the middle is.
 const HP_WIN_COLOUR = "#e6e2f2";
-// marks[i] is {low, mid} for a floor, or null. The same narrow bar, ring and dot on all three
-// charts.
+const GOOD_COLOUR = "#5fd08a", BAD_COLOUR = "#e8605d";
+// Legend key for the bars: the same bar and dots. `goodDown` for damage taken, where less is better.
+const rangeKey = (what, goodDown) => `<span class="fl-item"><span style="position:relative;display:inline-block;width:11px;height:17px"><span style="position:absolute;left:3px;width:5px;height:15px;top:1px;box-sizing:border-box;border-radius:3px;background:${HP_WIN_COLOUR}26;border:1px solid ${HP_WIN_COLOUR}55"></span><span style="position:absolute;left:0;width:11px;height:2.5px;border-radius:2px;top:0;background:${goodDown ? BAD_COLOUR : GOOD_COLOUR}"></span><span style="position:absolute;left:0;width:11px;height:2.5px;border-radius:2px;bottom:0;background:${goodDown ? GOOD_COLOUR : BAD_COLOUR}"></span></span>${what}</span>`;
+// marks[i] is {bad, good} for a floor, or null. The same narrow bar and caps on all three charts.
 function makeWinRangePlugin(marks, { width = 0.12 } = {}) {
   return {
     id: "winRanges",
     beforeDatasetsDraw(chart) {
       const { ctx, scales: { x, y } } = chart;
-      const panel = getComputedStyle(chart.canvas).getPropertyValue("--panel").trim() || "#1e1e2e";
       ctx.save();
       marks.forEach((m, i) => {
         if (!m) return;
-        const px = x.getPixelForValue(i), low = y.getPixelForValue(m.low), mid = y.getPixelForValue(m.mid);
-        // The zone: a floor wide, from the ring up to the dot.
+        const px = x.getPixelForValue(i), bad = y.getPixelForValue(m.bad), good = y.getPixelForValue(m.good);
         const half = Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) * width;
         ctx.beginPath();
-        ctx.roundRect(px - half, Math.min(low, mid), half * 2, Math.abs(low - mid) || 1, 4);
+        ctx.roundRect(px - half, Math.min(bad, good), half * 2, Math.abs(bad - good) || 1, 4);
         ctx.fillStyle = HP_WIN_COLOUR + "26";
         ctx.fill();
         ctx.lineWidth = 1;
         ctx.strokeStyle = HP_WIN_COLOUR + "55";
         ctx.stroke();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = HP_WIN_COLOUR;
-        ctx.fillStyle = panel;
-        ctx.beginPath();
-        ctx.arc(px, low, 5, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = HP_WIN_COLOUR;
-        ctx.beginPath();
-        ctx.arc(px, mid, 5, 0, 2 * Math.PI);
-        ctx.fill();
+        // A short cap at each end, rather than a dot: the charts are busy enough.
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        [[good, GOOD_COLOUR], [bad, BAD_COLOUR]].forEach(([py, colour]) => {
+          ctx.strokeStyle = colour;
+          ctx.beginPath();
+          ctx.moveTo(px - half - 2, py);
+          ctx.lineTo(px + half + 2, py);
+          ctx.stroke();
+        });
       });
       ctx.restore();
     },
@@ -1091,24 +1091,26 @@ function makeWinRangePlugin(marks, { width = 0.12 } = {}) {
 // median and the lowest tenth of their wins, and how often they won. `s` is hpWinsByNode's entry,
 // or null.
 // A hover box's lane: a track from 0 to `top`, a bar where this run's figure is (`you`, in the
-// chart's own colour) and, in the HP chart's colour for wins, the dot for the median or average
-// win, with a ring at the lowest tenth and the zone between when there is one. `what` is the
+// chart's own colour), the zone of the wins from their best tenth to their worst, a green cap at the
+// good end, a red one at the bad end, and a thin line at the median or average win. `what` is the
 // reading for a screen reader.
-function tipLane(top, { you, youColour, dot, ring, what }) {
+function tipLane(top, { you, youColour, mid, good, bad, what }) {
   const at = v => (v / top * 100).toFixed(1) + "%";
+  const end = (v, colour) => `<span class="ft-end" style="left:${at(v)};background:${colour}"></span>`;
   return `<div class="ft-lane" role="img" aria-label="${what}">` +
-    (ring != null ? `<span class="ft-zone" style="left:${at(Math.min(ring, dot))};width:${at(Math.abs(dot - ring))}"></span>` +
-      `<span class="ft-ring" style="left:${at(ring)};border-color:${HP_WIN_COLOUR}"></span>` : "") +
-    `<span class="ft-dot" style="left:${at(dot)};background:${HP_WIN_COLOUR}"></span>` +
+    (good != null && bad != null ? `<span class="ft-zone" style="left:${at(Math.min(good, bad))};width:${at(Math.abs(good - bad))}"></span>` +
+      end(good, GOOD_COLOUR) + end(bad, BAD_COLOUR) : "") +
+    `<span class="ft-med" style="left:${at(mid)}"></span>` +
     `<span class="ft-you" style="left:${at(you)};background:${youColour}"></span></div>`;
 }
 
 // What the marks in a hover box's lanes are. One key, under every lane the box has, since the
-// same three marks mean the same thing in each.
+// same marks mean the same thing in each.
 function tipKey() {
   return `<div class="ft-key"><span><i class="ft-you" style="background:var(--gold)"></i>This run</span>` +
-    `<span><i class="ft-dot" style="background:${HP_WIN_COLOUR}"></i>Median win</span>` +
-    `<span><i class="ft-ring" style="border-color:${HP_WIN_COLOUR}"></i>Worst tenth of wins</span></div>`;
+    `<span><i class="ft-med"></i>Median win</span>` +
+    `<span><i class="ft-end" style="background:${GOOD_COLOUR}"></i>Best 10% of wins</span>` +
+    `<span><i class="ft-end" style="background:${BAD_COLOUR}"></i>Worst 10% of wins</span></div>`;
 }
 
 function hpTip(run, n, s) {
@@ -1121,13 +1123,13 @@ function hpTip(run, n, s) {
   // The lanes lead, then the table. Both share one track, 0 to whichever is highest of max HP, the
   // wins' medians and this run's own figures, so HP lost and HP left read against each other. The
   // worst tenth is at the high end for HP lost and the low end for HP left.
-  const top = Math.max(n.maxHp, s.left_avg, n.dmg, s.heavy_wins_dmg);
-  const lost = tipLane(top, { you: n.dmg, youColour: "var(--gold)", dot: s.avg_dmg, ring: s.heavy_wins_dmg,
-    what: `Lost ${n.dmg} HP; your wins' median ${s.avg_dmg}, heaviest tenth ${s.heavy_wins_dmg}` });
-  const kept = tipLane(top, { you: n.hpAfter, youColour: "var(--gold)", dot: s.left_avg, ring: s.left_low,
-    what: `Left with ${n.hpAfter}; your wins' median ${s.left_avg}, lowest tenth ${s.left_low}` });
+  const top = Math.max(n.maxHp, s.left_avg, s.left_high, n.dmg, s.heavy_wins_dmg);
+  const lost = tipLane(top, { you: n.dmg, youColour: "var(--gold)", mid: s.avg_dmg, good: s.light_wins_dmg, bad: s.heavy_wins_dmg,
+    what: `Lost ${n.dmg} HP; your wins' median ${s.avg_dmg}, worst tenth ${s.heavy_wins_dmg}, best tenth ${s.light_wins_dmg}` });
+  const kept = tipLane(top, { you: n.hpAfter, youColour: "var(--gold)", mid: s.left_avg, good: s.left_high, bad: s.left_low,
+    what: `Left with ${n.hpAfter}; your wins' median ${s.left_avg}, worst tenth ${s.left_low}, best tenth ${s.left_high}` });
   return `${head}<div class="ft-lost"><div class="ft-lost-big">Lost <b${n.dmg > s.avg_dmg ? ` class="ft-worse"` : ""}>${n.dmg} HP</b></div>` +
-    `<div class="ft-cap">Wins usually lose ${s.avg_dmg} · the heaviest tenth lose ${s.heavy_wins_dmg}</div></div>` +
+    `<div class="ft-cap">Wins usually lose ${s.avg_dmg} · the worst tenth lose ${s.heavy_wins_dmg}</div></div>` +
     `<div class="ft-lanelabel">HP lost</div>${lost}<div class="ft-lanelabel">HP left</div>${kept}${tipKey()}` +
     `<table><thead><tr><th></th><th colspan="1">This run</th><th colspan="2" class="ft-win">Your wins</th></tr>` +
     `<tr class="ft-sub"><th></th><th></th><th class="ft-win">Median</th><th class="ft-win">Lowest 10%</th></tr></thead>` +
@@ -1158,14 +1160,13 @@ function renderDetailHpChart(run) {
   // "Average win" on the damage charts. Floors with no fight, or no win to read, are skipped over.
   const winHp = wins.map(w => w ? w.left_avg : null);
 
-  // HP's swatch is the area's own fill; Max HP's is its thin line. The ring and dot are the
-  // marks on the elite and boss floors: the HP this player's wins left that fight with.
-  const mark = (fill, what) => `<span class="fl-item"><span class="fl-ring" style="border-color:${HP_WIN_COLOUR};background:${fill};width:11px;height:11px"></span>${what}</span>`;
+  // HP's swatch is the area's own fill; Max HP's is its thin line. The dot on each fight floor is
+  // the HP this player's wins left that fight with; its bar runs down to the lowest tenth.
   document.getElementById("detail-hp-legend").innerHTML = `<div class="fl-items">` +
     `<span class="fl-item"><span class="fl-swatch" style="background:${color}33;border:2px solid ${color}"></span>HP</span>` +
     `<span class="fl-item"><span class="strength-key" style="background:#8a8aa0"></span>Max HP</span>` +
     `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #b9b9c4 0 2px, transparent 2px 6px)"></span>HP left, median win</span>` +
-    (anyWins ? mark("transparent", "HP left, lowest 10% of your wins") : "") + `</div>`;
+    (anyWins ? rangeKey("Best and worst 10% of wins", false) : "") + `</div>`;
 
   // Room for a median win that finished above this run's own max HP.
   const yAxis = iconAxis({ min: 0 });
@@ -1178,7 +1179,7 @@ function renderDetailHpChart(run) {
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeWinRangePlugin(wins.map(s => s ? { low: s.left_low, mid: s.left_avg } : null))],
+    plugins: [makeActBoundaryPlugin(nodes), makeWinRangePlugin(wins.map(s => s ? { bad: s.left_low, good: s.left_high } : null))],
     data: {
       labels,
       datasets: [
@@ -2015,11 +2016,10 @@ function fightReadings(run, nodes, measured) {
   return rows.some(r => r) ? rows : null;
 }
 
-// The ring on the damage charts' fight floors: the best tenth of the wins that the
-// average win's icon is the average of (fight_demand.py's fast and light), so the zone between
-// them says how far a win can be pushed. Damage done a turn is the fight's HP over turns, so
-// the quickest wins do the most. A ring needs enough wins to have a tenth, and sits on the
-// better side of the icon or isn't drawn. Per floor, {low, mid} or null.
+// The bars on the damage charts' fight floors: from the best tenth of the wins the average win is of
+// to the worst (fight_demand.py's fast and slow, light and heavy), so the bar says how far a win can
+// go either way. Damage done a turn is the fight's HP over turns, so the quickest wins do the most.
+// A bar needs enough wins to have a tenth. Per floor, {bad, good} or null.
 const KEEP_RANGE_MIN = 10;
 function keepRanges(run, nodes, rows) {
   const demand = DATA.fightDemand.encounters;
@@ -2027,9 +2027,8 @@ function keepRanges(run, nodes, rows) {
   nodes.forEach((n, i) => {
     const r = rows[i], d = demand[keepFight(n)], how = r && d && keepWinners(run, d);
     const ok = how && how.n >= KEEP_RANGE_MIN;
-    const fast = ok && r.ask !== undefined && how.fast ? r.pool / how.fast : 0;
-    done.push(fast > r?.ask ? { low: fast, mid: r.ask } : null);
-    taken.push(ok && r.winRate !== undefined && how.light < r.winRate ? { low: how.light, mid: r.winRate } : null);
+    done.push(ok && r.ask !== undefined && how.slow && how.fast ? { bad: r.pool / how.slow, good: r.pool / how.fast } : null);
+    taken.push(ok && r.winRate !== undefined && how.heavy !== undefined && how.light !== undefined ? { bad: how.heavy, good: how.light } : null);
   });
   return { done, taken };
 }
@@ -2431,19 +2430,18 @@ function renderDetailKeepCharts(run) {
     cubicInterpolationMode: "monotone",
   });
   const ranges = keepRanges(run, nodes, rows);
-  const chart = (id, series, tipFor, marks) => {
+  const chart = (id, series, tipFor, marks, up) => {
     // Only the lines.
     // The ring, where the chart has any, is the HP chart's: the best tenth of the wins.
-    const ring = marks && marks.some(m => m)
-      ? `<span class="fl-item"><span class="fl-ring" style="border-color:${HP_WIN_COLOUR};background:transparent;width:11px;height:11px"></span>Best 10% of wins</span>` : "";
+    const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 10% of wins", false) : "";
     document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(s =>
       `<span class="fl-item"><span class="strength-key" style="background:${s.borderDash?.length ? `repeating-linear-gradient(90deg, ${s.borderColor} 0 4px, transparent 4px 7px)` : s.borderColor}"></span>${s.label}</span>`
     ).join("")}${ring}</div>`;
     // Room for a ring that sits above everything else on the chart.
-    const yAxis = { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 } };
+    const yAxis = { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 }, reverse: !!up };
     const stretch = yAxis.afterDataLimits;
     yAxis.afterDataLimits = scale => {
-      (marks || []).forEach(m => { if (m) scale.max = Math.max(scale.max, m.low); });
+      (marks || []).forEach(m => { if (m) scale.max = Math.max(scale.max, m.bad, m.good); });
       stretch(scale);
     };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
@@ -2473,7 +2471,7 @@ function renderDetailKeepCharts(run) {
   }
 
   chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0, "damage"), winners(r => r.ask)], damageTip, ranges.done);
-  chart("in", [line(KEEP_LINES.taken, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken);
+  chart("in", [line(KEEP_LINES.taken, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken, true);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";

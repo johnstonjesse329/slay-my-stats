@@ -1550,16 +1550,16 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="keep-acts" id="detail-keep-acts"></div>
         <div id="detail-hp-box">
           <h3 class="strength-label">HP by floor</h3>
-          <p class="chart-caption">Your HP after each floor, against your max HP. The dotted line is the HP your median win left each fight with. Each bar runs from that median down to the lowest 10% of your winning runs.</p>
+          <p class="chart-caption">Your HP after each floor, against your max HP. The dotted line is the HP your median win left each fight with.</p>
           <div class="chart-wrap"><canvas id="detail-hp-chart"></canvas></div>
           <div class="floor-legend" id="detail-hp-legend"></div>
         </div>
         <h3 class="strength-label">Damage taken per turn</h3>
-        <p class="chart-caption">Damage that got through each turn, after healing. The dotted line is the average win. Each bar runs from that average down to the best 10% of wins.</p>
+        <p class="chart-caption">Damage that got through each turn, after healing. The dotted line is the average win.</p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-in-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-in-legend"></div>
         <h3 class="strength-label">Damage done per turn</h3>
-        <p class="chart-caption">Enemy HP taken off each turn. The dotted line is the average win. Each bar runs from that average up to the best 10% of wins.</p>
+        <p class="chart-caption">Enemy HP taken off each turn. The dotted line is the average win.</p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
         <div id="detail-keep-deck">

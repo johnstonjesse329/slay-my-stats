@@ -142,10 +142,18 @@ class Table(unittest.TestCase):
         self.assertEqual(line["fast"], 1.5)
         self.assertEqual(line["light"], 2.11)
 
+    def test_the_worst_tenth_is_the_median_of_the_slowest_and_the_heaviest(self):
+        wins = [fight(t=t, taken=t * 2) for t in range(1, 21)]
+        line = line_of([wins])
+        self.assertEqual(line["slow"], 19.5)
+        self.assertEqual(line["heavy"], 3.5)
+
     def test_fewer_than_ten_wins_still_have_a_best_one(self):
         line = line_of([[fight(t=4, taken=8), fight(t=6, taken=6), fight(t=5, taken=5)]])
         self.assertEqual(line["fast"], 4)
         self.assertEqual(line["light"], 1.2)
+        self.assertEqual(line["slow"], 6)
+        self.assertEqual(line["heavy"], 2.67)
 
     def test_a_one_turn_kill_has_no_rate_to_rank(self):
         line = line_of([[fight(t=1), fight(t=1), fight(t=1)]])
