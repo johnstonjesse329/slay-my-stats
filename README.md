@@ -208,6 +208,8 @@ file, which the browser downloads and renders. There are no accounts, sessions, 
 
 The diagram's source is [docs/slay-my-stats-architecture.drawio](docs/slay-my-stats-architecture.drawio); open it in
 [draw.io](https://app.diagrams.net/) to edit, then re-export the PNG.
+`python tools/check_docs.py` fails if the stack builds something the diagram doesn't show (or the reverse); the
+pre-commit hook runs it when infra, docs or the README change.
 
 ### AWS resources
 
