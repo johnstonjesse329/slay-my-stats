@@ -303,7 +303,7 @@ h1 {
 .card .label .name, .card .label .what { font-weight: 700; }
 .card .label .name { color: var(--gold); }
 .card .label .what { color: var(--text); }
-.card .label .detail { color: var(--text-faint); }
+.card .label .detail { color: #b4aed6; }
 /* Gold marks what the stat is, so the figure beside it is plain white. */
 #summary-cards .card .value { color: var(--text); white-space: nowrap; font-size: 1.25rem; }
 /* The name is the main item now, so it is not the small print beside a big number. */
