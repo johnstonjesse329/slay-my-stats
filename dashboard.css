@@ -1695,6 +1695,8 @@ h1 {
   font-weight: 700;
   margin-bottom: 6px;
 }
+.deck-links { margin: 6px 0 16px; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+.deck-links b { color: var(--text, inherit); }
 .deck-group-count {
   color: var(--text-dim);
   font-weight: 400;

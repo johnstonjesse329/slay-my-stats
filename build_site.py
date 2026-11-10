@@ -98,6 +98,36 @@ def repo_url(p: Path) -> str:
     return "/" + p.relative_to(run._HERE).as_posix()
 
 
+# power_data.json keys that nearly every card has one of (block, draw, exhaust...).
+# A link through one of these says nothing about a deck, so only the specific ones
+# (Strength, Poison, Osty, Shiv, Stars...) go to the site. Winning didn't track
+# links through the broad keys once run length was held fixed, so no score is built.
+BROAD_SYNERGY_KEYS = {"block", "draw", "attacks", "skills", "powers", "generated",
+                      "strike", "exhaust", "discard", "shuffle"}
+
+
+def build_synergy() -> dict | None:
+    """
+    {"cards": {id: [produces, consumes]}, "relics": {...}}: what each card or relic
+    makes and what it needs, from tools/extract_power_data.py's power_data.json
+    (gitignored, so None when it hasn't been generated). Only the specific keys.
+    """
+    f = run._HERE / "power_data.json"
+    if not f.exists():
+        return None
+    data = json.loads(f.read_text(encoding="utf-8"))
+    out = {}
+    for section in ("cards", "relics"):
+        table = {}
+        for item_id, e in data.get(section, {}).items():
+            made = sorted(set(e.get("produces", [])) - BROAD_SYNERGY_KEYS)
+            need = sorted(set(e.get("consumes", [])) - BROAD_SYNERGY_KEYS)
+            if made or need:
+                table[item_id] = [made, need]
+        out[section] = table
+    return out
+
+
 def build_catalog() -> dict:
     """
     Everything run.py's build_html() computes that ISN'T per-run: card/relic/
@@ -159,6 +189,9 @@ def build_catalog() -> dict:
             if run._FIGHT_DEMAND_FILE.exists() else None
         ),
         "relicData":          relic_data,
+        # Which cards and relics feed which others (see build_synergy()); null hides
+        # the "Deck links" list.
+        "synergy":            build_synergy(),
         "potionData":         potion_data,
         "enchantmentData":    enchantment_data,
         "nodeIcons":          run.build_node_icons(url_for=repo_url),

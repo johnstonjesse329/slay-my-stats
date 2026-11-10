@@ -300,7 +300,46 @@ function renderDetailDeckRelics(run) {
     <div class="detail-section-heading">Final deck</div>
     ${groupsHtml}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
-    <div class="deck-relic-list">${relicHtml}</div>`;
+    <div class="deck-relic-list">${relicHtml}</div>${renderDeckLinksHtml(deck, relics)}`;
+}
+
+// Cards and relics in this run that feed each other: one makes a thing (Strength,
+// Poison, Osty, Shiv...) and another needs it. Listed, not scored. DATA.synergy
+// holds only the specific keys; a key with no maker or no other user is dropped.
+function deckLinks(deck, relics) {
+  const table = DATA.synergy;
+  if (!table) return [];
+  const makers = {}, users = {};
+  const add = (map, key, who) => { (map[key] = map[key] || new Map()).set(who.id, who); };
+  const seen = [
+    ...deck.map(c => ({ id: c.id, name: cardInfo(c.id)?.title || fmtCardLabel(c.id), row: table.cards[c.id] })),
+    ...relics.map(r => ({ id: r.id, name: relicInfo(r.id)?.title || fmtRelicLabel(r.id), row: table.relics[r.id] })),
+  ];
+  seen.forEach(s => {
+    if (!s.row) return;
+    s.row[0].forEach(k => add(makers, k, s));
+    s.row[1].forEach(k => add(users, k, s));
+  });
+  return Object.keys(makers)
+    .map(key => {
+      const m = [...makers[key].values()], u = users[key] ? [...users[key].values()] : [];
+      // Needs a user that isn't the only maker, or a card would link to itself.
+      const feeders = m.filter(x => u.some(y => y.id !== x.id));
+      return { key, feeders, users: u.filter(y => feeders.some(x => x.id !== y.id)) };
+    })
+    .filter(l => l.feeders.length && l.users.length)
+    .sort((a, b) => (b.feeders.length + b.users.length) - (a.feeders.length + a.users.length));
+}
+
+const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function renderDeckLinksHtml(deck, relics) {
+  const links = deckLinks(deck, relics);
+  if (!links.length) return "";
+  const names = list => [...new Set(list.map(x => x.name))].map(escapeHtml).join(", ");
+  const rows = links.map(l => `<li><b>${escapeHtml(l.key.replace(/^power:/, ""))}</b>: ${names(l.feeders)} → ${names(l.users)}</li>`).join("");
+  return `<div class="detail-section-heading" style="margin-top:16px">Deck links <span class="deck-group-count">${links.length}</span></div>
+    <ul class="deck-links">${rows}</ul>`;
 }
 
 // A phone can't hover a card, and its three-per-row tiles are small for the
