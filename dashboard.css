@@ -1312,6 +1312,15 @@ h1 {
    that a card is never wider than the row (min(100%, ...)): on a 360px phone the row is
    narrower than 340px and the cards pushed the whole page sideways. */
 .keep-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, max(340px, calc((100% - 1.7rem) / 3))), 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
+/* On a phone the Keeping Up charts show one act at a time (run-detail.js keepActSpan); this picks it.
+   Stays at the top of the screen while the charts scroll under it. */
+.keep-actpick { display: none; }
+@media (max-width: 700px) {
+  .keep-actpick { display: flex; gap: 0.4rem; position: sticky; top: 0; z-index: 5; padding: 0.4rem 0; margin-bottom: 0.4rem; background: var(--panel); }
+  .keep-actpick button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.1rem; padding: 0.4rem 0.3rem; font: inherit; font-size: var(--fs-md); font-weight: 600; color: var(--text-dim); background: transparent; border: 1px solid var(--hairline); border-radius: 8px; cursor: pointer; }
+  .keep-actpick button small { font-size: var(--fs-xs); font-weight: 400; color: var(--text-faint); }
+  .keep-actpick button.on { color: var(--gold-bright); border-color: var(--gold); background: var(--panel-2); }
+}
 .keep-act { border: 1px solid var(--hairline); border-radius: 8px; padding: 0.8rem 1rem 0.9rem; font-size: var(--fs-md); }
 .keep-act h3 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: var(--fs-md); font-weight: 600; margin: 0 0 0.35rem; }
 .ka-title { display: inline-flex; align-items: center; gap: 0.75rem; white-space: nowrap; }

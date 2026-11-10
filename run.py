@@ -1548,6 +1548,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
           <dt><span class="keep-signal behind"></span> Rough</dt><dd>More damage taken than 3 in 4 wins</dd>
         </dl>
         <div class="keep-acts" id="detail-keep-acts"></div>
+        <div class="keep-actpick" id="detail-keep-actpick"></div>
         <div id="detail-hp-box">
           <h3 class="strength-label">HP by floor</h3>
           <p class="chart-caption">Your HP after each floor, against your max HP. The dotted line is the HP your median win left each fight with.</p>

@@ -836,6 +836,8 @@ const HP_LINE = YOUR_LINE;
 const HP_ICON_KEYS   = new Set(["elite", "unknown_elite", "rest_site", "event"]);  // + any boss
 const GOLD_ICON_KEYS = new Set(["shop", "unknown_shop", "event"]);
 const nodePointImages = new Map();  // "size src" -> Image
+// The clip for a chart's floor icons: none, or the plot's sides alone where one act is on show.
+const iconClip = () => narrowScreen.matches ? { left: 0, right: 0, top: false, bottom: false } : false;
 function nodePoints(nodes, getChart, highlight, size = NODE_POINT, keyOf = nodeIconKey) {
   const srcs = nodes.map((n, i) => {
     const key = keyOf(n);
@@ -856,8 +858,9 @@ function nodePoints(nodes, getChart, highlight, size = NODE_POINT, keyOf = nodeI
     }),
     pointRadius: srcs.map(src => src ? size / 2 : 0),
     pointHoverRadius: srcs.map(src => src ? size / 2 : 4),
-    // An icon on the first or last floor overhangs the plot's side edge.
-    clip: false,
+    // An icon on the first or last floor overhangs the plot's side edge. Not where the chart shows
+    // one act of the run (iconClip), whose neighbouring floors sit past the edge.
+    clip: iconClip(),
   };
 }
 const NODE_POINT = 30;
@@ -953,7 +956,7 @@ const FRAME_FLOORS = Object.values(ACT_FLOORS).reduce((a, b) => a + b, 0);
 const floorLabels = nodes => Array.from({ length: Math.max(FRAME_FLOORS, nodes.length) },
   (_, i) => nodes[i] ? nodes[i].floor + 1 : i + 1);
 
-function makeActBoundaryPlugin(nodes) {
+function actSpans(nodes) {
   const spans = [];
   nodes.forEach((n, i) => {
     if (i === 0 || n.act !== nodes[i - 1].act) spans.push({ act: n.act, from: i, to: i });
@@ -963,6 +966,33 @@ function makeActBoundaryPlugin(nodes) {
   // The act the run ended in is named over where all of it would sit, not just what was played.
   const last = spans[spans.length - 1];
   if (last) last.reach = Math.min(floorLabels(nodes).length - 1, last.from + (ACT_FLOORS[last.act] || 1) - 1);
+  return spans;
+}
+
+// On a phone the Keeping Up charts show one act at a time, picked above them: all 48 floors in a
+// phone's width are too cramped to read. `keepAct` is the act on show; a run without it shows its
+// first. Returns the x axis's window, or nothing where the whole run fits.
+let keepAct = 1, keepActNodes = [];
+const narrowScreen = window.matchMedia("(max-width: 700px)");
+function keepActSpan(nodes) {
+  if (!narrowScreen.matches) return null;
+  const spans = actSpans(nodes);
+  return spans.find(s => s.act === keepAct) || spans[0] || null;
+}
+// The floors on show, as indexes into the nodes: {from, to}, or null for the whole run.
+function actView(nodes) {
+  const s = keepActSpan(nodes);
+  return s ? { from: s.from, to: Math.max(s.to, s.reach ?? s.to) } : null;
+}
+// The same as the x axis's options. A category axis reads a number as a label, not an index, and
+// these labels are floor numbers, so the bounds are labels.
+function actWindow(nodes) {
+  const v = actView(nodes), labels = floorLabels(nodes);
+  return v ? { min: labels[v.from], max: labels[v.to], offset: true } : {};
+}
+
+function makeActBoundaryPlugin(nodes) {
+  const spans = actSpans(nodes);
   return {
     id: "actBounds",
     // Before the datasets, so the line runs behind the data and the hover
@@ -970,11 +1000,13 @@ function makeActBoundaryPlugin(nodes) {
     // plot, so this hook can still reach the band above it.
     beforeDatasetsDraw(chart) {
       const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+      // A chart showing one act has no other acts to mark or name.
+      const shown = spans.filter(s => !(x.max < s.from || x.min > Math.max(s.to, s.reach ?? s.to)));
       ctx.save();
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 4]);
       ctx.strokeStyle = ACT_COLOUR + "55";
-      spans.slice(1).forEach(({ from }) => {
+      shown.filter(({ from }) => from > x.min).forEach(({ from }) => {
         const px = x.getPixelForValue(from);
         ctx.beginPath();
         ctx.moveTo(px, top - ACT_BAND + 4);
@@ -985,8 +1017,8 @@ function makeActBoundaryPlugin(nodes) {
       ctx.font = "600 15px 'Segoe UI', system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      spans.forEach(({ act, name, from, to, reach }) => {
-        const left = x.getPixelForValue(from), right = x.getPixelForValue(Math.max(to, reach ?? to));
+      shown.forEach(({ act, name, from, to, reach }) => {
+        const left = x.getPixelForValue(Math.max(from, x.min)), right = x.getPixelForValue(Math.min(Math.max(to, reach ?? to), x.max));
         // Just "Act N" when the name won't fit over the act's floors (a short
         // last act, or a narrow screen).
         const full = name ? `Act ${act} · ${name}` : `Act ${act}`;
@@ -1059,7 +1091,7 @@ function makeWinRangePlugin(marks, { width = 0.12 } = {}) {
       const { ctx, scales: { x, y } } = chart;
       ctx.save();
       marks.forEach((m, i) => {
-        if (!m) return;
+        if (!m || i < x.min || i > x.max) return;
         const px = x.getPixelForValue(i), bad = y.getPixelForValue(m.bad), good = y.getPixelForValue(m.good);
         const half = Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) * width;
         ctx.beginPath();
@@ -1232,7 +1264,7 @@ function renderDetailHpChart(run) {
         tooltip: { enabled: false, external: context => showFloorTip(context, i => hpTip(run, nodes[i], wins[i])) },
       },
       scales: {
-        x: floorAxis({ grid: { color: "#2e3035" } }),
+        x: floorAxis({ grid: { color: "#2e3035" }, ...actWindow(nodes) }),
         y: yAxis,
       },
     },
@@ -1713,7 +1745,7 @@ function markHeadroom(marks, totals, step) {
   };
 }
 
-function floorChartConfig(nodes, plugins, tip, y, datasets) {
+function floorChartConfig(nodes, plugins, tip, y, datasets, view = {}) {
   return {
     type: "line",
     plugins: [makeActBoundaryPlugin(nodes), ...plugins],
@@ -1727,7 +1759,7 @@ function floorChartConfig(nodes, plugins, tip, y, datasets) {
       // The HTML legend under the chart (floorLegend) replaces Chart.js's.
       plugins: { legend: { display: false }, tooltip: { enabled: false, external: tip } },
       scales: {
-        x: floorAxis({ stacked: true, grid: { color: "#2e3035" } }),
+        x: floorAxis({ stacked: true, grid: { color: "#2e3035" }, ...view }),
         // includeBounds off: the top is wherever the markers needed it, not a
         // round number, so it gets no label of its own crowding the last one.
         y: { stacked: true, grid: { color: "#2e3035" }, ...y, ticks: { color: "#ccc", precision: 0, includeBounds: false, ...y.ticks } },
@@ -2317,8 +2349,34 @@ function floorChanges(nodes, cards, relics) {
   });
 }
 
+// The act picker above the Keeping Up charts, for a phone: one button per act the run reached.
+// Choosing one moves every chart's window; the charts themselves aren't rebuilt.
+function renderKeepActPicker() {
+  const box = document.getElementById("detail-keep-actpick");
+  const spans = actSpans(keepActNodes);
+  const on = (keepActSpan(keepActNodes) || spans[0] || {}).act;
+  box.innerHTML = spans.map(s => `<button type="button" data-act="${s.act}" aria-pressed="${s.act === on}"${s.act === on ? ` class="on"` : ""}>Act ${s.act}${s.name ? `<small>${s.name}</small>` : ""}</button>`).join("");
+}
+function applyKeepAct() {
+  [detailHpChart, ...detailKeepCharts].filter(Boolean).forEach(c => {
+    const w = actWindow(keepActNodes), x = c.options.scales.x;
+    x.min = w.min; x.max = w.max; x.offset = !!w.offset;
+    c.data.datasets.forEach(d => { if (d.clip !== undefined) d.clip = iconClip(); });
+    c.update("none");
+  });
+  renderKeepActPicker();
+  closeFloorTip();
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("#detail-keep-actpick button[data-act]");
+  if (b) { keepAct = Number(b.dataset.act); applyKeepAct(); }
+});
+narrowScreen.addEventListener("change", () => { if (keepActNodes.length) applyKeepAct(); });
+
 function renderDetailKeepCharts(run) {
   const nodes = run.timeline || [];
+  keepActNodes = nodes;
+  renderKeepActPicker();
   const box = document.getElementById("detail-keep-box");
   detailKeepCharts.forEach(c => c.destroy());
   detailKeepCharts = [];
@@ -2411,7 +2469,9 @@ function renderDetailKeepCharts(run) {
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
   ] : []));
 
-  const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * box.clientWidth / nodes.length)));
+  const view = actView(nodes);
+  const floorsShown = view ? view.to - view.from + 1 : nodes.length;
+  const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * box.clientWidth / floorsShown)));
   // `icons` is the chart's id when its floors carry the fight icons: always on your own line,
   // as on the HP chart, so the icon never moves to somewhere else on the chart.
   const line = ({ label, color, dash }, pick, icons) => ({
@@ -2441,11 +2501,12 @@ function renderDetailKeepCharts(run) {
     const yAxis = { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 }, reverse: !!up };
     const stretch = yAxis.afterDataLimits;
     yAxis.afterDataLimits = scale => {
-      (marks || []).forEach(m => { if (m) scale.max = Math.max(scale.max, m.bad, m.good); });
+      const v = actView(nodes);   // only the bars in view, on a phone showing one act
+      (marks || []).forEach((m, i) => { if (m && (!v || (i >= v.from && i <= v.to))) scale.max = Math.max(scale.max, m.bad, m.good); });
       stretch(scale);
     };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
-      floorChartConfig(nodes, marks ? [makeWinRangePlugin(marks)] : [], tipFor, yAxis, series)));
+      floorChartConfig(nodes, marks ? [makeWinRangePlugin(marks)] : [], tipFor, yAxis, series, actWindow(nodes))));
   };
 
   // Cards in the deck after each floor: a line per type (the total is in the hover box, not drawn: it dwarfed the types), so what
