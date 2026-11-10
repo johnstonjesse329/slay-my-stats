@@ -222,7 +222,7 @@
     document.querySelectorAll(".page-tabs").forEach(n => { n.style.display = "none"; });
 
     const profile = knownProfile(signIn.steamId);
-    const status = el("p", { className: "upload-status", role: "status" });
+    const status = el("div", { className: "upload-status", role: "status" });
     const folderInput = el("input", { type: "file", multiple: true, className: "upload-input", id: "upload-folder" });
     folderInput.setAttribute("webkitdirectory", "");
 
@@ -301,9 +301,70 @@
     folderInput.addEventListener("change", () => onPick(folderInput));
   }
 
+  // The stages of an upload, each keeping its own line so nothing is rewritten
+  // under the reader: finished ones stay with a tick and a figure, the current
+  // one spins, the rest wait. [key, while doing it, once done]
+  const STEPS = [
+    ["read", "Reading files", "Read files"],
+    ["check", "Checking which are new", "Checked which are new"],
+    ["pack", "Compressing", "Compressed"],
+    ["send", "Uploading", "Uploaded"],
+    ["add", "Adding to your profile", "Added to your profile"],
+  ];
+
+  // The note under the steps: what to do next, or what went wrong.
+  function noteOf(status) {
+    if (!status.note) {
+      status.note = el("p", { className: "upload-note" });
+      status.append(status.note);
+    }
+    return status.note;
+  }
+
+  // Move to a stage: the stages before it are done, it is under way. `detail`
+  // is a figure for the line ("31 new"); one given to a stage stays on it.
+  function step(status, key, detail) {
+    status.stage = { key, halted: false, details: { ...(status.stage && status.stage.details) } };
+    if (detail) status.stage.details[key] = detail;
+    renderSteps(status);
+  }
+
+  // Every stage done; the last gets its figure.
+  function stepsDone(status, detail) {
+    if (!status.stage) return;
+    status.stage = { key: "done", halted: false, details: { ...status.stage.details, add: detail } };
+    renderSteps(status);
+  }
+
+  function renderSteps(status) {
+    if (!status.stage) return;
+    const at = status.stage.key === "done" ? STEPS.length : STEPS.findIndex(s => s[0] === status.stage.key);
+    let list = status.querySelector(".upload-steps");
+    if (!list) {
+      list = el("ol", { className: "upload-steps" });
+      status.prepend(list);
+    }
+    list.replaceChildren(...STEPS.map(([key, doing, did], i) => {
+      const state = i < at ? "done" : i > at ? "wait" : status.stage.halted ? "halt" : "now";
+      const mark = { done: "✓", now: "◐", halt: "•", wait: "○" }[state];
+      const item = el("li", { className: state }, [el("i", { textContent: mark, ariaHidden: "true" }),
+                      document.createTextNode(state === "done" ? did : doing)]);
+      const detail = status.stage.details[key];
+      if (detail && state !== "wait") item.append(el("small", { textContent: detail }));
+      return item;
+    }));
+  }
+
+  // A message below the steps. Once something has been said the current stage
+  // stops spinning: it either failed or there is nothing left for it to do.
   function setStatus(status, text, link) {
-    status.textContent = text;
-    if (link) status.append(" ", el("a", { href: link.href, textContent: link.text }));
+    if (status.stage) {
+      status.stage.halted = true;
+      renderSteps(status);
+    }
+    const note = noteOf(status);
+    note.textContent = text;
+    if (link) note.append(" ", el("a", { href: link.href, textContent: link.text }));
   }
 
   // An upload URL handed out for this sign-in and not yet used: a send that
@@ -313,7 +374,7 @@
   function signInAgain(status, text) {
     forgetSignIn();
     setStatus(status, text);
-    status.append(" ", el("button", { type: "button", className: "upload-link", textContent: "Sign in again",
+    noteOf(status).append(" ", el("button", { type: "button", className: "upload-link", textContent: "Sign in again",
                                       onclick: startSignIn }));
   }
 
@@ -369,7 +430,7 @@
       return;
     }
 
-    setStatus(status, "Reading files…");
+    step(status, "read");
     const { runs, unreadable } = await readRuns(files);
     if (!runs.length) {
       setStatus(status, "No .run files found there. Pick the history folder itself (the one full of numbered .run files).");
@@ -378,7 +439,9 @@
 
     // With a remembered profile, check for new runs before asking for an
     // upload URL: if there are none, there is nothing to send.
-    setStatus(status, `Found ${runCount(runs.length)}. Checking which are new…`);
+    step(status, "check");
+    status.stage.details.read = `${runCount(runs.length)} found`;
+    renderSteps(status);
     const known = knownProfile(signIn.steamId);
     let slug = known && known.slug;
     let have = await existingTimestamps(slug);
@@ -407,7 +470,8 @@
     }
     const fresh = runs.filter(r => !have.has(r.start)).map(r => r.line);
 
-    setStatus(status, `Compressing ${fresh.length} new ${fresh.length === 1 ? "run" : "runs"}…`);
+    status.stage.details.check = `${fresh.length} new`;
+    step(status, "pack");
     const body = await gzip(fresh.join("\n"));
     if (body.length > auth.maxBytes) {
       pending = null;
@@ -416,7 +480,7 @@
       return;
     }
 
-    setStatus(status, `Uploading ${runCount(fresh.length)} (${(body.length / 1048576).toFixed(1)} MB)…`);
+    step(status, "send", `${(body.length / 1048576).toFixed(1)} MB`);
     const form = new FormData();
     for (const [k, v] of Object.entries(auth.fields)) form.append(k, v);
     form.append("file", new Blob([body], { type: "application/gzip" }), "runs.ndjson.gz");  // must come last
@@ -432,7 +496,7 @@
     }
     pending = null;
 
-    setStatus(status, `Sent. Adding ${runCount(fresh.length)} to your profile…`);
+    step(status, "add");
     const result = await waitForResult(auth.uploadId);
     const profileLink = (result && result.slug) || slug
       ? { href: `/u/${(result && result.slug) || slug}`, text: "View profile" } : null;
@@ -453,7 +517,8 @@
       }
       return;
     }
-    const parts = [`Added ${runCount(result.added)}; your profile now has ${result.total}.`];
+    stepsDone(status, runCount(result.added));
+    const parts = [`Your profile now has ${result.total}.`];
     if (result.rejected + unreadable) parts.push(`${result.rejected + unreadable} file(s) couldn't be read as runs and were skipped.`);
     finishAtProfile(status, parts.join(" "), result.slug || slug);
   }
