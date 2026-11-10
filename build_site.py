@@ -128,6 +128,44 @@ def build_synergy() -> dict | None:
     return out
 
 
+def build_archetypes() -> dict | None:
+    """
+    {CHARACTER: {archetype: [card ids]}}: which cards count toward each archetype,
+    from the signature tests in tools/power_curve/archetypes.py (upgraded or not).
+    The page counts a run's final deck against these and names it by that file's
+    rule (biggest count of 3+, a close second makes a pair, else Mixed). None when
+    power_data.json isn't generated, which hides the label.
+    """
+    if not (run._HERE / "power_data.json").exists():
+        return None
+    sys.path.insert(0, str(run._HERE / "tools" / "power_curve"))
+    try:
+        import archetypes as arch
+        import power_curve as pc
+        ids = json.loads((run._HERE / "power_data.json").read_text(encoding="utf-8"))["cards"]
+    except Exception as e:  # tools/power_curve needs generated data of its own
+        print(f"archetypes skipped: {e}")
+        return None
+    finally:
+        sys.path.pop(0)
+    out = {ch: {name: [] for name in sigs} for ch, sigs in arch.SIGS.items()}
+    for cid in ids:
+        for up in (False, True):
+            try:
+                c = pc.card(cid, up)
+            except Exception:
+                continue
+            for ch, sigs in arch.SIGS.items():
+                for name, test in sigs.items():
+                    try:
+                        hit = test(c)
+                    except Exception:
+                        hit = False
+                    if hit and cid not in out[ch][name]:
+                        out[ch][name].append(cid)
+    return out
+
+
 def build_catalog() -> dict:
     """
     Everything run.py's build_html() computes that ISN'T per-run: card/relic/
@@ -192,6 +230,7 @@ def build_catalog() -> dict:
         # Which cards and relics feed which others (see build_synergy()); null hides
         # the "Deck links" list.
         "synergy":            build_synergy(),
+        "archetypes":         build_archetypes(),
         "potionData":         potion_data,
         "enchantmentData":    enchantment_data,
         "nodeIcons":          run.build_node_icons(url_for=repo_url),

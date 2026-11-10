@@ -297,10 +297,30 @@ function renderDetailDeckRelics(run) {
   const relicHtml  = renderRelicTiles(relics);
 
   document.getElementById("detail-deck-relics").innerHTML = `
-    <div class="detail-section-heading">Final deck</div>
+    <div class="detail-section-heading">Final deck${deckArchetypeHtml(run.char, deck)}</div>
     ${groupsHtml}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>${renderDeckLinksHtml(deck, relics)}`;
+}
+
+// What the final deck is built around, by the rule in tools/power_curve/archetypes.py:
+// count the cards that belong to each of the character's archetypes; the biggest
+// names the deck when it has 3 or more, a close second (70% of it, and 3+) makes a pair.
+// "Mixed" says nothing, so it isn't shown.
+function deckArchetype(char, deck) {
+  const sigs = DATA.archetypes && DATA.archetypes[char];
+  if (!sigs) return null;
+  const score = Object.entries(sigs)
+    .map(([name, ids]) => [deck.filter(c => ids.includes(c.id)).length, name])
+    .sort((a, b) => b[0] - a[0]);
+  if (score.length < 2 || score[0][0] < 3) return null;
+  const [[top, a], [second, b]] = score;
+  return second >= 3 && second >= 0.7 * top ? `${a} + ${b}` : a;
+}
+
+function deckArchetypeHtml(char, deck) {
+  const a = deckArchetype(char, deck);
+  return a ? ` <span class="deck-group-count">· ${escapeHtml(a)}</span>` : "";
 }
 
 // Cards and relics in this run that feed each other: one makes a thing (Strength,
