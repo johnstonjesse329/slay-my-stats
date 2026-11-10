@@ -2552,3 +2552,10 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .kt-cuts { display: flex; gap: 2px; margin-top: 0.15rem; color: var(--text-dim); font-size: var(--fs-sm); }
 .kt-cut { display: flex; justify-content: flex-end; white-space: nowrap; min-width: 0; }
 .kt-cut.low { justify-content: flex-start; }
+
+/* Map by Act: one collapsible block per act, closed until opened. */
+.act-map { background: var(--panel-2, #211e36); border: 1px solid var(--border, #3a3560); border-radius: 10px; margin: 8px 0; }
+.act-map summary { cursor: pointer; padding: 10px 14px; font-weight: 600; display: flex; justify-content: space-between; gap: 12px; }
+.act-map summary small { color: #b4aed6; font-weight: 400; }
+.act-map-body { padding: 6px 14px 14px; overflow-x: auto; }
+.act-map-body svg { background: #17152b; border-radius: 8px; max-width: 100%; height: auto; }

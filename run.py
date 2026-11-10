@@ -770,6 +770,60 @@ def _loaded_mods(data: dict) -> list[dict]:
     return out
 
 
+_MAP_TYPES = {"Unknown", "Shop", "Treasure", "RestSite", "Monster", "Elite", "Boss", "Ancient"}
+MAX_MAP_ACTS = 4
+MAX_MAP_NODES = 120
+
+
+def _map_coord(value, width: int, height: int):
+    """[row, col] inside the grid as a pair of ints, or None."""
+    if (isinstance(value, list) and len(value) == 2
+            and all(isinstance(v, int) and not isinstance(v, bool) for v in value)
+            and 0 <= value[0] <= height + 2 and 0 <= value[1] <= width):
+        return [value[0], value[1]]
+    return None
+
+
+def _act_maps(data: dict) -> list[dict]:
+    """
+    The map of each act and the path taken, from the slay-my-stats mod
+    ("slay_my_stats_mod"."maps"). The .run file has only the node types in
+    the order visited; the map itself (which nodes existed, which joined which)
+    is only known to the mod. Each act comes back as
+    {"act", "w", "h", "nodes": [[row, col, type, [[row, col], ...]]], "path":
+    [[row, col], ...], "boss": [row, col]}. Anything that isn't that shape is
+    dropped, so a run with a bad map still parses.
+    """
+    reported = data.get("slay_my_stats_mod")
+    maps = reported.get("maps") if isinstance(reported, dict) else None
+    if not isinstance(maps, list):
+        return []
+    out = []
+    for m in maps[:MAX_MAP_ACTS]:
+        if not isinstance(m, dict):
+            continue
+        act, w, h = m.get("act"), m.get("width"), m.get("height")
+        if not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 40 for v in (act, w, h)):
+            continue
+        nodes = []
+        for p in (m.get("points") or [])[:MAX_MAP_NODES]:
+            if not (isinstance(p, list) and len(p) == 4 and p[2] in _MAP_TYPES and isinstance(p[3], list)):
+                continue
+            at = _map_coord([p[0], p[1]], w, h)
+            kids = [k for k in (_map_coord(c, w, h) for c in p[3][:6]) if k]
+            if at:
+                nodes.append([at[0], at[1], p[2], kids])
+        if not nodes:
+            continue
+        path = [c for c in (_map_coord(c, w, h) for c in (m.get("path") or [])[:40]) if c]
+        entry = {"act": act, "w": w, "h": h, "nodes": nodes, "path": path}
+        boss = _map_coord(m.get("boss"), w, h)
+        if boss:
+            entry["boss"] = boss
+        out.append(entry)
+    return out
+
+
 def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | None = None) -> dict:
     """
     parse_run() minus the file: takes an already-loaded .run JSON object, the
@@ -898,6 +952,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     timeline = extract_timeline(data, local_idx)
     gold_gained_total = sum(t["goldGained"] for t in timeline)
     mods = _loaded_mods(data)
+    maps = _act_maps(data)
 
     return {
         "char":          char,
@@ -925,6 +980,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         **extract_deck_history(data, player, local_idx),
         # Only on runs the mod reported mods for, so every other run parses as before.
         **({"mods": mods} if mods else {}),
+        **({"maps": maps} if maps else {}),
     }
 
 
@@ -1538,6 +1594,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="detail-run-header"></div>
       <div id="detail-deck-relics"></div>
       <div id="detail-timeline"></div>
+      <div id="detail-maps"></div>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
         <p class="chart-caption">This data highlights how your deck is performing per act against broad buckets of effectiveness: how much damage you put out and how much you mitigate. Slower decks with more turns per fight aren't penalized if damage taken is low.</p>

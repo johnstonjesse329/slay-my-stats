@@ -400,6 +400,7 @@ function renderDetailRun(run) {
     copyBtn.addEventListener("click", () => copyRunLink(run.ts, copyBtn)));
 
   renderDetailTimeline(run);
+  renderDetailMaps(run);
   renderDetailHpChart(run);
   renderDetailGoldChart(run);
   renderDetailDeckChart(run);
@@ -755,6 +756,42 @@ function actCountPills(actNodes) {
     .filter(r => r.n > 0)
     .map(r => `<span class="act-count-pill">${r.n} ${TYPE_LABEL[r.type]}</span>`)
     .join("");
+}
+
+// The map of each act with the route the run took lit up, for runs the game mod
+// sent maps for (run.maps; the .run file itself has no map). One collapsible
+// block per act, closed so the page doesn't grow. Row 0 is the bottom.
+const MAP_COLORS = { Monster: "#d95a5a", Elite: "#9a62d8", RestSite: "#c9b458", Shop: "#e8a43a",
+  Unknown: "#6f8ad8", Treasure: "#59b88a", Boss: "#e8c860", Ancient: "#e8c860" };
+const MAP_TYPE_NAMES = { Monster: "Fight", Elite: "Elite", RestSite: "Rest", Shop: "Shop",
+  Unknown: "?", Treasure: "Treasure", Boss: "Boss", Ancient: "Ancient" };
+
+function actMapSvg(m) {
+  const rows = Math.max(...m.nodes.map(n => n[0]), ...(m.boss ? [m.boss[0]] : []), 0);
+  const X = c => 20 + c * 34, Y = r => 20 + (rows - r) * 30;
+  const W = 40 + (m.w - 1) * 34, H = 40 + rows * 30;
+  const on = new Set(m.path.map(c => c.join(",")));
+  const at = new Map(m.nodes.map(n => [n[0] + "," + n[1], n]));
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Act map with the route taken">`;
+  for (const n of m.nodes) for (const k of n[3]) {
+    const lit = on.has(n[0] + "," + n[1]) && on.has(k.join(","));
+    s += `<line x1="${X(n[1])}" y1="${Y(n[0])}" x2="${X(k[1])}" y2="${Y(k[0])}" stroke="${lit ? "#e8e4ff" : "#3a3560"}" stroke-width="${lit ? 4 : 2}"/>`;
+  }
+  for (const n of m.nodes) {
+    const lit = on.has(n[0] + "," + n[1]);
+    s += `<circle cx="${X(n[1])}" cy="${Y(n[0])}" r="${lit ? 9 : 6}" fill="${MAP_COLORS[n[2]] || "#888"}" opacity="${lit ? 1 : 0.35}"><title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></circle>`;
+  }
+  return s + "</svg>";
+}
+
+function renderDetailMaps(run) {
+  const box = document.getElementById("detail-maps");
+  if (!box) return;
+  const maps = run.maps || [];
+  box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2>` + maps.map(m => {
+    const visited = m.path.length;
+    return `<details class="act-map"><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m)}</div></details>`;
+  }).join("") + `</div>` : "";
 }
 
 function renderDetailTimeline(run) {
