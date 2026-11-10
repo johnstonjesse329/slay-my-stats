@@ -788,10 +788,14 @@ function renderDetailMaps(run) {
   const box = document.getElementById("detail-maps");
   if (!box) return;
   const maps = run.maps || [];
-  box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2>` + maps.map(m => {
+  // Wide screens show the acts side by side, all open; a phone gets them one
+  // collapsible block at a time, closed.
+  const wide = window.matchMedia("(min-width: 1000px)").matches;
+  box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2><div class="act-maps-row">` + maps.map(m => {
     const visited = m.path.length;
-    return `<details class="act-map"><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m)}</div></details>`;
-  }).join("") + `</div>` : "";
+    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m)}</div></details>`;
+  }).join("") + `</div></div>` : "";
+  for (const d of box.querySelectorAll(".act-map")) d.addEventListener("toggle", () => { if (wide && !d.open) d.open = true; });
 }
 
 function renderDetailTimeline(run) {
