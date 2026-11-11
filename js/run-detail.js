@@ -772,7 +772,15 @@ const MAP_TYPE_NAMES = { Monster: "Fight", Elite: "Elite", RestSite: "Rest", Sho
 // turned, sometimes flipped), and a hand-drawn circle round each node the run visited. The
 // roads walked are the darker, bigger dots. `act` is the scroll's name (overgrowth, underdocks,
 // hive, glory); bossKey the boss's icon in DATA.nodeIcons, when the run reached it.
-function actMapSvg(m, act, bossKey) {
+// What a visited "?" turned out to be, from the run's floor there (null: an event, which stays "?").
+function unknownRoom(t) {
+  if (!t) return null;
+  if (t.type === "shop" || t.type === "treasure" || t.type === "elite" || t.type === "monster") return t.type;
+  if ((t.enc || "").startsWith("ENCOUNTER.")) return t.enc.endsWith("_ELITE") ? "elite" : "monster";
+  return null;
+}
+
+function actMapSvg(m, act, bossKey, floors) {
   const art = DATA.mapArt || {};
   const rows = Math.max(...m.nodes.map(n => n[0]), 1);   // row 0 is the bottom
   const NODE_W = 1050, NODE_H = 2325, PAD_X = 95, PAD_Y = 200;
@@ -802,9 +810,13 @@ function actMapSvg(m, act, bossKey) {
       dots[kind].push(`<image href="${art[`dot_${act}_${kind}`]}" x="-8" y="-8" width="16" height="16" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${r.toFixed(1)}) scale(${flip * (kind === "walked" ? 1.2 : 1)} ${kind === "walked" ? 1.2 : 1})"/>`);
     }
   };
-  for (const n of m.nodes) for (const k of n[3]) road([n[0], n[1]], k);
+  // The act's first stop (the Ancient's, row 0) isn't among the nodes the mod sends; the game
+  // joins it to every node of row 1, and the run's route starts there.
+  const start = m.path.length && m.path[0][0] === 0 && !m.nodes.some(n => n[0] === 0) ? m.path[0] : null;
+  const nodes = start ? [[0, start[1], "Ancient", m.nodes.filter(n => n[0] === 1).map(n => [1, n[1]])], ...m.nodes] : m.nodes;
+  for (const n of nodes) for (const k of n[3]) road([n[0], n[1]], k);
   const node = (key, r, c, size, lit) => {
-    const src = key.startsWith("node_") ? art[key] : (DATA.nodeIcons || {})[key];
+    const src = !key ? null : key.startsWith("node_") ? art[key] : (DATA.nodeIcons || {})[key];
     if (!src) return "";
     return `<image href="${src}" x="${X(c) - size / 2}" y="${Y(r) - size / 2}" width="${size}" height="${size}"${lit ? "" : ' opacity="0.5"'}/>`;
   };
@@ -813,9 +825,17 @@ function actMapSvg(m, act, bossKey) {
     return `<image href="${art.circle}" x="${-size / 2}" y="${-size / 2}" width="${size}" height="${size}" opacity="0.95" transform="translate(${X(c)} ${Y(r)}) rotate(${(rnd() * 360).toFixed(0)})"/>`;
   };
   let body = "", rings = "";
-  for (const n of m.nodes) {
+  for (const n of nodes) {
     const lit = visited.has(n[0] + "," + n[1]);
-    const key = n[2] === "Ancient" ? "ancient" : `node_${act}_${MAP_NODE_KEYS[n[2]] || "unknown"}`;
+    // The Ancient's stop shows that Ancient (NAncientMapPoint), when the run's floor names it.
+    const ancient = floors && floors[0] && (DATA.nodeIcons || {})[floors[0].enc] ? floors[0].enc : "ancient";
+    let key = n[2] === "Ancient" ? ancient : `node_${act}_${MAP_NODE_KEYS[n[2]] || "unknown"}`;
+    // The game swaps a visited "?" for the room it was. floors lines up with the route only
+    // when the run's floors in this act match its stops one for one.
+    if (n[2] === "Unknown" && lit && floors && floors.length === m.path.length) {
+      const room = unknownRoom(floors[m.path.findIndex(c => c[0] === n[0] && c[1] === n[1])]);
+      if (room) key = `node_${act}_unknown_${room === "treasure" ? "treasure" : room}`;
+    }
     body += `<g>${node(key, n[0], n[1], 92, lit)}<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></g>`;
     if (lit) rings += circle(n[0], n[1]);
   }
@@ -837,7 +857,7 @@ function renderDetailMaps(run) {
     const visited = m.path.length;
     const act = (actName(m.act + 1, run.timeline || []) || "overgrowth").toLowerCase();
     const bossKey = (bossNodes[m.act] || {}).enc;
-    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m, act, bossKey)}</div></details>`;
+    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m, act, bossKey, (run.timeline || []).filter(n => n.act === m.act + 1))}</div></details>`;
   }).join("") + `</div></div>` : "";
   for (const d of box.querySelectorAll(".act-map")) d.addEventListener("toggle", () => { if (wide && !d.open) d.open = true; });
 }
