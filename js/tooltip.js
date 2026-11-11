@@ -275,6 +275,22 @@ function dismissTipsOutside(target) {
 }
 document.addEventListener("pointerdown", e => dismissTipsOutside(e.target), { capture: true, passive: true });
 
+// Tap-through: on a touch screen the tap that opens a tooltip lands its click on whatever the
+// tooltip put under the finger, so a link or button in it fired at once with no second tap.
+// A click inside a tooltip is kept only when its press began inside one too.
+const TIP_BOXES = ".chart-tooltip, .card-tooltip-wrap, .relic-tooltip-wrap, .node-tooltip, .floor-tip";
+let pressStartedInTip = false, pressWasTouch = false;
+document.addEventListener("pointerdown", e => {
+  pressStartedInTip = !!e.target.closest(TIP_BOXES);
+  pressWasTouch = e.pointerType === "touch" || e.pointerType === "pen";
+}, { capture: true, passive: true });
+document.addEventListener("click", e => {
+  if (pressWasTouch && !pressStartedInTip && e.target.closest(TIP_BOXES)) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
+
 // Esc closes whatever tooltip is showing: the shared box, a focus-opened one
 // (blur) and a hover-opened CSS one (the same class a scroll uses, lifted
 // when the pointer next moves).

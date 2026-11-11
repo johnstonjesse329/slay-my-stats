@@ -1263,6 +1263,12 @@ h1 {
   flex-wrap: wrap;
   gap: 0.35rem;
 }
+/* On a phone the floor tiles share the row four to a tile-width, instead of three at a fixed
+   100px with the leftover gap on the right. */
+@media (max-width: 700px) {
+  .timeline-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .timeline-row .node-card { width: auto; min-width: 0; }
+}
 
 /* ---- Node cards ---- */
 
@@ -2190,7 +2196,13 @@ body.suppress-hover-tooltips .node-tooltip {
   right: 6.5%;
   bottom: 4.8%;
   z-index: 8;
+  /* Stop short of the card's left edge by the same margin as the right, so a long
+     enchantment name is cut with an ellipsis instead of spilling through the border. */
+  max-width: 87%;
 }
+.card-tile-face .tile-enchant { min-width: 0; max-width: 100%; }
+.card-tile-face .tile-enchant-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.card-tile-face .tile-enchant-icon { flex: none; }
 .card-tile-face .tile-count {
   background: rgba(0,0,0,0.78);
   border: 1px solid #6a6a80;
