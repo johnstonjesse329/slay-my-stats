@@ -419,6 +419,21 @@ def deploy_site(ingest_url: str) -> None:
     invalidate(["/*"] if len(changed) > 10 else ["/" + key for key in changed])
 
 
+def smoke_test_site() -> None:
+    """
+    Load the deployed site the way a visitor's browser would (tools/smoke_site.py): pages answer,
+    nothing that blocks rendering comes from another host, every script and stylesheet is served,
+    the catalog and a player's data load. Retries while CloudFront finishes the invalidation.
+    A failure here is a deployed site that is broken for visitors, so it fails the deploy.
+    """
+    print(f"Check: {DOMAIN_NAME} loads for a visitor...", flush=True)
+    r = subprocess.run([sys.executable, str(_HERE / "tools" / "smoke_site.py"), DOMAIN_NAME],
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode:
+        raise DeployError("the deployed site fails its visitor check:\n" + (r.stderr or r.stdout))
+    print((r.stdout or "").strip())
+
+
 def check_site_pages() -> None:
     """Fail before cdk runs if a site/pages/ file name can't be a URL."""
     sys.path.insert(0, str(_HERE))
@@ -457,6 +472,7 @@ def main() -> int:
         ingest_url = ingest_function_url()
         smoke_test_ingest(ingest_url)
         deploy_site(ingest_url)
+        smoke_test_site()
         if stage == "gamma":
             record_gamma_ok()
     except DeployError as e:

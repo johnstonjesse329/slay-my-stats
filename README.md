@@ -77,6 +77,7 @@ slay-my-stats/
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
 │   ├── deploy.py            pre-push deploy (see "Deploying")
+│   ├── smoke_site.py        loads the deployed site as a visitor would; deploy.py runs it last
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
 │   ├── rebuild_stats.py     recount users/_stats.json.gz from every profile
@@ -499,7 +500,9 @@ flowchart TB
     smoke -- yes --> build
     build["build_site.py<br/>(ingest URL from stack outputs)"] --> upload["upload dist/ files whose MD5<br/>differs from the S3 ETag;<br/>aws s3 sync the art folders"]
     upload --> inval["CloudFront invalidation<br/>of just those paths (/* past 10)"]
-    inval --> done["push goes through"]
+    inval --> visit{"tools/smoke_site.py: the site loads<br/>for a visitor, fast, with other hosts hanging?"}
+    visit -- no --> abort4["deploy fails"]
+    visit -- yes --> done["push goes through"]
 ```
 
 Any change to `run.py` or the handler shows up in `cdk diff` as new code for the Lambdas, since they bundle
@@ -510,6 +513,13 @@ After the stack step, the deploy sends the ingest Function URL an empty POST. Th
 Steam ticket), and anything under 500 passes; a 5xx, or no answer, stops the deploy before the site goes up.
 That is what a bundle that crashes on import looks like (a 502 for every upload from the mod), and the
 tests alone can't see it, since they import the code from the repo rather than from the Lambda's flat layout.
+After the site goes up, `tools/smoke_site.py` loads it as a visitor would, retrying for four minutes while
+CloudFront finishes invalidating: the pages answer, every script and stylesheet is served with the right type,
+nothing that blocks rendering comes from another host, and `catalog.json` parses. With Playwright installed
+(`pip install playwright`, `playwright install chromium`) it also opens the home page in Chromium with every
+request to another host left hanging and fails unless content is on screen within two seconds; that is what a
+slow CDN script looked like when Chart.js still came from jsdelivr. Without Playwright that step is skipped with
+a note. Run it by hand with `python tools/smoke_site.py [host] [--player slug] [--browser]`.
 Production only deploys a commit that gamma has already deployed and passed: a successful gamma deploy of a
 clean checkout records its commit inside the git directory, and a prod deploy of any other commit stops and
 says to push to gamma first. `DEPLOY_SKIP_GAMMA=1` overrides it for a hotfix.
