@@ -297,10 +297,10 @@ function renderDetailDeckRelics(run) {
   const relicHtml  = renderRelicTiles(relics);
 
   document.getElementById("detail-deck-relics").innerHTML = `
-    <div class="detail-section-heading">Final deck${deckArchetypeHtml(run.char, deck)}</div>
+    <div class="detail-section-heading">Final deck${deckArchetypeHtml(run.char, deck)}</div>${renderDeckLinksHtml(deck, relics)}
     ${groupsHtml}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
-    <div class="deck-relic-list">${relicHtml}</div>${renderDeckLinksHtml(deck, relics)}`;
+    <div class="deck-relic-list">${relicHtml}</div>`;
 }
 
 // What the final deck is built around, by the rule in tools/power_curve/archetypes.py:
@@ -357,8 +357,8 @@ function renderDeckLinksHtml(deck, relics) {
   const links = deckLinks(deck, relics);
   if (!links.length) return "";
   const names = list => [...new Set(list.map(x => x.name))].map(escapeHtml).join(", ");
-  const rows = links.map(l => `<li><b>${escapeHtml(l.key.replace(/^power:/, ""))}</b>: ${names(l.feeders)} → ${names(l.users)}</li>`).join("");
-  return `<div class="detail-section-heading" style="margin-top:16px">Deck links <span class="deck-group-count">${links.length}</span></div>
+  const rows = links.map(l => `<li><b>${escapeHtml(l.key.replace(/^power:/, "").replace(/^./, c => c.toUpperCase()))}</b>: ${names(l.feeders)} → ${names(l.users)}</li>`).join("");
+  return `<div class="deck-group-label">Archetype synergies <span class="deck-group-count">${links.length}</span></div>
     <ul class="deck-links">${rows}</ul>`;
 }
 
