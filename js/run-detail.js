@@ -761,26 +761,41 @@ function actCountPills(actNodes) {
 // The map of each act with the route the run took lit up, for runs the game mod
 // sent maps for (run.maps; the .run file itself has no map). One collapsible
 // block per act, closed so the page doesn't grow. Row 0 is the bottom.
-const MAP_COLORS = { Monster: "#d95a5a", Elite: "#9a62d8", RestSite: "#c9b458", Shop: "#e8a43a",
-  Unknown: "#6f8ad8", Treasure: "#59b88a", Boss: "#e8c860", Ancient: "#e8c860" };
+// The game's own node icons, by the map's point type (a key into DATA.nodeIcons).
+const MAP_ICON_KEYS = { Monster: "monster", Elite: "elite", RestSite: "rest_site", Shop: "shop",
+  Unknown: "unknown", Treasure: "treasure", Ancient: "ancient" };
 const MAP_TYPE_NAMES = { Monster: "Fight", Elite: "Elite", RestSite: "Rest", Shop: "Shop",
   Unknown: "?", Treasure: "Treasure", Boss: "Boss", Ancient: "Ancient" };
 
-function actMapSvg(m) {
+// Drawn like the game's map: its node icons on parchment, the roads not taken dotted, the route
+// walked drawn bold with its stops ringed. bossKey is the act's boss icon, when the run reached it.
+function actMapSvg(m, bossKey) {
   const rows = Math.max(...m.nodes.map(n => n[0]), ...(m.boss ? [m.boss[0]] : []), 0);
-  const X = c => 20 + c * 34, Y = r => 20 + (rows - r) * 30;
-  const W = 40 + (m.w - 1) * 34, H = 40 + rows * 30;
+  const GX = 46, GY = 42, PAD = 30;
+  const X = c => PAD + c * GX, Y = r => PAD + (rows - r) * GY;
+  const W = PAD * 2 + (m.w - 1) * GX, H = PAD * 2 + rows * GY;
   const on = new Set(m.path.map(c => c.join(",")));
-  const at = new Map(m.nodes.map(n => [n[0] + "," + n[1], n]));
+  const icons = DATA.nodeIcons || {};
+  const icon = (key, x, y, size, lit, name, fallback) => {
+    const src = icons[key];
+    const body = src
+      ? `<image href="${src}" x="${x - size / 2}" y="${y - size / 2}" width="${size}" height="${size}"/>`
+      : `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="${size * 0.8}">${fallback}</text>`;
+    return `<g opacity="${lit ? 1 : 0.5}">${lit ? `<circle cx="${x}" cy="${y}" r="${size * 0.62}" class="am-ring"/>` : ""}${body}<title>${name}</title></g>`;
+  };
   let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Act map with the route taken">`;
-  for (const n of m.nodes) for (const k of n[3]) {
-    const lit = on.has(n[0] + "," + n[1]) && on.has(k.join(","));
-    s += `<line x1="${X(n[1])}" y1="${Y(n[0])}" x2="${X(k[1])}" y2="${Y(k[0])}" stroke="${lit ? "#e8e4ff" : "#3a3560"}" stroke-width="${lit ? 4 : 2}"/>`;
+  const edge = (a, b, lit) => `<line x1="${X(a[1])}" y1="${Y(a[0])}" x2="${X(b[1])}" y2="${Y(b[0])}" class="${lit ? "am-road-walked" : "am-road"}"/>`;
+  const walked = (a, b) => on.has(a.join(",")) && on.has(b.join(","));
+  for (const n of m.nodes) for (const k of n[3]) if (!walked([n[0], n[1]], k)) s += edge([n[0], n[1]], k, false);
+  for (const n of m.nodes) for (const k of n[3]) if (walked([n[0], n[1]], k)) s += edge([n[0], n[1]], k, true);
+  if (m.boss) {
+    const lit = on.has(m.boss.join(","));
+    for (const n of m.nodes) if (n[3].some(k => k[0] === m.boss[0] && k[1] === m.boss[1])) s += edge([n[0], n[1]], m.boss, lit && on.has(n[0] + "," + n[1]));
   }
   for (const n of m.nodes) {
-    const lit = on.has(n[0] + "," + n[1]);
-    s += `<circle cx="${X(n[1])}" cy="${Y(n[0])}" r="${lit ? 9 : 6}" fill="${MAP_COLORS[n[2]] || "#888"}" opacity="${lit ? 1 : 0.35}"><title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></circle>`;
+    s += icon(MAP_ICON_KEYS[n[2]], X(n[1]), Y(n[0]), on.has(n[0] + "," + n[1]) ? 30 : 24, on.has(n[0] + "," + n[1]), MAP_TYPE_NAMES[n[2]] || n[2], "❓");
   }
+  if (m.boss) s += icon(bossKey, X(m.boss[1]), Y(m.boss[0]), on.has(m.boss.join(",")) ? 44 : 36, on.has(m.boss.join(",")), "Boss", "♛");
   return s + "</svg>";
 }
 
@@ -788,12 +803,14 @@ function renderDetailMaps(run) {
   const box = document.getElementById("detail-maps");
   if (!box) return;
   const maps = run.maps || [];
+  const bossNodes = (run.timeline || []).filter(n => n.type === "boss");
   // Wide screens show the acts side by side, all open; a phone gets them one
   // collapsible block at a time, closed.
   const wide = window.matchMedia("(min-width: 1000px)").matches;
   box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2><div class="act-maps-row">` + maps.map(m => {
     const visited = m.path.length;
-    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m)}</div></details>`;
+    const bossKey = bossNodes[m.act] && bossNodes[m.act].enc;
+    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m, bossKey)}</div></details>`;
   }).join("") + `</div></div>` : "";
   for (const d of box.querySelectorAll(".act-map")) d.addEventListener("toggle", () => { if (wide && !d.open) d.open = true; });
 }

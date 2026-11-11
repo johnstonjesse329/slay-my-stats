@@ -2563,4 +2563,8 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .act-maps-row .act-map { margin: 0; }
   .act-maps-row .act-map summary { cursor: default; pointer-events: none; }
 }
-.act-map-body svg { background: #17152b; border-radius: 8px; max-width: 100%; height: auto; }
+.act-map-body svg { background: radial-gradient(ellipse at 50% 45%, #dcc99c 0%, #c9b27f 70%, #b79d68 100%); border-radius: 6px; box-shadow: inset 0 0 22px rgba(70,45,15,0.45); max-width: 100%; height: auto; }
+/* The roads: those not taken dotted, the route walked bold, like the game's own map. */
+.act-map .am-road { stroke: #7a6238; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 0.5 6; }
+.act-map .am-road-walked { stroke: #3a2810; stroke-width: 4; stroke-linecap: round; }
+.act-map .am-ring { fill: #ecdcb2; stroke: #3a2810; stroke-width: 2; }
