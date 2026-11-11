@@ -320,7 +320,7 @@ function deckArchetype(char, deck) {
 
 function deckArchetypeHtml(char, deck) {
   const a = deckArchetype(char, deck);
-  return a ? ` <span class="deck-group-count">· ${escapeHtml(a)}</span>` : "";
+  return a ? ` <span class="deck-group-count">· ${escapeHtml(a)} focused archetype</span>` : "";
 }
 
 // Cards and relics in this run that feed each other: one makes a thing (Strength,
