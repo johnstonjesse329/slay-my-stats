@@ -362,6 +362,7 @@ function renderDetailRun(run) {
       ${runReadingHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
       <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
+      ${ancientBoonsHtml}
       ${moddedTagHtml(run, true)}
       <span class="rh-meta">
         <span class="rh-date">${fmtDate(run.ts)}</span>
@@ -371,7 +372,7 @@ function renderDetailRun(run) {
     </div>
     ${runActMarksHtml(run)}
     <div class="detail-run-headline-stats">
-      ${headlineHtml}${ancientBoonsHtml}
+      ${headlineHtml}
     </div>
     <div class="detail-run-header-stats">
       <div class="rh-stats-wide">${summaryHtml}</div>
