@@ -82,3 +82,15 @@
 .upload-status:empty { display: none; }
 .upload-status { color: var(--text); }
 
+/* The steps of an upload: finished ones keep a tick and a figure, the current one spins. */
+.upload-progress { list-style: none; margin: 0 0 0.5rem; padding: 0; }
+.upload-progress li { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.15rem 0; color: var(--text-dim); }
+.upload-progress li i { width: 1.1rem; text-align: center; font-style: normal; }
+.upload-progress li.done i { color: #59b88a; }
+.upload-progress li.now { color: var(--text); font-weight: 600; }
+.upload-progress li.now i { color: var(--gold); display: inline-block; animation: upload-spin 1s linear infinite; }
+.upload-progress li small { margin-left: auto; font-weight: 400; color: var(--text-dim); }
+.upload-progress-note { margin: 0; }
+.upload-progress-note:empty { display: none; }
+@keyframes upload-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .upload-progress li.now i { animation: none; } }
