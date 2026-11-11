@@ -2567,3 +2567,10 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .run-boon-stat .run-headline-label { font-size: var(--fs-sm); }
 .run-boon-icons { height: auto; gap: 10px; }
 .run-boon-icon { width: 24px; height: 24px; }
+
+/* On a phone the boons get a row of their own under the numbers: title above, icon and name
+   pairs wrapping beneath it, a hairline above instead of beside. */
+@media (max-width: 700px) {
+  .run-boon-stat { flex: 1 0 100%; flex-direction: column-reverse; align-items: flex-start; gap: 0.35rem; margin-left: 0; padding: 0.5rem 0 0; border-left: 0; border-top: 1px solid var(--hairline); }
+  .run-boon-icons { flex-wrap: wrap; gap: 6px 14px; }
+}
