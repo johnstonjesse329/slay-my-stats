@@ -2414,6 +2414,17 @@ function floorChanges(nodes, cards, relics) {
       const d = (deck[key] || 0) - (prevCards[key] || 0);
       for (let i = 0; i < Math.abs(d); i++) change.push([key.replace(/\+$/, ""), key.endsWith("+"), Math.sign(d)]);
     });
+    // An upgrade swaps a plain copy for an upgraded one, which reads as one card out and one in.
+    // Fold each such pair into a single [id, true, 0] so the floor shows the upgrade, not a removal.
+    for (let i = change.length - 1; i >= 0; i--) {
+      const up = change[i];
+      if (!up[1] || up[2] <= 0) continue;
+      const out = change.findIndex(c => c[0] === up[0] && !c[1] && c[2] < 0);
+      if (out < 0) continue;
+      change[i] = [up[0], true, 0];
+      change.splice(out, 1);
+      if (out < i) i--;
+    }
     const relicChange = [...held].filter(id => !prevRelics.has(id)).map(id => [id, false, 1])
       .concat([...prevRelics].filter(id => !held.has(id)).map(id => [id, false, -1]));
     prevCards = deck; prevRelics = held;
@@ -2470,8 +2481,8 @@ function renderDetailKeepCharts(run) {
   // "card:ID:1" (upgraded) or "relic:ID".
   const chips = (list, relic) => list.map(c => {
     const src = relic ? relicImgSrc(c[0]) : cardImgSrc(c[0]);
-    return `<span class="strength-chip ${c[2] > 0 ? "gain" : "loss"}" data-pick="${relic ? "relic" : "card"}:${c[0]}${relic ? "" : ":" + +c[1]}">` +
-      `${src ? `<img src="${src}" alt="" loading="lazy">` : ""}${c[2] > 0 ? "+" : "−"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`;
+    return `<span class="strength-chip ${c[2] < 0 ? "loss" : "gain"}" data-pick="${relic ? "relic" : "card"}:${c[0]}${relic ? "" : ":" + +c[1]}">` +
+      `${src ? `<img src="${src}" alt="" loading="lazy">` : ""}${c[2] > 0 ? "+" : c[2] < 0 ? "−" : "↑"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`;
   }).join("");
   const changed = i => {
     const s = changes && i ? changes[i] : null;
