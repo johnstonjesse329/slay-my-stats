@@ -249,9 +249,11 @@ def build_catalog() -> dict:
 
 def build_index_html() -> str:
     """
-    dist/index.html — same head as run.py's HTML (meta, title, Chart.js CDN)
+    dist/index.html — same head as run.py's HTML (meta, title, Chart.js)
     but with dashboard.css linked instead of inlined, and /boot.js (not an
-    embedded DATA blob) driving the page.
+    embedded DATA blob) driving the page. Chart.js is served from the site
+    itself (vendor/chart.umd.js): a blocking script from a CDN that hangs
+    leaves the whole page blank.
     """
     links = [(f"/{name}", html.escape(label)) for name, _, label in site_pages() if label]
     body = run.dashboard_body_html(site_links=links)
@@ -271,7 +273,7 @@ def build_index_html() -> str:
   <meta property="og:image" content="{SITE_URL}/og-preview.png">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/png" href="/node_icons/elite.png">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+  <script src="/chart.js"></script>
   <link rel="stylesheet" href="/dashboard.css">
   <link rel="stylesheet" href="/upload.css">
   <link rel="stylesheet" href="/players.css">
@@ -304,6 +306,7 @@ def main():
         written.append((rel_path, len(data)))
 
     write("index.html", build_index_html())
+    write("chart.js", (_HERE / "vendor" / "chart.umd.js").read_bytes())
     write("app.js", run.read_dashboard_js(skip=SHARED_JS))
     for name in SHARED_JS:
         write(name, (_HERE / "js" / name).read_text(encoding="utf-8"))

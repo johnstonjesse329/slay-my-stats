@@ -56,6 +56,7 @@ slay-my-stats/
 │   ├── item-tips.js         card faces and relic tooltips (also on the site's front page)
 │   ├── update.js            re-render on filter change
 │   └── map-bg.js            background map panning
+├── vendor/chart.umd.js      Chart.js 4.4.0 (MIT), served from the site as /chart.js so a slow CDN can't blank the page
 ├── site/                    Site-only code (not in the local file)
 │   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>, pages
 │   ├── pages/               hand-written pages: <name>.html is served at /<name> (see its README)
