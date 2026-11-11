@@ -923,16 +923,27 @@ function renderDetailMaps(run) {
   if (!box) return;
   const maps = run.maps || [];
   const bossNodes = (run.timeline || []).filter(n => n.type === "boss");
-  // Wide screens show the acts side by side, all open; a phone gets them one
-  // collapsible block at a time, closed.
-  const wide = window.matchMedia("(min-width: 1000px)").matches;
+  // Each map has a fixed size in CSS pixels, so browser zoom scales them with the rest of the
+  // page. The header opens one large.
   box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2><div class="act-maps-row">` + maps.map(m => {
     const visited = m.path.length;
     const act = (actName(m.act + 1, run.timeline || []) || "overgrowth").toLowerCase();
     const bossKey = (bossNodes[m.act] || {}).enc;
-    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small></summary><div class="act-map-body">${actMapSvg(m, act, bossKey, (run.timeline || []).filter(n => n.act === m.act + 1), run.seed)}</div></details>`;
+    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small></button><div class="act-map-body">${actMapSvg(m, act, bossKey, (run.timeline || []).filter(n => n.act === m.act + 1), run.seed)}</div></section>`;
   }).join("") + `</div></div>` : "";
-  for (const d of box.querySelectorAll(".act-map")) d.addEventListener("toggle", () => { if (wide && !d.open) d.open = true; });
+  for (const h of box.querySelectorAll(".act-map-head")) h.addEventListener("click", () => openActMap(h.closest(".act-map")));
+}
+
+// One act's map over the page, as tall as the window allows. Click outside it, or Escape, to close.
+function openActMap(card) {
+  const ov = document.createElement("div");
+  ov.className = "act-map-overlay";
+  ov.innerHTML = `<div class="act-map-large"><div class="act-map-large-head">${card.querySelector(".act-map-head").innerHTML}<button type="button" aria-label="Close">×</button></div>${card.querySelector(".act-map-body").innerHTML}</div>`;
+  const close = () => { ov.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = e => { if (e.key === "Escape") close(); };
+  ov.addEventListener("click", e => { if (!e.target.closest("svg")) close(); });
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(ov);
 }
 
 function renderDetailTimeline(run) {
