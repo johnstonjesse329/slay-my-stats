@@ -914,7 +914,7 @@ function renderDetailMaps(run) {
     const visited = m.path.length;
     const act = (actName(m.act + 1, run.timeline || []) || "overgrowth").toLowerCase();
     const bossKey = (bossNodes[m.act] || {}).enc;
-    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m, act, bossKey, (run.timeline || []).filter(n => n.act === m.act + 1), run.seed)}</div></details>`;
+    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small></summary><div class="act-map-body">${actMapSvg(m, act, bossKey, (run.timeline || []).filter(n => n.act === m.act + 1), run.seed)}</div></details>`;
   }).join("") + `</div></div>` : "";
   for (const d of box.querySelectorAll(".act-map")) d.addEventListener("toggle", () => { if (wide && !d.open) d.open = true; });
 }
