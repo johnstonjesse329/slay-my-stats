@@ -2556,3 +2556,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 /* An ancient boon's name beside its icon, so the icons read without hovering. */
 .run-boon-wrap { display: inline-flex; align-items: center; gap: 6px; }
 .run-boon-name { font-size: var(--fs-sm, 0.85rem); color: var(--text, #e8e4ff); white-space: nowrap; }
+
+/* The boons are one row led by their title, not icons with a dim caption hung underneath. */
+.run-boon-stat { flex-direction: row-reverse; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem 0.9rem; }
+.run-boon-stat .run-headline-label { font-size: var(--fs-md); font-weight: 700; color: var(--gold); }
