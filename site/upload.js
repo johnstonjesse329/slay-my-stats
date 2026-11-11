@@ -315,7 +315,7 @@
   // The note under the steps: what to do next, or what went wrong.
   function noteOf(status) {
     if (!status.note) {
-      status.note = el("p", { className: "upload-note" });
+      status.note = el("p", { className: "upload-progress-note" });
       status.append(status.note);
     }
     return status.note;
@@ -339,9 +339,9 @@
   function renderSteps(status) {
     if (!status.stage) return;
     const at = status.stage.key === "done" ? STEPS.length : STEPS.findIndex(s => s[0] === status.stage.key);
-    let list = status.querySelector(".upload-steps");
+    let list = status.querySelector(".upload-progress");
     if (!list) {
-      list = el("ol", { className: "upload-steps" });
+      list = el("ol", { className: "upload-progress" });
       status.prepend(list);
     }
     list.replaceChildren(...STEPS.map(([key, doing, did], i) => {
