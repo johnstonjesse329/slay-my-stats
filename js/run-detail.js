@@ -359,7 +359,7 @@ function renderDetailRun(run) {
       <span style="font-weight:700;font-size:1.1rem">${label}</span>
       <span style="color:var(--text-dim)">A${run.asc}</span>
       <span style="color:${won ? "#5cba7d" : "#e05c5c"};font-weight:600">${won ? "Victory" : "Defeat"}</span>
-      ${runReadingHtml(run)}
+      ${runReadingHtml(run)}${runActMarksHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
       <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
       ${moddedTagHtml(run, true)}
@@ -369,7 +369,6 @@ function renderDetailRun(run) {
         ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
       </span>
     </div>
-    ${runActMarksHtml(run)}
     <div class="detail-run-headline-stats">
       ${headlineHtml}${ancientBoonsHtml}
     </div>
@@ -2296,13 +2295,13 @@ function runReadingHtml(run, short = false) {
   return `<span class="run-reading ${r.verdict}"${attrs}><span class="keep-signal ${r.verdict}" aria-hidden="true">${KEEP_SIGNS[r.verdict]}</span>${word}</span>`;
 }
 
-// Each act's own mark under the run's header, so where the run's rating comes from shows
+// Each act's own mark, right after the run's rating in the header bar, so where the rating comes from shows
 // (OP is Acts 2 and 3 both Hype).
 function runActMarksHtml(run) {
   const acts = actReadings(run, run.timeline || [], null);
   if (!acts.length) return "";
-  return `<div class="run-act-marks"><span class="ram-title">By act</span>` + acts.map(a =>
-    `<span class="ram-act">Act ${a.act}${keepSignal(a.verdict, `Act ${a.act}: ${KEEP_WORDS[a.verdict]}`)}</span>`).join("") + `</div>`;
+  return `<span class="run-act-marks">` + acts.map(a =>
+    `<span class="ram-act">Act ${a.act}${keepSignal(a.verdict, `Act ${a.act}: ${KEEP_WORDS[a.verdict]}`)}</span>`).join("") + `</span>`;
 }
 
 function renderKeepActs(run, nodes, measured) {

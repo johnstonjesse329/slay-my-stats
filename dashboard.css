@@ -2538,8 +2538,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 }
 
 /* The run's reading under its header: the same two meters as the hover. */
-.run-act-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 1rem; margin: 0.35rem 0; font-size: var(--fs-sm); }
-.ram-title { color: var(--text-dim); }
+.run-act-marks { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.9rem; }
 .ram-act { display: inline-flex; align-items: center; gap: 0.35rem; }
 
 /* The whole run's card in the Keeping Up grid: both meters side by side, then its rule. */
