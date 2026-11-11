@@ -2559,4 +2559,4 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 
 /* The boons are one row led by their title, not icons with a dim caption hung underneath. */
 .run-boon-stat { flex-direction: row-reverse; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem 0.9rem; }
-.run-boon-stat .run-headline-label { font-size: var(--fs-md); font-weight: 700; color: var(--gold); }
+.run-boon-stat .run-headline-label { font-size: var(--fs-sm); }
