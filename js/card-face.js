@@ -358,7 +358,7 @@ function renderDeckLinksHtml(deck, relics) {
   if (!links.length) return "";
   const names = list => [...new Set(list.map(x => x.name))].map(escapeHtml).join(", ");
   const rows = links.map(l => `<li><b>${escapeHtml(l.key.replace(/^power:/, "").replace(/^./, c => c.toUpperCase()))}</b>: ${names(l.feeders)} → ${names(l.users)}</li>`).join("");
-  return `<div class="deck-group-label">Archetype synergies <span class="deck-group-count">${links.length}</span></div>
+  return `<div class="deck-group-label">Synergies <span class="deck-group-count">${links.length}</span></div>
     <ul class="deck-links">${rows}</ul>`;
 }
 
