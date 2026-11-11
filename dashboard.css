@@ -2554,6 +2554,5 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .kt-cut.low { justify-content: flex-start; }
 
 /* An ancient boon's name beside its icon, so the icons read without hovering. */
-.run-boon-icons { height: auto; align-items: flex-start; gap: 12px; }
-.run-boon-wrap { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
-.run-boon-name { font-size: var(--fs-xs, 0.75rem); color: var(--text-dim, #b4aed6); text-align: center; max-width: 5.5rem; line-height: 1.15; }
+.run-boon-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.run-boon-name { font-size: var(--fs-sm, 0.85rem); color: var(--text, #e8e4ff); white-space: nowrap; }
