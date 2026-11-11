@@ -264,8 +264,8 @@ function renderDetailRun(run) {
   const headlineStats = [
     { label: "Elites", value: elitesKilled },
     { label: "Cards",  value: finalDeck.length,   title: cardsTitle },
-    { label: "Relics", value: finalRelics.length,  title: relicsTitle },
     { label: "Gold", value: totalGold },
+    { label: "Relics", value: finalRelics.length,  title: relicsTitle },
   ];
   const headlineHtml = headlineStats.map(i =>
     `<span class="run-headline-stat"${i.title ? ` data-tip="${i.title}"` : ""}><span class="run-headline-value">${i.value}</span><span class="run-headline-label">${i.label}</span></span>`
@@ -315,7 +315,7 @@ function renderDetailRun(run) {
         // it goes into the markup.
         const safeLabel = String(fmtRelicLabel(id)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         const iconHtml = src
-          ? `<img loading="lazy" class="run-boon-icon" src="${thumbSrc(src)}" alt="${safeLabel}">`
+          ? `<img loading="lazy" class="run-boon-icon" src="${thumbSrc(src)}" alt="${safeLabel}"><span class="run-boon-name">${safeLabel}</span>`
           : `<span class="run-headline-value">${safeLabel}</span>`;
         // tabindex: same touch/keyboard tooltip-reveal parity as .relic-tile.
         return `<span class="run-boon-wrap" tabindex="0">${iconHtml}${tip ? `<span class="relic-tooltip-wrap">${tip}</span>` : ""}</span>`;
