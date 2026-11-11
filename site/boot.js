@@ -624,6 +624,10 @@
           el("h3", { textContent: "Win rate by character" }),
           el("div", { className: "site-chars-rows" }, [...charRows, axis(charMax)]),
         ]),
+        list("Deadliest fights", "The fight that ended the run, as a share of that mode's losses, ranked by the two together.",
+          killers.map(([enc]) => [fightIcon(enc), fmtEncounter(enc).replace(/ (Boss|Elite)$/, ""),
+            modes.map(([label, m, cls]) => [label,
+              lane(killShare(m, enc), killMax, "#e05c5c", pct((m.killers || {})[enc] || 0, lossesOf(m)), cls)])]), killMax),
         list("Cards in winning decks",
           `Highest win rate when in the final deck, solo and multiplayer apart. Uncommon and rarer cards in at least ${MIN_RUNS} runs, ranked by the two modes together.`,
           modeRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)),
@@ -632,10 +636,6 @@
           `Highest win rate when held at the end, solo and multiplayer apart. Relics in at least ${MIN_RUNS} runs, ranked by the two modes together.`,
           modeRows(ranked(pooled(solo.relics, multi.relics)), relicName, relicIcon, buildRelicTooltip,
             { solo: solo.relics || {}, multi: multi.relics || {} }), 100),
-        list("Deadliest fights", "The fight that ended the run, as a share of that mode's losses, ranked by the two together.",
-          killers.map(([enc]) => [fightIcon(enc), fmtEncounter(enc).replace(/ (Boss|Elite)$/, ""),
-            modes.map(([label, m, cls]) => [label,
-              lane(killShare(m, enc), killMax, "#e05c5c", pct((m.killers || {})[enc] || 0, lossesOf(m)), cls)])]), killMax),
       ]),
     ]));
   }
