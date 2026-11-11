@@ -15,12 +15,18 @@ What the game does, and so what this bakes:
   * Path dot: compressed map/map_dot, tinted MapUntraveledColor, or
     MapTraveledColor once walked.
   * Circle: compressed map/map_circle_4 (the finished frame), tinted 241F1A.
+  * Ancient (the start): images/packed/map/ancients/ancient_node_<name>[_outline].png, left
+    untinted; the site tints them as NAncientMapPoint does.
+  * Boss: images/map/placeholder/<id>_icon[_outline].png, untinted. Three bosses are Spine
+    skeletons instead; tools/render_spine_bosses.html renders those, and --spine points here at
+    its output. The site applies boss_map_point.gdshader's colouring.
 
 Output: ui_icons/map/ (scroll_<act>.webp, dot_<act>_{todo,walked}.png,
-node_<act>_<type>.png incl. node_<act>_unknown_<room>.png, circle.png).
+node_<act>_<type>.png incl. node_<act>_unknown_<room>.png, circle.png,
+ancient_<name>[_outline].png, boss_<id>[_outline].png, boss_<id>_spine.png).
 
 Run after a full PCK extraction (see README "Refreshing game data"):
-    python tools/bake_act_map_art.py [--pck PATH]
+    python tools/bake_act_map_art.py [--pck PATH] [--spine DIR]
 
 Requires: pip install Pillow
 """
@@ -54,8 +60,10 @@ UNKNOWN_ICONS = {"unknown_monster": ("map_unknown_monster", "map_monster"),
                  "unknown_elite": ("map_unknown_elite", "map_elite"),
                  "unknown_shop": ("map_unknown_shop", "map_shop"),
                  "unknown_treasure": ("map_unknown_chest", "map_chest")}
-SCROLL_CROP = (398, 1638)   # the 1240px of the 2036 wide scroll round the 1050px the nodes span
-SCROLL_W = 500
+SCROLL_W = 640       # the whole scroll, torn edges and all, as NMapBg shows it
+ANCIENT_W = 160      # drawn 208 wide on a 1527 wide scroll
+BOSS_W = 240         # drawn 374 wide
+SPINE_W = 420        # the 2100 wide render frame, drawn 399 wide
 
 
 def rgb(h):
@@ -101,6 +109,7 @@ def recolor(im: Image.Image, map_color) -> Image.Image:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pck", type=Path, help="pck_recover_full root (default: auto-detect)")
+    ap.add_argument("--spine", type=Path, help="folder of boss_<id>_spine.png from tools/render_spine_bosses.html")
     args = ap.parse_args()
     pck = args.pck or next((p for p in PCK_CANDIDATES if p.exists()), None)
     if pck is None:
@@ -116,7 +125,6 @@ def main():
         for i, part in enumerate(("top", "middle", "bottom")):
             piece = Image.open(pck / "images" / "packed" / "map" / "map_bgs" / act / f"map_{part}_{act}.png").convert("RGBA")
             scroll.paste(piece, (0, 1440 * i))
-        scroll = scroll.crop((SCROLL_CROP[0], 0, SCROLL_CROP[1], scroll.height))
         scroll.resize((SCROLL_W, round(scroll.height * SCROLL_W / scroll.width)), Image.LANCZOS).save(
             OUT / f"scroll_{act}.webp", quality=78, method=6)
         for state in ("todo", "walked"):
@@ -128,6 +136,18 @@ def main():
             node = tint(atlas(pck, outlines / f"{outline}_outline.tres"), bg)
             node.alpha_composite(recolor(atlas(pck, icons / f"{icon}.tres"), map_color))
             node.save(OUT / f"node_{act}_{key}.png")
+    def shrink(src: Path, width: int, dest: str):
+        im = Image.open(src).convert("RGBA")
+        im.resize((width, round(im.height * width / im.width)), Image.LANCZOS).save(OUT / dest)
+
+    ancients = pck / "images" / "packed" / "map" / "ancients"
+    for f in sorted(ancients.glob("ancient_node_*.png")):
+        shrink(f, ANCIENT_W, f.name.replace("ancient_node_", "ancient_"))
+    for f in sorted((pck / "images" / "map" / "placeholder").glob("*_icon*.png")):
+        shrink(f, BOSS_W, "boss_" + f.name.replace("_icon", ""))
+    if args.spine:
+        for f in sorted(args.spine.glob("boss_*_spine.png")):
+            shrink(f, SPINE_W, f.name)
     print(f"baked {len(list(OUT.iterdir()))} files into {OUT}")
 
 

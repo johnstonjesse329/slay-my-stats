@@ -1,0 +1,45 @@
+<!doctype html>
+<!--
+Renders the act bosses whose map node is a Spine skeleton (EncounterModel.BossNodeSpineResource)
+into still PNGs for tools/bake_act_map_art.py, using Esoteric's own Spine runtime (the .skel files
+are Spine 4.2.43).
+
+The frame is fixed, so no bounds need recording: spine x 0..2100, y 0..-1800, which boss_map_point.tscn
+shows (SpineSprite at the control's origin, scale 0.19) as the boss control's (0,0)-(399,342).
+Colours are left raw: the game's boss_map_point.gdshader turns R/G/B into map colour/white/act colour,
+and the site does the same with an SVG filter.
+
+Use: copy this file into <pck_recover_full>/animations/map, then
+  python -m http.server 8099 --directory <pck_recover_full>/animations/map
+  and open http://localhost:8099/render_spine_bosses.html. Save each canvas (right click > Save image)
+  as boss_<id>_spine.png into a folder, and pass it to the bake: bake_act_map_art.py --spine <folder>.
+-->
+<html><head><meta charset="utf-8"><title>Spine bosses</title></head>
+<body style="background:transparent;margin:0">
+<script src="https://cdn.jsdelivr.net/npm/@esotericsoftware/spine-canvas@4.2.43/dist/iife/spine-canvas.js"
+        integrity="sha384-U61vCkXdZjX6OWdZYjbHA5YK93mdK0E199J51cIrho9MEPkVTzScVXQqxKheqU1b" crossorigin="anonymous"></script>
+<script>
+const FRAME_W = 2100, FRAME_H = 1800;
+const BOSSES = [  // folder = encounter id, as EncounterModel.BossNodePath names it
+  ["ceremonial_beast_boss", "ceremonial_beast_boss_node"],
+  ["queen_boss", "queen_boss_node"],
+  ["the_insatiable_boss", "the_insatiable_boss_node"],
+];
+async function render(dir, base) {
+  const am = new spine.AssetManager(dir + "/");
+  am.loadBinary(base + ".skel"); am.loadTextureAtlas(base + ".atlas");
+  await new Promise(res => { const t = () => am.isLoadingComplete() ? res() : setTimeout(t, 50); t(); });
+  const errs = am.getErrors(); if (Object.keys(errs).length) throw new Error(JSON.stringify(errs));
+  const data = new spine.SkeletonBinary(new spine.AtlasAttachmentLoader(am.require(base + ".atlas")))
+    .readSkeletonData(am.require(base + ".skel"));
+  const sk = new spine.Skeleton(data);
+  const st = new spine.AnimationState(new spine.AnimationStateData(data));
+  if (data.findAnimation("animation")) { st.setAnimation(0, "animation", true); st.apply(sk); }  // NBossMapPoint plays "animation"
+  sk.updateWorldTransform(spine.Physics.update);
+  const c = document.createElement("canvas"); c.width = FRAME_W; c.height = FRAME_H; c.id = dir;
+  c.style.display = "block"; document.body.appendChild(c);
+  const ctx = c.getContext("2d"); ctx.scale(1, -1);  // spine is y-up; the skeleton sits below its origin
+  const r = new spine.SkeletonRenderer(ctx); r.triangleRendering = true; r.draw(sk);
+}
+window.done = (async () => { for (const [d, b] of BOSSES) await render(d, b); return BOSSES.map(b => b[0]); })();
+</script></body></html>
