@@ -962,7 +962,7 @@ function renderDetailTimeline(run) {
 
   const actNums = Object.keys(acts).map(Number).sort();
 
-  const iconLegend = ["monster", "elite", "boss", "rest_site", "shop", "treasure", "unknown", "ancient"]
+  const iconLegend = ["monster", "elite", "rest_site", "shop", "treasure", "unknown", "ancient"]
     .map(t => `<span class="timeline-legend-item">${nodeIconHtml(t, 14)} ${TYPE_LABEL[t]}</span>`)
     .join("");
   const legend = `<div class="timeline-legend">${iconLegend}<span class="timeline-legend-item"><span class="node-ind card-ind">[C]</span> Card picked</span><span class="timeline-legend-item"><span class="node-ind relic-ind">[R]</span> Relic picked</span></div>`;
