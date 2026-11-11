@@ -2107,10 +2107,10 @@ const CARD_TYPE_COLOR  = {
   Attack: "#b84040",
   Skill:  "#3a6ea8",
   Power:  "#6a3fa0",
-  Status: "#555",
-  Curse:  "#3f4147",
+  Status: "#9a9aae",
+  Curse:  "#b83b76",
   Quest:  "#7a6020",
-  None:   "#444",
+  None:   "#9a9aae",
 };
 
 function potionInfo(id) {
