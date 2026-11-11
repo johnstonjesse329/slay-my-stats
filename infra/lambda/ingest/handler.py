@@ -1509,10 +1509,7 @@ def _ip_allowed(ip: str, allowed: list[str]) -> bool:
 
 def record_upload(store, event: dict, result: dict, via: str, now: float | None = None) -> None:
     """
-    Keep a small note per upload handed out: when, from the site or the mod,
-    the address it came from (to trace abuse back to its source), which
-    browser, which page, and the rate limit's network hash so the note lines up
-    with limits/ip/. Private: analytics/ isn't served.
+    Keep a small note per upload handed out. Private: analytics/ isn't served.
     Best effort: a failure here never costs the player their upload.
     """
     try:

@@ -204,7 +204,7 @@ file, which the browser downloads and renders. There are no accounts, sessions, 
 
 ### Architecture
 
-![AWS architecture: Route 53 and CloudFront in front of two S3 buckets, logging visits to a third; an ingest Lambda that verifies the Steam sign-in and hands out upload URLs; a process Lambda that merges uploads, with a failure Lambda behind it; and a budget kill switch](images/aws-architecture.png)
+![AWS architecture: Route 53 and CloudFront in front of two S3 buckets; an ingest Lambda that verifies the Steam sign-in and hands out upload URLs; a process Lambda that merges uploads, with a failure Lambda behind it; and a budget kill switch](images/aws-architecture.png)
 
 The diagram's source is [docs/slay-my-stats-architecture.drawio](docs/slay-my-stats-architecture.drawio); open it in
 [draw.io](https://app.diagrams.net/) to edit, then re-export the PNG.
@@ -219,8 +219,7 @@ the CLI's default account and region (us-west-2 today).
 | Resource | Configuration | Why |
 |----------|---------------|-----|
 | **Site bucket** `slay-my-stats-site` | Private (CloudFront OAC only). Destroyed with the stack. | The built `dist/` plus game art. Rebuildable from the repo at any time. |
-| **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` only). **Retained** if the stack is deleted. CORS for `https://slay-my-stats.com` POSTs, since uploads go straight here. Upload results expire after 7 days. `analytics/` keeps a private note per upload (site or mod, IP, browser, referring page). | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
-| **Access-log bucket** `slay-my-stats-access-logs` | Private, ACLs on (CloudFront's standard logs need them). **Retained** if the stack is deleted; a gamma stack's goes with it. | One line per site request (time, URL, Referer, User-Agent), no cookies or page scripts. `python tools/visit_sources.py` counts where visitors come from. |
+| **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` only). **Retained** if the stack is deleted. CORS for `https://slay-my-stats.com` POSTs, since uploads go straight here. Upload results expire after 7 days. | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
 | **CloudFront distribution** | `slay-my-stats.com`, HTTP redirects to HTTPS, default root `index.html`. Behaviors below. | One domain for the site and the profile data, so the browser needs no CORS for reads. |
 | **CloudFront Function** (`ProfileUrlRewriteFunction`) | Viewer request, JS 2.0. Sets the URI to `/index.html`. | Page URLs like `/u/<slug>` have no S3 object. Rewriting at the edge keeps the shareable URL in the address bar. Attached only to page behaviors, so asset requests never pay for it. |
 | **Route 53 A record** | Alias to the distribution, in an existing hosted zone. | The domain. The hosted zone is created outside CDK. |

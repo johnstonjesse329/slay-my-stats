@@ -1082,8 +1082,7 @@ class LambdaHandlerTests(unittest.TestCase):
         self.assertEqual((auth["url"], auth["slug"]), ("https://s3.example/", None))
         self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 429)  # same sign-in again: cooldown
 
-        # Each handed-out upload leaves a private note: address, browser,
-        # page, and the rate limit's network hash.
+        # Each handed-out upload leaves a private note.
         notes = [k for k in self.store.list("analytics/")]
         self.assertEqual(len(notes), 1)
         note = self.store.json(notes[0])
