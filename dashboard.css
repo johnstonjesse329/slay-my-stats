@@ -2566,16 +2566,21 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .kt-cut { display: flex; justify-content: flex-end; white-space: nowrap; min-width: 0; }
 .kt-cut.low { justify-content: flex-start; }
 
-/* Map by Act: one collapsible block per act, closed until opened. */
-.act-map { background: var(--panel-2, #211e36); border: 1px solid var(--border, #3a3560); border-radius: 10px; margin: 8px 0; }
-.act-map summary { cursor: pointer; padding: 10px 14px; font-weight: 600; display: flex; justify-content: space-between; gap: 12px; }
-.act-map summary small { color: #b4aed6; font-weight: 400; }
-.act-map-body { padding: 6px 14px 14px; overflow-x: auto; display: flex; justify-content: center; }
-@media (min-width: 1000px) {
-  .act-maps-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 10px; }
-  .act-maps-row .act-map { margin: 0; }
-  .act-maps-row .act-map summary { cursor: default; pointer-events: none; }
-}
+/* Map by Act: each map a fixed width in CSS pixels, so browser zoom scales them with the
+   page, and never taller than the window. The header opens one large. */
+.act-maps-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.act-map { background: var(--panel-2, #211e36); border: 1px solid var(--border, #3a3560); border-radius: 10px; flex: 0 1 auto; max-width: 100%; }
+.act-map-head, .act-map-large-head { display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 14px; font: inherit; font-weight: 600; color: inherit; background: none; border: 0; text-align: left; }
+.act-map-head { cursor: zoom-in; }
+.act-map-head:hover { color: var(--gold, #e8c46a); }
+.act-map-head small, .act-map-large-head small { color: #b4aed6; font-weight: 400; }
+.act-map-body { padding: 0 14px 14px; display: flex; justify-content: center; }
+.act-map-body svg { border-radius: 8px; width: min(340px, calc((100vh - 7rem) * 0.4757)); max-width: 100%; height: auto; }
+.act-map-overlay { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; background: rgba(8, 6, 20, 0.82); }
+.act-map-large { background: var(--panel-2, #211e36); border: 1px solid var(--border, #3a3560); border-radius: 10px; padding-bottom: 12px; max-width: 96vw; }
+.act-map-large-head { align-items: center; }
+.act-map-large-head button { margin-left: auto; font-size: 1.4rem; line-height: 1; color: inherit; background: none; border: 0; cursor: pointer; }
+.act-map-large svg { display: block; margin: 0 auto; border-radius: 8px; height: calc(100vh - 6rem); width: auto; max-width: 92vw; }
 /* An ancient boon's name beside its icon, so the icons read without hovering. */
 .run-boon-wrap { display: inline-flex; align-items: center; gap: 6px; }
 .run-boon-name { font-size: var(--fs-sm, 0.85rem); color: var(--text, #e8e4ff); white-space: nowrap; }
@@ -2597,4 +2602,3 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .run-boon-stat { flex: 1 0 100%; flex-direction: column-reverse; align-items: flex-start; gap: 0.35rem; margin-left: 0; padding: 0.5rem 0 0; border-left: 0; border-top: 1px solid var(--hairline); }
   .run-boon-icons { flex-wrap: wrap; gap: 6px 14px; }
 }
-.act-map-body svg { border-radius: 8px; width: 100%; max-width: 100%; height: auto; }
