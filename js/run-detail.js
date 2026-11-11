@@ -761,42 +761,68 @@ function actCountPills(actNodes) {
 // The map of each act with the route the run took lit up, for runs the game mod
 // sent maps for (run.maps; the .run file itself has no map). One collapsible
 // block per act, closed so the page doesn't grow. Row 0 is the bottom.
-// The game's own node icons, by the map's point type (a key into DATA.nodeIcons).
-const MAP_ICON_KEYS = { Monster: "monster", Elite: "elite", RestSite: "rest_site", Shop: "shop",
-  Unknown: "unknown", Treasure: "treasure", Ancient: "ancient" };
+// The game's node types -> its map icons (baked per act by tools/bake_act_map_art.py).
+const MAP_NODE_KEYS = { Monster: "monster", Elite: "elite", RestSite: "rest_site", Shop: "shop",
+  Unknown: "unknown", Treasure: "treasure" };
 const MAP_TYPE_NAMES = { Monster: "Fight", Elite: "Elite", RestSite: "Rest", Shop: "Shop",
   Unknown: "?", Treasure: "Treasure", Boss: "Boss", Ancient: "Ancient" };
 
-// Drawn like the game's map: its node icons on parchment, the roads not taken dotted, the route
-// walked drawn bold with its stops ringed. bossKey is the act's boss icon, when the run reached it.
-function actMapSvg(m, bossKey) {
-  const rows = Math.max(...m.nodes.map(n => n[0]), ...(m.boss ? [m.boss[0]] : []), 0);
-  const GX = 46, GY = 42, PAD = 30;
-  const X = c => PAD + c * GX, Y = r => PAD + (rows - r) * GY;
-  const W = PAD * 2 + (m.w - 1) * GX, H = PAD * 2 + rows * GY;
-  const on = new Set(m.path.map(c => c.join(",")));
-  const icons = DATA.nodeIcons || {};
-  const icon = (key, x, y, size, lit, name, fallback) => {
-    const src = icons[key];
-    const body = src
-      ? `<image href="${src}" x="${x - size / 2}" y="${y - size / 2}" width="${size}" height="${size}"/>`
-      : `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-size="${size * 0.8}">${fallback}</text>`;
-    return `<g opacity="${lit ? 1 : 0.5}">${lit ? `<circle cx="${x}" cy="${y}" r="${size * 0.62}" class="am-ring"/>` : ""}${body}<title>${name}</title></g>`;
+// Drawn the way the game's map screen draws it (NMapScreen.cs), in its units: the act's scroll
+// behind, the nodes 1050 wide and 2325 tall, a dot every 22 units along each road (jittered,
+// turned, sometimes flipped), and a hand-drawn circle round each node the run visited. The
+// roads walked are the darker, bigger dots. `act` is the scroll's name (overgrowth, underdocks,
+// hive, glory); bossKey the boss's icon in DATA.nodeIcons, when the run reached it.
+function actMapSvg(m, act, bossKey) {
+  const art = DATA.mapArt || {};
+  const rows = Math.max(...m.nodes.map(n => n[0]), 1);   // row 0 is the bottom
+  const NODE_W = 1050, NODE_H = 2325, PAD_X = 95, PAD_Y = 200;
+  const dx = NODE_W / m.w, dy = NODE_H / rows;
+  const X = c => PAD_X + (c + 0.5) * dx;
+  const Y = r => PAD_Y + (rows + 1 - r) * dy;
+  const W = NODE_W + 2 * PAD_X, H = NODE_H + dy + 2 * PAD_Y;
+  // The game's jitter is random per visit; this one is fixed per spot, so a map never shifts.
+  let seed = 0;
+  const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const gauss = () => Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
+  seed = m.act * 1009 + m.nodes.length;
+  const walked = new Set();
+  for (let i = 0; i + 1 < m.path.length; i++) walked.add(m.path[i].join(",") + ">" + m.path[i + 1].join(","));
+  const visited = new Set(m.path.map(c => c.join(",")));
+  const bossAt = m.boss ? [m.boss[0], m.boss[1]] : null;
+  const dots = { todo: [], walked: [] };
+  const road = (a, b) => {
+    const kind = walked.has(a.join(",") + ">" + b.join(",")) ? "walked" : "todo";
+    const x1 = X(a[1]), y1 = Y(a[0]), x2 = X(b[1]), y2 = Y(b[0]);
+    const dist = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / dist, uy = (y2 - y1) / dist;
+    const rot = Math.atan2(uy, ux) * 180 / Math.PI + 90;
+    for (let i = 1; i < Math.floor(dist / 22) + 1; i++) {
+      const x = x1 + ux * i * 22 + (rnd() * 6 - 3), y = y1 + uy * i * 22 + (rnd() * 6 - 3);
+      const flip = rnd() < 0.5 ? -1 : 1, r = rot + gauss() * 0.1 * 180 / Math.PI;
+      dots[kind].push(`<image href="${art[`dot_${act}_${kind}`]}" x="-8" y="-8" width="16" height="16" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${r.toFixed(1)}) scale(${flip * (kind === "walked" ? 1.2 : 1)} ${kind === "walked" ? 1.2 : 1})"/>`);
+    }
   };
-  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Act map with the route taken">`;
-  const edge = (a, b, lit) => `<line x1="${X(a[1])}" y1="${Y(a[0])}" x2="${X(b[1])}" y2="${Y(b[0])}" class="${lit ? "am-road-walked" : "am-road"}"/>`;
-  const walked = (a, b) => on.has(a.join(",")) && on.has(b.join(","));
-  for (const n of m.nodes) for (const k of n[3]) if (!walked([n[0], n[1]], k)) s += edge([n[0], n[1]], k, false);
-  for (const n of m.nodes) for (const k of n[3]) if (walked([n[0], n[1]], k)) s += edge([n[0], n[1]], k, true);
-  if (m.boss) {
-    const lit = on.has(m.boss.join(","));
-    for (const n of m.nodes) if (n[3].some(k => k[0] === m.boss[0] && k[1] === m.boss[1])) s += edge([n[0], n[1]], m.boss, lit && on.has(n[0] + "," + n[1]));
-  }
+  for (const n of m.nodes) for (const k of n[3]) road([n[0], n[1]], k);
+  const node = (key, r, c, size, lit) => {
+    const src = key.startsWith("node_") ? art[key] : (DATA.nodeIcons || {})[key];
+    if (!src) return "";
+    return `<image href="${src}" x="${X(c) - size / 2}" y="${Y(r) - size / 2}" width="${size}" height="${size}"${lit ? "" : ' opacity="0.5"'}/>`;
+  };
+  const circle = (r, c) => {
+    const size = 200 * (0.85 + rnd() * 0.05);
+    return `<image href="${art.circle}" x="${-size / 2}" y="${-size / 2}" width="${size}" height="${size}" opacity="0.95" transform="translate(${X(c)} ${Y(r)}) rotate(${(rnd() * 360).toFixed(0)})"/>`;
+  };
+  let body = "", rings = "";
   for (const n of m.nodes) {
-    s += icon(MAP_ICON_KEYS[n[2]], X(n[1]), Y(n[0]), on.has(n[0] + "," + n[1]) ? 30 : 24, on.has(n[0] + "," + n[1]), MAP_TYPE_NAMES[n[2]] || n[2], "❓");
+    const lit = visited.has(n[0] + "," + n[1]);
+    const key = n[2] === "Ancient" ? "ancient" : `node_${act}_${MAP_NODE_KEYS[n[2]] || "unknown"}`;
+    body += `<g>${node(key, n[0], n[1], 92, lit)}<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></g>`;
+    if (lit) rings += circle(n[0], n[1]);
   }
-  if (m.boss) s += icon(bossKey, X(m.boss[1]), Y(m.boss[0]), on.has(m.boss.join(",")) ? 44 : 36, on.has(m.boss.join(",")), "Boss", "♛");
-  return s + "</svg>";
+  if (bossAt) body += `<g>${node(bossKey, bossAt[0], bossAt[1], 150, visited.has(bossAt.join(",")))}<title>Boss</title></g>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Act map with the route taken">` +
+    `<image href="${art["scroll_" + act]}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>` +
+    dots.todo.join("") + dots.walked.join("") + body + rings + `</svg>`;
 }
 
 function renderDetailMaps(run) {
@@ -809,8 +835,9 @@ function renderDetailMaps(run) {
   const wide = window.matchMedia("(min-width: 1000px)").matches;
   box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2><div class="act-maps-row">` + maps.map(m => {
     const visited = m.path.length;
-    const bossKey = bossNodes[m.act] && bossNodes[m.act].enc;
-    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m, bossKey)}</div></details>`;
+    const act = (actName(m.act + 1, run.timeline || []) || "overgrowth").toLowerCase();
+    const bossKey = (bossNodes[m.act] || {}).enc;
+    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m, act, bossKey)}</div></details>`;
   }).join("") + `</div></div>` : "";
   for (const d of box.querySelectorAll(".act-map")) d.addEventListener("toggle", () => { if (wide && !d.open) d.open = true; });
 }
