@@ -1136,6 +1136,18 @@ def build_energy_icons(url_for=Path.as_uri) -> dict[str, str]:
     }
 
 
+def build_map_art(url_for=Path.as_uri) -> dict[str, str]:
+    """
+    stem -> URL for each file of ui_icons/map/ (tools/bake_act_map_art.py): the
+    per-act scroll, path dots and node icons, and the visited-node circle that
+    js/run-detail.js's actMapSvg draws the Map by Act with.
+    """
+    d = _UI_ICONS_DIR / "map"
+    if not d.exists():
+        return {}
+    return {p.stem: url_for(p) for p in sorted(d.iterdir()) if p.suffix in (".png", ".webp")}
+
+
 def build_node_icons(url_for=Path.as_uri) -> dict[str, str]:
     """
     type -> icon URL for each generic node type, plus one entry per boss
@@ -1685,6 +1697,7 @@ def build_html(runs: list[dict]) -> str:
     node_icons   = build_node_icons()
     card_final   = build_card_final_images()
     energy_icons = build_energy_icons()
+    map_art      = build_map_art()
     card_data   = json.loads(_CARD_DATA_FILE.read_text(encoding="utf-8"))  if _CARD_DATA_FILE.exists()  else {}
     relic_data  = json.loads(_RELIC_DATA_FILE.read_text(encoding="utf-8")) if _RELIC_DATA_FILE.exists() else {}
     relic_data  = resolve_image_paths(relic_data)
@@ -1764,6 +1777,7 @@ def build_html(runs: list[dict]) -> str:
         "nodeIcons":          node_icons,
         "cardFinal":          card_final,
         "energyIcons":        energy_icons,
+        "mapArt":            map_art,
         "thumbRoots":         build_thumb_roots(),
         "runsData":           runs,
     })

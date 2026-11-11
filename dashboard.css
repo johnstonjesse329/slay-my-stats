@@ -2574,8 +2574,6 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .act-maps-row .act-map { margin: 0; }
   .act-maps-row .act-map summary { cursor: default; pointer-events: none; }
 }
-.act-map-body svg { background: #17152b; border-radius: 8px; max-width: 100%; height: auto; }
-=======
 /* An ancient boon's name beside its icon, so the icons read without hovering. */
 .run-boon-wrap { display: inline-flex; align-items: center; gap: 6px; }
 .run-boon-name { font-size: var(--fs-sm, 0.85rem); color: var(--text, #e8e4ff); white-space: nowrap; }
@@ -2597,3 +2595,4 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .run-boon-stat { flex: 1 0 100%; flex-direction: column-reverse; align-items: flex-start; gap: 0.35rem; margin-left: 0; padding: 0.5rem 0 0; border-left: 0; border-top: 1px solid var(--hairline); }
   .run-boon-icons { flex-wrap: wrap; gap: 6px 14px; }
 }
+.act-map-body svg { border-radius: 8px; width: 100%; max-width: 100%; height: auto; }

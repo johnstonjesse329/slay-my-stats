@@ -214,6 +214,7 @@
       nodeIcons: catalog.nodeIcons,
       cardFinal: catalog.cardFinal,
       energyIcons: catalog.energyIcons,
+      mapArt: catalog.mapArt,
       thumbRoots: catalog.thumbRoots,
       runsData: runs,
     };

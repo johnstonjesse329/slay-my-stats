@@ -760,39 +760,160 @@ function actCountPills(actNodes) {
 // The map of each act with the route the run took lit up, for runs the game mod
 // sent maps for (run.maps; the .run file itself has no map). One collapsible
 // block per act, closed so the page doesn't grow. Row 0 is the bottom.
-const MAP_COLORS = { Monster: "#d95a5a", Elite: "#9a62d8", RestSite: "#c9b458", Shop: "#e8a43a",
-  Unknown: "#6f8ad8", Treasure: "#59b88a", Boss: "#e8c860", Ancient: "#e8c860" };
+// The game's node types -> its map icons (baked per act by tools/bake_act_map_art.py).
+const MAP_NODE_KEYS = { Monster: "monster", Elite: "elite", RestSite: "rest_site", Shop: "shop",
+  Unknown: "unknown", Treasure: "treasure" };
 const MAP_TYPE_NAMES = { Monster: "Fight", Elite: "Elite", RestSite: "Rest", Shop: "Shop",
   Unknown: "?", Treasure: "Treasure", Boss: "Boss", Ancient: "Ancient" };
 
-function actMapSvg(m) {
-  const rows = Math.max(...m.nodes.map(n => n[0]), ...(m.boss ? [m.boss[0]] : []), 0);
-  const X = c => 20 + c * 34, Y = r => 20 + (rows - r) * 30;
-  const W = 40 + (m.w - 1) * 34, H = 40 + rows * 30;
-  const on = new Set(m.path.map(c => c.join(",")));
-  const at = new Map(m.nodes.map(n => [n[0] + "," + n[1], n]));
-  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Act map with the route taken">`;
-  for (const n of m.nodes) for (const k of n[3]) {
-    const lit = on.has(n[0] + "," + n[1]) && on.has(k.join(","));
-    s += `<line x1="${X(n[1])}" y1="${Y(n[0])}" x2="${X(k[1])}" y2="${Y(k[0])}" stroke="${lit ? "#e8e4ff" : "#3a3560"}" stroke-width="${lit ? 4 : 2}"/>`;
+// The game's Rng, so a map's nodes sit where they did in the run: XxHash64 of the run's seed plus
+// a name, into MegaRandom (splitmix64, then xoshiro256**). Rng(seed, "map_jitter_<act>") is the
+// one NMapScreen jitters the nodes with.
+const U64 = (1n << 64n) - 1n;
+const XXP = [11400714785074694791n, 14029467366897019727n, 1609587929392839161n, 9650029242287828579n, 2870177450012600261n];
+const rotl64 = (x, r) => ((x << BigInt(r)) | (x >> BigInt(64 - r))) & U64;
+function xxh64(str) {
+  const bytes = new TextEncoder().encode(str), n = bytes.length, [P1, P2, P3, P4, P5] = XXP;
+  const u64 = j => { let v = 0n; for (let k = 7; k >= 0; k--) v = (v << 8n) | BigInt(bytes[j + k]); return v; };
+  const u32 = j => BigInt((bytes[j] | bytes[j + 1] << 8 | bytes[j + 2] << 16 | bytes[j + 3] << 24) >>> 0);
+  const round = (acc, inp) => (rotl64((acc + inp * P2) & U64, 31) * P1) & U64;
+  const merge = (acc, v) => (((acc ^ round(0n, v)) * P1) + P4) & U64;
+  let i = 0, h;
+  if (n >= 32) {
+    let v1 = (P1 + P2) & U64, v2 = P2, v3 = 0n, v4 = (U64 + 1n - P1) & U64;
+    for (; i + 32 <= n; i += 32) { v1 = round(v1, u64(i)); v2 = round(v2, u64(i + 8)); v3 = round(v3, u64(i + 16)); v4 = round(v4, u64(i + 24)); }
+    h = (rotl64(v1, 1) + rotl64(v2, 7) + rotl64(v3, 12) + rotl64(v4, 18)) & U64;
+    h = merge(merge(merge(merge(h, v1), v2), v3), v4);
+  } else h = P5;
+  h = (h + BigInt(n)) & U64;
+  for (; i + 8 <= n; i += 8) h = ((rotl64(h ^ round(0n, u64(i)), 27) * P1) + P4) & U64;
+  for (; i + 4 <= n; i += 4) h = ((rotl64(h ^ ((u32(i) * P1) & U64), 23) * P2) + P3) & U64;
+  for (; i < n; i++) h = (rotl64(h ^ ((BigInt(bytes[i]) * P5) & U64), 11) * P1) & U64;
+  h ^= h >> 33n; h = (h * P2) & U64; h ^= h >> 29n; h = (h * P3) & U64; h ^= h >> 32n;
+  return h;
+}
+function gameRng(seed, name) {   // -> NextDouble
+  let x = (xxh64(seed) + xxh64(name)) & U64;
+  const sm = () => { x = (x + 11400714819323198485n) & U64; let z = x;
+    z = ((z ^ (z >> 30n)) * 13787848793156543929n) & U64; z = ((z ^ (z >> 27n)) * 10723151780598845931n) & U64; return z ^ (z >> 31n); };
+  let s0 = sm(), s1 = sm(), s2 = sm(), s3 = sm();
+  return () => { const r = (rotl64((s1 * 5n) & U64, 7) * 9n) & U64, t = (s1 << 17n) & U64;
+    s2 ^= s0; s3 ^= s1; s1 ^= s2; s0 ^= s3; s2 ^= t; s3 = rotl64(s3, 45);
+    return Number(r >> 11n) * 1.1102230246251565e-16; };
+}
+
+// Models/Acts/*.cs: MapBgColor, MapUntraveledColor, MapTraveledColor.
+const ACT_MAP_COLORS = {
+  overgrowth: ["A78A67", "877256", "28231D"], underdocks: ["9F95A5", "534A62", "180F24"],
+  hive: ["9B9562", "6E7750", "27221C"], glory: ["819A97", "60717C", "1D1E2F"] };
+
+// What a visited "?" turned out to be, from the run's floor there (null: an event, which stays "?").
+function unknownRoom(t) {
+  if (!t) return null;
+  if (t.type === "shop" || t.type === "treasure" || t.type === "elite" || t.type === "monster") return t.type;
+  if ((t.enc || "").startsWith("ENCOUNTER.")) return t.enc.endsWith("_ELITE") ? "elite" : "monster";
+  return null;
+}
+
+// Drawn the way the game's map screen draws it (NMapScreen, NMapBg), in its units, origin at
+// the map's centre: the act's whole scroll; the nodes spread 1050 wide and 2325 tall, each
+// nudged as the game nudged it that run and tilted a little; a dot every 22 units along each
+// road (jittered, turned, sometimes flipped), the roads walked in darker, bigger dots; a
+// hand-drawn circle round each node the run visited; the Ancient below and the boss on top.
+// `act` is the scroll's name (overgrowth, underdocks, hive, glory); bossKey the boss's
+// encounter id; floors the run's floors in this act; seed the run's seed.
+function actMapSvg(m, act, bossKey, floors, seed) {
+  const art = DATA.mapArt || {};
+  const [bg, todo, walkedColor] = (ACT_MAP_COLORS[act] || ACT_MAP_COLORS.overgrowth)
+    .map(h => [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255));
+  const rows = (m.h || Math.max(...m.nodes.map(n => n[0])) + 1) - 1;   // the top row of nodes
+  const dx = 1050 / m.w, dy = 2325 / rows;
+  // Cosmetic randomness the game rolls afresh each time (Rng.Chaotic); fixed per map here.
+  let s = m.act * 1009 + m.nodes.length;
+  const rnd = () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const gauss = () => Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
+  const jit = seed ? gameRng(String(seed), `map_jitter_${m.act}`) : rnd;
+  const pos = new Map();
+  for (const n of m.nodes) {   // NMapScreen.SetMap, in the map's own point order
+    const jx = jit() * 42 - 21, jy = jit() * 50 - 25;
+    pos.set(n[0] + "," + n[1], [n[1] * dx - 500 + jx + 28, 740 - n[0] * dy + jy + 28]);
   }
+  const ANCIENT = [24, 824], BOSS = [-13, -1827];
+  const at = c => c[0] === 0 ? ANCIENT : c[0] > rows ? BOSS : pos.get(c[0] + "," + c[1]);
+  const walked = new Set();
+  for (let i = 0; i + 1 < m.path.length; i++) walked.add(m.path[i].join(",") + ">" + m.path[i + 1].join(","));
+  const visited = new Set(m.path.map(c => c.join(",")));
+  const dots = { todo: [], walked: [] };
+  const road = (a, b) => {
+    const p = at(a), q = at(b);
+    if (!p || !q) return;
+    const kind = walked.has(a.join(",") + ">" + b.join(",")) ? "walked" : "todo";
+    const dist = Math.hypot(q[0] - p[0], q[1] - p[1]), ux = (q[0] - p[0]) / dist, uy = (q[1] - p[1]) / dist;
+    const rot = Math.atan2(uy, ux) * 180 / Math.PI + 90, k = kind === "walked" ? 1.2 : 1;
+    for (let i = 1; i < Math.floor(dist / 22) + 1; i++) {
+      const x = p[0] + ux * i * 22 + (rnd() * 6 - 3), y = p[1] + uy * i * 22 + (rnd() * 6 - 3);
+      const flip = rnd() < 0.5 ? -1 : 1, r = rot + gauss() * 0.1 * 180 / Math.PI;
+      dots[kind].push(`<image href="${art[`dot_${act}_${kind}`]}" x="-8" y="-8" width="16" height="16" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${r.toFixed(1)}) scale(${flip * k} ${k})"/>`);
+    }
+  };
+  // The act's first stop (the Ancient's, row 0) isn't among the nodes the mod sends; the game
+  // joins it to every node of row 1, and the run's route starts there.
+  const start = m.path.length && m.path[0][0] === 0 ? m.path[0] : null;
+  for (const n of m.nodes) if (n[0] === 1) road([0, start ? start[1] : 0], [1, n[1]]);
+  for (const n of m.nodes) for (const k of n[3]) road([n[0], n[1]], k);
+  // SVG versions of the game's tints: Godot's modulate multiplies; boss_map_point.gdshader
+  // mixes a Spine boss's red/green/blue masks into map colour, white and the boss colour.
+  const id = `am${m.act}`;
+  const f = (name, rgb) => `<filter id="${id}${name}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${rgb.map(r => r.join(" ")).join(" ")} 0 0 0 1 0"/></filter>`;
+  const mul = c => [[c[0], 0, 0, 0, 0], [0, c[1], 0, 0, 0], [0, 0, c[2], 0, 0]];
+  const bossColor = m.boss && visited.has(m.boss.join(",")) ? walkedColor : todo;
+  const defs = `<defs>${f("bg", mul(bg))}${f("ink", mul([0x24 / 255, 0x1F / 255, 0x1A / 255]))}${f("boss", mul(bossColor))}` +
+    f("spine", [0, 1, 2].map(i => [bg[i], 1, bossColor[i], 0, 0])) + `</defs>`;
+  const img = (src, x, y, w, h, extra = "") => src ? `<image href="${src}" x="${x}" y="${y}" width="${w}" height="${h}"${extra}/>` : "";
+  let body = "", rings = "";
   for (const n of m.nodes) {
-    const lit = on.has(n[0] + "," + n[1]);
-    s += `<circle cx="${X(n[1])}" cy="${Y(n[0])}" r="${lit ? 9 : 6}" fill="${MAP_COLORS[n[2]] || "#888"}" opacity="${lit ? 1 : 0.35}"><title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></circle>`;
+    const lit = visited.has(n[0] + "," + n[1]), [x, y] = pos.get(n[0] + "," + n[1]);
+    let key = `node_${act}_${MAP_NODE_KEYS[n[2]] || "unknown"}`;
+    // The game swaps a visited "?" for the room it was. floors lines up with the route only
+    // when the run's floors in this act match its stops one for one.
+    if (n[2] === "Unknown" && lit && floors && floors.length === m.path.length) {
+      const room = unknownRoom(floors[m.path.findIndex(c => c[0] === n[0] && c[1] === n[1])]);
+      if (room) key = `node_${act}_unknown_${room}`;
+    }
+    body += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(gauss() * 8).toFixed(1)})">${img(art[key], -46, -46, 92, 92, lit ? "" : ' opacity="0.5"')}<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></g>`;
+    if (lit) {
+      const size = 200 * (0.85 + rnd() * 0.05);
+      rings += img(art.circle, -size / 2, -size / 2, size, size, ` opacity="0.95" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(rnd() * 360).toFixed(0)})"`);
+    }
   }
-  return s + "</svg>";
+  // NAncientMapPoint: the Ancient the run met, its outline in the map colour, itself in ink.
+  // Act 1 only ever has Neow, so a run whose first floor isn't recorded still gets it.
+  const met = floors && floors[0] && (floors[0].enc || "").startsWith("EVENT.") ? floors[0].enc.slice(6).toLowerCase() : null;
+  const ancient = start ? met || (act === "overgrowth" ? "neow" : null) : null;
+  if (ancient && art[`ancient_${ancient}`]) body += `<g>${img(art[`ancient_${ancient}_outline`], -80, 720, 208, 208, ` filter="url(#${id}bg)"`)}${img(art[`ancient_${ancient}`], -80, 720, 208, 208, ` filter="url(#${id}ink)"`)}<title>Ancient</title></g>`;
+  // NBossMapPoint: a Spine boss, or the boss's picture on its outline.
+  const boss = bossKey ? bossKey.replace(/^ENCOUNTER\./, "").toLowerCase() : null;
+  if (boss && art[`boss_${boss}_spine`]) body += `<g>${img(art[`boss_${boss}_spine`], -200, -1980, 399, 342, ` filter="url(#${id}spine)"`)}<title>Boss</title></g>`;
+  else if (boss && art[`boss_${boss}`]) body += `<g>${img(art[`boss_${boss}_outline`], -200, -2002, 374, 350, ` preserveAspectRatio="xMidYMid meet" filter="url(#${id}bg)"`)}${img(art[`boss_${boss}`], -200, -2002, 374, 350, ` preserveAspectRatio="xMidYMid meet" filter="url(#${id}boss)"`)}<title>Boss</title></g>`;
+  return `<svg viewBox="-763.5 -2139 1527 3210" role="img" aria-label="Act map with the route taken">${defs}` +
+    img(art["scroll_" + act], -763.5, -2160, 1527, 3240) +
+    dots.todo.join("") + dots.walked.join("") + body + rings + `</svg>`;
 }
 
 function renderDetailMaps(run) {
   const box = document.getElementById("detail-maps");
   if (!box) return;
   const maps = run.maps || [];
+  const bossNodes = (run.timeline || []).filter(n => n.type === "boss");
   // Wide screens show the acts side by side, all open; a phone gets them one
   // collapsible block at a time, closed.
   const wide = window.matchMedia("(min-width: 1000px)").matches;
   box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2><div class="act-maps-row">` + maps.map(m => {
     const visited = m.path.length;
-    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>${visited} floor${visited === 1 ? "" : "s"} walked</small></summary><div class="act-map-body">${actMapSvg(m)}</div></details>`;
+    const act = (actName(m.act + 1, run.timeline || []) || "overgrowth").toLowerCase();
+    const bossKey = (bossNodes[m.act] || {}).enc;
+    return `<details class="act-map"${wide ? " open" : ""}><summary>${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small></summary><div class="act-map-body">${actMapSvg(m, act, bossKey, (run.timeline || []).filter(n => n.act === m.act + 1), run.seed)}</div></details>`;
   }).join("") + `</div></div>` : "";
   for (const d of box.querySelectorAll(".act-map")) d.addEventListener("toggle", () => { if (wide && !d.open) d.open = true; });
 }

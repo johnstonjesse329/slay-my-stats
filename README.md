@@ -686,7 +686,10 @@ flowchart TB
 It recovers the game's `.pck` with [GDRE Tools](https://github.com/GDRETools/gdsdecomp/releases), then
 re-extracts card, relic and potion data from the game DLL. Next it re-bakes card art and chrome, and checks
 that everything came from the same build. The map background (`ui_icons/map_scroll.webp`) is baked
-separately by `tools/bake_map_background.py`.
+separately by `tools/bake_map_background.py`. The run page's Map by Act art (each act's scroll, path dots,
+node icons, visited circle, Ancients and bosses, in `ui_icons/map/`) is baked by `tools/bake_act_map_art.py`.
+Three bosses are animated skeletons on the map; `tools/render_spine_bosses.html` renders them to still frames first
+and passes them in with `--spine` (steps in its header).
 
 The Runs page's Keeping Up charts need one more file, made after the refresh:
 `python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in
