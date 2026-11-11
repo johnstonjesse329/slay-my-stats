@@ -110,16 +110,22 @@ def build_synergy() -> dict | None:
     """
     {"cards": {id: [produces, consumes]}, "relics": {...}}: what each card or relic
     makes and what it needs, from tools/extract_power_data.py's power_data.json
-    (gitignored, so None when it hasn't been generated). Only the specific keys.
+    (gitignored, so None when it hasn't been generated). Only the specific keys;
+    curses and statuses are left out.
     """
     f = run._HERE / "power_data.json"
     if not f.exists():
         return None
     data = json.loads(f.read_text(encoding="utf-8"))
+    # Curses and statuses only hurt their owner (Doubt's Weak lands on you), so they feed nothing.
+    cards = json.loads((run._HERE / "card_data.json").read_text(encoding="utf-8"))
+    junk = {k for k, c in cards.items() if c.get("type") in ("Curse", "Status")}
     out = {}
     for section in ("cards", "relics"):
         table = {}
         for item_id, e in data.get(section, {}).items():
+            if item_id in junk:
+                continue
             made = sorted(set(e.get("produces", [])) - BROAD_SYNERGY_KEYS)
             need = sorted(set(e.get("consumes", [])) - BROAD_SYNERGY_KEYS)
             if made or need:
