@@ -2561,8 +2561,9 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .run-boon-stat { flex-direction: row-reverse; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem 0.9rem; }
 .run-boon-stat .run-headline-label { font-size: var(--fs-sm); }
 
-/* In the header bar the boons are one inline run: title, then icon and name for each. */
-.detail-run-header-bar .run-boon-stat { flex-direction: row-reverse; align-items: center; gap: 0.6rem; }
-.detail-run-header-bar .run-boon-stat .run-headline-label { font-size: inherit; }
-.detail-run-header-bar .run-boon-icons { height: auto; gap: 12px; }
-.detail-run-header-bar .run-boon-icon { width: 24px; height: 24px; }
+/* The boons are the relics the run opened with, so they follow the Relics number: behind a
+   hairline, small, the title leading one line of icon and name. */
+.run-boon-stat { flex-direction: row-reverse; align-items: center; gap: 0.6rem; margin-left: -0.5rem; padding-left: 1rem; border-left: 1px solid var(--hairline); }
+.run-boon-stat .run-headline-label { font-size: var(--fs-sm); }
+.run-boon-icons { height: auto; gap: 10px; }
+.run-boon-icon { width: 24px; height: 24px; }

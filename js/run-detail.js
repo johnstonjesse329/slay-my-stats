@@ -264,8 +264,8 @@ function renderDetailRun(run) {
   const headlineStats = [
     { label: "Elites", value: elitesKilled },
     { label: "Cards",  value: finalDeck.length,   title: cardsTitle },
-    { label: "Relics", value: finalRelics.length,  title: relicsTitle },
     { label: "Gold", value: totalGold },
+    { label: "Relics", value: finalRelics.length,  title: relicsTitle },
   ];
   const headlineHtml = headlineStats.map(i =>
     `<span class="run-headline-stat"${i.title ? ` data-tip="${i.title}"` : ""}><span class="run-headline-value">${i.value}</span><span class="run-headline-label">${i.label}</span></span>`
@@ -362,7 +362,6 @@ function renderDetailRun(run) {
       ${runReadingHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
       <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
-      ${ancientBoonsHtml}
       ${moddedTagHtml(run, true)}
       <span class="rh-meta">
         <span class="rh-date">${fmtDate(run.ts)}</span>
@@ -372,7 +371,7 @@ function renderDetailRun(run) {
     </div>
     ${runActMarksHtml(run)}
     <div class="detail-run-headline-stats">
-      ${headlineHtml}
+      ${headlineHtml}${ancientBoonsHtml}
     </div>
     <div class="detail-run-header-stats">
       <div class="rh-stats-wide">${summaryHtml}</div>
