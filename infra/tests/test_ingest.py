@@ -531,6 +531,18 @@ class AuthorizeModTests(Uploads, unittest.TestCase):
         self.assertEqual(modded["mods"], [{"id": "SlayMyStats", "version": "v0.0.1"},
                                           {"id": "CheatMod", "version": "2.0", "gameplay": True}])
 
+    def test_the_map_of_each_act_and_the_path_are_kept_and_cleaned(self):
+        reported = {"maps": [
+            {"act": 0, "width": 7, "height": 15, "boss": [16, 3],
+             "points": [[1, 2, "Monster", [[2, 2]]], [2, 2, "Elite", []], [2, 3, "<b>", []], [99, 1, "Shop", []]],
+             "path": [[1, 2], [2, 2], [7, "x"]]},
+            "NotAnAct", {"act": 1, "width": 7, "height": 15, "points": []},
+        ]}
+        self.ingest(body_of(minimal_run(1700000001, slay_my_stats_mod=reported)))
+        maps = self.store.runs()[0]["maps"]
+        self.assertEqual(maps, [{"act": 0, "w": 7, "h": 15, "path": [[1, 2], [2, 2]], "boss": [16, 3],
+                                 "nodes": [[1, 2, "Monster", [[2, 2]]], [2, 2, "Elite", []]]}])
+
     def test_what_a_mod_says_about_itself_is_cleaned_not_trusted(self):
         reported = {"mods": [
             {"id": "<img src=x onerror=alert(1)>", "version": "1.0 beta", "affects_gameplay": "yes"},
