@@ -56,10 +56,9 @@ function renderCards(grand, charStats, restAvg) {
   const items = [
     { label: "Win %", value: winPct },
     // The character is the point of this card, so it sits in the label where a
-    // phone can see it, in their colour, with the win/loss counts after it.
+    // phone can see it, with the win/loss counts after it.
     { label: "Best win %",
       what: charStats[bestIdx].win_pct !== null ? fmtCharName(chars[bestIdx]) : "",
-      whatColor: CHAR_COLOR_MAP[chars[bestIdx]],
       detail: charStats[bestIdx].win_pct !== null ? `${charStats[bestIdx].wins}W / ${charStats[bestIdx].losses}L` : "No wins",
       value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—" },
     // The share of runs is what makes this card mean anything, so it is in the
@@ -81,11 +80,11 @@ function renderCards(grand, charStats, restAvg) {
   const modsName = sharedActiveMods === "modded" ? "modded" : sharedActiveMods === "vanilla" ? "unmodded" : "";
   const scopeName = [modeName, modsName].filter(Boolean).join(", ").replace(/^./, c => c.toUpperCase());
   // One card builder, three weights: `label` is what the stat is (bold), `what`
-  // is who or what it is about (bold, in a character's colour), `detail` is the
+  // is who or what it is about (bold, plain text colour), `detail` is the
   // figure behind the value (dim). Everything is on the card, nothing on hover.
-  const itemCard = ({ label, what, whatColor, detail, value }) =>
+  const itemCard = ({ label, what, detail, value }) =>
     `<div class="card">
-      <div class="label"><b class="name">${label}</b>${what ? ` <b class="what"${whatColor ? ` style="color:${whatColor}"` : ""}>${what}</b>` : ""}${detail ? ` <span class="detail">${detail}</span>` : ""}</div>
+      <div class="label"><b class="name">${label}</b>${what ? ` <b class="what">${what}</b>` : ""}${detail ? ` <span class="detail">${detail}</span>` : ""}</div>
       <div class="value">${value}</div>
     </div>`;
   const runsCard = itemCard({ label: scopeName ? `${scopeName} runs` : "Runs",
