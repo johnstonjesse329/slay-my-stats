@@ -1507,6 +1507,29 @@ def _ip_allowed(ip: str, allowed: list[str]) -> bool:
     return any(ip.startswith(a) if a[-1] in ".:" else ip == a for a in allowed)
 
 
+def record_upload(store, event: dict, result: dict, via: str, now: float | None = None) -> None:
+    """
+    Keep a small note per upload handed out. Private: analytics/ isn't served.
+    Best effort: a failure here never costs the player their upload.
+    """
+    try:
+        now = time.time() if now is None else now
+        headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+        ip = event.get("requestContext", {}).get("http", {}).get("sourceIp", "")
+        note = {
+            "at": int(now), "via": via,
+            "userAgent": headers.get("user-agent", "")[:300],
+            "referer": headers.get("referer", "")[:300],
+            "origin": headers.get("origin", "")[:100],
+            "ip": ip,
+            "network": ip_limit_key(ip).rsplit("/", 1)[-1].split(".")[0] if ip else "",
+        }
+        month = datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m")
+        store.put(f"analytics/{month}/{result['uploadId']}.json.gz", _pack(note), {}, None)
+    except Exception as e:  # noqa: BLE001
+        print(json.dumps({"analytics_failed": type(e).__name__}))
+
+
 def lambda_handler(event, context):
     """The Function URL (payload format 2.0): hands out upload URLs."""
     http = event.get("requestContext", {}).get("http", {})
@@ -1536,6 +1559,7 @@ def lambda_handler(event, context):
         print(json.dumps({**via, "status": e.status, "code": e.code}))
         return _response(e.status, {"error": e.code, "message": e.message})
     print(json.dumps({**via, "status": 200, "uploadId": result["uploadId"]}))
+    record_upload(store, event, result, "mod" if via else "site")
     return _response(200, result)
 
 

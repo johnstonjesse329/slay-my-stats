@@ -208,8 +208,9 @@ class SlayMyStatsStack(Stack):
         # users/_index.json.gz list and users/_uploads/<id>.json.gz, each
         # upload's result for the page to poll. Private (CloudFront only
         # serves users/*): ids/<steamid>.json.gz maps Steam IDs to slugs,
-        # limits/ holds the upload rate limits, and raw/<steamid>/ keeps every
-        # upload as sent, so profiles can be rebuilt after a parser fix.
+        # limits/ holds the upload rate limits, analytics/ a note per upload,
+        # and raw/<steamid>/ keeps every upload as sent, so profiles can be
+        # rebuilt after a parser fix.
         # RETAIN: players' uploads live only here, so tearing the stack down
         # leaves the bucket behind. Standing the stack up again then needs it
         # imported or emptied and deleted by hand first.
@@ -227,8 +228,10 @@ class SlayMyStatsStack(Stack):
                 allowed_headers=["*"],
             )],
             # Upload results are only read while the page waits for them.
-            # Nothing else here expires: raw/ is kept for good.
-            lifecycle_rules=[s3.LifecycleRule(prefix="users/_uploads/", expiration=Duration.days(7))],
+            # Nothing else here expires: raw/ and analytics/ are kept for good.
+            lifecycle_rules=[
+                s3.LifecycleRule(prefix="users/_uploads/", expiration=Duration.days(7)),
+            ],
         )
 
         # Built static site (index.html, js/*.js, dashboard.css, game art).
@@ -283,8 +286,23 @@ class SlayMyStatsStack(Stack):
             ],
         )
 
+        # CloudFront's standard access logs. CloudFront only writes these with
+        # ACLs on, hence BUCKET_OWNER_PREFERRED. A gamma stack's go with it;
+        # tools/visit_sources.py summarizes them.
+        log_bucket = s3.Bucket(
+            self, "AccessLogBucket",
+            bucket_name=f"{name_prefix}-access-logs",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            object_ownership=s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
+            removal_policy=RemovalPolicy.DESTROY if gamma else RemovalPolicy.RETAIN,
+            auto_delete_objects=gamma,
+        )
+
         distribution = cloudfront.Distribution(
             self, "Distribution",
+            enable_logging=True,
+            log_bucket=log_bucket,
+            log_file_prefix="site/",
             domain_names=[domain_name],
             certificate=certificate,
             default_root_object="index.html",

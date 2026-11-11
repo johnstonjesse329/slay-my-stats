@@ -1084,6 +1084,7 @@ class LambdaHandlerTests(unittest.TestCase):
     def test_event_plumbing(self):
         event = {
             "requestContext": {"http": {"method": "POST", "sourceIp": "203.0.113.7"}},
+            "headers": {"User-Agent": "TestBrowser/1", "Referer": "https://example.test/upload"},
             "rawQueryString": urllib.parse.urlencode(openid_params()),
         }
         resp = handler.lambda_handler(event, None)
@@ -1092,6 +1093,14 @@ class LambdaHandlerTests(unittest.TestCase):
         key = auth["fields"]["key"]
         self.assertEqual((auth["url"], auth["slug"]), ("https://s3.example/", None))
         self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 429)  # same sign-in again: cooldown
+
+        # Each handed-out upload leaves a private note.
+        notes = [k for k in self.store.list("analytics/")]
+        self.assertEqual(len(notes), 1)
+        note = self.store.json(notes[0])
+        self.assertEqual((note["via"], note["userAgent"], note["referer"]), ("site", "TestBrowser/1", "https://example.test/upload"))
+        self.assertEqual(note["ip"], "203.0.113.7")
+        self.assertEqual(len(note["network"]), 32)
 
         # S3 URL-encodes keys in events.
         self.store.put(key, body_of(minimal_run(1700000001)), {}, None)
