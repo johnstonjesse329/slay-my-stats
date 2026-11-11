@@ -208,6 +208,8 @@
       cardVariants: catalog.cardVariants,
       measuredRuns: catalog.measuredRuns,
       fightDemand: catalog.fightDemand,
+      synergy: catalog.synergy,
+      archetypes: catalog.archetypes,
       relicData: catalog.relicData,
       potionData: catalog.potionData,
       enchantmentData: catalog.enchantmentData,

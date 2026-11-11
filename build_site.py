@@ -98,6 +98,80 @@ def repo_url(p: Path) -> str:
     return "/" + p.relative_to(run._HERE).as_posix()
 
 
+# power_data.json keys that nearly every card has one of (block, draw, exhaust...).
+# A link through one of these says nothing about a deck, so only the specific ones
+# (Strength, Poison, Osty, Shiv, Stars...) go to the site. Winning didn't track
+# links through the broad keys once run length was held fixed, so no score is built.
+BROAD_SYNERGY_KEYS = {"block", "draw", "attacks", "skills", "powers", "generated",
+                      "strike", "exhaust", "discard", "shuffle"}
+
+
+def build_synergy() -> dict | None:
+    """
+    {"cards": {id: [produces, consumes]}, "relics": {...}}: what each card or relic
+    makes and what it needs, from tools/extract_power_data.py's power_data.json
+    (gitignored, so None when it hasn't been generated). Only the specific keys;
+    curses and statuses are left out.
+    """
+    f = run._HERE / "power_data.json"
+    if not f.exists():
+        return None
+    data = json.loads(f.read_text(encoding="utf-8"))
+    # Curses and statuses only hurt their owner (Doubt's Weak lands on you), so they feed nothing.
+    cards = json.loads((run._HERE / "card_data.json").read_text(encoding="utf-8"))
+    junk = {k for k, c in cards.items() if c.get("type") in ("Curse", "Status")}
+    out = {}
+    for section in ("cards", "relics"):
+        table = {}
+        for item_id, e in data.get(section, {}).items():
+            if item_id in junk:
+                continue
+            made = sorted(set(e.get("produces", [])) - BROAD_SYNERGY_KEYS)
+            need = sorted(set(e.get("consumes", [])) - BROAD_SYNERGY_KEYS)
+            if made or need:
+                table[item_id] = [made, need]
+        out[section] = table
+    return out
+
+
+def build_archetypes() -> dict | None:
+    """
+    {CHARACTER: {archetype: [card ids]}}: which cards count toward each archetype,
+    from the signature tests in tools/power_curve/archetypes.py (upgraded or not).
+    The page counts a run's final deck against these and names it by that file's
+    rule (biggest count of 3+, a close second makes a pair, else Mixed). None when
+    power_data.json isn't generated, which hides the label.
+    """
+    if not (run._HERE / "power_data.json").exists():
+        return None
+    sys.path.insert(0, str(run._HERE / "tools" / "power_curve"))
+    try:
+        import archetypes as arch
+        import power_curve as pc
+        ids = json.loads((run._HERE / "power_data.json").read_text(encoding="utf-8"))["cards"]
+    except Exception as e:  # tools/power_curve needs generated data of its own
+        print(f"archetypes skipped: {e}")
+        return None
+    finally:
+        sys.path.pop(0)
+    out = {ch: {name: [] for name in sigs} for ch, sigs in arch.SIGS.items()}
+    for cid in ids:
+        for up in (False, True):
+            try:
+                c = pc.card(cid, up)
+            except Exception:
+                continue
+            for ch, sigs in arch.SIGS.items():
+                for name, test in sigs.items():
+                    try:
+                        hit = test(c)
+                    except Exception:
+                        hit = False
+                    if hit and cid not in out[ch][name]:
+                        out[ch][name].append(cid)
+    return out
+
+
 def build_catalog() -> dict:
     """
     Everything run.py's build_html() computes that ISN'T per-run: card/relic/
@@ -159,6 +233,10 @@ def build_catalog() -> dict:
             if run._FIGHT_DEMAND_FILE.exists() else None
         ),
         "relicData":          relic_data,
+        # Which cards and relics feed which others (see build_synergy()); null hides
+        # the "Deck links" list.
+        "synergy":            build_synergy(),
+        "archetypes":         build_archetypes(),
         "potionData":         potion_data,
         "enchantmentData":    enchantment_data,
         "nodeIcons":          run.build_node_icons(url_for=repo_url),
