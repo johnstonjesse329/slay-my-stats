@@ -208,7 +208,7 @@ class SlayMyStatsStack(Stack):
         # users/_index.json.gz list and users/_uploads/<id>.json.gz, each
         # upload's result for the page to poll. Private (CloudFront only
         # serves users/*): ids/<steamid>.json.gz maps Steam IDs to slugs,
-        # limits/ holds the upload rate limits, analytics/<YYYY-MM>/<id>.json.gz one note per upload (browser, page, network hash), and raw/<steamid>/ keeps every
+        # limits/ holds the upload rate limits, analytics/<YYYY-MM>/<id>.json.gz one note per upload (IP, browser, page), and raw/<steamid>/ keeps every
         # upload as sent, so profiles can be rebuilt after a parser fix.
         # RETAIN: players' uploads live only here, so tearing the stack down
         # leaves the bucket behind. Standing the stack up again then needs it

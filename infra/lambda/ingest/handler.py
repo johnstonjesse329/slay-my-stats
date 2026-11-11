@@ -1509,9 +1509,10 @@ def _ip_allowed(ip: str, allowed: list[str]) -> bool:
 
 def record_upload(store, event: dict, result: dict, via: str, now: float | None = None) -> None:
     """
-    Keep a small analytics note per upload handed out: when, from the site or
-    the mod, which browser, which page it came from, and a hash of the
-    network (never the raw address). Private: analytics/ isn't served.
+    Keep a small note per upload handed out: when, from the site or the mod,
+    the address it came from (to trace abuse back to its source), which
+    browser, which page, and the rate limit's network hash so the note lines up
+    with limits/ip/. Private: analytics/ isn't served.
     Best effort: a failure here never costs the player their upload.
     """
     try:
@@ -1523,6 +1524,7 @@ def record_upload(store, event: dict, result: dict, via: str, now: float | None 
             "userAgent": headers.get("user-agent", "")[:300],
             "referer": headers.get("referer", "")[:300],
             "origin": headers.get("origin", "")[:100],
+            "ip": ip,
             "network": ip_limit_key(ip).rsplit("/", 1)[-1].split(".")[0] if ip else "",
         }
         month = datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m")
