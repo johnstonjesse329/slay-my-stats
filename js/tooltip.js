@@ -307,3 +307,10 @@ function fmtCharName(char) {
   return char.charAt(0) + char.slice(1).toLowerCase();
 }
 
+// The character's energy icon, from the game, to sit before its name wherever
+// the name is shown. "" when the icon is missing (an unknown character).
+function charIconHtml(char) {
+  const url = (DATA.energyIcons || {})[String(char).toLowerCase()];
+  return url ? `<img class="char-icon" src="${url}" alt="">` : "";
+}
+

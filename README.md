@@ -7,7 +7,7 @@ or install the [Slay My Stats mod](https://steamcommunity.com/sharedfiles/filede
 data and functionality on top. Your profile lives at `/u/<name>`, named after your Steam name, and anyone can
 find it by searching on the home page.
 
-**Overview:** the ascension tracker, totals, then a card for each character with its records and most-picked cards.
+**Overview:** totals, the ascension tracker, then a table of each character's win rates and records.
 
 ![Overview tab of a player profile](images/site-overview.png)
 
@@ -18,7 +18,7 @@ bar or **Copy link** in the run's header), and opening one shows that run whatev
 
 ![Runs tab showing a run's final deck](images/site-run-detail.png)
 
-**Cards:** pick and win rates for every card.
+**Cards:** your favorite cards and relics beside every player's, and pick and win rates for every card.
 
 ![Cards tab with card pick rates](images/site-card-stats.png)
 
@@ -395,7 +395,8 @@ Every figure is a running total: `[runs, wins]` pairs, counts, minutes, and best
 Lambda tallies just the runs an upload added and adds that onto `users/_stats.json.gz` with a conditional
 write. No one's history is ever reread, and a duplicate run is never counted twice. The file holds raw
 counts for every card and relic, around 11 KB for 660 runs, so the page does the ranking and its thresholds
-can change without recounting.
+can change without recounting. It also counts each character's card and relic picks, and how many were shop
+buys, for the All players favorites on the Cards page.
 
 The update is best effort, like the player list. `tools/rebuild_stats.py` recounts everything from the
 profiles: run it by hand after adding a new figure, removing or rebuilding a profile, or if an update was

@@ -39,77 +39,43 @@ function avgRestOnWins(filteredRuns) {
 }
 
 function renderCards(grand, charStats, restAvg) {
-  const chars = DATA.characters;
-
-  const bestIdx = charStats.reduce((bestIndex, stat, currentIndex) =>
-    (stat.runs > 0 && (charStats[bestIndex].runs === 0 || stat.win_pct >= charStats[bestIndex].win_pct))
-      ? currentIndex : bestIndex,
-    0
-  );
-  const mostIdx = charStats.reduce((bestIndex, stat, currentIndex) =>
-    stat.runs >= charStats[bestIndex].runs ? currentIndex : bestIndex,
-    0
-  );
-
-  const mostPlayedPct = grand.runs ? +((charStats[mostIdx].runs / grand.runs) * 100).toFixed(0) : 0;
-  const winPct = grand.win_pct !== null ? grand.win_pct + "%" : "—";
+  // Runs, wins and the per-character split are the character table's; the
+  // bars keep the totals it has no row for.
   const items = [
-    { label: "Win %", value: winPct },
-    // The character is the point of this card, so it sits in the label where a
-    // phone can see it, with the win/loss counts after it.
-    { label: "Best win %",
-      what: charStats[bestIdx].win_pct !== null ? fmtCharName(chars[bestIdx]) : "",
-      detail: charStats[bestIdx].win_pct !== null ? `${charStats[bestIdx].wins}W / ${charStats[bestIdx].losses}L` : "No wins",
-      value: charStats[bestIdx].win_pct !== null ? charStats[bestIdx].win_pct + "%" : "—" },
-    // The share of runs is what makes this card mean anything, so it is in the
-    // label. The run count is the Runs card's value and is not repeated.
-    { label: "Most played", detail: grand.runs ? `${mostPlayedPct}% of runs` : "", value: fmtCharName(chars[mostIdx]) },
+    { label: "Time played", detail: grand.runs ? `Median ${grand.median_min}m` : "",
+      value: grand.runs ? fmtHrsMin(grand.total_min) : "—" },
     { label: "Gold gained", detail: grand.runs ? `Median ${grand.median_gold.toLocaleString()}` : "",
       value: grand.runs ? grand.total_gold.toLocaleString() : "—" },
-    // Elites and bosses are a card each. The row stays at 8 cards, which
-    // divides evenly into 4 + 4 instead of leaving a ragged edge.
     { label: "Elites defeated", value: grand.runs ? grand.total_elites_defeated.toLocaleString() : "—" },
     { label: "Bosses defeated", value: grand.runs ? grand.total_bosses_defeated.toLocaleString() : "—" },
   ];
-
-  // A filtered number must not read as a lifetime one, so the active mode is
-  // in the label where a phone sees it.
-  const modeName = sharedActiveMode !== "all"
-    ? ({ solo: "Solo", multi: "Multiplayer", daily: "Daily" }[sharedActiveMode] || sharedActiveMode)
-    : "";
-  const modsName = sharedActiveMods === "modded" ? "modded" : sharedActiveMods === "vanilla" ? "unmodded" : "";
-  const scopeName = [modeName, modsName].filter(Boolean).join(", ").replace(/^./, c => c.toUpperCase());
-  // One card builder, three weights: `label` is what the stat is (bold), `what`
-  // is who or what it is about (bold, plain text colour), `detail` is the
-  // figure behind the value (dim). Everything is on the card, nothing on hover.
-  const itemCard = ({ label, what, detail, value }) =>
+  // `label` is what the stat is, then the value. `detail`, the figure behind
+  // the value, is its tooltip, so nothing sits between a stat's name and its
+  // number.
+  const itemCard = ({ label, detail, value }) =>
     `<div class="card">
-      <div class="label"><b class="name">${label}</b>${what ? ` <b class="what">${what}</b>` : ""}${detail ? ` <span class="detail">${detail}</span>` : ""}</div>
-      <div class="value">${value}</div>
+      <div class="label"><b class="name">${label}</b></div>
+      <div class="value"${detail ? ` data-tip="${detail}" tabindex="0"` : ""}>${value}</div>
     </div>`;
-  const runsCard = itemCard({ label: scopeName ? `${scopeName} runs` : "Runs",
-    detail: `${grand.wins} win${grand.wins === 1 ? "" : "s"}`, value: grand.runs });
-  const timeCard = itemCard({ label: "Time played", detail: grand.runs ? `Median ${grand.median_min}m` : "",
-    value: grand.runs ? fmtHrsMin(grand.total_min) : "—" });
-
-  // Win % first, totals last.
-  document.getElementById("summary-cards").innerHTML =
-    items.slice(0, 3).map(itemCard).join("") + timeCard + runsCard + items.slice(3).map(itemCard).join("");
+  document.getElementById("summary-cards").innerHTML = items.map(itemCard).join("");
 }
 
 function renderPersonalBests() {
   const chars = DATA.characters;
   const allRuns = [...filterRuns()].sort((a, b) => a.ts - b.ts);
 
+  const fresh = () => ({ gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, tiers: {} });
   const bests = {};
-  chars.forEach(char => {
-    bests[char] = { gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null };
-  });
+  chars.forEach(char => { bests[char] = fresh(); });
+  // The Total column is the same tally over every run, so its streaks run
+  // across characters in play order and its ranges span all of them.
+  const total = fresh();
 
-  allRuns.forEach(run => {
-    const b = bests[run.char];
-    if (!b) return;
+  const tally = (b, run) => {
     b.gamesPlayed = (b.gamesPlayed || 0) + 1;
+    const tier = b.tiers[ascColumnKey(run.asc)] ||= { runs: 0, wins: 0 };
+    tier.runs++;
+    if (run.won) tier.wins++;
     const bossFights = (run.fights || []).filter(f => f.type === "boss");
     const finalBoss  = bossFights.length ? bossFights[bossFights.length - 1] : null;
     if (finalBoss && !finalBoss.won) {
@@ -155,85 +121,70 @@ function renderPersonalBests() {
         if (b.fewestRelics === null || run.relics < b.fewestRelics.value) b.fewestRelics = { value: run.relics, ts: run.ts };
       }
     }
+  };
+  allRuns.forEach(run => {
+    if (!bests[run.char]) return;
+    tally(bests[run.char], run);
+    tally(total, run);
   });
-  chars.forEach(char => { bests[char].currentStreak = bests[char]._streak; });
+  [...chars.map(char => bests[char]), total].forEach(b => { b.currentStreak = b._streak; });
 
 
-  // Every stat is one line on the same four columns (label | low | separator |
-  // high), see .pb-row in dashboard.css, so the numbers, dots and dashes sit at
-  // one x on every row and every card. A single value spans the number columns
-  // and ends on the same right edge.
-  const row = (label, valueHtml) =>
-    `<div class="pb-row"><span class="pb-label">${label}</span><span class="pb-val">${valueHtml}</span></div>`;
-  const pairRow = (label, lo, sep, hi) =>
-    `<div class="pb-row"><span class="pb-label">${label}</span><span class="pb-lo">${lo}</span><span class="pb-sep">${sep}</span><span class="pb-hi">${hi}</span></div>`;
+  // One table: a row per stat, a column per character with runs under the
+  // filters, so the same stat reads straight across the characters.
+  const shown = chars.filter(char => bests[char].gamesPlayed);
+  // A column per character, then the total when there's more than one. The
+  // header is the character's energy icon and name; a phone keeps the icon.
+  const icons = DATA.energyIcons || {};
+  const cols = shown.map(char => ({ name: fmtCharName(char), color: CHAR_COLOR_MAP[char] || "#a0a0b8", b: bests[char], icon: icons[char.toLowerCase()] }));
+  if (shown.length > 1) cols.push({ name: "Total", color: "var(--text)", bar: "#c8c4dc", b: total, total: true });
 
   // A value that links to the specific run that produced it (best is
   // { value, ts } or null — see the tracking above).
   const link = (best, fmt = v => v) => best
     ? `<span class="pb-stat-link" data-ts="${best.ts}" data-tip="Jump to this run">${fmt(best.value)}</span>`
     : "—";
+  // Fewest–most in one cell; each end still links to its own run.
+  const range = (lo, hi, fmt) => !lo || !hi ? "—"
+    : lo.value === hi.value ? link(lo, fmt)
+    : `${link(lo, fmt)}<span class="pb-sep">–</span>${link(hi, fmt)}`;
+  // One figure per cell: a share of runs, the counts behind it on hover.
+  const pct = (n, d) => !d ? "—"
+    : `<span data-tip="${n} of ${d} run${d !== 1 ? "s" : ""}">${Math.round(n / d * 100)}%</span>`;
+  // A tier's win rate over a thin bar in the character's colour.
+  const tierBar = (t, c) => !t ? "—"
+    : `${pct(t.wins, t.runs)}<span class="pb-bar"><i style="width:${Math.round(t.wins / t.runs * 100)}%;background:${c.bar || c.color}"></i></span>`;
 
-  // Fewest–most as one row; each end still links to its own run.
-  const rangeRow = (label, lo, hi, fmt) => !lo || !hi ? row(label, "—")
-    : lo.value === hi.value ? row(label, link(lo, fmt))
-    : pairRow(label, link(lo, fmt), "", link(hi, fmt));
+  // [label, cell, row class]
+  const rows = [
+    ["Win %", (b, c) => `<span style="color:${c.color}">${pct(b.totalWins, b.gamesPlayed)}</span>`, "pb-headline"],
+    // The ascension tiers the other tables split by (ascColumns).
+    ...ascColumns().map(col => [col.label, (b, c) => tierBar(b.tiers[col.key], c), "pb-tier"]),
+    ["Runs",              b => b.gamesPlayed],
+    ["Final boss deaths", b => pct(b.finalBossDeaths, b.gamesPlayed)],
+    ["Elite deaths",      b => pct(b.eliteDeaths, b.gamesPlayed)],
+    ["Current win streak", b => b.currentStreak],
+    ["Best win streak",   b => b.longestStreak],
+    ["Fastest win",       b => link(b.fastestWin, fmtHrsMin)],
+    "Winning runs",
+    ["Elites",            b => range(b.fewestElites, b.mostElitesWin)],
+    ["Cards",             b => range(b.fewestCards, b.mostCards)],
+    ["Relics",            b => range(b.fewestRelics, b.mostRelics)],
+    ["Max HP",            b => range(b.fewestMaxHp, b.mostMaxHp)],
+    ["Final boss turns",  b => range(b.fewestFinalBossTurns, b.mostFinalBossTurns)],
+  ];
 
-  const heading = (title, lo, hi) =>
-    `<div class="pb-head"><span>${title}</span><span class="pb-lo">${lo}</span><span class="pb-hi">${hi}</span></div>`;
-
-  // Favourites: a head line per list with its column names, then one row per
-  // item (favoriteItemHtml).
-  const favHead = (title, countHead) =>
-    `<div class="pb-fav-head"><span class="pb-fav-title">${title}</span><span>${countHead}</span><span>Win</span></div>`;
-
-  const favorites = aggregateCharFavorites();
-
-  document.getElementById("personal-bests-cards").innerHTML = chars.map(char => {
-    const b = bests[char];
-    const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
-    const label = fmtCharName(char);
-    const noRuns = b.fastestWin === null;
-    // Deaths read as a count plus a share of every run this character has, so
-    // "died 3 times" has a scale next to it.
-    const deaths = (label, n) => b.gamesPlayed
-      ? pairRow(label, n, "", `${Math.round(n / b.gamesPlayed * 100)}%`)
-      : row(label, "—");
-    const fav = favorites[char];
-
-    return `<div class="card pb-card" style="border-top:2px solid ${color}">
-      <div class="pb-char" style="color:${color}">${label}</div>
-      ${row("Runs", b.gamesPlayed || "—")}
-      ${b.gamesPlayed
-        ? pairRow("Wins", b.totalWins, "", `${Math.round(b.totalWins / b.gamesPlayed * 100)}%`)
-        : row("Wins", "—")}
-      ${deaths("Final boss deaths", b.finalBossDeaths)}
-      ${deaths("Elite deaths", b.eliteDeaths)}
-      ${noRuns
-        ? `<div class="pb-none">No wins yet</div>`
-        : `${row("Current win streak", b.currentStreak || 0)}
-          ${row("Best win streak", b.longestStreak)}
-          ${row("Fastest win", link(b.fastestWin, fmtHrsMinSec))}
-          ${heading("Winning runs", "lowest", "highest")}
-          ${rangeRow("Elites", b.fewestElites, b.mostElitesWin)}
-          ${rangeRow("Cards", b.fewestCards, b.mostCards)}
-          ${rangeRow("Relics", b.fewestRelics, b.mostRelics)}
-          ${rangeRow("Max HP", b.fewestMaxHp, b.mostMaxHp)}
-          ${rangeRow("Final boss turns", b.fewestFinalBossTurns, b.mostFinalBossTurns)}
-          ${favHead("Most picked", "Picks")}
-          ${favoriteItemHtml("card",  fav.card.mostPicked,     "Card",  "count")}
-          ${favoriteItemHtml("card",  fav.rareCard.mostPicked, "Rare",  "count")}
-          ${favoriteItemHtml("relic", fav.relic.mostPicked,    "Relic", "count")}
-          ${favHead("Best win %", "Picks")}
-          ${favoriteItemHtml("card",  fav.card.bestWinRate,     "Card",  "win")}
-          ${favoriteItemHtml("card",  fav.rareCard.bestWinRate, "Rare",  "win")}
-          ${favoriteItemHtml("relic", fav.relic.bestWinRate,    "Relic", "win")}
-          ${favHead("Most bought", "Buys")}
-          ${favoriteItemHtml("card",  fav.shopCard.mostPicked,  "Card",  "count", "bought")}
-          ${favoriteItemHtml("relic", fav.shopRelic.mostPicked, "Relic", "count", "bought")}`
-      }
-    </div>`;
-  }).join("");
+  document.getElementById("personal-bests-cards").innerHTML = !shown.length ? "" :
+    `<table class="pb-table">
+      <thead><tr><th></th>${cols.map(c =>
+        `<th${c.total ? ` class="pb-total"` : ""} style="color:${c.color}">${c.icon
+          ? `<img class="pb-char-icon" src="${c.icon}" alt="${c.name}" data-tip="${c.name}"><span class="pb-char-name">${c.name}</span>`
+          : c.name}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map(r => typeof r === "string"
+        ? `<tr class="pb-group"><th colspan="${cols.length + 1}">${r}</th></tr>`
+        : `<tr${r[2] ? ` class="${r[2]}"` : ""}><th>${r[0]}</th>${cols.map(c => `<td${c.total ? ` class="pb-total"` : ""}>${r[1](c.b, c)}</td>`).join("")}</tr>`).join("")}
+      </tbody>
+    </table>`;
 
   document.querySelectorAll("#personal-bests-cards .pb-stat-link").forEach(el => {
     el.setAttribute("role", "link");
@@ -328,13 +279,13 @@ function renderAscTracker() {
     `<div><b>${new Set(a10.filter(mode.test).map(run => run.char)).size} / ${total}</b>A${maxAsc} ${mode.label.toLowerCase()}</div>`).join("") +
     `<div><b>${first
       ? `<span class="pb-stat-link" data-ts="${first.ts}" data-tip="Jump to this run" style="cursor:pointer">${fmtDate(first.ts)}</span>`
-      : "—"}</b>first A${maxAsc} win${first ? ` · ${fmtCharName(first.char)}` : ""}</div>`;
+      : "—"}</b>first A${maxAsc} win${first ? ` · ${charIconHtml(first.char)}${fmtCharName(first.char)}` : ""}</div>`;
 
   const el = document.getElementById("asc-tracker-cards");
   el.innerHTML = DATA.characters.map(char => {
     const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
     return `<div class="asc-card" style="border-top-color:${color}">
-      <div class="asc-name">${fmtCharName(char)}</div>
+      <div class="asc-name">${charIconHtml(char)}${fmtCharName(char)}</div>
       ${ASC_TRACKER_MODES.map(mode => block(char, color, mode)).join("")}
     </div>`;
   }).join("");
@@ -347,129 +298,8 @@ function renderAscTracker() {
   });
 }
 
-// Aggregates offer/pick/win data per character for cards and relics.
-// Respects shared filters. Returns, per character:
-// mostPicked (highest pick count) and bestWinRate (highest win % overall)
-// — both for cards and relics.
-function aggregateCharFavorites() {
-  const MIN_PICKS = 5;
-  const chars = DATA.characters;
-  const cardData = DATA.cardData || {};
-  const favorites = {};
-
-  chars.forEach(char => {
-    favorites[char] = {
-      card:     { byId: {} },
-      relic:    { byId: {} },
-      rareCard: { byId: {} },
-      shopCard: { byId: {} },
-      shopRelic:{ byId: {} },
-    };
-  });
-
-  filterRuns().forEach(run => {
-    const fav = favorites[run.char];
-    if (!fav) return;
-    [["card", run.cardsOffered], ["relic", run.relicsOffered]].forEach(([kind, offered]) => {
-      Object.entries(offered || {}).forEach(([id, locs]) => {
-        locs.forEach(loc => {
-          if (!loc.picked) return;
-          const byId = fav[kind].byId;
-          if (!byId[id]) byId[id] = { picked: 0, won: 0 };
-          byId[id].picked++;
-          if (run.won) byId[id].won++;
-          if (kind === "card" && (cardData[id] || {}).rarity === "Rare") {
-            const rareById = fav.rareCard.byId;
-            if (!rareById[id]) rareById[id] = { picked: 0, won: 0 };
-            rareById[id].picked++;
-            if (run.won) rareById[id].won++;
-          }
-          if (loc.type === "shop") {
-            if (kind === "card") {
-              const pool = (cardData[id] || {}).pool || "";
-              if (pool !== run.char && pool !== "colorless") return;
-            }
-            const shopById = fav[kind === "card" ? "shopCard" : "shopRelic"].byId;
-            if (!shopById[id]) shopById[id] = { picked: 0, won: 0 };
-            shopById[id].picked++;
-            if (run.won) shopById[id].won++;
-          }
-        });
-      });
-    });
-  });
-
-  const result = {};
-  chars.forEach(char => {
-    result[char] = {};
-    ["card", "relic", "rareCard", "shopCard", "shopRelic"].forEach(kind => {
-      const entries = Object.entries(favorites[char][kind].byId);
-      let mostPicked = null;
-      // Prefer items meeting MIN_PICKS, falling back to a below-threshold item
-      // only if nothing clears the bar: otherwise a single 100%-win pick would
-      // always beat a well-sampled 80%-win item. This chooses which item to
-      // show — it flags nothing, and no low-sample marking is rendered.
-      let bestQualified = null, bestAny = null;
-      entries.forEach(([id, b]) => {
-        const winPct = +(b.won / b.picked * 100).toFixed(0);
-        if (!mostPicked || b.picked > mostPicked.picked) mostPicked = { id, picked: b.picked, winPct };
-        const candidate = { id, winPct, picked: b.picked };
-        if (!bestAny || winPct > bestAny.winPct) bestAny = candidate;
-        if (b.picked >= MIN_PICKS && (!bestQualified || winPct > bestQualified.winPct)) bestQualified = candidate;
-      });
-      const bestWinRate = bestQualified || bestAny;
-      result[char][kind] = { mostPicked, bestWinRate };
-    });
-  });
-  return result;
-}
-
-// One favourite as a one-line row on the character card's fixed columns:
-// tag | picture | name | count | win %. emph ("count" | "win") brightens the
-// number the item was chosen for. A long name is cut with an ellipsis (the
-// hover/tap tooltip this row has shows the whole thing), so every row is one
-// line and the count and win % land in the same column on every card. An empty
-// slot keeps the row's footprint so the cards stay the same height.
-function favoriteItemHtml(kind, item, tag, emph = null, noun = "picked") {
-  const tagHtml = `<span class="fav-tag">${tag}</span>`;
-  if (!item) return `<div class="fav-item fav-empty">
-    ${tagHtml}<span class="fav-icon"><span class="fav-none"></span></span>
-    <span class="fav-name">None yet</span><span class="fav-num">—</span><span class="fav-num">—</span>
-  </div>`;
-  const label = kind === "card" ? fmtCardLabel(item.id) : fmtRelicLabel(item.id);
-  const winText = item.winPct != null ? `${item.winPct}%` : "—";
-  const imgHtml = src => src
-    ? `<img loading="lazy" src="${thumbSrc(src)}" alt="${label}" style="width:22px;height:22px;object-fit:contain;border-radius:4px">`
-    : "";
-  // Same real card face / relic art used everywhere else, at icon size, with
-  // the same rich hover tooltip.
-  let thumbHtml, tooltipHtml, tooltipClass;
-  if (kind === "card") {
-    thumbHtml = cardFaceAvailable()
-      ? `<div class="fav-item-face">${renderCardFace(item.id, 0, 26, { thumb: true, props: item.props })}</div>`
-      : imgHtml(cardImgSrc(item.id));
-    tooltipHtml = buildCardTooltip(item.id, 0, item.props, item.enchantment);
-    tooltipClass = "card-tooltip-wrap";
-  } else {
-    thumbHtml = imgHtml(relicImgSrc(item.id));
-    tooltipHtml = buildRelicTooltip(item.id);
-    tooltipClass = "relic-tooltip-wrap";
-  }
-  const num = (text, on) => `<span class="fav-num${on ? " fav-emph" : ""}">${text}</span>`;
-
-  return `<div class="fav-item" tabindex="0" role="img" aria-label="${label} — ${item.picked} ${noun}, ${winText} win">
-    ${tagHtml}<span class="fav-icon">${thumbHtml}</span>
-    <span class="fav-name">${label}</span>${num(item.picked, emph === "count")}${num(winText, emph === "win")}
-    ${tooltipHtml ? `<div class="${tooltipClass}">${tooltipHtml}</div>` : ""}
-  </div>`;
-}
-
 function charNameCell(char) {
-  const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
-  const label = fmtCharName(char);
-  return `<td class="char-name">
-    <span class="dot" style="background:${color}"></span>${label}
-  </td>`;
+  return `<td class="char-name">${charIconHtml(char)}${fmtCharName(char)}</td>`;
 }
 
 // Shared win-%-to-color mapping for every pivot-table cell in the dashboard.
@@ -495,53 +325,6 @@ function winPctStyle(pct, tiers = [50, 30, 15]) {
   return { bg, color };
 }
 
-function winCell(bucket, isAll) {
-  const cls = "cell" + (isAll ? " all-col" : "");
-
-  if (!bucket) return `<td class="${cls} empty">—</td>`;
-
-  const { bg, color } = winPctStyle(bucket.win_pct);
-
-  // Three distinct facts, not fragments of one — each gets its own line
-  // rather than being run together on one wrapped line.
-  const tooltip = [
-    `Runs: ${bucket.runs} (${bucket.wins}W / ${bucket.losses}L)`,
-    `Avg floor: ${bucket.avg_floor}`,
-    `Avg time: ${fmtHrsMin(bucket.avg_min)}`,
-  ].join("\n");
-
-  return `<td class="${cls}" style="background:${bg}" data-tip="${tooltip}">
-    <div class="pct" style="color:${color}">${bucket.win_pct}%</div>
-    <div class="meta">${bucket.runs} run${bucket.runs !== 1 ? "s" : ""}</div>
-  </td>`;
-}
-
-function renderWinPivot(pivotData) {
-  const chars = DATA.characters;
-  const ascs  = ascColumns();
-
-  let html = `<thead><tr>
-    <th class="char-head">Character</th>
-    ${ascs.map(col => `<th>${col.label}</th>`).join("")}
-    <th class="all-col" style="border-left:2px solid #3f4147">All<br>ascensions</th>
-  </tr></thead><tbody>`;
-
-  chars.forEach(char => {
-    html += `<tr>${charNameCell(char)}`;
-    ascs.forEach(col => { html += winCell(pivotData[char]?.[col.key], false); });
-    html += winCell(pivotData[char]?.["ALL"], true);
-    html += `</tr>`;
-  });
-
-  html += `<tr class="total-row">
-    <td class="char-name" style="color:#e0c468">All characters</td>`;
-  ascs.forEach(col => { html += winCell(pivotData["ALL"]?.[col.key], false); });
-  html += winCell(pivotData["ALL"]?.["ALL"], true);
-  html += `</tr></tbody>`;
-
-  document.getElementById("pivot-table").innerHTML = html;
-}
-
 // A run's "final boss" is the last boss-type fight in its fights[] array —
 // on Ascension 10, Act 3 has two separate boss nodes, and the second one is
 // the one that ends the run. Runs that never reached a boss are excluded
@@ -563,7 +346,7 @@ function finalBossWinCell(bucket, isAll) {
 
 // Ascension 10 splits Act 3 into two separate boss fights; "10-1" and "10-2"
 // are pseudo-ascension columns tracking each stage separately (10-2 is the
-// true final boss and matches what the "10" bucket already reports).
+// true final boss and matches what the granular "10" column reports).
 const A10_STAGE_KEYS = ["10-1", "10-2"];
 
 // Act 3 boss encounter IDs, used to isolate the double-boss Act 3 finale on
@@ -593,15 +376,19 @@ function aggregateFinalBossWins(filteredRuns) {
     const finalBoss = bossFights[bossFights.length - 1];
     const won = finalBoss.won;
 
+    const act3Bosses = run.asc === 10 ? bossFights.filter(f => ACT3_BOSS_IDS.has(f.enc)) : [];
     const mark = (bucket) => { bucket.reached += 1; if (won) bucket.won += 1; };
+    // Bucketed, A10's first Act 3 boss stands in its tier's column, as A8 and
+    // A9's one Act 3 boss does; its second has a column of its own (10-2).
+    const tierWon = !sharedAscGranular && act3Bosses.length ? act3Bosses[0].won : won;
+    const markTier = (bucket) => { bucket.reached += 1; if (tierWon) bucket.won += 1; };
     const asc  = ascColumnKey(run.asc);
-    if (byCA[run.char]?.[asc])     mark(byCA[run.char][asc]);
+    if (byCA[run.char]?.[asc])     markTier(byCA[run.char][asc]);
     if (byCA[run.char]?.["ALL"])   mark(byCA[run.char]["ALL"]);
-    if (byCA["ALL"]?.[asc])        mark(byCA["ALL"][asc]);
+    if (byCA["ALL"]?.[asc])        markTier(byCA["ALL"][asc]);
     mark(byCA["ALL"]["ALL"]);
 
     if (run.asc === 10) {
-      const act3Bosses = bossFights.filter(f => ACT3_BOSS_IDS.has(f.enc));
       if (act3Bosses.length >= 1) {
         const firstBoss = act3Bosses[0];
         const markFirst = (bucket) => { bucket.reached += 1; if (firstBoss.won) bucket.won += 1; };
@@ -624,15 +411,16 @@ function renderFinalBossWinPivot(filteredRuns) {
   const chars = DATA.characters;
   const pivotData = aggregateFinalBossWins(filteredRuns);
 
-  // Ascension 10 has two Act 3 bosses — split its column (A10 on its own,
-  // granular or bucketed) into "1st Boss" / "2nd Boss" so the double-boss
-  // stage is visible on its own.
+  // Ascension 10 has two Act 3 bosses. Granular, its column splits into
+  // "1st Boss" / "2nd Boss"; bucketed, the first counts in its tier's column
+  // (see aggregateFinalBossWins) and the second follows it in its own.
   const cols = [];
   ascColumns().forEach(col => {
     if (col.ascs.length === 1 && col.ascs[0] === 10) {
       cols.push({ key: "10-1", label: "A10<br>1st Boss" }, { key: "10-2", label: "A10<br>2nd Boss" });
     } else {
       cols.push(col);
+      if (!sharedAscGranular && col.ascs.includes(10)) cols.push({ key: "10-2", label: "A10<br>2nd Boss" });
     }
   });
 
@@ -656,6 +444,8 @@ function renderFinalBossWinPivot(filteredRuns) {
   html += `</tr></tbody>`;
 
   document.getElementById("final-boss-win-table").innerHTML = html;
+  // The caption's A10 sentence only while A10's second boss has a column.
+  document.getElementById("final-boss-a10-note").hidden = !cols.some(c => c.key === "10-2");
 }
 
 function valCell(bucket, valueKey, color, isAll) {
@@ -705,7 +495,7 @@ function renderCharLanes(elId, pivotData, headers, lanes, axes, legend = "") {
   let html = `${legend}<div class="re-rows"><span></span>${headers.map(h => `<div class="fl-section">${h}</div>`).join("")}`;
   stats.forEach(([char, s]) => {
     const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
-    html += `<div style="color:${color};font-weight:600">${fmtCharName(char)}</div>${lanes(s, color).join("")}`;
+    html += `<div style="color:${color};font-weight:600">${charIconHtml(char)}${fmtCharName(char)}</div>${lanes(s, color).join("")}`;
   });
   document.getElementById(elId).innerHTML = html + `<span></span>${axes.join("")}</div>`;
 }

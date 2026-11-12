@@ -5,7 +5,8 @@ Uploads keep users/_stats.json.gz up to date by adding each upload's new
 runs onto it (see the ingest handler's tally/merge_stats). That never
 rereads anyone's history, so this full recount is only needed when a new
 figure is added to the stats, a profile is removed, or a best-effort update
-was missed. Run it by hand; nothing schedules it.
+was missed (the card and relic picks behind the Cards page's All players
+favorites were such a new figure). Run it by hand; nothing schedules it.
 
 Usage:
     python tools/rebuild_stats.py

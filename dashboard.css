@@ -162,89 +162,71 @@ h1 {
   #summary-cards .card .value { line-height: 1; }
 }
 
-/* Personal bests: three equal columns, five once there is room, so tiles never
-   leave an orphan (auto-fit would leave one at in-between widths).
-   minmax(0, 1fr), not bare 1fr -- bare 1fr is minmax(auto, 1fr), so a
-   column holding a wide character panel refuses to shrink below that
-   content's width and blows the grid out past the viewport instead of
-   letting the panel's own content wrap (see the mobile override below,
-   and .grid-2/.grid-4 further down, for the same fix). */
-#personal-bests-cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+/* Character table (Overview): a row per stat, a column per character. It
+   leads with each character's win rate, its tiers as bars, then one short
+   figure per cell; counts are on hover. */
+#personal-bests-cards { margin-bottom: 2rem; }
+.pb-table {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  font-variant-numeric: tabular-nums; font-size: var(--fs-md);
 }
-@media (min-width: 1560px) {
-  #personal-bests-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.pb-table th, .pb-table td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--hairline); }
+.pb-table thead th { width: auto; font-weight: 700; text-align: center; white-space: nowrap; border-bottom: 2px solid var(--hairline); }
+.pb-table thead th:first-child { width: 11rem; }
+.pb-table tbody th { text-align: left; color: var(--text-dim); font-weight: 500; }
+.pb-table td { text-align: center; color: var(--text); font-weight: 500; }
+.pb-char-icon { width: 22px; height: 22px; vertical-align: middle; margin-right: 0.4rem; }
+.pb-table tr.pb-headline td { font-size: 1.6rem; font-weight: 700; padding: 0.6rem 0.5rem 0.3rem; border-bottom: 0; }
+.pb-table tr.pb-headline th { color: var(--text); font-weight: 700; border-bottom: 0; }
+.pb-table tr.pb-tier th { padding-left: 1.25rem; font-size: var(--fs-sm); border-bottom: 0; }
+.pb-table tr.pb-tier td { font-size: var(--fs-sm); color: var(--text-dim); padding-top: 0.15rem; padding-bottom: 0.15rem; border-bottom: 0; }
+.pb-table tr:not(.pb-tier) + tr.pb-tier td, .pb-table tr:not(.pb-tier) + tr.pb-tier th { padding-top: 0.3rem; }
+.pb-bar { display: block; height: 4px; width: min(100%, 7rem); margin: 3px auto 0; border-radius: 2px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.pb-bar i { display: block; height: 100%; border-radius: 2px; }
+.pb-table tr.pb-group th { color: #a8a2c4; font-size: var(--fs-sm); padding-top: 1rem; border-bottom: 2px solid var(--hairline); }
+/* The Total column sits apart from the characters. */
+.pb-table .pb-total { border-left: 2px solid var(--hairline); }
+.pb-sep { color: var(--text-faint); margin: 0 0.15rem; }
+/* A phone keeps the table: the characters are their energy icons, the stat
+   names wrap, and every figure is short enough to fit. */
+@media (max-width: 700px) {
+  .pb-table { font-size: var(--fs-sm); }
+  .pb-table th, .pb-table td { padding: 0.4rem 0.1rem; }
+  .pb-table thead th:first-child { width: 5.75rem; }
+  .pb-table tbody th { padding-left: 0; white-space: normal; line-height: 1.2; }
+  .pb-table tr.pb-tier th { padding-left: 0.6rem; }
+  .pb-table tr.pb-headline td { font-size: 1.05rem; }
+  .pb-char-icon { margin-right: 0; }
+  .pb-char-name { display: none; }
+  .pb-table thead th.pb-total { font-size: var(--fs-xs); }
+  .pb-table tr:not(.pb-group) td { font-size: var(--fs-xs); }
+  .pb-table tr.pb-headline td { font-size: var(--fs-sm); }
+  .pb-sep { margin: 0; }
 }
-/* Character cards: every line is one row on the same four columns
-   (label | low | separator | high), so numbers, dots and dashes share one x
-   down a card and across cards. A single value (.pb-val) spans the three number
-   columns and ends on the same right edge. */
-.pb-card { box-sizing: border-box; }
-.pb-char { font-size: var(--fs-sm); font-weight: 700; margin-bottom: 0.35rem; }
-.pb-row, .pb-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 2.9rem 0.8rem 2.9rem;
-  column-gap: 0.2rem;
-  align-items: baseline;
-  font-size: var(--fs-sm);
-  line-height: 1.55;
-  font-variant-numeric: tabular-nums;
+
+/* Favorites (Cards page): the player's table and all players' side by side,
+   on the same rows and columns, so the same slot sits at the same spot. */
+.fav-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 1rem 2rem; }
+.fav-panel h3 { margin: 0 0 0.25rem; }
+.pivot.fav-table { width: 100%; min-width: 0; table-layout: fixed; }
+.fav-table th:first-child { width: 5.5rem; }
+.fav-table tbody th { text-align: left; color: var(--text-dim); font-weight: 600; border-bottom: 1px solid var(--hairline); }
+.fav-table td { padding: 0.25rem 0.4rem; border-bottom: 1px solid var(--hairline); }
+.fav-table .fav-item {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 0.4rem;
+  align-items: center; min-height: 36px; font-size: var(--fs-sm); cursor: default;
 }
-.pb-label { color:var(--text-dim); }
-.pb-lo, .pb-hi, .pb-val, .pb-sep { text-align: right; white-space: nowrap; font-weight: 600; color: #ccc; }
-.pb-lo { grid-column: 2; }
-.pb-sep { grid-column: 3; text-align: center; color:var(--text-dim); font-weight: 400; }
-.pb-hi { grid-column: 4; }
-.pb-val { grid-column: 2 / -1; }
-.pb-head {
-  border-top: 1px solid #3f4147;
-  margin-top: 0.4rem;
-  padding-top: 0.35rem;
-  margin-bottom: 0.15rem;
-  font-size: var(--fs-xs);
-  color: #a8a2c4;
-  line-height: 1.55;
+.fav-table .fav-empty { color: var(--text-dim); text-align: center; }
+@media (max-width: 700px) {
+  .pivot.fav-table th { white-space: normal; padding: 0.4rem 0.3rem; }
+  .pivot.fav-table th:first-child { width: 5.2rem; padding-left: 0; }
+  .fav-table .fav-item { grid-template-columns: 26px minmax(0, 1fr); }
+  .fav-table .fav-name { display: none; }
 }
-.pb-head > :first-child { font-weight: 600; }
-.pb-head .pb-lo, .pb-head .pb-hi { color:var(--text-dim); font-weight: 400; }
-.pb-none { color:var(--text-dim); font-size: var(--fs-sm); padding: 0.25rem 0; }
-/* Favourites: a head line per list (title over the picture and name, then
-   the two number columns), then one row per item on the same columns. */
-.pb-fav-head, #personal-bests-cards .fav-item {
-  display: grid;
-  grid-template-columns: 2.4rem 26px minmax(0, 1fr) 2.6rem 2.6rem;
-  column-gap: 0.4rem;
-  align-items: center;
-}
-.pb-fav-head {
-  border-top: 1px solid #3f4147;
-  margin-top: 0.4rem;
-  padding-top: 0.35rem;
-  margin-bottom: 0.15rem;
-  font-size: var(--fs-xs);
-  color:var(--text-dim);
-}
-.pb-fav-head > span { text-align: right; }
-.pb-fav-head > .pb-fav-title { grid-column: 1 / 4; text-align: left; color: #a8a2c4; font-weight: 600; }
-#personal-bests-cards .fav-item { min-height: 36px; font-size: var(--fs-sm); }
-.fav-tag { font-size: var(--fs-xs); color:var(--text-dim); }
+.fav-pic { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
 .fav-icon { display: flex; align-items: center; justify-content: center; width: 26px; }
-.fav-none { width: 22px; height: 22px; border: 1px dashed #3f4147; border-radius: 4px; }
 .fav-name { min-width: 0; color: #ccc; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fav-num { text-align: right; color: #a0a0b8; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.fav-num.fav-emph { color: #e8e6f0; font-weight: 700; }
-.fav-empty { opacity: 0.45; }
-/* Most Picked/Best Win % card & relic rows: same hover-tooltip anchoring as
-   the deck/relic tiles they borrow buildCardTooltip/buildRelicTooltip from
-   (.card-tooltip-wrap / .relic-tooltip-wrap below), just on a row-shaped
-   wrapper instead of a square tile. The box opens over the picture, at the
-   row's left edge, not centred on a row that is as wide as the card. */
-#personal-bests-cards .fav-item .card-tooltip-wrap,
-#personal-bests-cards .fav-item .relic-tooltip-wrap {
-  left: 2.8rem;
-  transform: none;
-}
+.fav-num { text-align: right; color: #e8e6f0; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fav-item {
   position: relative;
   z-index: 1;
@@ -308,7 +290,6 @@ h1 {
 #summary-cards .card .value { color: var(--text); white-space: nowrap; font-size: 1.25rem; }
 /* The name is the main item now, so it is not the small print beside a big number. */
 #summary-cards .card .label { font-size: var(--fs-md); }
-#summary-cards .card .label .detail { font-size: var(--fs-sm); }
 .card .sub   { font-size: var(--fs-sm); color: var(--text-dim); margin-top: 0.1rem; }
 
 /* Personal Bests stat values that link to the run behind them (see
@@ -410,6 +391,9 @@ h1 {
 }
 .grid-4.grid-3 { grid-template-columns: 1fr 1fr 1fr; }
 .grid-1 { margin-bottom: 2rem; }
+/* A chart beside a taller table grows to its height instead of leaving a gap. */
+.grid-stretch > .chart-box { display: flex; flex-direction: column; }
+.grid-stretch .chart-wrap { flex: 1; min-height: 300px; }
 
 
 .chart-box {
@@ -715,6 +699,10 @@ h1 {
   background: var(--char-color, var(--gold));
 }
 .char-btn:disabled { color: var(--text-faint); border-color: var(--hairline); cursor: not-allowed; }
+
+/* A character's energy icon, before its name wherever the name is shown. */
+.char-icon { width: 1.15em; height: 1.15em; vertical-align: -0.22em; margin-right: 0.3em; }
+.char-btn:disabled .char-icon { opacity: 0.45; }
 
 
 
@@ -2491,13 +2479,6 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
      past the viewport instead of wrapping it. */
   .grid-2 { grid-template-columns: minmax(0, 1fr); }
   .grid-4, .grid-4.grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  /* One column, not two -- each of these cards packs a 3-4-wide row of
-     label/value stat blocks (Best Win / Games Played / Total Wins / Final
-     Boss Deaths) that's already tight at full card width; at half width
-     the row has no room left to shrink into and silently spills past the
-     card's edge instead. flex-wrap is a second safety net for that same
-     row, in case a narrower phone still can't fit all of it. */
-  #personal-bests-cards { grid-template-columns: minmax(0, 1fr); }
   .card > div { flex-wrap: wrap; }
 
   /* Summary stat cards (Time Played, Runs, etc.): each one is short

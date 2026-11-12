@@ -178,7 +178,7 @@ DATA.characters.forEach((char, i) => {
   const btn = document.createElement("button");
   btn.className = "char-btn";
   btn.style.setProperty("--char-color", DATA.charColors[i]);
-  btn.textContent = fmtCharName(char);
+  btn.innerHTML = charIconHtml(char) + fmtCharName(char);
   btn.dataset.char = char;
   // currentPage defaults to "overview" and showPage() doesn't run on a bare
   // load with no URL hash, so the disabled state showPage() would otherwise
