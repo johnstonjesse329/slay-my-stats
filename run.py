@@ -1608,7 +1608,10 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div id="page-detail" style="display:none">
 
 <div id="detail-layout">
-  <div id="detail-run-list"></div>
+  <div id="detail-side">
+    <div id="detail-tag-filter" style="display:none"></div>
+    <div id="detail-run-list"></div>
+  </div>
   <div id="detail-main">
     <div id="detail-placeholder" class="detail-placeholder">Select a run from the list to view its timeline.</div>
     <div id="detail-content" style="display:none">

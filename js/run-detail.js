@@ -72,6 +72,8 @@ let detailHpChart     = null;
 // Run list sort, set by clicking a column header (like the seeds table).
 // Ties fall back to newest first.
 let detailSortCol = "date";
+// Tags picked above the run list (see runTags); a run shows when it has all of them.
+const detailTags = new Set();
 let detailSortAsc = false;
 const DETAIL_SORT_FNS = {
   char:  (a, b) => fmtCharName(a.char).localeCompare(fmtCharName(b.char)),
@@ -127,8 +129,27 @@ function copyRunLink(ts, btn) {
 
 // ---- Run list ----
 
+// The tags of the runs the other filters leave, most used first, as toggles.
+// A picked tag stays listed even when no run left has it, so it can be unpicked.
+function renderDetailTagFilter(runs) {
+  const box = document.getElementById("detail-tag-filter");
+  const counts = {};
+  runs.forEach(r => runTags(r).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  detailTags.forEach(t => { counts[t] = counts[t] || 0; });
+  const tags = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
+  box.style.display = tags.length ? "" : "none";
+  box.innerHTML = tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="run-tag-n">${counts[t]}</span></button>`).join("");
+  box.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
+    const t = btn.dataset.tag;
+    if (detailTags.has(t)) detailTags.delete(t); else detailTags.add(t);
+    renderDetailRunList();
+  }));
+}
+
 function renderDetailRunList() {
-  const runs = getDetailRuns();
+  const filtered = getDetailRuns();
+  renderDetailTagFilter(filtered);
+  const runs = filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t)));
   const container = document.getElementById("detail-run-list");
 
   if (runs.length === 0) {
