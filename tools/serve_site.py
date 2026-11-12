@@ -24,12 +24,11 @@ the site bucket:
     POST /api/ingest     -> the ingest Lambda's authorize(), storing into
                             local_data/ (stands in for the Function URL); the
                             upload URL it hands out is this server's own:
-    POST /api/ingest/mod -> the same for the game mod: authorize_mod(), for
-                            the SteamID64s in $MOD_ALLOWLIST (stands in for
-                            the Function URL's /mod)
+    POST /api/ingest/mod -> the same for the game mod: authorize_mod()
+                            (stands in for the mod function's /mod)
     POST /api/ingest/mod/runs -> mod_runs(), the runs a profile has, which the
                             mod asks before backfilling (the Function
-                            URL's /mod/runs)
+                            function's /mod/runs)
     POST /api/raw-upload -> stands in for the presigned S3 POST: stores the
                             file under local_data/raw/ and processes it on
                             the spot (stands in for the S3 event)
@@ -195,15 +194,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(200, result)
 
     def _authorize_mod(self):
-        # The same for the mod's door: the real authorize_mod(), with the
-        # allowlist from $MOD_ALLOWLIST (comma-separated SteamID64s; nobody
-        # if unset). The Steam ticket check is real too, so it needs
-        # $STEAM_API_KEY and a ticket from a running Steam client.
+        # The same for the mod's door: the real authorize_mod(). The Steam
+        # ticket check is real too, so it needs $STEAM_API_KEY and a ticket
+        # from a running Steam client.
         length = int(self.headers.get("Content-Length") or 0)
         body = ingest_handler._mod_body({"body": self.rfile.read(length).decode("utf-8", "replace")})
         try:
-            result = ingest_handler.authorize_mod(body, ingest_handler.DirStore(_DATA_DIR),
-                                                  ingest_handler.mod_allowlist(), _presign)
+            result = ingest_handler.authorize_mod(body, ingest_handler.DirStore(_DATA_DIR), _presign)
         except ingest_handler.IngestError as e:
             self._send_json(e.status, {"error": e.code, "message": e.message})
             return
@@ -214,7 +211,7 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = ingest_handler._mod_body({"body": self.rfile.read(length).decode("utf-8", "replace")})
         try:
-            result = ingest_handler.mod_runs(body, ingest_handler.DirStore(_DATA_DIR), ingest_handler.mod_allowlist())
+            result = ingest_handler.mod_runs(body, ingest_handler.DirStore(_DATA_DIR))
         except ingest_handler.IngestError as e:
             self._send_json(e.status, {"error": e.code, "message": e.message})
             return

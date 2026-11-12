@@ -13,14 +13,15 @@ lambda_handler -- the Function URL (POST from the browser upload page):
     new raw/ object, capped at UPLOAD_MAX_BYTES, plus the upload's id. A
     sign-in works again (after the cooldown) until it expires.
 
-    POST /mod is the game mod's way in, for the few players on the mod
-    allowlist. Its JSON body is {"steamId", "ticket"}: a Steam Web API
-    ticket the game got from the Steam client it's running under, which
-    stands in for the browser sign-in. Flow: steamId on the allowlist ->
-    Steam confirms the ticket is that account's, for this game -> looser
-    limits (MOD_COOLDOWN_SECONDS, MOD_UPLOADS_PER_DAY) -> the same kind of
-    presigned POST, capped at MOD_UPLOAD_MAX_BYTES. Everything after that
-    is the same pipeline.
+    POST /mod is the game mod's way in, open to any Steam account. Its
+    JSON body is {"steamId", "ticket"}: a Steam Web API ticket the game got
+    from the Steam client it's running under, which stands in for the
+    browser sign-in. Flow: Steam confirms the ticket is that account's, for
+    this game -> looser limits (MOD_COOLDOWN_SECONDS, MOD_UPLOADS_PER_DAY)
+    -> the same kind of presigned POST, capped at MOD_UPLOAD_MAX_BYTES.
+    Everything after that is the same pipeline. On AWS the mod has a
+    function of its own (ENTRY=mod), so it can be shut off without taking
+    the website's uploads with it.
 
 process_handler -- S3 "object created" events under raw/:
     The uploaded object is gzip'd NDJSON: one raw .run file's JSON per line
@@ -116,12 +117,13 @@ COOLDOWN_SECONDS = 60
 IP_UPLOADS_PER_HOUR = 5
 IP_WINDOW_SECONDS = 3600
 
-# The mod's way in (authorize_mod). Only allowlisted players get this far, so
-# the limits are loose: the mod sends each run as it ends, and two runs can
-# end close together (an abandon, then a quick death). What's left is there
-# for a mod that has gone wrong and is sending in a loop -- the cooldown
-# slows it to a crawl, the daily cap stops it, and the size cap (one run is a
-# few KB gzip'd, so this is hundreds) bounds what each try can store.
+# The mod's way in (authorize_mod). The limits are loose: the mod sends each
+# run as it ends, and two runs can end close together (an abandon, then a
+# quick death). What's left is there for a mod that has gone wrong and is
+# sending in a loop -- the cooldown slows it to a crawl, the daily cap stops
+# it, and the size cap (one run is a few KB gzip'd, so this is hundreds)
+# bounds what each try can store. Past that, the mod's function is the one
+# to shut off (README "Mod uploads").
 MOD_COOLDOWN_SECONDS = 5
 MOD_UPLOADS_PER_DAY = 200
 MOD_WINDOW_SECONDS = 24 * 3600
@@ -925,24 +927,20 @@ def authorize(params: dict, ip: str, store, allowed_return_to: list[str], presig
             **presign(raw_key(steam_id, upload_id, now), UPLOAD_MAX_BYTES, UPLOAD_URL_SECONDS)}
 
 
-def _mod_player(body: dict, allowlist, verify=None) -> str:
+def _mod_player(body: dict, verify=None) -> str:
     """
-    The SteamID64 a request from the mod is for. The claimed id is checked
-    against the allowlist first, so a request from anyone not on it never
-    costs a round trip to Steam; the ticket then has to be that same
-    account's.
+    The SteamID64 a request from the mod is for: the claimed id, once Steam
+    has confirmed the ticket is that same account's.
     """
     steam_id = body.get("steamId") if isinstance(body, dict) else None
     if not isinstance(steam_id, str) or not STEAM_ID_RE.match(steam_id):
         raise IngestError(400, "bad_request", "Expected a steamId and a ticket.")
-    if steam_id not in allowlist:
-        raise IngestError(403, "not_allowlisted", "This Steam account isn't set up for mod uploads.")
     if (verify or verify_ticket)(body.get("ticket")) != steam_id:
         raise IngestError(401, "bad_ticket", "That ticket belongs to a different Steam account.")
     return steam_id
 
 
-def mod_runs(body: dict, store, allowlist, verify=None) -> dict:
+def mod_runs(body: dict, store, verify=None) -> dict:
     """
     What the mod asks before backfilling: the ts of every run on the
     player's profile, so it sends only the runs the site doesn't have.
@@ -950,7 +948,7 @@ def mod_runs(body: dict, store, allowlist, verify=None) -> dict:
     counted against the upload limits. Read from the profile summary only,
     never the month files.
     """
-    steam_id = _mod_player(body, allowlist, verify)
+    steam_id = _mod_player(body, verify)
     slug, _, doc = _read_profile(store, steam_id)
     if doc is None:
         return {"slug": slug, "runs": []}
@@ -959,15 +957,14 @@ def mod_runs(body: dict, store, allowlist, verify=None) -> dict:
     return {"slug": slug, "runs": sorted(ts for month in doc.get("months", {}).values() for ts in month)}
 
 
-def authorize_mod(body: dict, store, allowlist, presign, now: float | None = None,
+def authorize_mod(body: dict, store, presign, now: float | None = None,
                   verify=None) -> dict:
     """
     authorize() for the game mod: the same answer, for {"steamId", "ticket"}
-    instead of a browser sign-in. `allowlist` is the SteamID64s allowed to
-    use it (see _mod_player()).
+    instead of a browser sign-in (see _mod_player()).
     """
     now = time.time() if now is None else now
-    steam_id = _mod_player(body, allowlist, verify)
+    steam_id = _mod_player(body, verify)
 
     got = store.get(mod_limit_key(steam_id))
     times = [t for t in (_unpack(got[0]).get("times", []) if got else []) if now - t < MOD_WINDOW_SECONDS]
@@ -1459,36 +1456,6 @@ def _response(status: int, body: dict) -> dict:
             "body": json.dumps(body)}
 
 
-MOD_ALLOWLIST_SECONDS = 5 * 60
-_mod_allowlist = (None, frozenset())  # (read at, SteamID64s)
-
-
-def mod_allowlist(now: float | None = None) -> frozenset:
-    """
-    The SteamID64s allowed to upload through the mod: $MOD_ALLOWLIST if set
-    (dev), else the SSM StringList parameter named by
-    $MOD_ALLOWLIST_PARAM_NAME, which is edited by hand. Nobody, if neither
-    is there. Read again every few minutes, so taking someone off works
-    without a deploy.
-    """
-    global _mod_allowlist
-    now = time.time() if now is None else now
-    if _mod_allowlist[0] is not None and now - _mod_allowlist[0] < MOD_ALLOWLIST_SECONDS:
-        return _mod_allowlist[1]
-    value = os.environ.get("MOD_ALLOWLIST", "")
-    param = os.environ.get("MOD_ALLOWLIST_PARAM_NAME")
-    if not value and param:
-        import boto3
-        ssm = boto3.client("ssm")
-        try:
-            value = ssm.get_parameter(Name=param)["Parameter"]["Value"]
-        except ssm.exceptions.ParameterNotFound:
-            value = ""
-    ids = frozenset(v for v in (part.strip() for part in value.split(",")) if STEAM_ID_RE.match(v))
-    _mod_allowlist = (now, ids)
-    return ids
-
-
 def _mod_body(event) -> dict:
     """The JSON object a POST /mod carried, or {} for anything else."""
     raw = event.get("body") or ""
@@ -1539,18 +1506,24 @@ def lambda_handler(event, context):
         return _response(403, {"error": "forbidden", "message": "Not available from this address."})
     if http.get("method") != "POST":
         return _response(405, {"error": "method_not_allowed", "message": "POST only."})
-    store = _get_store()
     # Log lines from the mod's way in say so: the stack counts them, and
     # alarms when there are too many.
     path = event.get("rawPath", "").rstrip("/")
     via = {"via": "mod"} if path in ("/mod", "/mod/runs") else {}
+    # On AWS each function answers only its own way in: ENTRY is "site" on
+    # the website's and "mod" on the mod's. Unset (the dev server, tests),
+    # it answers both.
+    entry = os.environ.get("ENTRY", "")
+    if entry and entry != ("mod" if via else "site"):
+        return _response(404, {"error": "not_found", "message": "Nothing here."})
+    store = _get_store()
     try:
         if path == "/mod/runs":
-            result = mod_runs(_mod_body(event), store, mod_allowlist())
+            result = mod_runs(_mod_body(event), store)
             print(json.dumps({**via, "status": 200, "runs": len(result["runs"])}))
             return _response(200, result)
         if via:
-            result = authorize_mod(_mod_body(event), store, mod_allowlist(), store.presign_post)
+            result = authorize_mod(_mod_body(event), store, store.presign_post)
         else:
             params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", ""), keep_blank_values=True))
             allowed = [p for p in os.environ.get("ALLOWED_RETURN_TO", "").split(",") if p]

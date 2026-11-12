@@ -74,9 +74,6 @@ def _ingest_asset_hash() -> str:
 
 
 STEAM_API_KEY_PARAM_NAME ="/slay-my-stats/steam-api-key"
-# One allowlist for every stage, like the key: a player on it can use the mod
-# against prod and gamma alike.
-MOD_ALLOWLIST_PARAM_NAME = "/slay-my-stats/mod-allowlist"
 DOMAIN_NAME = "slay-my-stats.com"
 # The ACM certificate and Route 53 hosted zone are created outside CDK and
 # passed in as context ("certificateArn", "hostedZoneId"), which lives in the
@@ -89,12 +86,12 @@ DOMAIN_NAME = "slay-my-stats.com"
 # deploys to.
 # Everything these services bill is covered by free tier at normal traffic,
 # so any actual spend on them means the ingest path is being abused.
-# The game mod's way in (POST /mod on the ingest function) is for a handful of
-# allowlisted players sending one run at a time, so a few requests an hour is
-# normal. Either of these in one window means something is wrong -- a mod
-# stuck sending in a loop, or someone poking at it -- and emails the alert
-# topic. Refusals are the 401s and 403s: a ticket Steam won't confirm, or an
-# account that isn't on the list.
+# The game mod's way in (POST /mod on the mod's own function) sends one run
+# at a time as each one ends, so a few requests an hour per player is normal.
+# Either of these in one window means something is wrong -- a mod stuck
+# sending in a loop, or someone poking at it -- and emails the alert topic.
+# Refusals are the 401s and 403s: a ticket Steam won't confirm, or (gamma) an
+# address that isn't allowed.
 MOD_REQUESTS_ALARM = (30, Duration.minutes(5))
 MOD_REFUSALS_ALARM = (10, Duration.minutes(15))
 
@@ -369,6 +366,8 @@ class SlayMyStatsStack(Stack):
             log_group=ingest_log_group,
             environment={
                 "DATA_BUCKET": data_bucket.bucket_name,
+                # The website's way in only: /mod is the mod function's.
+                "ENTRY": "site",
                 # The OpenID return_to origins sign-ins are accepted from; an
                 # assertion Steam issued for any other site is refused.
                 "ALLOWED_RETURN_TO": f"https://{domain_name}/",
@@ -463,28 +462,44 @@ class SlayMyStatsStack(Stack):
         )
         process_fn.add_environment("STEAM_API_KEY_PARAM_NAME", STEAM_API_KEY_PARAM_NAME)
 
-        # The game mod's way in: POST /mod on the ingest function, for the
-        # players on the allowlist. It needs the key too, to ask Steam whose
-        # ticket it was handed.
-        steam_api_key_param.grant_read(ingest_fn)
-        ingest_fn.add_to_role_policy(
+        # The game mod's way in: POST /mod and /mod/runs, open to any Steam
+        # account. Same code as the ingest function, but a function of its
+        # own, so it can be shut off alone without taking the website's
+        # uploads with it (README "Mod uploads"):
+        #   aws lambda put-function-concurrency --reserved-concurrent-executions 0
+        # The kill switch below throttles it too. No standing cap above 0:
+        # the account's concurrency limit is 10, and Lambda keeps 10 unreserved.
+        # It needs the key, to ask Steam whose ticket it was handed.
+        mod_log_group = logs.LogGroup(
+            self, "ModIngestLogGroup",
+            retention=logs.RetentionDays.ONE_WEEK,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+        mod_fn = lambda_.Function(
+            self, "ModIngestFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="handler.lambda_handler",
+            code=ingest_code,
+            timeout=Duration.seconds(15),
+            memory_size=256,
+            log_group=mod_log_group,
+            environment={
+                "DATA_BUCKET": data_bucket.bucket_name,
+                "ENTRY": "mod",
+                "STEAM_API_KEY_PARAM_NAME": STEAM_API_KEY_PARAM_NAME,
+                **({"ALLOWED_IPS": ",".join(allowed_ips)} if gamma else {}),
+            },
+        )
+        data_bucket.grant_read_write(mod_fn)
+        steam_api_key_param.grant_read(mod_fn)
+        mod_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["kms:Decrypt"],
                 resources=[self.format_arn(service="kms", resource="alias", resource_name="aws/ssm")],
             )
         )
-        ingest_fn.add_environment("STEAM_API_KEY_PARAM_NAME", STEAM_API_KEY_PARAM_NAME)
-        # The allowlist is a StringList parameter of SteamID64s, created and
-        # edited by hand so adding a player is one command and no deploy (see
-        # README "Mod uploads"). Until it exists, nobody is on it.
-        ingest_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["ssm:GetParameter"],
-                resources=[self.format_arn(service="ssm", resource="parameter",
-                                           resource_name=MOD_ALLOWLIST_PARAM_NAME.lstrip("/"))],
-            )
-        )
-        ingest_fn.add_environment("MOD_ALLOWLIST_PARAM_NAME", MOD_ALLOWLIST_PARAM_NAME)
+        # The game calls it directly, not a browser: no CORS.
+        mod_fn_url = mod_fn.add_function_url(auth_type=lambda_.FunctionUrlAuthType.NONE)
 
         # The handler logs one JSON line per request, marked "via": "mod" on
         # this path. Count them, and email when there are too many.
@@ -501,7 +516,7 @@ class SlayMyStatsStack(Stack):
         for name, (pattern, (threshold, period), what) in mod_alarms.items():
             metric = logs.MetricFilter(
                 self, f"{name}Filter",
-                log_group=ingest_log_group,
+                log_group=mod_log_group,
                 filter_pattern=pattern,
                 metric_namespace=name_prefix,
                 metric_name=name,
@@ -515,7 +530,7 @@ class SlayMyStatsStack(Stack):
                 # No requests at all is the normal state, not missing data.
                 treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
                 alarm_description=f"{what} on {domain_name}: {threshold} or more in "
-                                  f"{period.to_minutes()} minutes. Details are in IngestLogGroup.",
+                                  f"{period.to_minutes()} minutes. Details are in ModIngestLogGroup.",
             ).add_alarm_action(cloudwatch_actions.SnsAction(alert_topic))
 
         # No API Gateway: OpenID verification happens inside the handler, so
@@ -529,8 +544,8 @@ class SlayMyStatsStack(Stack):
             ),
         )
 
-        # Kill switch: budget breach -> SNS -> small Lambda that sets the ingest
-        # and process functions' reserved concurrency to 0, so every further
+        # Kill switch: budget breach -> SNS -> small Lambda that sets the ingest,
+        # mod and process functions' reserved concurrency to 0, so every further
         # request or upload is throttled before it runs. Budgets only evaluate a few times a day, so
         # this bounds a sustained attack rather than stopping it instantly.
         # Undo manually: aws lambda delete-function-concurrency.
@@ -557,12 +572,13 @@ class SlayMyStatsStack(Stack):
             timeout=Duration.seconds(10),
             memory_size=128,
             log_group=kill_switch_log_group,
-            environment={"TARGET_FUNCTION_NAMES": f"{ingest_fn.function_name},{process_fn.function_name}"},
+            environment={"TARGET_FUNCTION_NAMES": ",".join(
+                f.function_name for f in (ingest_fn, mod_fn, process_fn))},
         )
         kill_switch_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["lambda:PutFunctionConcurrency"],
-                resources=[ingest_fn.function_arn, process_fn.function_arn],
+                resources=[f.function_arn for f in (ingest_fn, mod_fn, process_fn)],
             )
         )
         kill_switch_fn.add_event_source(lambda_event_sources.SnsEventSource(kill_switch_topic))
@@ -605,3 +621,4 @@ class SlayMyStatsStack(Stack):
         CfnOutput(self, "DataBucketName", value=data_bucket.bucket_name)
         CfnOutput(self, "DistributionDomainName", value=distribution.distribution_domain_name)
         CfnOutput(self, "IngestFunctionUrl", value=fn_url.url)
+        CfnOutput(self, "ModIngestFunctionUrl", value=mod_fn_url.url)
