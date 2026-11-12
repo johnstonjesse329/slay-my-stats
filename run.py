@@ -773,6 +773,7 @@ def _loaded_mods(data: dict) -> list[dict]:
 _MAP_TYPES = {"Unknown", "Shop", "Treasure", "RestSite", "Monster", "Elite", "Boss", "Ancient"}
 MAX_MAP_ACTS = 4
 MAX_MAP_NODES = 120
+_MAP_ENCOUNTER = re.compile(r"ENCOUNTER\.[A-Z0-9_]{1,60}")
 
 
 def _map_coord(value, width: int, height: int):
@@ -791,8 +792,11 @@ def _act_maps(data: dict) -> list[dict]:
     the order visited; the map itself (which nodes existed, which joined which)
     is only known to the mod. Each act comes back as
     {"act", "w", "h", "nodes": [[row, col, type, [[row, col], ...]]], "path":
-    [[row, col], ...], "boss": [row, col]}. Anything that isn't that shape is
-    dropped, so a run with a bad map still parses.
+    [[row, col], ...], "boss": [row, col], "bossEnc": "ENCOUNTER.X"}, plus
+    "boss2" and "boss2Enc" for the second boss of an Ascension 10 final act.
+    The bosses come from the mod because the .run file only names the ones
+    fought. Anything that isn't that shape is dropped, so a run with a bad map
+    still parses.
     """
     reported = data.get("slay_my_stats_mod")
     maps = reported.get("maps") if isinstance(reported, dict) else None
@@ -817,9 +821,14 @@ def _act_maps(data: dict) -> list[dict]:
             continue
         path = [c for c in (_map_coord(c, w, h) for c in (m.get("path") or [])[:40]) if c]
         entry = {"act": act, "w": w, "h": h, "nodes": nodes, "path": path}
-        boss = _map_coord(m.get("boss"), w, h)
-        if boss:
-            entry["boss"] = boss
+        for key, out_key in (("boss", "boss"), ("second_boss", "boss2")):
+            at = _map_coord(m.get(key), w, h)
+            if at:
+                entry[out_key] = at
+        for key, out_key in (("boss_encounter", "bossEnc"), ("second_boss_encounter", "boss2Enc")):
+            enc = m.get(key)
+            if isinstance(enc, str) and _MAP_ENCOUNTER.fullmatch(enc):
+                entry[out_key] = enc
         out.append(entry)
     return out
 

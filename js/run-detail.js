@@ -837,14 +837,17 @@ function unknownRoom(t) {
 // nudged as the game nudged it that run and tilted a little; a dot every 22 units along each
 // road (jittered, turned, sometimes flipped), the roads walked in darker, bigger dots; a
 // hand-drawn circle round each node the run visited; the Ancient below and the boss on top.
-// `act` is the scroll's name (overgrowth, underdocks, hive, glory); bossKey the boss's
-// encounter id; floors the run's floors in this act; seed the run's seed.
-function actMapSvg(m, act, bossKey, floors, seed) {
+// `act` is the scroll's name (overgrowth, underdocks, hive, glory); bossKeys the boss's
+// encounter id, and the second boss's on an Ascension 10 final act; floors the run's floors
+// in this act; seed the run's seed.
+function actMapSvg(m, act, bossKeys, floors, seed) {
   const art = DATA.mapArt || {};
   const [bg, todo, walkedColor] = (ACT_MAP_COLORS[act] || ACT_MAP_COLORS.overgrowth)
     .map(h => [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255));
   const rows = (m.h || Math.max(...m.nodes.map(n => n[0])) + 1) - 1;   // the top row of nodes
-  const dx = 1050 / m.w, dy = 2325 / rows;
+  // Two bosses: the game squeezes the rows to 0.9 and stacks both bosses at 0.75 size.
+  const two = bossKeys.length > 1 || !!m.boss2, squeeze = two ? 0.9 : 1;
+  const dx = 1050 / m.w, dy = 2325 / rows * squeeze;
   // Cosmetic randomness the game rolls afresh each time (Rng.Chaotic); fixed per map here.
   let s = m.act * 1009 + m.nodes.length;
   const rnd = () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s);
@@ -856,8 +859,10 @@ function actMapSvg(m, act, bossKey, floors, seed) {
     const jx = jit() * 42 - 21, jy = jit() * 50 - 25;
     pos.set(n[0] + "," + n[1], [n[1] * dx - 500 + jx + 28, 740 - n[0] * dy + jy + 28]);
   }
-  const ANCIENT = [24, 824], BOSS = [-13, -1827];
-  const at = c => c[0] === 0 ? ANCIENT : c[0] > rows ? BOSS : pos.get(c[0] + "," + c[1]);
+  // NBossMapPoint sits at (-200, -1980) and scales round its centre, 187 right and 153 down.
+  const ANCIENT = [24, 824], BOSS = [-13, -1980 * squeeze + 153], BOSS2 = [-13, -2280 * squeeze + 153];
+  const isBoss2 = c => two && (m.boss2 ? c[0] === m.boss2[0] && c[1] === m.boss2[1] : c[0] > rows + 1);
+  const at = c => c[0] === 0 ? ANCIENT : isBoss2(c) ? BOSS2 : c[0] > rows ? BOSS : pos.get(c[0] + "," + c[1]);
   const walked = new Set();
   for (let i = 0; i + 1 < m.path.length; i++) walked.add(m.path[i].join(",") + ">" + m.path[i + 1].join(","));
   const visited = new Set(m.path.map(c => c.join(",")));
@@ -879,14 +884,17 @@ function actMapSvg(m, act, bossKey, floors, seed) {
   const start = m.path.length && m.path[0][0] === 0 ? m.path[0] : null;
   for (const n of m.nodes) if (n[0] === 1) road([0, start ? start[1] : 0], [1, n[1]]);
   for (const n of m.nodes) for (const k of n[3]) road([n[0], n[1]], k);
+  // The game joins the first boss to the second (BossMapPoint.AddChildPoint).
+  const bossAt = [m.boss || [rows + 1, 0], m.boss2 || [rows + 2, 0]];
+  if (two) road(bossAt[0], bossAt[1]);
   // SVG versions of the game's tints: Godot's modulate multiplies; boss_map_point.gdshader
   // mixes a Spine boss's red/green/blue masks into map colour, white and the boss colour.
   const id = `am${m.act}`;
   const f = (name, rgb) => `<filter id="${id}${name}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${rgb.map(r => r.join(" ")).join(" ")} 0 0 0 1 0"/></filter>`;
   const mul = c => [[c[0], 0, 0, 0, 0], [0, c[1], 0, 0, 0], [0, 0, c[2], 0, 0]];
-  const bossColor = m.boss && visited.has(m.boss.join(",")) ? walkedColor : todo;
-  const defs = `<defs>${f("bg", mul(bg))}${f("ink", mul([0x24 / 255, 0x1F / 255, 0x1A / 255]))}${f("boss", mul(bossColor))}` +
-    f("spine", [0, 1, 2].map(i => [bg[i], 1, bossColor[i], 0, 0])) + `</defs>`;
+  const bossColors = bossAt.map(c => visited.has(c.join(",")) ? walkedColor : todo);
+  const defs = `<defs>${f("bg", mul(bg))}${f("ink", mul([0x24 / 255, 0x1F / 255, 0x1A / 255]))}` +
+    bossColors.map((c, i) => f(`boss${i}`, mul(c)) + f(`spine${i}`, [0, 1, 2].map(j => [bg[j], 1, c[j], 0, 0]))).join("") + `</defs>`;
   const img = (src, x, y, w, h, extra = "") => src ? `<image href="${src}" x="${x}" y="${y}" width="${w}" height="${h}"${extra}/>` : "";
   let body = "", rings = "";
   for (const n of m.nodes) {
@@ -909,10 +917,15 @@ function actMapSvg(m, act, bossKey, floors, seed) {
   const met = floors && floors[0] && (floors[0].enc || "").startsWith("EVENT.") ? floors[0].enc.slice(6).toLowerCase() : null;
   const ancient = start ? met || (act === "overgrowth" ? "neow" : null) : null;
   if (ancient && art[`ancient_${ancient}`]) body += `<g>${img(art[`ancient_${ancient}_outline`], -80, 720, 208, 208, ` filter="url(#${id}bg)"`)}${img(art[`ancient_${ancient}`], -80, 720, 208, 208, ` filter="url(#${id}ink)"`)}<title>Ancient</title></g>`;
-  // NBossMapPoint: a Spine boss, or the boss's picture on its outline.
-  const boss = bossKey ? bossKey.replace(/^ENCOUNTER\./, "").toLowerCase() : null;
-  if (boss && art[`boss_${boss}_spine`]) body += `<g>${img(art[`boss_${boss}_spine`], -200, -1980, 399, 342, ` filter="url(#${id}spine)"`)}<title>Boss</title></g>`;
-  else if (boss && art[`boss_${boss}`]) body += `<g>${img(art[`boss_${boss}_outline`], -200, -2002, 374, 350, ` preserveAspectRatio="xMidYMid meet" filter="url(#${id}bg)"`)}${img(art[`boss_${boss}`], -200, -2002, 374, 350, ` preserveAspectRatio="xMidYMid meet" filter="url(#${id}boss)"`)}<title>Boss</title></g>`;
+  // NBossMapPoint: a Spine boss, or the boss's picture on its outline, drawn round its centre.
+  const scale = two ? 0.75 : 1;
+  [BOSS, BOSS2].slice(0, two ? 2 : 1).forEach(([cx, cy], i) => {
+    const boss = bossKeys[i] ? bossKeys[i].replace(/^ENCOUNTER\./, "").toLowerCase() : null;
+    const g = inner => `<g transform="translate(${cx} ${cy}) scale(${scale})">${inner}<title>Boss</title></g>`;
+    if (boss && art[`boss_${boss}_spine`]) body += g(img(art[`boss_${boss}_spine`], -187, -153, 399, 342, ` filter="url(#${id}spine${i})"`));
+    else if (boss && art[`boss_${boss}`]) body += g(img(art[`boss_${boss}_outline`], -187, -175, 374, 350, ` preserveAspectRatio="xMidYMid meet" filter="url(#${id}bg)"`) +
+      img(art[`boss_${boss}`], -187, -175, 374, 350, ` preserveAspectRatio="xMidYMid meet" filter="url(#${id}boss${i})"`));
+  });
   return `<svg viewBox="-763.5 -2139 1527 3210" role="img" aria-label="Act map with the route taken">${defs}` +
     img(art["scroll_" + act], -763.5, -2160, 1527, 3240) +
     dots.todo.join("") + dots.walked.join("") + body + rings + `</svg>`;
@@ -942,7 +955,6 @@ function renderDetailMaps(run) {
   const box = document.getElementById("detail-maps");
   if (!box) return;
   const maps = run.maps || [];
-  const bossNodes = (run.timeline || []).filter(n => n.type === "boss");
   // Each map has a fixed size in CSS pixels, so browser zoom scales them with the rest of the
   // page. Clicking one opens it large.
   box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2><div class="act-maps-row">` + maps.map(sent => {
@@ -950,8 +962,11 @@ function renderDetailMaps(run) {
     const m = mapAsWalked(sent, floors);
     const visited = m.path.length;
     const act = (actName(m.act + 1, run.timeline || []) || "overgrowth").toLowerCase();
-    const bossKey = (bossNodes[m.act] || {}).enc;
-    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKey, floors, run.seed)}</div></section>`;
+    // The mod names the act's bosses (rolled at the start of the run, so known even when the
+    // run ended first); older uploads only know the ones fought.
+    const fought = floors.filter(n => n.type === "boss").map(n => n.enc);
+    const bossKeys = [m.bossEnc || fought[0], m.boss2Enc || fought[1]].filter(Boolean);
+    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed)}</div></section>`;
   }).join("") + `</div></div>` : "";
   // The whole card opens it (the header button is the keyboard way in).
   for (const c of box.querySelectorAll(".act-map")) c.addEventListener("click", () => openActMap(c));
