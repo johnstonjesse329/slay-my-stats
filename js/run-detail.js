@@ -918,6 +918,26 @@ function actMapSvg(m, act, bossKey, floors, seed) {
     dots.todo.join("") + dots.walked.join("") + body + rings + `</svg>`;
 }
 
+// The run's floor types -> the game's node types.
+const FLOOR_MAP_TYPES = { monster: "Monster", elite: "Elite", rest_site: "RestSite", shop: "Shop",
+  unknown: "Unknown", treasure: "Treasure" };
+
+// Golden Compass, taken at an act's Ancient, swaps that act's map for one straight path. Mods
+// before the fix kept the map from before the swap, so the route runs off its nodes. Then the
+// route is the map: one node per stop, joined to the next, typed from the run's floor there.
+function mapAsWalked(m, floors) {
+  const have = new Set(m.nodes.map(n => n[0] + "," + n[1]));
+  const last = m.path.length - 1;
+  const lost = m.path.some((c, i) => c[0] > 0 && c[0] < m.h && !(i === last && floors[i]?.type === "boss") && !have.has(c.join(",")));
+  if (!lost || floors.length !== m.path.length) return m;
+  const bossAt = floors[last].type === "boss" ? m.path[last] : null;
+  const stops = m.path.map((c, i) => [c, floors[i]]).filter(([c], i) => c[0] > 0 && !(bossAt && i === last));
+  const nodes = stops.map(([c, f], i) => [c[0], c[1], FLOOR_MAP_TYPES[f.type] || "Unknown",
+    stops[i + 1] ? [stops[i + 1][0]] : bossAt ? [bossAt] : []]);
+  const top = Math.max(...nodes.map(n => n[0]));
+  return { ...m, nodes, h: bossAt ? bossAt[0] : top + 1, ...(bossAt ? { boss: bossAt } : {}) };
+}
+
 function renderDetailMaps(run) {
   const box = document.getElementById("detail-maps");
   if (!box) return;
@@ -925,11 +945,13 @@ function renderDetailMaps(run) {
   const bossNodes = (run.timeline || []).filter(n => n.type === "boss");
   // Each map has a fixed size in CSS pixels, so browser zoom scales them with the rest of the
   // page. Clicking one opens it large.
-  box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2><div class="act-maps-row">` + maps.map(m => {
+  box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2><div class="act-maps-row">` + maps.map(sent => {
+    const floors = (run.timeline || []).filter(n => n.act === sent.act + 1);
+    const m = mapAsWalked(sent, floors);
     const visited = m.path.length;
     const act = (actName(m.act + 1, run.timeline || []) || "overgrowth").toLowerCase();
     const bossKey = (bossNodes[m.act] || {}).enc;
-    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKey, (run.timeline || []).filter(n => n.act === m.act + 1), run.seed)}</div></section>`;
+    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKey, floors, run.seed)}</div></section>`;
   }).join("") + `</div></div>` : "";
   // The whole card opens it (the header button is the keyboard way in).
   for (const c of box.querySelectorAll(".act-map")) c.addEventListener("click", () => openActMap(c));
