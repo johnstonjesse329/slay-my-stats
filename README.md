@@ -375,8 +375,8 @@ runs still carry. Only add to that file what the game's own files (`sts2.dll` at
 longer have; not seeing something in runs proves nothing. A bundle made without the game data holds nothing.
 The check is a lookup of each ID in the run against that list, so it adds next to nothing to processing.
 
-The upload's result counts the held runs and names the top IDs; the page tells the player, and the morning
-digest lists them. `tools/find_unknown_ids.py --bucket slay-my-stats-data` lists every one in `raw/`, with
+The upload's result counts the held runs and names the top IDs; the page tells the player, and they're
+reported for trends. `tools/find_unknown_ids.py --bucket slay-my-stats-data` lists every one in `raw/`, with
 the players and builds. After a patch: refresh the game data, deploy, then `tools/rebuild_profiles.py --all`
 brings in the runs it now knows, making a profile for anyone whose runs were all held. A mod's runs stay held.
 
