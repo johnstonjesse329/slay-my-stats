@@ -309,8 +309,9 @@ function renderDetailRun(run) {
   ).join("");
 
   const statItems = [
-    { label: "Fights", value: countType("monster") },
-    { label: "Events", value: countType("unknown") },
+    // By what the room turned out to be: a "?" that was a fight is a fight.
+    { label: "Fights", value: tl.filter(n => keepFight(n) && n.type !== "elite" && n.type !== "boss").length },
+    { label: "Events", value: tl.filter(n => n.type === "unknown" && !keepFight(n)).length },
     { label: "Rest sites",  value: countType("rest_site") },
     { label: "Shops",  value: countType("shop") },
   ];
@@ -1304,12 +1305,13 @@ function makeActBoundaryPlugin(nodes) {
 // floor with no fight this player has won. Every fight floor gets the stats for its tooltip and
 // is drawn on the chart.
 // Normal fights are not in a run's `fights` (elites and bosses only), so they come from the
-// timelines: the same hpBefore and damage, and a fight is won when HP is left after it.
+// timelines: the same hpBefore and damage, and a fight is won when HP is left after it. That's
+// every fight off an elite or boss room, "?" rooms and events included.
 let normalFightsCache = null;
 function normalFights() {
   return normalFightsCache ||= DATA.runsData.flatMap(run => (run.timeline || [])
-    .filter(n => n.type === "monster" && n.enc)
-    .map(n => ({ enc: n.enc, asc: run.asc, won: n.hpAfter > 0, hp: n.hpBefore, maxHp: n.maxHp, dmg: n.dmg,
+    .filter(n => keepFight(n) && n.type !== "elite" && n.type !== "boss")
+    .map(n => ({ enc: keepFight(n), asc: run.asc, won: n.hpAfter > 0, hp: n.hpBefore, maxHp: n.maxHp, dmg: n.dmg,
       cards: 0, relics: 0, potions: 0 })));   // unused here; addFight sums them
 }
 function hpWinsByNode(run, nodes) {
@@ -1317,11 +1319,11 @@ function hpWinsByNode(run, nodes) {
   ALL_FIGHTS.concat(normalFights()).forEach(f => { if (keepTier(f.asc) === tier) addFight(by[f.enc] ||= fightBucket(), f); });
   const left = winsLeftWith(tier);
   return nodes.map(n => {
-    const fought = n.type === "monster" || n.type === "elite" || n.type === "boss";
-    const s = fought && by[n.enc] ? summarizeFights(by[n.enc]) : null;
+    const enc = keepFight(n);
+    const s = enc && by[enc] ? summarizeFights(by[enc]) : null;
     if (!s || !s.wins) return null;
     // The HP the wins left it with, which is what the chart's HP line shows for the floor.
-    const out = (left[n.enc] || []).sort((a, b) => a - b);
+    const out = (left[enc] || []).sort((a, b) => a - b);
     const lowest = out.slice(0, Math.max(1, Math.round(out.length * BAND_SHARE)));
     const highest = out.slice(-lowest.length);
     return { ...s, left_avg: median(out), left_low: median(lowest), left_high: median(highest) };
@@ -1335,7 +1337,8 @@ function winsLeftWith(tier) {
   DATA.runsData.forEach(run => {
     if (keepTier(run.asc) !== tier) return;
     (run.timeline || []).forEach(n => {
-      if (n.enc && n.hpAfter > 0 && (n.type === "monster" || n.type === "elite" || n.type === "boss")) (by[n.enc] ||= []).push(n.hpAfter);
+      const enc = keepFight(n);
+      if (enc && n.hpAfter > 0) (by[enc] ||= []).push(n.hpAfter);
     });
   });
   return by;
@@ -2290,10 +2293,13 @@ function fightReadings(run, nodes, measured) {
     const row = { pool, lost, turns: n.turns, many: d?.many };
     if (how) { row.winTurns = how.turns; row.winN = how.n; if (pool) row.ask = pool / how.turns; }
     if (m || !lost) row.doing = (m ? m.removed : pool) / n.turns;
-    // Enemies act after you, so a fight you won gives them a turn less.
-    const enemyTurns = m ? m.enemyTurns : n.turns - (lost ? 0 : 1);
-    if (enemyTurns) {
+    // Enemies act after you, so a fight you won gives them a turn less. One won in a turn
+    // gave them none, but what the floor cost still counts: it goes over one turn.
+    const swung = m ? m.enemyTurns : n.turns - (lost ? 0 : 1);
+    const enemyTurns = Math.max(1, swung);
+    if (n.turns) {
       row.enemyTurns = enemyTurns;
+      if (!swung) row.oneTurn = true;
       // The fight that killed you: the run file stops at the HP you had left, the log
       // has the whole blow.
       const gross = lost && m ? m.taken : n.dmg || 0;
@@ -2754,10 +2760,11 @@ function renderDetailKeepCharts(run) {
   const inTip = tip(r => {
     if (r.taken === undefined) return "";
     const et = r.enemyTurns, k = KEEP_SPLIT;
+    const quick = r.oneTurn ? `<div class="ft-cap">Won in 1 turn.</div>` : "";
     const share = v => r.arrived ? `<small>${Math.round(v / r.arrived * 100)}%</small>` : "";
     const through = key => frow(key, `Damage taken ${share(r.taken)}`, Math.round(r.total), one(r.taken),
       r.winRate === undefined ? "" : Math.round(r.winTotal), one(r.winRate), "ft-through");
-    if (r.arrived === undefined) return `<table>${fightHead}${r.healedOff ? frow(keepIcon("healed", k.healed), "Healed", r.healedOff, one(r.healed), "", "") : ""}${through(keepIcon("taken", k.through))}</table>`;
+    if (r.arrived === undefined) return `<table>${fightHead}${r.healedOff ? frow(keepIcon("healed", k.healed), "Healed", r.healedOff, one(r.healed), "", "") : ""}${through(keepIcon("taken", k.through))}</table>${quick}`;
     const seg = (v, color, what) => v > 0 ? `<span style="flex:${v} 1 0;background:${color}" title="${what}"></span>` : "";
     return `<div class="ft-split" role="img" aria-label="Of ${r.arrived.toFixed(1)} a turn arriving: ${r.blocked.toFixed(1)} blocked, ${r.healed.toFixed(1)} healed, ${r.taken.toFixed(1)} got through">` +
       seg(r.blocked, k.blocked, "Blocked") + seg(r.healed, k.healed, "Healed") + seg(r.taken, k.through, "Got through") + `</div>` +
@@ -2765,7 +2772,7 @@ function renderDetailKeepCharts(run) {
       frow(swatch(KEEP_DEMAND_COLOR), "Arrived", Math.round(r.arrived * et), one(r.arrived), "", "") +
       frow(keepIcon("blocked", k.blocked), `Blocked ${share(r.blocked)}`, Math.round(r.blocked * et), one(r.blocked), "", "") +
       (r.healedOff ? frow(keepIcon("healed", k.healed), `Healed ${share(r.healed)}`, r.healedOff, one(r.healed), "", "") : "") +
-      through(keepIcon("taken", k.through)) + `</table>`;
+      through(keepIcon("taken", k.through)) + `</table>${quick}`;
   });
   const playTip = tip(simple(r => r.play ? [
     row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
