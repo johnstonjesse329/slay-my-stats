@@ -108,7 +108,7 @@ def main():
         rebuilt += 1
         line = f"  {s['slug']}: {s['runs']} runs ({s['fromRaw']} re-parsed, {s['noRaw']} without a raw copy)"
         if s["dropped"]:
-            line += f", {s['dropped']} no longer parse and are dropped"
+            line += f", {s['dropped']} dropped (no longer parse, or now held)"
         if s.get("new"):
             line += ", a new profile"
         if s["held"]:
