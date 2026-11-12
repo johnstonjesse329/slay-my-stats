@@ -125,9 +125,9 @@ IP_WINDOW_SECONDS = 3600
 # bounds what each try can store. Past that, the mod's function is the one
 # to shut off (README "Mod uploads").
 MOD_COOLDOWN_SECONDS = 5
-MOD_UPLOADS_PER_DAY = 200
+MOD_UPLOADS_PER_DAY = 50
 MOD_WINDOW_SECONDS = 24 * 3600
-MOD_UPLOAD_MAX_BYTES = 2 * 1024 * 1024
+MOD_UPLOAD_MAX_BYTES = 1024 * 1024
 MOD_BODY_MAX_BYTES = 8 * 1024
 # Slay the Spire 2 on Steam. A ticket is only good for the game it was issued
 # to and the name it was asked for, which the mod and this file agree on.

@@ -379,8 +379,9 @@ sends each run as it ends. It's the same upload through a different door: the mo
 
   The mod keeps its runs queued and tries again next launch. The budget kill switch sets it to 0 too.
 - **Backfill.** At each launch the mod POSTs the same ticket to `/mod/runs` and gets back the `ts` of every
-  run on the player's profile, read from the profile summary. It then uploads the runs from the game's history
-  that aren't there, through `/mod` as usual. `/mod/runs` hands out no upload and counts against no limit,
+  run on the player's profile, read from the profile summary. It then uploads the runs from the game's normal
+  (unmodded) history that aren't there, through `/mod` as usual, a batch at a time until the site has them all.
+  `/mod/runs` hands out no upload and counts against no limit,
   but it's logged and alarmed like the rest of the path.
 - **Limits** are looser, since the mod sends runs as they end, but still there in case a mod goes wrong. They're
   counted apart from the site's, so the mod never uses up an upload from the page.
@@ -390,8 +391,8 @@ sends each run as it ends. It's the same upload through a different door: the mo
 
 | Limit | Value |
 |-------|-------|
-| Upload URLs | 5 seconds apart and 200 a day per Steam account; no per-IP limit |
-| Upload size | 2 MB gzip'd |
+| Upload URLs | 5 seconds apart and 50 a day per Steam account; no per-IP limit |
+| Upload size | 1 MB gzip'd (about 250 older runs) |
 | Request body | 8 KB |
 | Everything after the upload | the same as above |
 
