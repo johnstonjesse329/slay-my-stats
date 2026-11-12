@@ -105,42 +105,115 @@ def repo_url(p: Path) -> str:
 BROAD_SYNERGY_KEYS = {"block", "draw", "attacks", "skills", "powers", "generated",
                       "strike", "exhaust", "discard", "shuffle"}
 
+# Links power_data can't draw, read off the card and relic text instead:
+# key -> (what makes it, what pays off on it). power_data's "exhaust" counts every
+# card with the Exhaust keyword, so it's broad; exhausting *other* cards ("Exhaust 1
+# card", "Exhaust your Hand", Corruption's "Exhaust it") is the build. Souls and
+# losing your own HP aren't in power_data at all. power_data marks what *applies* a
+# power but seldom what pays off on it (Cruelty, Paper Phrog, Accelerant, Shroud), so
+# the power:* keys get their payoffs from the text too; a None side adds nothing.
+# Orbs, Forge, discard/Sly, Ethereal, Status and Colorless have no power to hang on.
+_N = r"(?:\d+|X|\{\{[\w:]+\}\})"  # a number; relic text has {{Emphasis0}} in its place
+_rx = lambda p: re.compile(re.sub(r"\bN\b", lambda _: _N, p)) if p else None  # noqa: E731
+TEXT_SYNERGY = {k: (_rx(m), _rx(u)) for k, (m, u) in {
+    "exhaust": (r"(?<!you )\bExhaust (?!Pile)[\w{]",
+                r"is Exhausted|you Exhaust|Exhausted a card|card Exhausted this combat|"
+                r"(cards? in your|more cards in your) Exhaust Pile"),
+    "souls":   (r"\b([Aa]dd|[Tt]ransform)\b[^.]*\b[Ss]ouls?\b",
+                r"(play|create) a Soul|Soul in your Exhaust Pile"),
+    "HP loss": (r"\b[Ll]ose N HP",
+                r"lost HP|[Yy]ou lose HP"),
+    # Strength lands on every hit, so attacks that hit more than once pay off on it.
+    "power:Strength":   (r"\b[Gg]ain N Strength",
+                         r"for each Strength|you gain Strength each|damage N times|damage twice|hits twice"),
+    "power:Vulnerable": (None, r"Vulnerable enemies|[Ee]nemies with Vulnerable|Vulnerable and Weak|"
+                               r"apply Vulnerable|Vulnerable on the enemy|enemy is Vulnerable"),
+    "power:Weak":       (None, r"Weak enemies|[Ee]nemies with Weak|Vulnerable and Weak"),
+    "power:Poison":     (None, r"Poison is triggered|Poison triggers|apply Poison|has Poison|Poison on"),
+    "power:Doom":       (None, r"applied Doom|you apply Doom|dies to Doom|much Doom as HP|"
+                               r"enemy's Doom|Doom already"),
+    "osty":    (None, r"Osty's|Osty attacks|If Osty is alive"),
+    "orbs":    (r"(?<!you )\bChannels? ",
+                r"[Gg]ain N Focus|with N Focus|Focus this turn for each|(Gain|additional) Orb Slots?|Evoke|passive|"
+                r"Channeled Orb|unique Orb|Channel N Orbs"),
+    "lightning": (r"\bChannels? [^.\n]*\bLightning", r"Lightning deals|Evoke Lightning|all Lightning|Lightning already"),
+    "frost":   (r"\bChannels? [^.\n]*\bFrost", r"your Frost|have Frost"),
+    "dark":    (r"\bChannels? [^.\n]*\bDark\b", r"Dark Orbs"),
+    "forge":   (r"\bForge N", r"Sovereign Blade|Whenever you Forge|Forges an additional"),
+    "discard": (r"\b[Dd]iscard (N|your Hand|any number|all cards)",
+                r"\bSly\b|cards? discarded|you discard a card"),
+    "ethereal": (r"(^|\n)Ethereal\.|gains Ethereal|Add Ethereal|Ethereal cards? into|gain Ethereal|Ethereal copy",
+                 r"(each|an|the next|ALL) Ethereal card"),
+    "status":  (r"\b(Add|shuffle) (a|N) (Dazed|Wounds?|Burns?|Void|Slimed)\b",
+                r"create a Status|draw a Status|Status cards"),
+    "colorless": (r"random Colorless cards? (into|to|and add)", r"Colorless card in your Hand"),
+    "minion":  (r"[Tt]ransform [^.]*\bMinion", r"containing .Minion"),
+    # Stacking the top of the Draw Pile feeds the cards that play it blind.
+    "top of Draw Pile": (r"(?<!if this is )on top of your Draw Pile",
+                         r"top (N )?cards? of your Draw Pile|if this is on top of your Draw Pile"),
+}.items()}
+
 
 def build_synergy() -> dict | None:
     """
     {"cards": {id: [produces, consumes]}, "relics": {...}}: what each card or relic
     makes and what it needs, from tools/extract_power_data.py's power_data.json
-    (gitignored, so None when it hasn't been generated). Only the specific keys;
-    curses and statuses are left out.
+    (gitignored, so None when it hasn't been generated). Only the specific keys,
+    plus TEXT_SYNERGY's from the card and relic text; curses and statuses are left out,
+    and so is any key nothing else makes or uses, since it can't link two cards.
     """
     f = run._HERE / "power_data.json"
     if not f.exists():
         return None
     data = json.loads(f.read_text(encoding="utf-8"))
     # Curses and statuses only hurt their owner (Doubt's Weak lands on you), so they feed nothing.
-    cards = json.loads((run._HERE / "card_data.json").read_text(encoding="utf-8"))
-    junk = {k for k, c in cards.items() if c.get("type") in ("Curse", "Status")}
+    texts = {
+        "cards": json.loads((run._HERE / "card_data.json").read_text(encoding="utf-8")),
+        "relics": json.loads((run._HERE / "relic_data.json").read_text(encoding="utf-8")),
+    }
+    junk = {k for k, c in texts["cards"].items() if c.get("type") in ("Curse", "Status")}
     out = {}
     for section in ("cards", "relics"):
         table = {}
-        for item_id, e in data.get(section, {}).items():
+        for item_id in set(data.get(section, {})) | set(texts[section]):
             if item_id in junk:
                 continue
-            made = sorted(set(e.get("produces", [])) - BROAD_SYNERGY_KEYS)
-            need = sorted(set(e.get("consumes", [])) - BROAD_SYNERGY_KEYS)
-            if made or need:
-                table[item_id] = [made, need]
+            e = data.get(section, {}).get(item_id, {})
+            made = set(e.get("produces", [])) - BROAD_SYNERGY_KEYS
+            need = set(e.get("consumes", [])) - BROAD_SYNERGY_KEYS
+            desc = texts[section].get(item_id, {}).get("desc", "")
+            for key, (makes, uses) in TEXT_SYNERGY.items():
+                if makes and makes.search(desc):
+                    made.add(key)
+                if uses and uses.search(desc):
+                    need.add(key)
+            table[item_id] = [made, need]
         out[section] = table
+    # Most power keys belong to the one card that applies them (Inflame's power:Inflame):
+    # a key needs a maker and a different user somewhere or it can never link.
+    makers, users = {}, {}
+    for section, table in out.items():
+        for item_id, (made, need) in table.items():
+            for k in made:
+                makers.setdefault(k, set()).add(item_id)
+            for k in need:
+                users.setdefault(k, set()).add(item_id)
+    live = {k for k in makers if users.get(k, set()) - makers[k] or
+            (len(makers[k]) > 1 and users.get(k))}
+    for section, table in out.items():
+        out[section] = {i: [sorted(m & live), sorted(n & live)]
+                        for i, (m, n) in table.items() if (m | n) & live}
     return out
 
 
 def build_archetypes() -> dict | None:
     """
-    {CHARACTER: {archetype: [card ids]}}: which cards count toward each archetype,
-    from the signature tests in tools/power_curve/archetypes.py (upgraded or not).
-    The page counts a run's final deck against these and names it by that file's
-    rule (biggest count of 3+, a close second makes a pair, else Mixed). None when
-    power_data.json isn't generated, which hides the label.
+    {CHARACTER: {archetype: {"cards": [ids], "needs": [ids]}}}: which cards count toward
+    each archetype, from the signature tests in tools/power_curve/archetypes.py
+    (upgraded or not), and for the few that need a payoff as well (Self-damage,
+    Vulnerable, Status, Ethereal, Creation), the cards that pay off. The page tags a run with every archetype its final deck has
+    3+ of (and a payoff, if it needs one). Starter cards never count: every deck has
+    them. None when power_data.json isn't generated, which hides the tags.
     """
     if not (run._HERE / "power_data.json").exists():
         return None
@@ -154,21 +227,25 @@ def build_archetypes() -> dict | None:
         return None
     finally:
         sys.path.pop(0)
-    out = {ch: {name: [] for name in sigs} for ch, sigs in arch.SIGS.items()}
+    rarity = {k: v.get("rarity") for k, v in json.loads((run._HERE / "card_data.json").read_text(encoding="utf-8")).items()}
+    out = {ch: {name: {"cards": [], "needs": []} for name in sigs} for ch, sigs in arch.SIGS.items()}
+    tests = [("cards", ch, name, f) for ch, sigs in arch.SIGS.items() for name, f in sigs.items()]
+    tests += [("needs", ch, name, f) for ch, p in arch.PAYOFFS.items() for name, f in p.items()]
     for cid in ids:
+        if rarity.get(cid) == "Basic":
+            continue
         for up in (False, True):
             try:
                 c = pc.card(cid, up)
             except Exception:
                 continue
-            for ch, sigs in arch.SIGS.items():
-                for name, test in sigs.items():
-                    try:
-                        hit = test(c)
-                    except Exception:
-                        hit = False
-                    if hit and cid not in out[ch][name]:
-                        out[ch][name].append(cid)
+            for key, ch, name, test in tests:
+                try:
+                    hit = test(c)
+                except Exception:
+                    hit = False
+                if hit and cid not in out[ch][name][key]:
+                    out[ch][name][key].append(cid)
     return out
 
 

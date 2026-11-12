@@ -976,13 +976,53 @@ h1 {
 
 /* ---- Run list (left column) ---- */
 
+/* The tag filter and run list stay on screen while the run beside them
+   scrolls (desktop; a phone stacks them, see the phone block). */
+#detail-side {
+  position: sticky;
+  top: 0.75rem;
+  max-height: calc(100vh - 1.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+#detail-tag-filter { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+
+/* What a run's final deck is built around: a pill by "Final deck", and a
+   toggle above the run list. */
+.run-tag {
+  display: inline-block;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--gold);
+  border: 1px solid var(--gold-glow);
+  border-radius: 999px;
+  padding: 0.05rem 0.55rem;
+  margin-left: 0.25rem;
+}
+.run-tag-btn {
+  font-family: inherit;
+  margin: 0;
+  background: none;
+  color: var(--text-dim);
+  border-color: var(--hairline);
+  cursor: pointer;
+}
+.run-tag-btn:hover { color: var(--gold); border-color: var(--gold-glow); }
+.run-tag-btn[aria-pressed="true"] { color: var(--bg-deep); background: var(--gold); border-color: var(--gold); }
+.run-tag-n { font-weight: 400; opacity: 0.75; }
+
 #detail-run-list {
   background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
   border-top-color: var(--gold-glow);
   border-radius: 8px;
-  max-height: 70vh;
+  min-height: 0;
   overflow-y: auto;
+  /* Rows keep their height and the list scrolls; auto rows would shrink to
+     fit the column (each row clips its overflow, so its minimum is zero). */
+  grid-auto-rows: max-content;
   box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
   /* One set of columns for every row (each row is a subgrid of it), so each
      column is as wide as its widest entry and they line up down the list:
@@ -2441,6 +2481,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
      Stack them, and cap the run list's height (it's independently
      scrollable already) so it doesn't push the timeline below the fold. */
   #detail-layout { grid-template-columns: minmax(0, 1fr); }
+  #detail-side { position: static; max-height: none; }
   #detail-run-list { max-height: 240px; }
   .detail-run-item, .detail-run-header-row { padding-left: 0.5rem; padding-right: 0.5rem; }
   .detail-run-item.active { padding-left: calc(0.5rem - 3px); }

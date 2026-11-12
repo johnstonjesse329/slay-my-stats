@@ -297,31 +297,35 @@ function renderDetailDeckRelics(run) {
   const relicHtml  = renderRelicTiles(relics);
 
   document.getElementById("detail-deck-relics").innerHTML = `
-    <div class="detail-section-heading">Final deck${deckArchetypeHtml(run.char, deck)}</div>${renderDeckLinksHtml(deck, relics)}
+    <div class="detail-section-heading">Final deck ${tagChipsHtml(runTags(run))}</div>${renderDeckLinksHtml(deck, relics)}
     ${groupsHtml}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
 }
 
-// What the final deck is built around, by the rule in tools/power_curve/archetypes.py:
-// count the cards that belong to each of the character's archetypes; the biggest
-// names the deck when it has 3 or more, a close second (70% of it, and 3+) makes a pair.
-// "Mixed" says nothing, so it isn't shown.
-function deckArchetype(char, deck) {
+// What the final deck is built around: every archetype of the character's
+// (tools/power_curve/archetypes.py) the deck has 3 or more cards of, most first.
+// Starter cards aren't in the lists, so they never count. An archetype with
+// "needs" (Self-damage) also needs one of those payoff cards in the deck.
+const TAG_MIN = 3;
+function deckTags(char, deck) {
   const sigs = DATA.archetypes && DATA.archetypes[char];
-  if (!sigs) return null;
-  const score = Object.entries(sigs)
-    .map(([name, ids]) => [deck.filter(c => ids.includes(c.id)).length, name])
-    .sort((a, b) => b[0] - a[0]);
-  if (score.length < 2 || score[0][0] < 3) return null;
-  const [[top, a], [second, b]] = score;
-  return second >= 3 && second >= 0.7 * top ? `${a} + ${b}` : a;
+  if (!sigs) return [];
+  return Object.entries(sigs)
+    .filter(([, s]) => !s.needs.length || deck.some(c => s.needs.includes(c.id)))
+    .map(([name, s]) => [deck.filter(c => s.cards.includes(c.id)).length, name])
+    .filter(([n]) => n >= TAG_MIN)
+    .sort((a, b) => b[0] - a[0])
+    .map(([, name]) => name);
 }
 
-function deckArchetypeHtml(char, deck) {
-  const a = deckArchetype(char, deck);
-  return a ? ` <span class="deck-group-count">· ${escapeHtml(a)} focused archetype</span>` : "";
+// A run's tags, worked out once (the run list filters on them on every render).
+function runTags(run) {
+  if (!run._tags) run._tags = deckTags(run.char, run.finalDeck || []);
+  return run._tags;
 }
+
+const tagChipsHtml = tags => tags.map(t => `<span class="run-tag">${escapeHtml(t)}</span>`).join("");
 
 // Cards and relics in this run that feed each other: one makes a thing (Strength,
 // Poison, Osty, Shiv...) and another needs it. Listed, not scored. DATA.synergy
@@ -347,7 +351,9 @@ function deckLinks(deck, relics) {
       const feeders = m.filter(x => u.some(y => y.id !== x.id));
       return { key, feeders, users: u.filter(y => feeders.some(x => x.id !== y.id)) };
     })
-    .filter(l => l.feeders.length && l.users.length)
+    // Every deck starts with its starter cards, so a link between starters only says nothing.
+    .filter(l => l.feeders.length && l.users.length &&
+      [...l.feeders, ...l.users].some(x => cardInfo(x.id)?.rarity !== "Basic"))
     .sort((a, b) => (b.feeders.length + b.users.length) - (a.feeders.length + a.users.length));
 }
 

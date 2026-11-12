@@ -139,6 +139,7 @@ function openRunLink(ts) {
     if (run.ts < state.tsFrom || run.ts > state.tsTo) { widen.tsFrom = 0; widen.tsTo = TS_NO_UPPER_BOUND; }
     if (!modeShowsRun(state.mode, run)) widen.mode = run.mode === "daily" ? "daily" : run.mp ? "multi" : "solo";
     if (!modsShowRun(state.mods, run)) widen.mods = "all";
+    if (![...detailTags].every(t => runTags(run).includes(t))) detailTags.clear();
     if (Object.keys(widen).length > 0) {
       applySharedFilterState({ ...state, ...widen }, "detail");
       // applySharedFilterState() re-rendered the page behind this one partway

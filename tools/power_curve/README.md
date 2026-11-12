@@ -8,7 +8,7 @@ and new approaches can be checked against it.
 |---|---|
 | `power_curve.py` | Small dummy-fight sim. For each floor's deck and relics it plays sampled games and reports damage, block, energy and draw per turn, plus a fights table with real turns and damage taken. |
 | `gamma_curves.py` | Runs the sim over every run pulled from gamma into `gamma_raw/`, writing `pcs/<steamid>-<start_time>.json` and `pcs/index.json`. |
-| `archetypes.py` | Labels each run's archetype from its final deck and prints a baseline per character and archetype. |
+| `archetypes.py` | Labels each run's archetype from its final deck and prints a baseline per character and archetype. Its card tests also drive the site's deck tags. |
 | `approaches.py` | Compares cheaper estimates (deck averages, card/relic lookup) against the sim. |
 | `fights_vs_setup.py` | Checks real fights: do decks with more Powers take more damage or need more turns than others facing the same encounter? Reads `pcs/`. |
 | `predict_fights.py` | Scores each way of measuring a deck (sim, deck averages, a cheap formula) on how well it predicts real damage taken and turns, fitted on half the runs and tested on the other half. Reads `pcs/`. |
