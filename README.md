@@ -1,10 +1,11 @@
 # slay-my-stats
 
-Yet another Slay the Spire 2 analysis solution, built from the `.run` files the game saves, but this time it's
-focused on you and your progression, not social stats. You can upload runs manually at [slay-my-stats.com](https://slay-my-stats.com), or install the
-[Slay My Stats mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909)
-([source](https://github.com/johnstonjesse329/slay-my-stats-mod)) to do so on your behalf. Your profile lives at
-`/u/<name>`, named after your Steam name, and anyone can find it by searching on the home page.
+Yet another Slay the Spire 2 analysis solution, but this time it's focused on you and your progression, not
+social stats. You can upload the `.run` files the game saves manually at [slay-my-stats.com](https://slay-my-stats.com),
+or install the [Slay My Stats mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909)
+([source](https://github.com/johnstonjesse329/slay-my-stats-mod)) for automatic run capture, with more granular
+data and functionality on top. Your profile lives at `/u/<name>`, named after your Steam name, and anyone can
+find it by searching on the home page.
 
 **Overview:** the ascension tracker, totals, then a card for each character with its records and most-picked cards.
 
