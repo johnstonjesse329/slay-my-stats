@@ -987,7 +987,36 @@ h1 {
   gap: 0.5rem;
   min-width: 0;
 }
-#detail-tag-filter { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+#detail-tag-filter {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+.tag-filter-head { display: flex; align-items: center; gap: 0.5rem; }
+.tag-filter-clear { flex: none; padding: 0.1rem 0.6rem; font-size: var(--fs-sm); }
+.tag-filter-summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.tag-filter-summary .filter-label { font-size: var(--fs-sm); color: var(--text-dim); }
+.tag-filter-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-filter-caret { color: var(--text-dim); transition: transform 0.15s; }
+.tag-filter-summary:hover .tag-filter-caret { color: var(--text); }
+#detail-tag-filter.expanded .tag-filter-caret { transform: rotate(180deg); }
+.tag-filter-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--hairline); }
+#detail-tag-filter:not(.expanded) .tag-filter-chips { display: none; }
 
 /* What a run's final deck is built around: a pill by "Final deck", and a
    toggle above the run list. */

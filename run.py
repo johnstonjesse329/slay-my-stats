@@ -1609,7 +1609,17 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div id="detail-layout">
   <div id="detail-side">
-    <div id="detail-tag-filter" style="display:none"></div>
+    <div id="detail-tag-filter" style="display:none">
+      <div class="tag-filter-head">
+        <button type="button" class="tag-filter-summary" aria-expanded="false">
+          <span class="filter-label">Tags</span>
+          <span class="tag-filter-text"></span>
+          <span class="tag-filter-caret" aria-hidden="true">▾</span>
+        </button>
+        <button type="button" class="toggle-btn tag-filter-clear" hidden>Clear</button>
+      </div>
+      <div class="tag-filter-chips"></div>
+    </div>
     <div id="detail-run-list"></div>
   </div>
   <div id="detail-main">

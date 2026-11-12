@@ -129,7 +129,8 @@ function copyRunLink(ts, btn) {
 
 // ---- Run list ----
 
-// The tags of the runs the other filters leave, most used first, as toggles.
+// The tags of the runs the other filters leave, most used first, as toggles
+// behind the "Tags" line.
 // A picked tag stays listed even when no run left has it, so it can be unpicked.
 function renderDetailTagFilter(runs) {
   const box = document.getElementById("detail-tag-filter");
@@ -138,13 +139,28 @@ function renderDetailTagFilter(runs) {
   detailTags.forEach(t => { counts[t] = counts[t] || 0; });
   const tags = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
   box.style.display = tags.length ? "" : "none";
-  box.innerHTML = tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="run-tag-n">${counts[t]}</span></button>`).join("");
-  box.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
+  box.querySelector(".tag-filter-text").textContent = detailTags.size ? [...detailTags].join(" + ") : "All";
+  box.querySelector(".tag-filter-clear").hidden = detailTags.size === 0;
+  const chips = box.querySelector(".tag-filter-chips");
+  chips.innerHTML = tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="run-tag-n">${counts[t]}</span></button>`).join("");
+  chips.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
     const t = btn.dataset.tag;
     if (detailTags.has(t)) detailTags.delete(t); else detailTags.add(t);
     renderDetailRunList();
   }));
 }
+
+// The chips fold behind a one-line "Tags" toggle (closed to start), which
+// names the picked tags so a narrowed list still says why.
+document.querySelector("#detail-tag-filter .tag-filter-summary")?.addEventListener("click", e => {
+  const open = document.getElementById("detail-tag-filter").classList.toggle("expanded");
+  e.currentTarget.setAttribute("aria-expanded", String(open));
+});
+
+document.querySelector("#detail-tag-filter .tag-filter-clear")?.addEventListener("click", () => {
+  detailTags.clear();
+  renderDetailRunList();
+});
 
 function renderDetailRunList() {
   const filtered = getDetailRuns();
