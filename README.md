@@ -1,13 +1,15 @@
 # slay-my-stats
 
 Yet another Slay the Spire 2 analysis solution, built from the `.run` files the game saves, but this time it's
-focused on you and your progression, not social stats. It works two ways, from the same parser and the same
+focused on you and your progression, not social stats. It works three ways, from the same parser and the same
 dashboard code:
 
 - **Locally:** `run.py` reads your history folder and writes one HTML file.
 - **Online at [slay-my-stats.com](https://slay-my-stats.com):** you sign in with Steam and upload your history
   folder from the browser. Your profile lives at `/u/<name>`, named after your Steam name, and anyone can find
   it by searching on the home page.
+- **From the game:** the [Slay My Stats mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909) on the Steam Workshop uploads each run when it ends
+  ([source](https://github.com/johnstonjesse329/slay-my-stats-mod)).
 
 **Overview:** the ascension tracker, totals, then a card for each character with its records and most-picked cards.
 
@@ -363,7 +365,7 @@ Upload limits, from the top of `handler.py`:
 
 ### Mod uploads
 
-Any Steam account can upload through a game mod instead (its own repo, `slay-my-stats-mod`), which
+Any Steam account can upload through a game mod instead (its own repo, [slay-my-stats-mod](https://github.com/johnstonjesse329/slay-my-stats-mod)), which
 sends each run as it ends. It's the same upload through a different door: the mod POSTs to the mod function's
 `/mod` path, and from the presigned POST on, everything above is unchanged.
 
