@@ -39,11 +39,14 @@ DRAWN = {
     "ProcessFailureLogGroup": "CloudWatch",
     "KillSwitchLogGroup": "CloudWatch",
     "AccessLogBucket": "access logs",
+    "DigestFunction": "daily digest",
+    "DigestLogGroup": "CloudWatch",
 }
 NOT_DRAWN = {  # plumbing inside a drawn box, or an output
     "SiteCertificate": "the ACM cert is noted inside the CloudFront box",
     "ProfileUrlRewriteFunction": "the URL rewrite is noted inside the CloudFront box",
     "IpAllowlistFunction": "gamma-only gate",
+    "DigestSchedule": "the 8 AM schedule is noted inside the Digest box",
 }
 OUTPUT_ID = re.compile(r"(Name|Domain\w*|Url)$")
 

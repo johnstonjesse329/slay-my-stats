@@ -3,6 +3,7 @@ from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
+    TimeZone,
     aws_certificatemanager as acm,
     aws_cloudwatch as cloudwatch,
     aws_cloudwatch_actions as cloudwatch_actions,
@@ -18,6 +19,8 @@ from aws_cdk import (
     aws_lambda_event_sources as lambda_event_sources,
     aws_s3 as s3,
     aws_s3_notifications as s3n,
+    aws_scheduler as scheduler,
+    aws_scheduler_targets as scheduler_targets,
     aws_sns as sns,
     aws_sns_subscriptions as subscriptions,
     aws_ssm as ssm,
@@ -532,6 +535,38 @@ class SlayMyStatsStack(Stack):
                 alarm_description=f"{what} on {domain_name}: {threshold} or more in "
                                   f"{period.to_minutes()} minutes. Details are in ModIngestLogGroup.",
             ).add_alarm_action(cloudwatch_actions.SnsAction(alert_topic))
+
+        # Every morning at 8 AM Central, an email of the day's uploads: who
+        # added how many runs, new players, failures, the site's totals. It
+        # reads the upload results the bucket already keeps for a week, so
+        # nothing new is recorded. Prod only: gamma's uploads are testing.
+        if not gamma:
+            digest_log_group = logs.LogGroup(
+                self, "DigestLogGroup",
+                retention=logs.RetentionDays.ONE_MONTH,
+                removal_policy=RemovalPolicy.DESTROY,
+            )
+            digest_fn = lambda_.Function(
+                self, "DigestFunction",
+                runtime=lambda_.Runtime.PYTHON_3_12,
+                handler="handler.digest_handler",
+                code=ingest_code,
+                timeout=Duration.seconds(60),
+                memory_size=256,
+                log_group=digest_log_group,
+                environment={"DATA_BUCKET": data_bucket.bucket_name, "SITE_DOMAIN": domain_name,
+                             "ALERT_TOPIC_ARN": alert_topic.topic_arn},
+            )
+            data_bucket.grant_read(digest_fn, "users/*")
+            data_bucket.grant_read(digest_fn, "analytics/*")
+            alert_topic.grant_publish(digest_fn)
+            scheduler.Schedule(
+                self, "DigestSchedule",
+                schedule=scheduler.ScheduleExpression.cron(
+                    minute="0", hour="8", time_zone=TimeZone.AMERICA_CHICAGO),
+                target=scheduler_targets.LambdaInvoke(digest_fn),
+                description=f"Daily upload digest for {domain_name}",
+            )
 
         # No API Gateway: OpenID verification happens inside the handler, so
         # a bare public Function URL is enough and one less moving part.

@@ -1040,6 +1040,38 @@ class RebuildTests(Uploads, unittest.TestCase):
             handler.rebuild_profile(self.store, STEAM_ID)
 
 
+class DigestTests(Uploads, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.store.clock = NOW  # results land "now", inside the digest's day
+
+    def test_a_quiet_day_still_sends(self):
+        subject, body = handler.build_digest(self.store, NOW)
+        self.assertEqual(subject, "Slay My Stats: no uploads yesterday")
+        self.assertIn("No uploads yesterday.", body)
+
+    def test_new_player_via_the_mod_and_a_failure(self):
+        self.ingest(body_of(minimal_run(1700000000), minimal_run(1700000100)))
+        [key] = self.store.list("users/_uploads/")
+        upload_id = key.rsplit("/", 1)[-1].split(".", 1)[0]
+        month = handler.datetime.fromtimestamp(NOW, handler.timezone.utc).strftime("%Y-%m")
+        self.store.put(f"analytics/{month}/{upload_id}.json.gz", handler._pack({"via": "mod"}), {}, None)
+        self.store.put(handler.result_key("x" * 16), handler._pack(
+            {"status": "failed", "error": "process_failed"}), {}, None)
+
+        subject, body = handler.build_digest(self.store, NOW + 3600)
+        self.assertEqual(subject, "Slay My Stats: 2 new run(s) from 1 player(s) yesterday")
+        self.assertIn("2 new run(s) from 1 upload(s), via mod - new player", body)
+        self.assertIn("/u/mrbean", body)
+        self.assertIn("Failed uploads: 1 (process_failed)", body)
+        self.assertIn("Site total: 2 runs, 1 players.", body)
+
+    def test_uploads_older_than_a_day_are_left_out(self):
+        self.ingest(body_of(minimal_run(1700000000)))
+        subject, _ = handler.build_digest(self.store, NOW + 2 * 86400)
+        self.assertEqual(subject, "Slay My Stats: no uploads yesterday")
+
+
 class DirStoreTests(unittest.TestCase):
     def test_roundtrip_and_conflict(self):
         with tempfile.TemporaryDirectory() as d:

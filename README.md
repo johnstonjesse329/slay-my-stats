@@ -151,7 +151,7 @@ hundred bytes.
 the site-wide running totals (see [Site-wide stats](#site-wide-stats)).
 
 **Server-side code** is just the upload Lambdas (one checks the Steam sign-in and hands out an upload URL, one
-adds each upload to its profile), plus the budget kill switch. Viewing a page runs no Lambda at all;
+adds each upload to its profile), the budget kill switch, and a morning email of the day's uploads. Viewing a page runs no Lambda at all;
 the only code involved is a small CloudFront Function that sends every `/u/<name>` address to `index.html`.
 
 ## The website
@@ -162,7 +162,7 @@ file, which the browser downloads and renders. There are no accounts, sessions, 
 
 ### Architecture
 
-![AWS architecture: Route 53 and CloudFront in front of two S3 buckets; an ingest Lambda that verifies the Steam sign-in and hands out upload URLs; a process Lambda that merges uploads, with a failure Lambda behind it; and a budget kill switch](images/aws-architecture.png)
+![AWS architecture: Route 53 and CloudFront in front of two S3 buckets; an ingest Lambda that verifies the Steam sign-in and hands out upload URLs; a process Lambda that merges uploads, with a failure Lambda behind it; a budget kill switch; and a daily digest Lambda](images/aws-architecture.png)
 
 The diagram's source is [docs/slay-my-stats-architecture.drawio](docs/slay-my-stats-architecture.drawio); open it in
 [draw.io](https://app.diagrams.net/) to edit, then re-export the PNG.
@@ -186,6 +186,7 @@ the CLI's default account and region (us-west-2 today).
 | **Mod Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Same code as the ingest Lambda, answering only `/mod` and `/mod/runs`. Public Function URL, no CORS. | The game mod's door (see "Mod uploads"). Its own function so it can be shut off alone. |
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
+| **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*` and publish to the alert SNS topic. | Emails the alert address the last 24 hours of uploads: runs added per player with a link to their page, whether each came from the site or the mod, new players, failed uploads, and the site totals. Quiet days still send "No uploads yesterday". |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
 | **Metric filters + alarms** `ModRequests`, `ModRefusals` | Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
 | **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |

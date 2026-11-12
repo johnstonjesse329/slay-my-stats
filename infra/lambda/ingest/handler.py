@@ -1576,3 +1576,79 @@ def failure_handler(event, context):
            "An upload failed every try and wasn't added. Its raw copy is kept.\n\n"
            + "\n".join(keys) + f"\n\nLast error: {error}\n\n"
            + "Details are in the process function's logs (ProcessLogGroup in CloudWatch).")
+
+
+# ---------------------------------------------------------------------------
+# Daily digest: what was uploaded in the last day, emailed every morning
+# ---------------------------------------------------------------------------
+
+DIGEST_WINDOW_S = 24 * 3600
+SITE_DOMAIN = os.environ.get("SITE_DOMAIN", "slay-my-stats.com")
+
+
+def _upload_via(store, upload_id: str, at: float) -> str:
+    """Where an upload came from ("site" or "mod"), from record_upload's
+    note. The note is written when the upload URL is handed out, minutes
+    before the result, so it may sit in the month before."""
+    for t in (at, at - DIGEST_WINDOW_S):
+        month = datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m")
+        got = store.get(f"analytics/{month}/{upload_id}.json.gz")
+        if got:
+            return _unpack(got[0]).get("via", "?")
+    return "?"
+
+
+def build_digest(store, now: float) -> tuple[str, str]:
+    """The subject and body of the email covering the day before `now`:
+    each player's new runs, new players, failed uploads and the site's
+    totals. Reads the upload results (kept 7 days), so it needs no record
+    of its own."""
+    since = now - DIGEST_WINDOW_S
+    players, failed = {}, []
+    for key in store.list("users/_uploads/"):
+        got = store.get(key)
+        if got is None or not since <= got[1] < now:
+            continue
+        try:
+            res = _unpack(got[0])
+        except (OSError, ValueError):
+            continue
+        upload_id = key.rsplit("/", 1)[-1].split(".", 1)[0]
+        if res.get("status") == "failed":
+            failed.append(res.get("error") or "unknown")
+            continue
+        if res.get("status") != "done" or not res.get("slug"):
+            continue
+        p = players.setdefault(res["slug"], {"name": res.get("name") or res["slug"], "added": 0,
+                                             "uploads": 0, "via": set(), "new": False})
+        p["added"] += res.get("added", 0)
+        p["uploads"] += 1
+        p["via"].add(_upload_via(store, upload_id, got[1]))
+        p["new"] |= res.get("added", 0) > 0 and res.get("total") == res.get("added")
+
+    added = sum(p["added"] for p in players.values())
+    lines = []
+    for slug, p in sorted(players.items(), key=lambda kv: -kv[1]["added"]):
+        note = " - new player" if p["new"] else ""
+        how = "/".join(sorted(p["via"]))
+        lines.append(f"{p['name']}: {p['added']} new run(s) from {p['uploads']} upload(s), via {how}{note}\n"
+                     f"  https://{SITE_DOMAIN}/u/{slug}")
+    if failed:
+        lines.append(f"\nFailed uploads: {len(failed)} ({', '.join(sorted(set(failed)))})")
+
+    stats = store.get(STATS_KEY)
+    total_runs = _unpack(stats[0]).get("allRuns", 0) if stats else 0
+    total_players = len(_read_index(store)[0])
+    footer = f"\nSite total: {total_runs} runs, {total_players} players."
+
+    if not players and not failed:
+        return "Slay My Stats: no uploads yesterday", "No uploads yesterday." + footer
+    subject = f"Slay My Stats: {added} new run(s) from {len(players)} player(s) yesterday"
+    return subject, "\n".join(lines) + "\n" + footer
+
+
+def digest_handler(event, context):
+    """Run by EventBridge Scheduler each morning (prod only)."""
+    subject, body = build_digest(_get_store(), time.time())
+    print(json.dumps({"digest": subject}))
+    _alert(subject, body)
