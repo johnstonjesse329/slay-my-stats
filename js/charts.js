@@ -9,6 +9,24 @@ Chart.defaults.font.family = '"Segoe UI", system-ui, sans-serif';
 // Canvas text can't read dashboard.css's type scale, so this is --fs-sm in px.
 Chart.defaults.font.size = 14;
 
+// Legend for a chart with a dataset per character: each name led by the
+// character's energy icon, as everywhere else a name is shown. The icons are
+// loaded once; charts drawn before one arrives update when it does.
+const CHAR_LEGEND_ICONS = {};
+Object.entries(DATA.energyIcons || {}).forEach(([key, url]) => {
+  const img = new Image(16, 16);
+  img.onload = () => Object.values(Chart.instances).forEach(c => c.update("none"));
+  img.src = url;
+  CHAR_LEGEND_ICONS[key] = img;
+});
+const CHAR_LEGEND_LABELS = {
+  color: "#ccc", usePointStyle: true,
+  generateLabels: chart => Chart.defaults.plugins.legend.labels.generateLabels(chart).map(item => {
+    const img = CHAR_LEGEND_ICONS[String(item.text).toLowerCase()];
+    return img && img.complete && img.naturalWidth ? { ...item, pointStyle: img } : item;
+  }),
+};
+
 // Shared y-axis config for win-% charts: cap at 105 for headroom above 100,
 // hide the 105 tick label, and force a 100 tick to always exist
 const WIN_PCT_Y_AXIS = {
@@ -51,7 +69,7 @@ const ascWinChart = new Chart(document.getElementById("ascWinChart"), {
   options: {
     responsive: true, maintainAspectRatio: false,
     plugins: {
-      legend: { labels: { color: "#ccc", boxWidth: 12 } },
+      legend: { labels: CHAR_LEGEND_LABELS },
       tooltip: {
         callbacks: {
           title: ctx => `Ascension ${ctx[0].label}`,
@@ -258,7 +276,7 @@ function updateMonthlyWinChart(filteredRuns) {
         // only reserves room above the legend, not between it and
         // chartArea.top, so the two collide. Bottom, below the x-axis,
         // doesn't compete with them.
-        legend: { position: "bottom", labels: { color: "#ccc", boxWidth: 12 } },
+        legend: { position: "bottom", labels: CHAR_LEGEND_LABELS },
         tooltip: {
           callbacks: {
             label: ctx => {

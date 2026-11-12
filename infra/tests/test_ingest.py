@@ -896,6 +896,23 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.assertEqual(solo["records"]["fastestWin"]["mins"], 15)
         self.assertEqual(solo["records"]["fastestWin"]["slug"], "mrbean")
 
+    def test_stats_count_picks_and_buys_per_character(self):
+        def stored(won, cards, relics=None):
+            return {"char": "IRONCLAD", "won": won, "mins": 20,
+                    "cardsOffered": cards, "relicsOffered": relics or {}}
+        bash = "CARD.BASH"
+        runs = [
+            stored(True, {bash: [{"type": "monster", "picked": True}, {"type": "shop", "picked": True}],
+                          "CARD.ANGER": [{"type": "monster", "picked": False}]},
+                   {"RELIC.ANCHOR": [{"type": "shop", "picked": True}]}),
+            stored(False, {bash: [{"type": "shop", "picked": True}]}),
+        ]
+        total = handler.merge_stats(handler.tally(runs[:1], "a"), handler.tally(runs[1:], "b"))
+        picks = total["solo"]["picks"]["IRONCLAD"]
+        # [picks, wins when picked, buys, wins when bought]; a skipped offer counts nowhere.
+        self.assertEqual(picks["cards"], {bash: [3, 2, 2, 1]})
+        self.assertEqual(picks["relics"], {"RELIC.ANCHOR": [1, 1, 1, 1]})
+
     def test_stats_split_multiplayer_and_leave_out_daily(self):
         second = {"character": "CHARACTER.SILENT", "deck": [], "relics": []}
         players = [{"character": "CHARACTER.IRONCLAD", "deck": [], "relics": []}, second]

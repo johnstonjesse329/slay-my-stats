@@ -8,7 +8,6 @@ function updateAll() {
   const { pivot, grand, charStats } = aggregateRuns(filteredRuns);
 
   renderCards(grand, charStats, avgRestOnWins(filteredRuns));
-  renderWinPivot(pivot);
   renderTimeLanes(pivot);
   renderRunEndLanes(pivot);
   renderFightTables();
@@ -51,11 +50,12 @@ let sharedActiveChar   = "ALL";
 // survives a visit to Overview instead of being silently replaced by "ALL".
 let lastUnlockedChar   = "ALL";
 // The ascension ranges the tables group their columns by (next to an "All"
-// column) unless granular view is on. A bucket the player has no runs in is
+// column) unless granular view is on: the run page's tuning tiers (keepTier in
+// run-detail.js), so a table and a run's grading split at the same place. A bucket the player has no runs in is
 // dropped, since DATA.ascensions only lists levels that appear in runs.
 const ASC_BUCKETS = [
-  { key: "A0-9", label: "A0–9", min: 0,  max: 9 },
-  { key: "A10",  label: "A10",  min: 10, max: 10 },
+  { key: "A0-7", label: "A0–7", min: 0, max: 7 },
+  { key: "A8+",  label: "A8+",  min: 8, max: Infinity },
 ].map(b => ({ ...b, ascs: DATA.ascensions.filter(a => a >= b.min && a <= b.max) }))
  .filter(b => b.ascs.length);
 let sharedActiveAscs   = new Set(DATA.ascensions);

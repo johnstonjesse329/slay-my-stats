@@ -848,11 +848,31 @@ def _update_index(store, slug: str, name: str, runs: int, now: float) -> None:
 
 MODES = ("solo", "multi")
 PAIR_KEYS = ("chars", "cards", "relics")
+# picks[char][kind][id] = [picks, wins when picked, buys, wins when bought]:
+# every time the character took that card or relic, and the share of those
+# that were shop buys, for the Cards page's "all players" favourites.
+PICK_KINDS = (("cards", "cardsOffered"), ("relics", "relicsOffered"))
 
 
 def _empty_mode() -> dict:
     return {"runs": 0, "wins": 0, "minutes": 0, "chars": {}, "cards": {}, "relics": {},
-            "killers": {}, "records": {}}
+            "killers": {}, "records": {}, "picks": {}}
+
+
+def _tally_picks(picks: dict, r: dict, won: bool) -> None:
+    by_kind = picks.setdefault(r.get("char") or "UNKNOWN", {})
+    for kind, field in PICK_KINDS:
+        by_id = by_kind.setdefault(kind, {})
+        for item_id, locs in (r.get(field) or {}).items():
+            for loc in locs:
+                if not loc.get("picked"):
+                    continue
+                q = by_id.setdefault(item_id, [0, 0, 0, 0])
+                q[0] += 1
+                q[1] += won
+                if loc.get("type") == "shop":
+                    q[2] += 1
+                    q[3] += won
 
 
 def empty_stats() -> dict:
@@ -891,6 +911,7 @@ def tally(runs: list[dict], slug: str) -> dict:
             _bump(m["cards"], cid, won)
         for rid in {c.get("id") for c in r.get("finalRelics") or []} - {None}:
             _bump(m["relics"], rid, won)
+        _tally_picks(m["picks"], r, won)
         fights = r.get("fights") or []
         if not won and fights and fights[-1].get("won") is False and fights[-1].get("enc"):
             enc = fights[-1]["enc"]
@@ -913,6 +934,14 @@ def merge_stats(total: dict, delta: dict) -> dict:
                 pair = pairs.setdefault(key, [0, 0])
                 pair[0] += n
                 pair[1] += w
+        picks = t.setdefault("picks", {})
+        for char, kinds in d.get("picks", {}).items():
+            for kind, by_id in kinds.items():
+                into = picks.setdefault(char, {}).setdefault(kind, {})
+                for item_id, q in by_id.items():
+                    have = into.setdefault(item_id, [0, 0, 0, 0])
+                    for i, n in enumerate(q):
+                        have[i] += n
         killers = t.setdefault("killers", {})
         for enc, n in d.get("killers", {}).items():
             killers[enc] = killers.get(enc, 0) + n

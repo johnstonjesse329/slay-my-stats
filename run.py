@@ -1353,7 +1353,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <div class="filter-row">
     <div class="filter-group">
       <span class="filter-label">Ascension</span>
-      <button class="toggle-btn" id="shared-asc-granular" aria-pressed="false" title="Pick individual ascension levels, and split the tables into one column per level instead of A0–9 / A10 / All">Show granular</button>
+      <button class="toggle-btn" id="shared-asc-granular" aria-pressed="false" title="Pick individual ascension levels, and split the tables into one column per level instead of A0–7 / A8+ / All">Show granular</button>
       <div id="shared-asc-checkboxes" style="display:none;gap:0.4rem;flex-wrap:wrap"></div>
       <button class="toggle-btn" id="shared-asc-all" style="display:none">All</button>
       <button class="toggle-btn" id="shared-asc-none" style="display:none">None</button>
@@ -1396,6 +1396,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <main id="main-content">
 <div id="page-overview">
+<div class="cards" id="summary-cards"></div>
 <div class="grid-1">
   <div class="chart-box">
     <div class="asc-head">
@@ -1409,33 +1410,28 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </div>
 
-<div class="cards" id="summary-cards"></div>
-<div class="cards" id="personal-bests-cards"></div>
-
 <h2 class="group-head">Win rates</h2>
-<div class="grid-2">
+<div class="chart-box" id="personal-bests-cards"></div>
+
+<div class="grid-2 grid-stretch">
   <div class="chart-box">
     <h3>Win % by ascension</h3>
     <p class="chart-caption">Share of runs won at each ascension, by character.</p>
     <div class="chart-wrap"><canvas id="ascWinChart"></canvas></div>
   </div>
   <div class="chart-box">
-    <h3>Win % by month</h3>
-    <p class="chart-caption">Dotted lines mark when each game build was first played.</p>
-    <div class="chart-wrap"><canvas id="monthlyWinChart"></canvas></div>
+    <h3>Final boss win %</h3>
+    <p class="chart-caption">Of the runs that reached the final boss, the share that beat it.<span id="final-boss-a10-note"> Ascension 10's two Act 3 bosses are shown separately.</span></p>
+    <div class="pivot-wrap"><table class="pivot" id="final-boss-win-table"></table></div>
   </div>
 </div>
 
-<div class="grid-2">
+<!-- A row to itself: it gains a month every month. -->
+<div class="grid-1">
   <div class="chart-box">
-    <h3>Win %</h3>
-    <p class="chart-caption">Share of runs won, by character and ascension.</p>
-    <div class="pivot-wrap"><table class="pivot" id="pivot-table"></table></div>
-  </div>
-  <div class="chart-box">
-    <h3>Final boss win %</h3>
-    <p class="chart-caption">Of the runs that reached the final boss, the share that beat it. Ascension 10's two Act 3 bosses are shown separately.</p>
-    <div class="pivot-wrap"><table class="pivot" id="final-boss-win-table"></table></div>
+    <h3>Win % by month</h3>
+    <p class="chart-caption">Dotted lines mark when each game build was first played.</p>
+    <div class="chart-wrap"><canvas id="monthlyWinChart"></canvas></div>
   </div>
 </div>
 
@@ -1531,6 +1527,11 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <button class="toggle-btn" id="cards-rarity-uncommon">Uncommon</button>
     <button class="toggle-btn" id="cards-rarity-rare">Rare</button>
   </div>
+</div>
+
+<div class="chart-box">
+  <h2>Favorites</h2>
+  <div class="fav-panels" id="cards-favorites"></div>
 </div>
 
 <div class="chart-box">
