@@ -501,6 +501,7 @@ def _measured_rows(cleaned: dict, parsed: dict) -> list[dict]:
 
 
 _KNOWN_IDS = Path(__file__).with_name("known_ids.json")
+MAX_HELD_IDS = 200  # distinct IDs an upload's held runs are tallied by
 _known = None
 # A character, card or relic as a run names it, for instance "CARD.STRIKE_IRONCLAD".
 # Mods name theirs in their own ways ("CHARACTER.CLOUD-CLOUD"), so anything up to the quote.
@@ -542,9 +543,9 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = N
     fault). A run naming a character, card or relic the game data doesn't know
     is held: left out, counted in `held` ({"runs": n, "ids": {id: runs}}), and
     kept in raw/ for a rebuild once the game data has it."""
-    good, rejected, run_shaped = 0, 0, 0
+    good, rejected, run_shaped, held_n = 0, 0, 0, 0
     for line in iter_upload_lines(body):
-        if good + rejected >= MAX_RUNS_PER_UPLOAD:
+        if good + rejected + held_n >= MAX_RUNS_PER_UPLOAD:
             raise IngestError(413, "too_many_runs", f"At most {MAX_RUNS_PER_UPLOAD} runs per upload.")
         try:
             data = json.loads(line, parse_constant=lambda c: None)
@@ -564,11 +565,15 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = N
             ok = False
         unknown = unknown_ids(data) if ok else set()
         if unknown:
+            held_n += 1
             if held is not None:
-                held["runs"] = held.get("runs", 0) + 1
+                held["runs"] = held_n
                 ids = held.setdefault("ids", {})
                 for i in unknown:
-                    ids[i] = ids.get(i, 0) + 1
+                    # Echoed into the result, the log and the digest email: check_safe has
+                    # already held every string to SAFE_STRING_RE; this caps how many.
+                    if i in ids or len(ids) < MAX_HELD_IDS:
+                        ids[i] = ids.get(i, 0) + 1
             continue
         if ok:
             cleaned = clean_telemetry(telemetry)

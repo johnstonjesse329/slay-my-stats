@@ -1122,6 +1122,21 @@ class HoldTests(Uploads, unittest.TestCase):
         self.assertEqual((s["runs"], s["held"], s["dropped"]), (1, 1, 1))
         self.assertEqual([r["ts"] for r in self.store.runs()], [1700000001])
 
+    def test_held_runs_count_toward_the_cap(self):
+        saved = handler.MAX_RUNS_PER_UPLOAD
+        handler.MAX_RUNS_PER_UPLOAD = 2
+        try:
+            with self.assertRaises(handler.IngestError):
+                handler.spool_upload(body_of(*(self.run_with(1700000000 + i, character="CHARACTER.X")
+                                               for i in range(3))), STEAM_ID, handler.Spool(), {})
+        finally:
+            handler.MAX_RUNS_PER_UPLOAD = saved
+
+    def test_odd_ids_never_get_this_far(self):
+        res = self.ingest(body_of(self.run_with(1700000001, cards=["CARD.WITH A SPACE"]),
+                                  self.run_with(1700000002, cards=["CARD." + "X" * 200])))
+        self.assertEqual((res["rejected"], res.get("held")), (2, None))
+
     def test_known_ids_cover_the_game_data(self):
         import build_known_ids
         ids = build_known_ids.build(
