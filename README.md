@@ -1,10 +1,9 @@
 # slay-my-stats
 
 Yet another Slay the Spire 2 analysis solution, built from the `.run` files the game saves, but this time it's
-focused on you and your progression, not social stats. It works three ways, from the same parser and the same
+focused on you and your progression, not social stats. It works two ways, from the same parser and the same
 dashboard code:
 
-- **Locally:** `run.py` reads your history folder and writes one HTML file.
 - **Online at [slay-my-stats.com](https://slay-my-stats.com):** you sign in with Steam and upload your history
   folder from the browser. Your profile lives at `/u/<name>`, named after your Steam name, and anyone can find
   it by searching on the home page.
@@ -32,7 +31,6 @@ and seed lookup.
 
 **Contents:** [Repository layout](#repository-layout) ·
 [How it fits together](#how-it-fits-together) ·
-[Local use](#local-use) ·
 [The website](#the-website) ·
 [Development](#development) ·
 [Refreshing game data](#refreshing-game-data)
@@ -41,9 +39,9 @@ and seed lookup.
 
 ```text
 slay-my-stats/
-├── run.py                   Reads .run files into dashboard data and writes the local HTML file. The upload Lambda uses the same parsing code.
+├── run.py                   Reads .run files into dashboard data. The upload Lambdas parse with it.
 ├── build_site.py            Builds dist/ for the site: index.html, app.js, catalog.json, site-config.json
-├── dashboard.css            Dashboard styles (shared by the local file and the site)
+├── dashboard.css            Dashboard styles
 ├── js/                      Dashboard code, one module per page or concern (shared)
 │   ├── data.js              window.DATA shape and helpers
 │   ├── aggregation.js       filtering and stat roll-ups
@@ -60,7 +58,7 @@ slay-my-stats/
 │   ├── update.js            re-render on filter change
 │   └── map-bg.js            background map panning
 ├── vendor/chart.umd.js      Chart.js 4.4.0 (MIT), served from the site as /chart.js so a slow CDN can't blank the page
-├── site/                    Site-only code (not in the local file)
+├── site/                    Site-only code
 │   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>, pages
 │   ├── pages/               hand-written pages: <name>.html is served at /<name> (see its README)
 │   ├── home-intro.html      the home page's hero: title, upload button, preview picture
@@ -134,11 +132,6 @@ paths:
 flowchart TB
     game["Slay the Spire 2"] -- "saves after every run" --> runs[("history/*.run")]
 
-    subgraph local["Local"]
-        direction LR
-        runpy["run.py"] --> html["sts2_viz.html<br/>(one HTML file)"]
-    end
-
     subgraph online["Online"]
         direction LR
         upload["Browser<br/>(Steam sign-in)"] --> lambda["Ingest Lambda<br/>(runs run.py)"]
@@ -146,20 +139,12 @@ flowchart TB
         s3 --> cf["CloudFront<br/>slay-my-stats.com<br/>/u/#lt;name#gt;"]
     end
 
-    runs --> local
     runs --> online
 ```
 
-The parser (`run.py`) and the dashboard (`js/`, `dashboard.css`) are shared by both paths, so the local file and
-the site always show the same numbers.
-
-**Locally,** `run.py` parses your history and writes one HTML file with your runs, the dashboard code and the
-styles inlined. The game art stays in the repo and the page links to it.
-
 **The site is static.** Every page is the same `index.html` and `app.js`, stored in S3 and served by CloudFront
 from its edge locations worldwide. No server builds pages: visiting `/u/<name>` loads that player's runs (a small summary,
-`users/<slug>.json.gz`, then a file per month of runs), and the dashboard code computes every stat in the browser, exactly as it does in the
-local file.
+`users/<slug>.json.gz`, then a file per month of runs), and the dashboard code computes every stat in the browser.
 
 **Uploads appear on the next page load.** The browser sends new runs straight to S3, and a Lambda parses them with
 `run.py` and writes them into the player's month files; there's no build step. Profile files are never cached by
@@ -172,34 +157,6 @@ the site-wide running totals (see [Site-wide stats](#site-wide-stats)).
 **Server-side code** is just the upload Lambdas (one checks the Steam sign-in and hands out an upload URL, one
 adds each upload to its profile), plus the budget kill switch. Viewing a page runs no Lambda at all;
 the only code involved is a small CloudFront Function that sends every `/u/<name>` address to `index.html`.
-
-## Local use
-
-Needs Python 3.10+ and no packages, plus the game art and data, which aren't in the repo: build them first
-with [Refreshing game data](#refreshing-game-data).
-
-```sh
-python run.py                           # finds your save folder, writes ~/sts2_viz.html, opens it
-python run.py --history "<path>"        # a specific history folder
-python run.py --out stats.html --no-open
-```
-
-The history folder is usually here:
-
-| OS      | Path |
-|---------|------|
-| Windows | `%APPDATA%\SlayTheSpire2\steam\<SteamID64>\profile1\saves\history` |
-| macOS   | `~/Library/Application Support/SlayTheSpire2/steam/<SteamID64>/profile1/saves/history` |
-
-```mermaid
-flowchart LR
-    runs[("history/*.run")] --> parse["run.py<br/>parse_run()"]
-    parse --> build["run.py<br/>build_html()"]
-    data["card_data.json<br/>relic_data.json<br/>potion_data.json"] --> build
-    js["js/*.js<br/>dashboard.css"] --> build
-    build --> html["sts2_viz.html"]
-    html -. "file:// links" .-> art["card_final/ card_portraits/<br/>relic_images/ node_icons/ ..."]
-```
 
 ## The website
 
@@ -331,7 +288,7 @@ sequenceDiagram
    100 MB, plus the upload's id. It never sees your runs.
 4. **Send.** The browser POSTs the file straight to S3.
 5. **Process.** S3 invokes the process Lambda, which:
-   - stream-decompresses the upload and parses each run with the same `run.py` the local tool uses;
+   - stream-decompresses the upload and parses each run with `run.py`;
    - rejects any run containing a string outside `[A-Za-z0-9_.-]`, because profiles are rendered in other
      people's browsers;
    - sorts the runs by month on local disk, then merges each month into its file by start time with a
