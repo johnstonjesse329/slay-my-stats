@@ -366,8 +366,8 @@ run without the tag isn't known to be unmodded.
 ### Held runs
 
 A run that names a character, card or relic the game data doesn't have is held: it's left out of the profile
-and the stats, but kept in `raw/` like every upload. That covers modded characters and content (and cheats),
-and a patch that's newer than our game data. Every player in a co-op run is checked.
+and the stats, but kept in `raw/` like every upload. That helps remove modded characters and runs with
+content that materially alter the stats for the site.
 
 The list of what's known is cut from `card_data.json` and `relic_data.json` when the Lambda is bundled
 (`tools/build_known_ids.py`), plus `tools/retired_ids.json`: content the game has since removed, which older
