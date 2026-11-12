@@ -80,6 +80,9 @@ slay-my-stats/
 │   ├── rebuild_stats.py     recount users/_stats.json.gz from every profile
 │   ├── backfill_measured.py give runs uploaded before `measured` their per-floor numbers, from their stored logs
 │   ├── build_measured_cards.py  card costs for the ingest Lambda, cut from card_data.json at bundle time
+│   ├── build_known_ids.py   the game's characters, cards and relics for the ingest Lambda, cut at bundle time
+│   ├── retired_ids.json     content the game has since removed, still in older runs
+│   ├── find_unknown_ids.py  lists what held runs name, from raw/
 │   ├── remove_profile.py    take a profile off the site
 │   ├── refresh_game_data.py game-data pipeline driver (see "Refreshing game data")
 │   ├── export_game_data.py  drives the game to export its data and render every card face
@@ -186,7 +189,7 @@ the CLI's default account and region (us-west-2 today).
 | **Mod Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Same code as the ingest Lambda, answering only `/mod` and `/mod/runs`. Public Function URL, no CORS. | The game mod's door (see "Mod uploads"). Its own function so it can be shut off alone. |
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
-| **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*` and publish to the alert SNS topic. | Emails the alert address the last 24 hours of uploads: runs added per player with a link to their page, whether each came from the site or the mod, new players, failed uploads, and the site totals. Quiet days still send "No uploads yesterday". |
+| **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*` and publish to the alert SNS topic. | Emails the alert address the last 24 hours of uploads: runs added per player with a link to their page, whether each came from the site or the mod, new players, held runs and what they name, failed uploads, and the site totals. Quiet days still send "No uploads yesterday". |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
 | **Metric filters + alarms** `ModRequests`, `ModRefusals` | Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
 | **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
@@ -360,6 +363,23 @@ gameplay, cut down to plain characters, as `mods` on the run. The run's header s
 list on hover, and the shared filter bar has a Mods filter (All / Unmodded / Modded). A run uploaded from files has no such key, so a
 run without the tag isn't known to be unmodded.
 
+### Held runs
+
+A run that names a character, card or relic the game data doesn't have is held: it's left out of the profile
+and the stats, but kept in `raw/` like every upload. That covers modded characters and content (and cheats),
+and a patch that's newer than our game data. Every player in a co-op run is checked.
+
+The list of what's known is cut from `card_data.json` and `relic_data.json` when the Lambda is bundled
+(`tools/build_known_ids.py`), plus `tools/retired_ids.json`: content the game has since removed, which older
+runs still carry. Only add to that file what the game's own files (`sts2.dll` at the game data's build) no
+longer have; not seeing something in runs proves nothing. A bundle made without the game data holds nothing.
+The check is a lookup of each ID in the run against that list, so it adds next to nothing to processing.
+
+The upload's result counts the held runs and names the top IDs; the page tells the player, and the morning
+digest lists them. `tools/find_unknown_ids.py --bucket slay-my-stats-data` lists every one in `raw/`, with
+the players and builds. After a patch: refresh the game data, deploy, then `tools/rebuild_profiles.py --all`
+brings in the runs it now knows, making a profile for anyone whose runs were all held. A mod's runs stay held.
+
 ### Site-wide stats
 
 The home page shows stats across every player's runs, solo and multiplayer side by side (solo leaves out
@@ -386,7 +406,8 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
 (needs AWS credentials). Each has `--dry-run`.
 
 - `tools/rebuild_profiles.py` re-parses players' kept uploads after a fix to `run.py`'s parser. Bump
-  `run.PARSER_VERSION` with the fix, then `--stale` rebuilds the profiles an older parser built.
+  `run.PARSER_VERSION` with the fix, then `--stale` rebuilds the profiles an older parser built. `--all`
+  rebuilds every profile, and brings in held runs the game data now knows (see "Held runs").
 - `tools/backfill_measured.py` writes `measured` (per-floor energy and cards, for the Keeping Up chart) onto runs
   uploaded before the Lambda worked it out, from their stored event logs. Runs that already have it are left alone;
   `--redo` re-reads them after the reading changes.
@@ -464,8 +485,9 @@ flowchart TB
 ```
 
 Any change to `run.py` or the handler shows up in `cdk diff` as new code for the Lambdas, since they bundle
-both, along with `measured.py`, `tools/power_curve/derive_telemetry.py` and a card-cost table cut from your local
-`card_data.json` (so synth needs the game data; without it the energy chart's Card cost line is flat). To skip deploying for one push, use `SKIP_DEPLOY=1 git push`.
+both, along with `measured.py`, `tools/power_curve/derive_telemetry.py`, a card-cost table cut from your local
+`card_data.json`, and the known IDs cut from it and `relic_data.json` (so synth needs the game data; without it
+the energy chart's Card cost line is flat and no run is held). To skip deploying for one push, use `SKIP_DEPLOY=1 git push`.
 
 After the stack step, the deploy sends the ingest Function URL an empty POST. The function answers 401 (no
 Steam ticket), and anything under 500 passes; a 5xx, or no answer, stops the deploy before the site goes up.

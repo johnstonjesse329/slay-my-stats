@@ -1,0 +1,7 @@
+{
+  "_about": "Card, relic and character IDs the game used to have and our game data no longer does. Runs from older builds still carry them, so they count as core game content (tools/build_known_ids.py). Add one only when the game's own files at the game data's build (sts2.dll, same hash as data_provenance.json) have no such card, relic or character; not seeing it in runs proves nothing. The value is the newest build a run showed it on, as a note.",
+  "CARD.FOLLOW_THROUGH": "v0.105.1",
+  "CARD.GRAPPLE": "v0.102.0",
+  "CARD.PREPARE": "v0.100.0",
+  "CARD.SCARE": "v0.109.1"
+}

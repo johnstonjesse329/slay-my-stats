@@ -13,7 +13,8 @@ Usage:
     python tools/rebuild_profiles.py --stale
         Rebuild the profiles an older parser built.
     python tools/rebuild_profiles.py --all
-        Rebuild every profile.
+        Rebuild every profile, and make one for anyone whose runs were all
+        held (they named content the game data didn't have yet).
     python tools/rebuild_profiles.py --slug mrbean
     python tools/rebuild_profiles.py --steam-id 76561198000000001
         Rebuild one profile.
@@ -83,8 +84,11 @@ def main():
         targets = [sid for sid, slug in players.items() if slug == arg("--slug")]
         if not targets:
             sys.exit(f"No profile has the slug {arg('--slug')!r}.")
-    elif "--all" in args or "--stale" in args:
+    elif "--stale" in args:
         targets = sorted(players)
+    elif "--all" in args:
+        raw = {k.split("/")[1] for k in store.list("raw/") if handler.RAW_KEY_RE.match(k)}
+        targets = sorted(set(players) | raw)
     else:
         sys.exit(__doc__)
 
@@ -105,6 +109,10 @@ def main():
         line = f"  {s['slug']}: {s['runs']} runs ({s['fromRaw']} re-parsed, {s['noRaw']} without a raw copy)"
         if s["dropped"]:
             line += f", {s['dropped']} no longer parse and are dropped"
+        if s.get("new"):
+            line += ", a new profile"
+        if s["held"]:
+            line += f", {s['held']} still held (content the game data doesn't have)"
         if s["unreadableUploads"]:
             line += f", {s['unreadableUploads']} unreadable uploads"
         print(line)

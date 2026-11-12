@@ -509,9 +509,15 @@
       return;
     }
     if (result.slug) rememberProfile(signIn.steamId, result.slug, result.name);
+    // Runs naming a character, card or relic the site doesn't know yet: kept, added later.
+    const held = result.held
+      ? `${result.held} run(s) use content from a mod or a newer patch. We kept them and will add them if the site supports it.`
+      : "";
     if (!result.added) {
       if (result.duplicates) {
-        finishAtProfile(status, alreadyThere(result.duplicates), result.slug || slug);
+        finishAtProfile(status, [alreadyThere(result.duplicates), held].filter(Boolean).join(" "), result.slug || slug);
+      } else if (held) {
+        setStatus(status, held, profileLink);
       } else {
         setStatus(status, "None of those files could be read as runs.", profileLink);
       }
@@ -519,6 +525,7 @@
     }
     stepsDone(status, runCount(result.added));
     const parts = [`Your profile now has ${result.total}.`];
+    if (held) parts.push(held);
     if (result.rejected + unreadable) parts.push(`${result.rejected + unreadable} file(s) couldn't be read as runs and were skipped.`);
     finishAtProfile(status, parts.join(" "), result.slug || slug);
   }

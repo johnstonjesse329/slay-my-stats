@@ -43,6 +43,11 @@ RUN_PY = Path(__file__).resolve().parents[2] / "run.py"
 DERIVE_PY = Path(__file__).resolve().parents[2] / "tools" / "power_curve" / "derive_telemetry.py"
 CARDS_PY = Path(__file__).resolve().parents[2] / "tools" / "build_measured_cards.py"
 CARD_DATA = Path(__file__).resolve().parents[2] / "card_data.json"
+# And which characters, cards and relics are core game content, so runs from mods or a
+# newer patch are held back (tools/build_known_ids.py).
+IDS_PY = Path(__file__).resolve().parents[2] / "tools" / "build_known_ids.py"
+RELIC_DATA = Path(__file__).resolve().parents[2] / "relic_data.json"
+RETIRED_IDS = Path(__file__).resolve().parents[2] / "tools" / "retired_ids.json"
 # Hand-written site pages: site/pages/<name>.html is served at /<name>.
 # tools/deploy.py checks the names (build_site.site_pages()) before cdk
 # runs; each page gets its own CloudFront behavior below.
@@ -64,13 +69,21 @@ class _CopyIngestSources:
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
             mod.write(Path(output_dir) / "measured_cards.json", CARD_DATA)
+        # Same for the known IDs: without them nothing is held back.
+        if CARD_DATA.exists() and RELIC_DATA.exists():
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("build_known_ids", IDS_PY)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.write(Path(output_dir) / "known_ids.json")
         return True
 
 
 def _ingest_asset_hash() -> str:
     import hashlib
     h = hashlib.sha256()
-    for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA):
+    for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
+              IDS_PY, RELIC_DATA, RETIRED_IDS):
         if p.exists():
             h.update(p.read_bytes())
     return h.hexdigest()

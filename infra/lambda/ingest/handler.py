@@ -88,6 +88,7 @@ import math
 import os
 import re
 import secrets
+import sys
 import tempfile
 import time
 import unicodedata
@@ -96,6 +97,7 @@ import urllib.parse
 import urllib.request
 import zlib
 from datetime import datetime, timezone
+from pathlib import Path
 
 # Bundled next to this file in the Lambda asset (see the stack's bundling);
 # on the dev server the repo root is on sys.path instead.
@@ -498,11 +500,48 @@ def _measured_rows(cleaned: dict, parsed: dict) -> list[dict]:
         return []
 
 
-def spool_upload(body: bytes, steam_id: str, spool: Spool) -> tuple[int, int, int]:
+_KNOWN_IDS = Path(__file__).with_name("known_ids.json")
+_known = None
+# A character, card or relic as a run names it, for instance "CARD.STRIKE_IRONCLAD".
+# Mods name theirs in their own ways ("CHARACTER.CLOUD-CLOUD"), so anything up to the quote.
+_GAME_ID_RE = re.compile(r'"((?:CHARACTER|CARD|RELIC)\.[^"\\]+)"')
+
+
+def known_ids() -> frozenset | None:
+    """Every core character, card and relic ID (tools/build_known_ids.py), built from the
+    game data when the bundle is made; in the repo, cut from it on the spot. None with
+    neither: then nothing is held, rather than every run."""
+    global _known
+    if _known is None:
+        try:
+            _known = frozenset(json.loads(_KNOWN_IDS.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            try:
+                sys.path.append(str(Path(__file__).resolve().parents[3] / "tools"))
+                import build_known_ids
+                _known = frozenset(build_known_ids.load())
+            except (OSError, ValueError, ImportError, IndexError):
+                _known = frozenset()
+    return _known or None
+
+
+def unknown_ids(data: dict, known: frozenset | None = None) -> set[str]:
+    """The characters, cards and relics in a run that aren't core game content: from a
+    mod, or from a patch newer than our game data. Every player's, in co-op, since a
+    modded teammate means a modded game."""
+    known = known_ids() if known is None else known
+    if not known:
+        return set()
+    return {m for m in _GAME_ID_RE.findall(json.dumps(data.get("players") or [])) if m not in known}
+
+
+def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = None) -> tuple[int, int, int]:
     """Parse every run in the upload into the spool; returns (count good,
     count rejected, count that looked like .run files at all -- rejected ones
     included, since a run the parser can't handle yet may be the parser's
-    fault)."""
+    fault). A run naming a character, card or relic the game data doesn't know
+    is held: left out, counted in `held` ({"runs": n, "ids": {id: runs}}), and
+    kept in raw/ for a rebuild once the game data has it."""
     good, rejected, run_shaped = 0, 0, 0
     for line in iter_upload_lines(body):
         if good + rejected >= MAX_RUNS_PER_UPLOAD:
@@ -523,6 +562,14 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool) -> tuple[int, int, in
                   and len(json.dumps(parsed, separators=(",", ":"))) <= MAX_PARSED_RUN_BYTES)
         except (ValueError, TypeError, KeyError, AttributeError, IndexError, RecursionError):
             ok = False
+        unknown = unknown_ids(data) if ok else set()
+        if unknown:
+            if held is not None:
+                held["runs"] = held.get("runs", 0) + 1
+                ids = held.setdefault("ids", {})
+                for i in unknown:
+                    ids[i] = ids.get(i, 0) + 1
+            continue
         if ok:
             cleaned = clean_telemetry(telemetry)
             if cleaned:
@@ -1094,7 +1141,8 @@ def migrate_profile(store, slug: str) -> bool:
 
 def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) -> dict:
     with Spool() as spool:
-        good, rejected, run_shaped = spool_upload(body, steam_id, spool)
+        held = {}
+        good, rejected, run_shaped = spool_upload(body, steam_id, spool, held)
         if not run_shaped:
             raise IngestError(400, "no_runs", "None of those files could be read as runs.")
         slug, etag, doc = _read_profile(store, steam_id)
@@ -1103,6 +1151,12 @@ def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) ->
             slug, etag, doc = _read_profile(store, steam_id)
         result = {"status": "done", "slug": slug, "name": doc.get("name") if doc else None, "added": 0,
                   "duplicates": 0, "rejected": rejected, "total": _total(doc) if doc else 0}
+        if held:
+            # Held, not refused: raw/ keeps them, and tools/rebuild_profiles.py adds
+            # them once the game data has what they name (see known_ids()).
+            result["held"] = held["runs"]
+            result["heldIds"] = sorted(held["ids"], key=lambda i: (-held["ids"][i], i))[:20]
+            print(json.dumps({"held": held["runs"], "steamId": steam_id, "ids": result["heldIds"]}))
         if not good:
             return result
 
@@ -1215,24 +1269,56 @@ def process_upload(key: str, store, now: float | None = None, lookup_name=None) 
     return result
 
 
-def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: bool = False) -> dict:
+def _raw_uploads(store, steam_id: str):
+    """A player's raw uploads as sent, oldest first."""
+    for key in sorted(store.list(f"raw/{steam_id}/")):
+        got = store.get(key) if RAW_KEY_RE.match(key) else None
+        if got is not None:
+            yield got[0]
+
+
+def _replay_raw(store, steam_id: str, now: float, dry_run: bool, lookup_name) -> dict:
+    """rebuild_profile for someone with raw uploads but no profile: every run
+    they sent was held (or unreadable). Each upload goes through again as if
+    just sent, which makes the profile and counts the runs in the site stats."""
+    added, held, unreadable, slug = 0, 0, 0, None
+    for body in _raw_uploads(store, steam_id):
+        try:
+            if dry_run:
+                with Spool() as spool:
+                    h = {}
+                    spool_upload(body, steam_id, spool, h)
+                    added, held = added + len(spool.ts), held + h.get("runs", 0)
+                continue
+            res = _merge_upload(store, steam_id, body, now, lookup_name or lookup_steam_name)
+        except IngestError:
+            unreadable += 1
+            continue
+        added, held, slug = added + res["added"], held + res.get("held", 0), res["slug"] or slug
+    return {"slug": slug or steam_id, "runs": added, "fromRaw": added, "noRaw": 0, "dropped": 0,
+            "unreadableUploads": unreadable, "held": held, "new": True}
+
+
+def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: bool = False,
+                    lookup_name=None) -> dict:
     """
     Re-parse every raw upload a player has made with the current parser and
     rewrite their profile from it; runs with no raw copy stay as they are.
     Like an upload, it goes a month at a time. Site stats aren't touched:
-    run tools/rebuild_stats.py afterwards.
+    run tools/rebuild_stats.py afterwards. Runs still naming content the game
+    data lacks stay held (counted in "held"). Someone with raw uploads and no
+    profile, because every run was held, gets one made, as an upload would.
     """
     slug, etag, doc = _read_profile(store, steam_id)
     if doc is None:
-        raise IngestError(404, "no_profile", f"No profile for {steam_id}.")
-    unreadable = 0
+        if not store.list(f"raw/{steam_id}/"):
+            raise IngestError(404, "no_profile", f"No profile for {steam_id}.")
+        return _replay_raw(store, steam_id, time.time() if now is None else now, dry_run, lookup_name)
+    unreadable, held = 0, {}
     with Spool() as spool:
-        for key in sorted(store.list(f"raw/{steam_id}/")):  # oldest first: later copies win
-            got = store.get(key) if RAW_KEY_RE.match(key) else None
-            if got is None:
-                continue
+        for body in _raw_uploads(store, steam_id):  # oldest first: later copies win
             try:
-                spool_upload(got[0], steam_id, spool)
+                spool_upload(body, steam_id, spool, held)
             except IngestError:
                 unreadable += 1
         no_raw = _no_raw(doc) - spool.ts
@@ -1259,7 +1345,7 @@ def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: boo
                 store.delete(month_key(slug, m))
         summary = {"slug": slug, "runs": sum(len(ts) for ts in months.values()),
                    "fromRaw": len(spool.ts), "noRaw": len(no_raw), "dropped": dropped,
-                   "unreadableUploads": unreadable}
+                   "unreadableUploads": unreadable, "held": held.get("runs", 0)}
         if dry_run:
             return summary
     try:
@@ -1600,11 +1686,11 @@ def _upload_via(store, upload_id: str, at: float) -> str:
 
 def build_digest(store, now: float) -> tuple[str, str]:
     """The subject and body of the email covering the day before `now`:
-    each player's new runs, new players, failed uploads and the site's
+    each player's new runs, new players, held runs, failed uploads and the site's
     totals. Reads the upload results (kept 7 days), so it needs no record
     of its own."""
     since = now - DIGEST_WINDOW_S
-    players, failed = {}, []
+    players, failed, held_ids, held_unnamed = {}, [], {}, 0
     for key in store.list("users/_uploads/"):
         got = store.get(key)
         if got is None or not since <= got[1] < now:
@@ -1617,22 +1703,36 @@ def build_digest(store, now: float) -> tuple[str, str]:
         if res.get("status") == "failed":
             failed.append(res.get("error") or "unknown")
             continue
-        if res.get("status") != "done" or not res.get("slug"):
+        if res.get("status") != "done":
+            continue
+        for i in res.get("heldIds", []):
+            held_ids[i] = held_ids.get(i, 0) + 1
+        if not res.get("slug"):
+            # Every run held, from someone with no profile yet: no page to link.
+            held_unnamed += res.get("held", 0)
             continue
         p = players.setdefault(res["slug"], {"name": res.get("name") or res["slug"], "added": 0,
-                                             "uploads": 0, "via": set(), "new": False})
+                                             "uploads": 0, "via": set(), "new": False, "held": 0})
         p["added"] += res.get("added", 0)
         p["uploads"] += 1
         p["via"].add(_upload_via(store, upload_id, got[1]))
         p["new"] |= res.get("added", 0) > 0 and res.get("total") == res.get("added")
+        p["held"] += res.get("held", 0)
 
     added = sum(p["added"] for p in players.values())
     lines = []
     for slug, p in sorted(players.items(), key=lambda kv: -kv[1]["added"]):
         note = " - new player" if p["new"] else ""
+        note += f", {p['held']} held" if p["held"] else ""
         how = "/".join(sorted(p["via"]))
         lines.append(f"{p['name']}: {p['added']} new run(s) from {p['uploads']} upload(s), via {how}{note}\n"
                      f"  https://{SITE_DOMAIN}/u/{slug}")
+    if held_unnamed:
+        lines.append(f"Players with no profile yet: {held_unnamed} run(s), all held")
+    if held_ids:
+        top = sorted(held_ids, key=lambda i: (-held_ids[i], i))[:15]
+        lines.append("\nHeld runs name content the game data doesn't have (a mod, or a newer patch):\n  "
+                     + ", ".join(top))
     if failed:
         lines.append(f"\nFailed uploads: {len(failed)} ({', '.join(sorted(set(failed)))})")
 
@@ -1641,7 +1741,7 @@ def build_digest(store, now: float) -> tuple[str, str]:
     total_players = len(_read_index(store)[0])
     footer = f"\nSite total: {total_runs} runs, {total_players} players."
 
-    if not players and not failed:
+    if not players and not failed and not held_unnamed:
         return "Slay My Stats: no uploads yesterday", "No uploads yesterday." + footer
     subject = f"Slay My Stats: {added} new run(s) from {len(players)} player(s) yesterday"
     return subject, "\n".join(lines) + "\n" + footer

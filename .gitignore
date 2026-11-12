@@ -71,5 +71,7 @@ fight_demand.json
 
 # Cut from the game data when the ingest Lambda is bundled (tools/build_measured_cards.py).
 infra/lambda/ingest/measured_cards.json
+# Likewise the known character, card and relic IDs (tools/build_known_ids.py).
+infra/lambda/ingest/known_ids.json
 NOTES.md
 slay-my-stats.code-workspace

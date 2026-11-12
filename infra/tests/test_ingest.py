@@ -1040,6 +1040,105 @@ class RebuildTests(Uploads, unittest.TestCase):
             handler.rebuild_profile(self.store, STEAM_ID)
 
 
+class HoldTests(Uploads, unittest.TestCase):
+    """Runs naming a character, card or relic the game data lacks are held, not processed."""
+    KNOWN = frozenset({"CHARACTER.IRONCLAD", "CHARACTER.SILENT", "CARD.STRIKE_IRONCLAD",
+                       "CARD.FOLLOW_THROUGH", "RELIC.BURNING_BLOOD"})
+
+    def setUp(self):
+        super().setUp()
+        self.saved = handler._known
+        handler._known = self.KNOWN
+
+    def tearDown(self):
+        handler._known = self.saved
+
+    def run_with(self, ts, character="CHARACTER.IRONCLAD", cards=(), relics=(), teammate=None):
+        players = [{"character": character, "deck": [{"id": c} for c in cards],
+                    "relics": [{"id": r} for r in relics]}]
+        if teammate:
+            players.append({"character": teammate, "deck": [], "relics": []})
+        return minimal_run(ts, players=players)
+
+    def test_a_modded_character_card_or_relic_is_held(self):
+        res = self.ingest(body_of(
+            self.run_with(1700000001, cards=["CARD.STRIKE_IRONCLAD"], relics=["RELIC.BURNING_BLOOD"]),
+            self.run_with(1700000002, character="CHARACTER.CLOUD-CLOUD"),
+            self.run_with(1700000003, cards=["CARD.LIMIT_BREAK_MOD"]),
+            self.run_with(1700000004, relics=["RELIC.THREAD"])))
+        self.assertEqual((res["added"], res["rejected"], res["held"]), (1, 0, 3))
+        self.assertEqual(res["heldIds"], ["CARD.LIMIT_BREAK_MOD", "CHARACTER.CLOUD-CLOUD", "RELIC.THREAD"])
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1700000001])
+
+    def test_held_runs_stay_in_raw(self):
+        body = body_of(self.run_with(1700000002, character="CHARACTER.CLOUD-CLOUD"))
+        res = self.ingest(body)
+        self.assertEqual(self.store.objects[self.last_key][0], body)
+        self.assertEqual((res["added"], res["held"]), (0, 1))
+
+    def test_retired_content_is_known(self):
+        res = self.ingest(body_of(self.run_with(1700000001, cards=["CARD.FOLLOW_THROUGH"])))
+        self.assertEqual(res["added"], 1)
+        self.assertNotIn("held", res)
+
+    def test_a_modded_teammate_holds_the_run(self):
+        res = self.ingest(body_of(self.run_with(1700000001, teammate="CHARACTER.REMILIA_CHARACTER_REMILIA")))
+        self.assertEqual((res["added"], res["held"]), (0, 1))
+
+    def test_without_game_data_nothing_is_held(self):
+        handler._known = frozenset()
+        res = self.ingest(body_of(self.run_with(1700000002, character="CHARACTER.CLOUD-CLOUD")))
+        self.assertEqual(res["added"], 1)
+        self.assertNotIn("held", res)
+
+    def test_a_newcomer_with_every_run_held_still_shows(self):
+        self.store.clock = NOW
+        self.ingest(body_of(self.run_with(1700000002, character="CHARACTER.CLOUD-CLOUD")))
+        subject, body = handler.build_digest(self.store, NOW + 3600)
+        self.assertEqual(subject, "Slay My Stats: 0 new run(s) from 0 player(s) yesterday")
+        self.assertIn("Players with no profile yet: 1 run(s), all held", body)
+        self.assertIn("CHARACTER.CLOUD-CLOUD", body)
+
+    def test_once_the_game_data_catches_up_a_rebuild_adds_them(self):
+        self.ingest(body_of(self.run_with(1700000002, character="CHARACTER.CLOUD-CLOUD")))
+        self.assertIsNone(self.store.objects.get("users/mrbean.json.gz"))
+        s = handler.rebuild_profile(self.store, STEAM_ID, now=NOW, dry_run=True)
+        self.assertEqual((s["runs"], s["held"]), (0, 1))
+        handler._known = self.KNOWN | {"CHARACTER.CLOUD-CLOUD"}
+        s = handler.rebuild_profile(self.store, STEAM_ID, now=NOW, dry_run=True)
+        self.assertEqual((s["runs"], s["held"]), (1, 0))
+        self.assertIsNone(self.store.objects.get("users/mrbean.json.gz"))  # dry run wrote nothing
+        s = handler.rebuild_profile(self.store, STEAM_ID, now=NOW, lookup_name=named("Mr. Bean!"))
+        self.assertEqual((s["slug"], s["runs"], s["new"]), ("mrbean", 1, True))
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1700000002])
+        self.assertEqual(self.stats()["allRuns"], 1)
+
+    def test_a_rebuild_drops_runs_now_held(self):
+        handler._known = frozenset()  # processed before the hold existed
+        self.ingest(body_of(self.run_with(1700000001),
+                            self.run_with(1700000002, character="CHARACTER.CLOUD-CLOUD")))
+        handler._known = self.KNOWN
+        s = handler.rebuild_profile(self.store, STEAM_ID, now=NOW)
+        self.assertEqual((s["runs"], s["held"], s["dropped"]), (1, 1, 1))
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1700000001])
+
+    def test_known_ids_cover_the_game_data(self):
+        import build_known_ids
+        ids = build_known_ids.build(
+            {"CARD.BASH": {"pool": "IRONCLAD"}, "CARD.MADNESS": {"pool": "colorless"}},
+            {"RELIC.BURNING_BLOOD": {}}, {"_about": "notes", "CARD.SCARE": "v0.109.1"})
+        self.assertEqual(ids, ["CARD.BASH", "CARD.MADNESS", "CARD.SCARE", "CHARACTER.IRONCLAD",
+                               "RELIC.BURNING_BLOOD"])
+
+    def test_the_digest_names_what_was_held(self):
+        self.store.clock = NOW
+        self.ingest(body_of(self.run_with(1700000001),
+                            self.run_with(1700000002, character="CHARACTER.CLOUD-CLOUD")))
+        _, body = handler.build_digest(self.store, NOW + 3600)
+        self.assertIn("1 new run(s) from 1 upload(s), via ? - new player, 1 held", body)
+        self.assertIn("(a mod, or a newer patch):\n  CHARACTER.CLOUD-CLOUD", body)
+
+
 class DigestTests(Uploads, unittest.TestCase):
     def setUp(self):
         super().setUp()
