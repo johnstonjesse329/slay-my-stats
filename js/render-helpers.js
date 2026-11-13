@@ -366,7 +366,7 @@ function renderAscTracker() {
     ASC_TRACKER_MODES.map(mode => statsHtml("asc-stat-dread", `<b>${winStreaks(dread.filter(mode.test)).best}</b>Dread ${modeName(mode)} streak`)).join("") +
     `<div><b>${first
       ? `<span class="pb-stat-link" data-ts="${first.ts}" data-tip="Jump to this run" style="cursor:pointer">${fmtDate(first.ts)}</span>`
-      : "—"}</b>first A${maxAsc} win${first ? ` · ${charIconHtml(first.char)}${fmtCharName(first.char)}` : ""}</div>`;
+      : "—"}</b>first A${maxAsc} win${first ? ` · <span style="color:${CHAR_COLOR_MAP[first.char] || "#a0a0b8"}">${charIconHtml(first.char)}${fmtCharName(first.char)}</span>` : ""}</div>`;
 
   const el = document.getElementById("asc-tracker-cards");
   el.innerHTML = DATA.characters.map(char => {
@@ -390,7 +390,7 @@ function renderAscTracker() {
 }
 
 function charNameCell(char) {
-  return `<td class="char-name">${charIconHtml(char)}${fmtCharName(char)}</td>`;
+  return `<td class="char-name" style="color:${CHAR_COLOR_MAP[char] || "#a0a0b8"}">${charIconHtml(char)}${fmtCharName(char)}</td>`;
 }
 
 // Shared win-%-to-color mapping for every pivot-table cell in the dashboard.
