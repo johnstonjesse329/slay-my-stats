@@ -57,6 +57,7 @@ CHAR_COLORS = {
     "DEFECT":      "#5b9bd5",  # blue
     "NECROBINDER": "#b07dd4",  # purple
     "REGENT":      "#e8a930",  # gold
+    "FOOL":        "#d8d34a",  # yellow, kept off Regent's orange-gold
 }
 
 # Boss encounter IDs grouped by act (0-indexed internally, displayed as Act 1/2/3).
@@ -657,9 +658,10 @@ def parse_run(path: Path) -> dict:
         data = json.load(f)  # parse the JSON text into a Python dict
 
     # The Steam ID is embedded in the save path
-    # (.../steam/<steamID>/profile1/saves/history/<file>.run — index -5 from the file).
+    # (.../steam/<steamID>/profile1/saves/history/<file>.run, or .../<steamID>/modded/profile1/...
+    # when the mod is on), so take the part after "steam" rather than counting from the file.
     parts = path.parts
-    steam_id = parts[-5] if len(parts) >= 5 else None
+    steam_id = parts[parts.index("steam") + 1] if "steam" in parts[:-1] else (parts[-5] if len(parts) >= 5 else None)
     return parse_run_data(data, steam_id=steam_id, fallback_ts=int(path.stem))
 
 
@@ -1143,6 +1145,25 @@ def build_energy_icons(url_for=Path.as_uri) -> dict[str, str]:
         p.stem.removeprefix("energy_"): url_for(p)
         for p in sorted(_UI_ICONS_DIR.glob("energy_*.png"))
     }
+
+
+def build_char_icons(url_for=Path.as_uri) -> dict[str, dict[str, str]]:
+    """
+    Character ("IRONCLAD", ...) -> {"icon": the game's 88px top-panel head, "select":
+    its character-select portrait}, from ui_icons/char/ (tools/bake_char_icons.py).
+    The icon sits before the character's name across the site (js/tooltip.js's
+    charIconHtml); the portrait heads its Ascension Tracker card. Keyed like a run's
+    "char", and derived from the files, so a new character needs no code here.
+    """
+    d = _UI_ICONS_DIR / "char"
+    if not d.exists():
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for p in sorted(d.glob("*.png")):
+        kind, _, char = p.stem.partition("_")
+        if kind in ("icon", "select") and char:
+            out.setdefault(char.upper(), {})[kind] = url_for(p)
+    return out
 
 
 def build_map_art(url_for=Path.as_uri) -> dict[str, str]:
@@ -1720,6 +1741,7 @@ def build_html(runs: list[dict]) -> str:
     node_icons   = build_node_icons()
     card_final   = build_card_final_images()
     energy_icons = build_energy_icons()
+    char_icons = build_char_icons()
     map_art      = build_map_art()
     card_data   = json.loads(_CARD_DATA_FILE.read_text(encoding="utf-8"))  if _CARD_DATA_FILE.exists()  else {}
     relic_data  = json.loads(_RELIC_DATA_FILE.read_text(encoding="utf-8")) if _RELIC_DATA_FILE.exists() else {}
@@ -1800,6 +1822,7 @@ def build_html(runs: list[dict]) -> str:
         "nodeIcons":          node_icons,
         "cardFinal":          card_final,
         "energyIcons":        energy_icons,
+        "charIcons":          char_icons,
         "mapArt":            map_art,
         "thumbRoots":         build_thumb_roots(),
         "runsData":           runs,

@@ -10,14 +10,14 @@ Chart.defaults.font.family = '"Segoe UI", system-ui, sans-serif';
 Chart.defaults.font.size = 14;
 
 // Legend for a chart with a dataset per character: each name led by the
-// character's energy icon, as everywhere else a name is shown. The icons are
+// character's head, as everywhere else a name is shown. The icons are
 // loaded once; charts drawn before one arrives update when it does.
 const CHAR_LEGEND_ICONS = {};
-Object.entries(DATA.energyIcons || {}).forEach(([key, url]) => {
+Object.keys(DATA.charIcons || {}).forEach(char => {
   const img = new Image(16, 16);
   img.onload = () => Object.values(Chart.instances).forEach(c => c.update("none"));
-  img.src = url;
-  CHAR_LEGEND_ICONS[key] = img;
+  img.src = charIconUrl(char);
+  CHAR_LEGEND_ICONS[char.toLowerCase()] = img;
 });
 const CHAR_LEGEND_LABELS = {
   color: "#ccc", usePointStyle: true,

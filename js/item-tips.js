@@ -48,7 +48,7 @@ function cardFaceKey(id, upgrade, props) {
 // wherever a given context hits its own min and clamps flat).
 // card_final/ ships each card with a transparent margin around it, because the
 // game draws the energy cost orb and the frame's own bevel outside the card's
-// 300x422 rect (the orb is half outside it; see tools/ExportCards.cs's Pad()).
+// 300x422 rect (the orb is half outside it; see FaceWidth/FaceHeight in tools/ExportCards.cs).
 // A width asked for here is the *card body*, so it is scaled up to the image's
 // width -- otherwise every face would render ~10% smaller than before, and the
 // margin would eat into the space callers laid out for the card.

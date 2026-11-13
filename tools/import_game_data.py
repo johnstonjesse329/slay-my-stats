@@ -416,8 +416,11 @@ def main() -> int:
     for entry, game_card in game.items():
         card = cards.get("CARD." + entry)
         if card is None:
+            # tools/extract_card_data.py skips a card it cannot title from the
+            # localization files (Dingy Dagger titles itself by state), but merge()
+            # writes every field an entry carries, so the game's record stands alone.
             missing.append(entry)
-            continue
+            card = cards["CARD." + entry] = {}
         for field in merge(card, game_card, character_pools):
             tally[field] = tally.get(field, 0) + 1
 
@@ -442,11 +445,11 @@ def main() -> int:
     }
     VARIANT_DATA.write_text(json.dumps(variants, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-    print(f"merged {len(game) - len(missing)} of {len(game)} game cards into {CARD_DATA.name}")
+    print(f"merged {len(game)} game cards into {CARD_DATA.name}")
     for field, n in sorted(tally.items(), key=lambda kv: -kv[1]):
         print(f"  {field:28} {n}")
     if missing:
-        print(f"\nin the game but not in card_data.json: {len(missing)}  {missing[:10]}")
+        print(f"\nadded from the game alone (the extractor skipped them): {len(missing)}  {missing[:10]}")
 
     for path, section, prefix in ((RELIC_DATA, "Relics", "RELIC"),
                                   (POTION_DATA, "Potions", "POTION")):

@@ -89,6 +89,7 @@ slay-my-stats/
 │   ├── export_game_data.py  drives the game to export its data and render every card face
 │   ├── import_game_data.py  folds that export into the site's data files
 │   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
+│   ├── diff_game_data.py    what changed in the cards, relics and potions between two game versions
 │   ├── extract_power_data.py  power_data.json, from the game DLL
 │   ├── power_curve/         offline deck-strength tools: the sim, the formula and its fit (see its README)
 │   └── requirements.txt     pipeline requirements
@@ -122,7 +123,7 @@ paths:
 ├── relic_images/            (served)
 ├── potion_images/           (served)
 ├── node_icons/              map node icons (served)
-├── ui_icons/                energy icons, map_scroll.webp background (served)
+├── ui_icons/                energy icons, character portraits, map_scroll.webp background (served)
 └── card_chrome/             card frames and banners (input to the superseded bake_finished_cards.py; not served)
 ```
 
@@ -684,6 +685,10 @@ node icons, visited circle, Ancients and bosses, in `ui_icons/map/`) is baked by
 Three bosses are animated skeletons on the map; `tools/render_spine_bosses.html` renders them to still frames first
 and passes them in with `--spine` (steps in its header).
 
+Each refresh keeps a copy of the card, relic and potion data in `local_data/game_data/<version>/`, and
+`tools/diff_game_data.py` writes what changed since the previous version to
+`local_data/game_data/changes_<old>_to_<new>.txt`.
+
 The Runs page's Keeping Up charts need one more file, made after the refresh:
 `python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in
 `tools/power_curve/gamma_raw/`. Without it the charts are hidden. Their energy and cards chart also needs
@@ -695,9 +700,10 @@ with an event log. The offline deck-strength tools need `python tools/extract_po
 Text and images are not re-derived, though — that was measurably wrong. Earlier versions re-implemented the
 game's text grammar and composited each card in Pillow, which read Tank's 1.5x damage multiplier as an int
 (its card said "Take 0% more damage" where the game says 50%) and dropped grammar the game supports.
-`tools/export_game_data.py` asks the game instead: it builds and runs the exporter in `pck_recover_full/`
-(`tools/ExportCards.cs`, an autoload that is inert unless `EXPORT_CARDS=1`), which formats every description
-with the game's own formatters and renders each card through the game's own card scene, then
+`tools/export_game_data.py` asks the game instead: it installs the exporter (`tools/ExportCards.cs`, an autoload
+that is inert unless `EXPORT_CARDS=1`) into the recovered project in `pck_recover_full/`, builds and runs it,
+and it formats every description with the game's own formatters and renders each card through the game's own
+card scene. The source lives in this repo because the recovery is rebuilt on every game update. Then
 `tools/import_game_data.py` folds the result into the data files above. It needs the **Godot 4.5 .NET** editor
 (the non-.NET build cannot run the game's C#) and refuses to copy an export that this run didn't write.
 `tools/bake_finished_cards.py` and the hand-ported grammar are kept only as a fallback.

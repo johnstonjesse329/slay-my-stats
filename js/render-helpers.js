@@ -134,9 +134,8 @@ function renderPersonalBests() {
   // filters, so the same stat reads straight across the characters.
   const shown = chars.filter(char => bests[char].gamesPlayed);
   // A column per character, then the total when there's more than one. The
-  // header is the character's energy icon and name; a phone keeps the icon.
-  const icons = DATA.energyIcons || {};
-  const cols = shown.map(char => ({ name: fmtCharName(char), color: CHAR_COLOR_MAP[char] || "#a0a0b8", b: bests[char], icon: icons[char.toLowerCase()] }));
+  // header is the character's head and name; a phone keeps the head.
+  const cols = shown.map(char => ({ name: fmtCharName(char), color: CHAR_COLOR_MAP[char] || "#a0a0b8", b: bests[char], icon: charIconUrl(char) }));
   if (shown.length > 1) cols.push({ name: "Total", color: "var(--text)", bar: "#c8c4dc", b: total, total: true });
 
   // A value that links to the specific run that produced it (best is
@@ -284,8 +283,12 @@ function renderAscTracker() {
   const el = document.getElementById("asc-tracker-cards");
   el.innerHTML = DATA.characters.map(char => {
     const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
+    // Headed by the character-select portrait; the small head if there's none.
+    const portrait = (DATA.charIcons || {})[char]?.select;
     return `<div class="asc-card" style="border-top-color:${color}">
-      <div class="asc-name">${charIconHtml(char)}${fmtCharName(char)}</div>
+      ${portrait
+        ? `<div class="asc-char"><img class="asc-portrait" src="${portrait}" alt=""><div class="asc-name">${fmtCharName(char)}</div></div>`
+        : `<div class="asc-name">${charIconHtml(char)}${fmtCharName(char)}</div>`}
       ${ASC_TRACKER_MODES.map(mode => block(char, color, mode)).join("")}
     </div>`;
   }).join("");

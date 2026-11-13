@@ -58,7 +58,7 @@ OUT          = ROOT / "card_chrome"
 
 FRAME_TYPES  = ["attack", "skill", "power", "ancient", "quest"]
 BORDER_TYPES = ["attack", "skill", "power"]
-POOLS        = ["ironclad", "silent", "defect", "necrobinder", "regent", "colorless", "quest"]
+POOLS        = ["ironclad", "silent", "defect", "necrobinder", "regent", "fool", "colorless", "quest"]
 
 # card_data.json's `pool` -> frame material. The character pools mirror
 # CHAR_COLORS in run.py; the rest are pseudo-pools the extractor emits for
@@ -69,7 +69,8 @@ POOLS        = ["ironclad", "silent", "defect", "necrobinder", "regent", "colorl
 # and lower-case for the pseudo-pools.
 POOL_TO_COLOR = {
     "ironclad": "red", "silent": "green", "defect": "blue",
-    "necrobinder": "pink", "regent": "orange", "colorless": "colorless",
+    "necrobinder": "pink", "regent": "orange", "fool": "yellow",
+    "colorless": "colorless",
     "curse": "curse", "status": "colorless", "token": "colorless",
     "event": "colorless", "quest": "quest", "other": "colorless",
 }
@@ -249,12 +250,18 @@ def main():
              f"plaque_{rarity}.png", round(fw * 61 / 300), manifest)
 
     # Energy orbs are already coloured per character - no material applied.
+    # Newer characters (the Fool, v0.113) have no ui_atlas sprite; the game
+    # loads theirs from images/packed/energy_icons/ instead, so do the same.
     for pool in POOLS:
         try:
-            save(slice_sprite(f"energy_{pool}"), f"energy_{pool}.png",
-                 round(fw * 64 / 300), manifest)
+            orb = slice_sprite(f"energy_{pool}")
         except FileNotFoundError:
-            print(f"  (no energy sprite for {pool})")
+            loose = PCK / "images/packed/energy_icons" / f"energy_{pool}.png"
+            if not loose.exists():
+                print(f"  (no energy sprite for {pool})")
+                continue
+            orb = Image.open(loose).convert("RGBA")
+        save(orb, f"energy_{pool}.png", round(fw * 64 / 300), manifest)
 
     (OUT / "layout.json").write_text(json.dumps({
         "frameWidth": fw,

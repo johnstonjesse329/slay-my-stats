@@ -307,10 +307,15 @@ function fmtCharName(char) {
   return char.charAt(0) + char.slice(1).toLowerCase();
 }
 
-// The character's energy icon, from the game, to sit before its name wherever
-// the name is shown. "" when the icon is missing (an unknown character).
+// The character's head from the game's top panel, to sit before its name
+// wherever the name is shown. A card pool with no character (colorless) keeps
+// its energy icon; "" when neither exists (an unknown character).
+function charIconUrl(char) {
+  return (DATA.charIcons || {})[String(char).toUpperCase()]?.icon
+    || (DATA.energyIcons || {})[String(char).toLowerCase()];
+}
 function charIconHtml(char) {
-  const url = (DATA.energyIcons || {})[String(char).toLowerCase()];
+  const url = charIconUrl(char);
   return url ? `<img class="char-icon" src="${url}" alt="">` : "";
 }
 

@@ -4,7 +4,7 @@ base and upgraded form, out of card_chrome/ + card_data.json + the full-res
 portraits.
 
 SUPERSEDED. card_final/ is now produced by driving the game's own card scene --
-run `python tools/export_game_data.py`, which builds and drives
+run `python tools/export_game_data.py`, which installs, builds and drives
 tools/ExportCards.cs in the recovery project and exports card data plus a render
 of every card (RENDER_ALL=1) and each per-instance variant. That path is exact by
 construction: the Ancient rarity's separate layout, aspect-preserving portraits,
@@ -141,6 +141,7 @@ COST_OUTLINE_BY_POOL = {
     "defect":      (0x1D, 0x56, 0x73, 255),
     "necrobinder": (0x80, 0x33, 0x67, 255),
     "regent":      (0x80, 0x3D, 0x0E, 255),
+    "fool":        (0x5A, 0x44, 0x11, 255),
     "quest":       (0x43, 0x1E, 0x14, 255),
 }
 

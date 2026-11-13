@@ -37,7 +37,7 @@ POTION_IMG_DIR = ROOT / "potion_images"
 # Build card_id → character mapping from portrait directory structure.
 # Each subfolder name is the character (or "colorless", "curse", etc.).
 # Portrait stem → CARD.<STEM_UPPERCASE>.
-_CHAR_FOLDERS = {"ironclad", "silent", "defect", "necrobinder", "regent"}
+_CHAR_FOLDERS = {"ironclad", "silent", "defect", "necrobinder", "regent", "fool"}
 _POOL_MAP: dict[str, str] = {}  # card_id → pool name
 if PORTRAIT_DIR.exists():
     for folder in PORTRAIT_DIR.iterdir():
@@ -82,7 +82,7 @@ def relic_img_path(stem: str) -> str:
         if p.exists():
             return p.relative_to(ROOT).as_posix()
         # Character-variant fallback (e.g. yummy_cookie_ironclad.webp)
-        for suffix in ["ironclad", "silent", "defect", "necro", "regent"]:
+        for suffix in ["ironclad", "silent", "defect", "necro", "regent", "fool"]:
             p2 = base / f"{stem}_{suffix}.webp"
             if p2.exists():
                 return p2.relative_to(ROOT).as_posix()

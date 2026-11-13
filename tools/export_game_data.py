@@ -11,7 +11,7 @@ things wrong: Tank's 1.5x damage taken multiplier was read as an int, so its car
 said "Take 0% more damage" where the game says 50%, and the text grammar was a
 hand-written port that dropped constructs the game supports.
 
-Tools/ExportCards.cs in the recovered Godot project asks the game instead -- it
+tools/ExportCards.cs, run inside the recovered Godot project, asks the game instead -- it
 formats each description with the game's own formatters and renders each card
 through the game's own card scene -- so the output is exact by construction
 rather than by re-derivation. This script is the repo-side driver for it: build,
@@ -22,8 +22,10 @@ files. tools/refresh_game_data.py runs both.
 
     python tools/export_game_data.py [--data-only]
 
-Needs the Godot .NET editor (see GODOT below) and the recovery project, which
-holds tools/ExportCards.cs plus the game's own assets.
+Needs the Godot .NET editor (see GODOT below) and the recovery project, which holds
+the game's own assets. The exporter's source lives here (tools/ExportCards.cs), not in
+the recovery: the recovery is deleted and rebuilt on every game update, and took the
+only copy with it once. This script installs it into the recovery on each run.
 """
 from __future__ import annotations
 
@@ -70,6 +72,34 @@ def find_godot(explicit: str | None = None) -> Path | None:
     return shutil.which("godot") and Path(shutil.which("godot")) or None
 
 
+EXPORTER_SRC = ROOT / "tools" / "ExportCards.cs"
+AUTOLOAD_LINE = 'ExportCards="*res://tools/ExportCards.cs"'
+
+
+def install_exporter(recovery: Path) -> None:
+    """Put the exporter into the recovered project and register it as an autoload.
+
+    The recovery is a fresh unpack of the game, so neither exists after a refresh.
+    Idempotent: the autoload line is added once, and the source is always re-copied
+    so an edit here is what runs.
+    """
+    dest = recovery / "tools" / "ExportCards.cs"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(EXPORTER_SRC, dest)
+
+    project = recovery / "project.godot"
+    text = project.read_text(encoding="utf-8")
+    if AUTOLOAD_LINE in text:
+        return
+    marker = "[autoload]"
+    if marker not in text:
+        raise SystemExit(f"{project} has no [autoload] section to register the exporter in")
+    nl = "\r\n" if "\r\n" in text else "\n"
+    text = text.replace(marker, marker + nl + nl + AUTOLOAD_LINE, 1)
+    project.write_text(text, encoding="utf-8", newline="")
+    print(f"registered the exporter autoload in {project}", flush=True)
+
+
 def run(argv, **kwargs) -> subprocess.CompletedProcess:
     """Log the command, then run it -- these steps take minutes, so a silent
     failure is worse than a noisy log."""
@@ -86,11 +116,12 @@ def main() -> int:
     args = parser.parse_args()
 
     recovery = Path(args.recovery) if args.recovery else RECOVERY
-    if not (recovery / "tools" / "ExportCards.cs").exists():
+    if not (recovery / "project.godot").exists():
         raise SystemExit(
             f"No recovered project at {recovery}\n"
-            "  Pass --recovery, or set STS2_RECOVERY. It needs tools/ExportCards.cs,\n"
-            "  from a GDRE recovery of the game's .pck (see tools/refresh_game_data.py).")
+            "  Pass --recovery, or set STS2_RECOVERY. It needs a GDRE recovery of the\n"
+            "  game's .pck (see tools/refresh_game_data.py).")
+    install_exporter(recovery)
 
     godot = find_godot(args.godot)
     if godot is None:
@@ -147,10 +178,22 @@ def main() -> int:
           f"{len(data['Variants'])} variants")
 
     if not args.data_only:
-        faces = len(list((ROOT / "card_final").glob("*.webp")))
-        print(f"--- rendered {faces} card faces into card_final/")
-        if faces == 0:
-            raise SystemExit("No faces were rendered. Check that the run above reported no errors.")
+        if "card faces failed to render" in log or "[render] wrote" not in log:
+            print(log[-4000:], file=sys.stderr)
+            raise SystemExit("Some card faces failed to render. card_final/ was left as it was.")
+        rendered = sorted((EXPORT_DIR / "card_final").glob("*.webp"))
+        fresh = [f for f in rendered if f.stat().st_mtime >= t0 - 2]
+        if not fresh:
+            print(log[-4000:], file=sys.stderr)
+            raise SystemExit("No faces were rendered by this run. Nothing was copied to card_final/.")
+        out = ROOT / "card_final"
+        out.mkdir(exist_ok=True)
+        # Replace the set rather than add to it, so a card the game dropped doesn't linger.
+        for old in out.glob("*.webp"):
+            old.unlink()
+        for face in fresh:
+            shutil.copy2(face, out / face.name)
+        print(f"--- rendered {len(fresh)} card faces into card_final/")
     print("Next: python tools/import_game_data.py", flush=True)
     return 0
 

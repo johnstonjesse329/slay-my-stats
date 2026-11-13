@@ -91,7 +91,7 @@ PD = json.loads((WT / "power_data.json").read_text(encoding="utf-8"))
 SAMPLES, TURNS, SCALE_TURNS, MAX_PLAYS, MAX_TURN_PLAYS = 300, 5, 8, 40, 200
 DEADLINE = None  # time.time() past which a run gives up (gamma_curves sets it)
 BASE_ENERGY, BASE_DRAW, HAND_MAX = 3, 5, 10
-CHAR_POOLS = ("IRONCLAD", "SILENT", "DEFECT", "NECROBINDER", "REGENT")
+CHAR_POOLS = ("IRONCLAD", "SILENT", "DEFECT", "NECROBINDER", "REGENT", "FOOL")
 INF = float("inf")
 SHIV = "CARD.SHIV"
 EFFECT_VARS = {"Damage", "Block", "Cards", "Energy", "Shivs", "Repeat"}

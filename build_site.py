@@ -319,6 +319,7 @@ def build_catalog() -> dict:
         "nodeIcons":          run.build_node_icons(url_for=repo_url),
         "cardFinal":          run.build_card_final_images(url_for=repo_url),
         "energyIcons":        run.build_energy_icons(url_for=repo_url),
+        "charIcons":          run.build_char_icons(url_for=repo_url),
         "mapArt":            run.build_map_art(url_for=repo_url),
         "thumbRoots":         run.build_thumb_roots(url_for=repo_url),
     }

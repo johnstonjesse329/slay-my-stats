@@ -32,6 +32,7 @@ import sys
 import time
 from pathlib import Path
 
+import diff_game_data
 from pck_root import find_pck_root
 
 HERE = Path(__file__).parent
@@ -384,6 +385,15 @@ def main():
         shutil.rmtree(old, ignore_errors=True)
         print(f"--- recovery ok ({time.time()-t0:.0f}s)")
 
+    # Keep the data this refresh is about to overwrite, so the patch can be diffed
+    # afterwards (tools/diff_game_data.py). Named by the version it was built from,
+    # and never overwritten: after a half-finished refresh the provenance still
+    # names the old version while the files are already partly new.
+    rel = read_release_info(game)
+    if (prev.get("gameVersion") and (ROOT / "card_data.json").exists()
+            and not (diff_game_data.SNAPSHOTS / prev["gameVersion"]).exists()):
+        diff_game_data.snapshot(prev["gameVersion"])
+
     # Assets before data: extract_card_data.py records relic imagePaths and
     # expects the files to already be there.
     run_step("portraits", ["tools/downscale_portraits.py"])
@@ -402,21 +412,27 @@ def main():
     run_step("game data import", ["tools/import_game_data.py"])
     run_step("card chrome", ["tools/bake_card_chrome.py"])
     run_step("thumbnails", ["tools/bake_thumbs.py"])
+    run_step("character portraits", ["tools/bake_char_icons.py"])
 
     problems, stats = completeness_report()
     # extract_card_data.py drops entries the localization doesn't know about
-    # (a blank title renders worse than falling back to the prettified id).
-    # Those rows are gone by the time completeness_report() runs, so surface
-    # its warnings here — otherwise dropping them would hide the very skew
-    # this script exists to catch.
-    problems += [ln.strip().lstrip("! ") for ln in extract_out.splitlines()
-                 if ln.strip().startswith("! skipped")]
-    # release_info.json is the game's real build identity (version + commit +
-    # build date) — its exe reports a placeholder 1.0.0.0. Record it here so a
-    # later --stale check can compare versions instead of re-hashing the 2 GB
-    # .pck. The hashes stay as ground truth; mtimes are the fallback for
-    # installs without release_info.json.
-    rel = read_release_info(game)
+    # (a blank title renders worse than falling back to the prettified id), and
+    # lists them indented under its "! skipped" line. import_game_data.py adds
+    # the cards back from the game's own export, so only an ID still missing
+    # now is a gap -- otherwise dropping it would hide the very skew this script
+    # exists to catch.
+    cards_now = json.loads((ROOT / "card_data.json").read_text(encoding="utf-8"))
+    relics_now = json.loads((ROOT / "relic_data.json").read_text(encoding="utf-8"))
+    still_missing = [ln.strip() for ln in extract_out.splitlines()
+                     if ln.strip().startswith(("CARD.", "RELIC.", "POTION."))
+                     and ln.strip() not in cards_now and ln.strip() not in relics_now]
+    if still_missing:
+        problems.append(f"skipped by extract_card_data.py and not in the game export: {still_missing}")
+    # release_info.json (read above) is the game's real build identity (version +
+    # commit + build date) -- its exe reports a placeholder 1.0.0.0. Record it
+    # here so a later --stale check can compare versions instead of re-hashing
+    # the 2 GB .pck. The hashes stay as ground truth; mtimes are the fallback
+    # for installs without release_info.json.
 
     PROVENANCE.write_text(json.dumps({
         "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -431,6 +447,19 @@ def main():
         "stats": stats,
         "problems": problems,
     }, indent=2), encoding="utf-8")
+
+    new_version = (rel or {}).get("version")
+    if new_version:
+        diff_game_data.snapshot(new_version)
+        old_version = prev.get("gameVersion")
+        if old_version and old_version != new_version and (diff_game_data.SNAPSHOTS / old_version).exists():
+            print(f"\n=== what {new_version} changed ===")
+            text = diff_game_data.report(old_version, new_version)
+            out = diff_game_data.SNAPSHOTS / f"changes_{old_version}_to_{new_version}.txt"
+            out.write_text(text + "\n", encoding="utf-8")
+            print(text.split("\n== ")[0] + "\n" + "\n".join(
+                ln for ln in text.splitlines() if ln.startswith("== ")))
+            print(f"(full list: {out})")
 
     print("\n=== summary ===")
     print(json.dumps(stats, indent=2))

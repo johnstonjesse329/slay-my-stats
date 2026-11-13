@@ -313,6 +313,8 @@ h1 {
   min-width: 0;
 }
 .asc-name { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.asc-char { display: flex; align-items: flex-end; gap: 0.6rem; }
+.asc-portrait { height: 5.5rem; width: auto; flex: none; }
 .asc-mode { margin-top: 0.5rem; }
 .asc-mode + .asc-mode { border-top: 1px solid var(--panel-border); margin-top: 0.65rem; padding-top: 0.6rem; }
 .asc-mode-label { font-size: var(--fs-xs); color: var(--text-dim); }
@@ -700,8 +702,14 @@ h1 {
 }
 .char-btn:disabled { color: var(--text-faint); border-color: var(--hairline); cursor: not-allowed; }
 
-/* A character's energy icon, before its name wherever the name is shown. */
+/* A character's head, before its name wherever the name is shown. */
 .char-icon { width: 1.15em; height: 1.15em; vertical-align: -0.22em; margin-right: 0.3em; }
+/* On the selected button the head sits on its own colour (the Fool's is nearly the
+   same yellow), so give it a thin dark edge to stay readable. */
+.char-btn.active .char-icon {
+  filter: drop-shadow(1px 0 0 var(--bg-deep)) drop-shadow(-1px 0 0 var(--bg-deep))
+          drop-shadow(0 1px 0 var(--bg-deep)) drop-shadow(0 -1px 0 var(--bg-deep));
+}
 .char-btn:disabled .char-icon { opacity: 0.45; }
 
 
