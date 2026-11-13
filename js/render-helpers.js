@@ -375,8 +375,8 @@ function renderAscTracker() {
     const portrait = (DATA.charIcons || {})[char]?.select;
     return `<div class="asc-card" style="border-top-color:${color}">
       ${portrait
-        ? `<div class="asc-char"><img class="asc-portrait" src="${portrait}" alt=""><div class="asc-name">${fmtCharName(char)}</div></div>`
-        : `<div class="asc-name">${charIconHtml(char)}${fmtCharName(char)}</div>`}
+        ? `<div class="asc-char"><img class="asc-portrait" src="${portrait}" alt=""><div class="asc-name" style="color:${color}">${fmtCharName(char)}</div></div>`
+        : `<div class="asc-name" style="color:${color}">${charIconHtml(char)}${fmtCharName(char)}</div>`}
       ${ASC_TRACKER_MODES.map(mode => block(char, color, mode)).join("")}
     </div>`;
   }).join("");
