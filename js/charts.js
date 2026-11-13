@@ -10,7 +10,7 @@ Chart.defaults.font.family = '"Segoe UI", system-ui, sans-serif';
 Chart.defaults.font.size = 14;
 
 // Legend for a chart with a dataset per character: each name led by the
-// character's head, as everywhere else a name is shown. The icons are
+// character's head, in the character's color, as everywhere else a name is shown. The icons are
 // loaded once; charts drawn before one arrives update when it does.
 const CHAR_LEGEND_ICONS = {};
 Object.keys(DATA.charIcons || {}).forEach(char => {
@@ -23,7 +23,8 @@ const CHAR_LEGEND_LABELS = {
   color: "#ccc", usePointStyle: true,
   generateLabels: chart => Chart.defaults.plugins.legend.labels.generateLabels(chart).map(item => {
     const img = CHAR_LEGEND_ICONS[String(item.text).toLowerCase()];
-    return img && img.complete && img.naturalWidth ? { ...item, pointStyle: img } : item;
+    const named = { ...item, fontColor: item.fillStyle };
+    return img && img.complete && img.naturalWidth ? { ...named, pointStyle: img } : named;
   }),
 };
 
