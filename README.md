@@ -379,8 +379,8 @@ The check is a lookup of each ID in the run against that list, so it adds next t
 
 The upload's result counts the held runs and names the top IDs; the page tells the player, and they're
 reported for trends. `tools/find_unknown_ids.py --bucket slay-my-stats-data` lists every one in `raw/`, with
-the players and builds. After a patch: refresh the game data, deploy, then `tools/rebuild_profiles.py --all`
-brings in the runs it now knows, making a profile for anyone whose runs were all held. A mod's runs stay held.
+the players and builds. After a patch: refresh the game data and deploy. A deploy that changes the stack runs
+`tools/rebuild_profiles.py --all` and `tools/rebuild_stats.py` for you, which brings in the runs it now knows, making a profile for anyone whose runs were all held. A mod's runs stay held.
 
 ### Site-wide stats
 

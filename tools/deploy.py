@@ -39,6 +39,10 @@ function started (it answers 401 to a request with no Steam ticket); a 5xx or no
 deploy before the site goes up, which is how a bundle that crashes on import (a 502 for every
 upload from the mod) gets caught on gamma rather than found in the mod's log.
 
+A deploy that changed the stack (the Lambda bundle carries the known-ID list) ends by running
+rebuild_profiles --all and rebuild_stats on that stage's data bucket, so runs held for unknown IDs
+join their profiles. A failure there only warns; run the two by hand.
+
 Production only deploys a commit that gamma has already deployed and passed that check on. A
 successful gamma deploy of a clean checkout writes its commit to `slay-my-stats-gamma-ok` inside
 the git directory (shared by worktrees); a prod deploy of any other commit stops. `DEPLOY_SKIP_GAMMA=1`
@@ -69,6 +73,8 @@ STAGES = {
     "prod": (SITE_BUCKET, DOMAIN_NAME, STACK_NAME),
     "gamma": ("slay-my-stats-gamma-site", "gamma.slay-my-stats.com", "SlayMyStatsGammaStack"),
 }
+# The data bucket each stage's profiles live in (infra/slay_my_stats/slay_my_stats_stack.py).
+DATA_BUCKETS = {"prod": "slay-my-stats-data", "gamma": "slay-my-stats-gamma-data"}
 # Pushing one of these branches deploys its stage (see check_pre_push).
 DEPLOY_BRANCHES = {"main": "prod", "gamma": "gamma"}
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
@@ -223,7 +229,9 @@ def check_pre_push(ref_lines) -> str | None:
     return DEPLOY_BRANCHES[branch]
 
 
-def deploy_infra() -> None:
+def deploy_infra() -> bool:
+    """Deploy the stack if it differs; True when it did (the Lambda bundle, and so the
+    known-ID list, may have changed)."""
     # cdk.json runs `python app.py`; put the infra venv first so that resolves
     # to the interpreter with aws_cdk installed.
     venv_bin = _INFRA / ".venv" / ("Scripts" if os.name == "nt" else "bin")
@@ -233,7 +241,7 @@ def deploy_infra() -> None:
     output = run(["cdk", "diff", STACK_NAME], cwd=_INFRA, env=env, stream=True).stdout
     if "There were no differences" in output:
         print("Infra: no changes.")
-        return
+        return False
     # DEPLOY_YES answers the question up front, for a run with nobody at the terminal.
     # Any value does it for gamma; production wants the word "prod", so a stray
     # DEPLOY_YES=1 left in the environment can't ship a production stack change.
@@ -243,6 +251,22 @@ def deploy_infra() -> None:
     elif not ask("Deploy these infra changes?"):
         raise DeployError("infra deploy declined")
     run(["cdk", "deploy", STACK_NAME, "--require-approval", "never"], cwd=_INFRA, env=env)
+    return True
+
+
+def rebuild_held_runs(stage: str) -> None:
+    """Bring in runs the new known-ID list no longer holds back, then recount the site totals.
+    Both are safe to repeat; a failure here leaves the deploy done, so it only warns."""
+    bucket = DATA_BUCKETS[stage]
+    python = _INFRA / ".venv" / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
+    print(f"Runs: re-checking held uploads in {bucket} (rebuild_profiles --all, rebuild_stats)...", flush=True)
+    for script, extra in (("rebuild_profiles.py", ["--all"]), ("rebuild_stats.py", [])):
+        try:
+            run([str(python), str(_HERE / "tools" / script), *extra, "--bucket", bucket], stream=True)
+        except DeployError as e:
+            print(f"Warning: {script} failed ({e}). Run it by hand: "
+                  f"tools/{script} {' '.join(extra)} --bucket {bucket}", file=sys.stderr)
+            return
 
 
 def upload_changed_dist() -> list[str]:
@@ -468,11 +492,13 @@ def main() -> int:
         check_site_pages()
         if stage == "prod":
             require_gamma_ok()
-        deploy_infra()
+        infra_changed = deploy_infra()
         ingest_url = ingest_function_url()
         smoke_test_ingest(ingest_url)
         deploy_site(ingest_url)
         smoke_test_site()
+        if infra_changed:
+            rebuild_held_runs(stage)
         if stage == "gamma":
             record_gamma_ok()
     except DeployError as e:
