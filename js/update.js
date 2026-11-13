@@ -76,7 +76,9 @@ function ascColumnKey(asc) {
   return sharedAscGranular ? asc : ASC_BUCKETS.find(b => b.ascs.includes(asc))?.key;
 }
 let sharedActiveBuilds = new Set(DATA.builds);
-let sharedActiveMode   = "all";
+// "all" | "solo" | "multi", and the ticked game modes (see modeShowsRun).
+let sharedActivePlayers = "all";
+let sharedActiveModes   = new Set(["standard", "daily", "dread"]);
 // "all" | "vanilla" | "modded": whether runs the game mod reported loaded mods
 // for are shown (see modsShowRun).
 let sharedActiveMods   = "all";
@@ -95,7 +97,7 @@ let sharedTsFrom       = 0;
 let sharedTsTo         = TS_NO_UPPER_BOUND;
 
 // Declared here (not near the Save/Reset buttons that use them) because
-// setSharedMode("all") below runs during the filter bar's own initial
+// setSharedPlayers("all") below runs during the filter bar's own initial
 // setup and triggers rerenderCurrentPage() -> updateUnsavedIndicator(),
 // which reads both of these — they must exist before any control's
 // default wiring can possibly call that chain, not just before the
@@ -103,15 +105,32 @@ let sharedTsTo         = TS_NO_UPPER_BOUND;
 const SHARED_FILTER_STORAGE_KEY = "sts2_filter_prefs";
 const SHARED_FILTER_HARDCODED_DEFAULTS = {
   char: "ALL", ascGranular: false, builds: [...DATA.builds],
-  mode: "all", mods: "all", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
+  players: "all", modes: ["standard", "daily", "dread"], mods: "all", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
 };
 
-// Whether the Solo / Multi / Daily / All filter lets a run through.
-function modeShowsRun(mode, run) {
-  if (mode === "solo")  return !(run.mp || run.mode === "daily");
-  if (mode === "multi") return !!run.mp;
-  if (mode === "daily") return run.mode === "daily";
-  return true;
+// Game modes with their own rules and stats (no map in Blitz, a separate ascension
+// track, a custom run's modifiers). A run with no run.mode is a standard run.
+const OWN_MODES = ["daily", "blitz", "dread", "custom"];
+const ALL_MODES = ["standard", ...OWN_MODES];
+const MODE_LABELS = { standard: "Standard", daily: "Daily", blitz: "Blitz", dread: "Dread", custom: "Custom" };
+function runModeOf(run) { return run.mode || "standard"; }
+
+// Whether the Players (all / solo / multi) and Modes filters let a run through.
+function modeShowsRun(players, modes, run) {
+  if (players === "solo"  &&  run.mp) return false;
+  if (players === "multi" && !run.mp) return false;
+  return modes.has(runModeOf(run));
+}
+
+// Saves from before the Players/Modes split carry one `mode` value.
+function savedModeState(state) {
+  if (state.players) {
+    return { players: state.players, modes: (state.modes || []).filter(m => ALL_MODES.includes(m)) };
+  }
+  const old = state.mode || "all";
+  if (old === "solo" || old === "multi") return { players: old, modes: ["standard"] };
+  if (OWN_MODES.includes(old)) return { players: "all", modes: [old] };
+  return { players: "all", modes: [...SHARED_FILTER_HARDCODED_DEFAULTS.modes] };
 }
 
 // Whether the Mods filter lets a run through. A run uploaded from files says
@@ -129,7 +148,7 @@ function filterRuns() {
     if (!sharedActiveAscs.has(run.asc))     return false;
     if (!sharedActiveBuilds.has(run.build)) return false;
     if (run.ts < sharedTsFrom || run.ts > sharedTsTo) return false;
-    return modeShowsRun(sharedActiveMode, run) && modsShowRun(sharedActiveMods, run);
+    return modeShowsRun(sharedActivePlayers, sharedActiveModes, run) && modsShowRun(sharedActiveMods, run);
   });
 }
 

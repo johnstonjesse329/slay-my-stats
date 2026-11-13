@@ -300,13 +300,12 @@ function favTalliesYou() {
   return { picks, runs };
 }
 
-// The same from the site-wide totals, for the Mode filter's runs (all = solo
-// plus multiplayer; there are no daily-only totals).
+// The same from the site-wide totals, for the Players filter's runs (all = solo
+// plus multiplayer). Only while Standard is ticked: there are no totals for the
+// other modes.
 function favTalliesAll() {
-  if (!siteStatsForFavs) return null;
-  const modes = sharedActiveMode === "solo" ? ["solo"] : sharedActiveMode === "multi" ? ["multi"]
-    : sharedActiveMode === "daily" ? [] : ["solo", "multi"];
-  if (!modes.length) return null;
+  if (!siteStatsForFavs || !sharedActiveModes.has("standard")) return null;
+  const modes = sharedActivePlayers === "all" ? ["solo", "multi"] : [sharedActivePlayers];
   const picks = {}, runs = {};
   modes.forEach(mode => {
     const m = siteStatsForFavs[mode] || {};

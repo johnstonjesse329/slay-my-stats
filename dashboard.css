@@ -172,6 +172,10 @@ h1 {
 }
 .pb-table th, .pb-table td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--hairline); }
 .pb-table thead th { width: auto; font-weight: 700; text-align: center; white-space: nowrap; border-bottom: 2px solid var(--hairline); }
+/* The character row stays in view while the long table scrolls past (most of all on a phone).
+   The panel's own colour, so rows slide under it; a shadow stands in for the border, which a
+   sticky cell's collapsed border doesn't carry. */
+.pb-table thead th { position: sticky; top: 0; z-index: 2; background: var(--panel); box-shadow: inset 0 -2px 0 var(--hairline); }
 .pb-table thead th:first-child { width: 11rem; }
 .pb-table tbody th { text-align: left; color: var(--text-dim); font-weight: 500; }
 .pb-table td { text-align: center; color: var(--text); font-weight: 500; }
@@ -181,12 +185,30 @@ h1 {
 .pb-table tr.pb-tier th { padding-left: 1.25rem; font-size: var(--fs-sm); border-bottom: 0; }
 .pb-table tr.pb-tier td { font-size: var(--fs-sm); color: var(--text-dim); padding-top: 0.15rem; padding-bottom: 0.15rem; border-bottom: 0; }
 .pb-table tr:not(.pb-tier) + tr.pb-tier td, .pb-table tr:not(.pb-tier) + tr.pb-tier th { padding-top: 0.3rem; }
+.pb-table tr.pb-tier-dread th { color: #87ceeb; font-weight: 700; letter-spacing: 0.04em; }
 .pb-bar { display: block; height: 4px; width: min(100%, 7rem); margin: 3px auto 0; border-radius: 2px; background: rgba(255,255,255,0.08); overflow: hidden; }
 .pb-bar i { display: block; height: 100%; border-radius: 2px; }
+/* Multiplayer's bar, under solo's: striped, as the home page draws Multi. */
+.pb-bar + .pb-bar { margin-top: 2px; }
+.pb-bar-multi i { background-image: repeating-linear-gradient(135deg, rgba(13,12,26,0.55) 0 3px, transparent 3px 6px); }
 .pb-table tr.pb-group th { color: #a8a2c4; font-size: var(--fs-sm); padding-top: 1rem; border-bottom: 2px solid var(--hairline); }
 /* The Total column sits apart from the characters. */
 .pb-table .pb-total { border-left: 2px solid var(--hairline); }
 .pb-sep { color: var(--text-faint); margin: 0 0.15rem; }
+/* Winning-run cells: a desktop shows the fewest–most range; a phone shows the median, which
+   pops the range out on a tap (.pb-pop). */
+.pb-med, .pb-phone-only { display: none; }
+#personal-bests-cards { position: relative; }
+.pb-pop {
+  position: absolute; z-index: 5; min-width: 9.5rem; padding: 0.5rem 0.7rem;
+  background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5); font-size: var(--fs-sm);
+}
+.pb-pop[hidden] { display: none; }
+.pb-pop-title { color: var(--text-dim); margin-bottom: 0.3rem; white-space: nowrap; }
+.pb-pop-row { display: flex; justify-content: space-between; gap: 1rem; padding: 0.15rem 0; }
+.pb-pop-row span:first-child { color: var(--text-dim); }
+.pb-pop .pb-stat-link { font-weight: 700; }
 /* A phone keeps the table: the characters are their energy icons, the stat
    names wrap, and every figure is short enough to fit. */
 @media (max-width: 700px) {
@@ -202,6 +224,12 @@ h1 {
   .pb-table tr:not(.pb-group) td { font-size: var(--fs-xs); }
   .pb-table tr.pb-headline td { font-size: var(--fs-sm); }
   .pb-sep { margin: 0; }
+  .pb-table td { white-space: nowrap; }
+  .pb-table .pb-rng { display: none; }
+  .pb-phone-only { display: inline; }
+  .pb-med { all: unset; display: inline; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+  .pb-med[aria-expanded=true] { color: var(--gold); }
+  .pb-med:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 }
 
 /* Favorites (Cards page): the player's table and all players' side by side,
@@ -325,6 +353,20 @@ h1 {
    character's colour. */
 .asc-pips { display: flex; align-items: flex-end; gap: 3px; height: 46px; margin: 0.6rem 0 0.5rem; }
 .asc-pip { flex: 1; height: calc(var(--rung) * 10%); border-radius: 2px 2px 0 0; background: rgba(255,255,255,0.1); }
+/* Dread, past A10: the game's top-bar gem, dim until a Dread win lights it, its number
+   the best Dread win streak in the top bar's own colours. */
+.asc-dread {
+  flex: none; align-self: flex-start; width: 45px; height: 45px; margin: -10px -4px 0 3px; position: relative;
+  background: url(/ui_icons/dread.png) center / contain no-repeat;
+  filter: brightness(0.6); opacity: 0.4;
+  display: flex; align-items: center; justify-content: center;
+}
+.asc-dread-won { filter: drop-shadow(0 0 6px rgba(80, 230, 220, 0.7)); opacity: 1; }
+.asc-dread b {
+  font-size: var(--fs-md); font-weight: 800; color: #87ceeb;
+  text-shadow: -1px -1px 0 #06335f, 1px -1px 0 #06335f, -1px 1px 0 #06335f, 1px 1px 0 #06335f;
+}
+.asc-stats .asc-stat-dread b { color: #87ceeb; }
 .asc-now { font-size: var(--fs-sm); color: var(--text); opacity: 0.85; }
 /* Title and caption left, three headline numbers right. */
 .asc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem 2rem; flex-wrap: wrap; }
@@ -1148,6 +1190,34 @@ h1 {
   padding: 0 0.3rem;
   color: var(--ember);
   border: 1px solid var(--ember);
+  border-radius: 3px;
+}
+
+/* "Custom" in the run header: a run set up with the custom run screen. Its modifiers
+   are the data-tip. */
+.run-mode-tag {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 0 0.3rem;
+  color: var(--text-dim);
+  border: 1px solid var(--text-dim);
+  border-radius: 3px;
+}
+/* Dread in the game's own colours: its top-bar label (#87ceeb on #06335f) and gem teal. */
+.run-mode-tag.run-dread-tag {
+  color: #87ceeb;
+  background: #06335f;
+  border-color: #50e6dc;
+  letter-spacing: 0.04em;
+}
+.run-custom-tag {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 0 0.3rem;
+  color: var(--gold);
+  border: 1px solid var(--gold);
   border-radius: 3px;
 }
 
@@ -2478,6 +2548,26 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #shared-char-selector, #shared-asc-checkboxes {
     flex-basis: 100%;
   }
+
+  /* The shared bar: no box per group, just the labels in one column with each
+     group's controls wrapping beside it (a hanging indent: the label sits in
+     the group's left padding), and controls tall enough to tap. */
+  #shared-filter-bar .filter-row { gap: 0.6rem; }
+  #shared-filter-bar .filter-group {
+    --fl-w: 4.6rem;
+    border: 0; background: none; border-radius: 0;
+    padding: 0 0 0 var(--fl-w);
+    gap: 0.35rem;
+  }
+  #shared-filter-bar .filter-group > .filter-label { flex: none; width: var(--fl-w); margin: 0 0 0 calc(-1 * var(--fl-w)); }
+  #shared-filter-bar #shared-char-selector, #shared-filter-bar #shared-asc-checkboxes { flex: 1 1 0; min-width: 0; }
+  #shared-filter-bar .toggle-btn, #shared-filter-bar label, #shared-filter-bar input[type=date] { min-height: 2.25rem; }
+  /* Dates share one line; the presets start the next. */
+  #shared-filter-bar input[type=date] { flex: 1 1 0; min-width: 0; padding: 0.2rem 0.4rem; }
+  #shared-filter-bar .filter-group > .sep { flex-basis: 100%; height: 0; margin: 0; }
+  /* Save / Reset: no label, so no indent; the two buttons split the line. */
+  #shared-filter-bar .filter-group:not(:has(> .filter-label)) { padding-left: 0; }
+  #shared-filters-save, #shared-filters-reset { flex: 1 1 0; }
 
   /* Grids that stay at desktop column counts squeeze their contents to a
      sliver (4-up charts at ~60px wide) instead of reflowing. Tracks use

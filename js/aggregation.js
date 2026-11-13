@@ -2,6 +2,11 @@
 // Aggregation helpers
 // -------------------------------------------------------------------------
 
+// Blitz and Custom runs play by other rules (a shorter climb, a custom run's modifiers), so
+// they show only under their own filter and never feed a comparison with normal runs.
+const APART_MODES = ["blitz", "custom"];
+const playsLikeNormal = run => !APART_MODES.includes(run.mode);
+
 function median(arr) {
   if (!arr.length) return null;
   const s = [...arr].sort((a, b) => a - b);

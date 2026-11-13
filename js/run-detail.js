@@ -102,6 +102,25 @@ function moddedTagHtml(run, focusable = false) {
   return `<span class="run-modded-tag" data-tip="${["Mods loaded:", ...lines].join("\n")}"${focusable ? ` tabindex="0"` : ""}>Modded</span>`;
 }
 
+// "Custom" on a run set up with the custom run screen, its rule changes (the game's
+// modifiers, "MODIFIER.SEALED_DECK" and so on) in the hover text. Custom runs stay out of
+// the site-wide stats, since the changes make them unlike a normal run.
+function customTagHtml(run, focusable = false) {
+  if (run.mode !== "custom") return "";
+  const names = (run.modifiers || []).map(id => id.replace(/^MODIFIER\./, "").toLowerCase()
+    .replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
+  const tip = names.length ? ["Custom run:", ...names].join("\n") : "Custom run, no modifiers";
+  return `<span class="run-custom-tag" data-tip="${tip}"${focusable ? ` tabindex="0"` : ""}>Custom</span>`;
+}
+
+// The other modes with rules of their own get a tag too: Blitz plainly, Dread (the game's
+// pinnacle, past A10) in red so an attempt stands out.
+function modeTagHtml(run) {
+  if (run.mode === "blitz") return `<span class="run-mode-tag">Blitz</span>`;
+  if (run.mode === "dread") return `<span class="run-mode-tag run-dread-tag">Dread</span>`;
+  return "";
+}
+
 // Keeps the address bar on the run being shown (#detail/<ts>, see
 // parsePageHash), so it can be copied or reloaded. Only once the hash is
 // already Run Detail's: showPage() sets it on the way in, and replacing it
@@ -399,7 +418,7 @@ function renderDetailRun(run) {
       ${runReadingHtml(run)}${runActMarksHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
       <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
-      ${moddedTagHtml(run, true)}
+      ${modeTagHtml(run)}${customTagHtml(run, true)}${moddedTagHtml(run, true)}
       <span class="rh-meta">
         <span class="rh-date">${fmtDate(run.ts)}</span>
         ${run.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed: </span>${run.seed}</span>` : ""}
@@ -451,7 +470,7 @@ function renderDetailRun(run) {
 // for regular monsters we fall back to scanning timeline arrays).
 const _encAvgDmg = (() => {
   const sums = {}, counts = {};
-  DATA.runsData.forEach(r => {
+  DATA.runsData.filter(playsLikeNormal).forEach(r => {
     (r.fights || []).forEach(f => {
       if (!f.enc) return;
       sums[f.enc] = (sums[f.enc] || 0) + f.dmg;
@@ -1094,11 +1113,11 @@ const YOUR_LINE = "#e0c468";
 const HP_LINE = YOUR_LINE;
 
 // The floors behind each chart's big swings get the floor map's own icon as
-// their point: elites, bosses, rest sites and events on HP, shops and events
-// on Gold. Every other floor has no point, just a small dot on hover, so
-// those few stand out.
+// their point: every fight (normal, elite, boss), rest sites and events on HP,
+// shops and events on Gold. Every other floor has no point, just a small dot
+// on hover, so those few stand out.
 // Images are shared between charts and redraw the chart once they decode.
-const HP_ICON_KEYS   = new Set(["elite", "unknown_elite", "rest_site", "event"]);  // + any boss
+const HP_ICON_KEYS   = new Set(["monster", "elite", "unknown_elite", "rest_site", "event"]);  // + any boss, and a "?" fight
 const GOLD_ICON_KEYS = new Set(["shop", "unknown_shop", "event"]);
 const nodePointImages = new Map();  // "size src" -> Image
 // The clip for a chart's floor icons: none, or the plot's sides alone where one act is on show.
@@ -1308,14 +1327,14 @@ function makeActBoundaryPlugin(nodes) {
 // every fight off an elite or boss room, "?" rooms and events included.
 let normalFightsCache = null;
 function normalFights() {
-  return normalFightsCache ||= DATA.runsData.flatMap(run => (run.timeline || [])
+  return normalFightsCache ||= DATA.runsData.filter(playsLikeNormal).flatMap(run => (run.timeline || [])
     .filter(n => keepFight(n) && n.type !== "elite" && n.type !== "boss")
     .map(n => ({ enc: keepFight(n), asc: run.asc, won: n.hpAfter > 0, hp: n.hpBefore, maxHp: n.maxHp, dmg: n.dmg,
       cards: 0, relics: 0, potions: 0 })));   // unused here; addFight sums them
 }
 function hpWinsByNode(run, nodes) {
   const tier = keepTier(run.asc), by = {};
-  ALL_FIGHTS.concat(normalFights()).forEach(f => { if (keepTier(f.asc) === tier) addFight(by[f.enc] ||= fightBucket(), f); });
+  ALL_FIGHTS.filter(playsLikeNormal).concat(normalFights()).forEach(f => { if (keepTier(f.asc) === tier) addFight(by[f.enc] ||= fightBucket(), f); });
   const left = winsLeftWith(tier);
   return nodes.map(n => {
     const enc = keepFight(n);
@@ -1333,7 +1352,7 @@ function hpWinsByNode(run, nodes) {
 // timelines (the fight records only carry the HP entering), so it counts healing after the fight.
 function winsLeftWith(tier) {
   const by = {};
-  DATA.runsData.forEach(run => {
+  DATA.runsData.filter(playsLikeNormal).forEach(run => {
     if (keepTier(run.asc) !== tier) return;
     (run.timeline || []).forEach(n => {
       const enc = keepFight(n);
@@ -1489,7 +1508,7 @@ function renderDetailHpChart(run) {
           backgroundColor: color + "33",
           borderWidth: 2,
           pointBackgroundColor: color,
-          ...nodePoints(nodes, () => detailHpChart, (n, key) => n.type === "boss" || HP_ICON_KEYS.has(key)),
+          ...nodePoints(nodes, () => detailHpChart, (n, key) => n.type === "boss" || HP_ICON_KEYS.has(key) || (key === "unknown" && !!n.enc)),
           fill: true,
           cubicInterpolationMode: "monotone",
         },

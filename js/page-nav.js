@@ -30,7 +30,7 @@ const PAGE_RENDERERS = {
 // where nothing actually changed. rerenderCurrentPage() is the single
 // chokepoint every filter change already runs through (individual
 // controls, Reset, and loading a saved preference all end up calling it —
-// the latter two via setSharedMode() inside applySharedFilterState()), so
+// the latter two via setSharedPlayers() inside applySharedFilterState()), so
 // it's the one place that needs to mark every *other* page dirty.
 const pageDirty = Object.fromEntries(PAGES.map(p => [p, true]));
 
@@ -51,7 +51,11 @@ function rerenderCurrentPage() {
 // up on each call because the filter bar's own setup rerenders before the
 // rest of this file has run.
 function updateFilterSummary() {
-  const modeLabels = { all: "All modes", solo: "Solo", multi: "Multi", daily: "Daily" };
+  const playersLabels = { all: "All players", solo: "Solo", multi: "Multi" };
+  // Only modes the player has a checkbox for (see the Modes checkboxes below).
+  const modes = ALL_MODES.filter(m => sharedActiveModes.has(m)
+      && (!["blitz", "dread", "custom"].includes(m) || DATA.runsData.some(r => r.mode === m)))
+    .map(m => MODE_LABELS[m]);
   const nAscs = sharedActiveAscs.size;
   const asc = nAscs === DATA.ascensions.length ? "All ascensions"
             : nAscs === 0 ? "No ascensions"
@@ -60,7 +64,8 @@ function updateFilterSummary() {
              : `${sharedTsFrom > 0 ? tsToDateStr(sharedTsFrom) : "…"} → ${sharedTsTo !== TS_NO_UPPER_BOUND ? tsToDateStr(sharedTsTo - 86400) : "…"}`;
   const parts = [
     sharedActiveChar === "ALL" ? "All characters" : fmtCharName(sharedActiveChar),
-    modeLabels[sharedActiveMode],
+    playersLabels[sharedActivePlayers],
+    modes.length ? modes.join(", ") : "No modes",
     ...(sharedActiveMods !== "all" ? [sharedActiveMods === "modded" ? "Modded" : "Unmodded"] : []),
     asc,
     sharedBuildSummary(),
@@ -101,7 +106,7 @@ function showPage(page) {
   sharedCharSel.querySelectorAll(".char-btn[data-char]").forEach(btn => {
     btn.disabled = page === "overview";
     btn.title = page === "overview"
-      ? "Overview compares every character — pick a character in Cards instead"
+      ? "Overview compares every character"
       : "";
   });
   if (pageDirty[page]) {
@@ -137,13 +142,14 @@ function openRunLink(ts) {
     if (!sharedActiveAscs.has(run.asc)) { widen.ascGranular = false; widen.ascs = undefined; }
     if (!sharedActiveBuilds.has(run.build)) widen.builds = [...DATA.builds];
     if (run.ts < state.tsFrom || run.ts > state.tsTo) { widen.tsFrom = 0; widen.tsTo = TS_NO_UPPER_BOUND; }
-    if (!modeShowsRun(state.mode, run)) widen.mode = run.mode === "daily" ? "daily" : run.mp ? "multi" : "solo";
+    if (state.players !== "all" && (state.players === "multi") !== !!run.mp) widen.players = "all";
+    if (!state.modes.includes(runModeOf(run))) widen.modes = [...state.modes, runModeOf(run)];
     if (!modsShowRun(state.mods, run)) widen.mods = "all";
     if (![...detailTags].every(t => runTags(run).includes(t))) detailTags.clear();
     if (Object.keys(widen).length > 0) {
       applySharedFilterState({ ...state, ...widen }, "detail");
       // applySharedFilterState() re-rendered the page behind this one partway
-      // through (setSharedMode), before the dates were in place.
+      // through (setSharedPlayers), before the dates were in place.
       PAGES.forEach(p => { pageDirty[p] = true; });
       updateUnsavedIndicator();
       updateFilterSummary();
@@ -185,13 +191,13 @@ DATA.characters.forEach((char, i) => {
   // set needs a matching starting value here too.
   btn.disabled = currentPage === "overview";
   btn.title = btn.disabled
-    ? "Overview compares every character — pick a character in Cards instead"
+    ? "Overview compares every character"
     : "";
   btn.addEventListener("click", () => setSharedActiveChar(char));
   sharedCharSel.appendChild(btn);
 });
 
-// Single setter for sharedActiveChar, mirroring setSharedMode() below —
+// Single setter for sharedActiveChar, mirroring setSharedPlayers() below —
 // every caller (these two click handlers, and showPage()'s Overview
 // character-filter lock) goes through here instead of
 // mutating sharedActiveChar directly, so rerenderCurrentPage()'s dirty
@@ -335,25 +341,48 @@ document.getElementById("shared-build-none").addEventListener("click", () => {
 
 updateSharedBuildLabel();
 
-// ---- Shared mode buttons ----
-const sharedModeButtons = {
-  "all":   document.getElementById("shared-mode-all"),
-  "solo":  document.getElementById("shared-mode-solo"),
-  "multi": document.getElementById("shared-mode-multi"),
-  "daily": document.getElementById("shared-mode-daily"),
+// ---- Shared players buttons + modes checkboxes ----
+const sharedPlayersButtons = {
+  "all":   document.getElementById("shared-players-all"),
+  "solo":  document.getElementById("shared-players-solo"),
+  "multi": document.getElementById("shared-players-multi"),
 };
 
-function setSharedMode(mode) {
-  sharedActiveMode = mode;
-  Object.entries(sharedModeButtons).forEach(([key, btn]) => setActive(btn, key === mode));
+function setSharedPlayers(players) {
+  sharedActivePlayers = players;
+  Object.entries(sharedPlayersButtons).forEach(([key, btn]) => setActive(btn, key === players));
   rerenderCurrentPage();
 }
 
-Object.entries(sharedModeButtons).forEach(([mode, btn]) => {
-  btn.addEventListener("click", () => setSharedMode(mode));
+Object.entries(sharedPlayersButtons).forEach(([players, btn]) => {
+  btn.addEventListener("click", () => setSharedPlayers(players));
 });
 
-setSharedMode("all");
+const sharedModesBox = document.getElementById("shared-modes-checkboxes");
+// Blitz, Dread and Custom only get a checkbox once the player has a run in them.
+ALL_MODES.forEach(mode => {
+  const label = document.createElement("label");
+  label.innerHTML = `<input type="checkbox" value="${mode}"> ${MODE_LABELS[mode]}`;
+  if (["blitz", "dread", "custom"].includes(mode) && !DATA.runsData.some(r => r.mode === mode)) label.style.display = "none";
+  label.querySelector("input").addEventListener("change", e => {
+    const next = new Set(sharedActiveModes);
+    if (e.target.checked) next.add(mode); else next.delete(mode);
+    setSharedModes(next);
+  });
+  sharedModesBox.appendChild(label);
+});
+
+function setSharedModes(modes) {
+  sharedActiveModes = new Set(modes);
+  sharedModesBox.querySelectorAll("input").forEach(cb => {
+    cb.checked = sharedActiveModes.has(cb.value);
+    cb.closest("label").classList.toggle("checked", cb.checked);
+  });
+  rerenderCurrentPage();
+}
+
+setSharedModes(SHARED_FILTER_HARDCODED_DEFAULTS.modes);
+setSharedPlayers("all");
 
 // ---- Shared mods buttons ----
 // The group only shows when some run has loaded mods; with none, it would be
@@ -452,7 +481,8 @@ function currentSharedFilterState() {
     ascGranular: sharedAscGranular,
     ...(sharedAscGranular && { ascs: [...sharedActiveAscs] }),
     builds: [...sharedActiveBuilds],
-    mode:   sharedActiveMode,
+    players: sharedActivePlayers,
+    modes:  [...sharedActiveModes],
     mods:   sharedActiveMods,
     tsFrom: sharedTsFrom,
     tsTo:   sharedTsTo,
@@ -519,7 +549,9 @@ function applySharedFilterState(state, targetPage = currentPage) {
   updateSharedBuildLabel();
 
   setSharedMods(state.mods ?? "all");
-  setSharedMode(state.mode);
+  const modeState = savedModeState(state);
+  setSharedModes(modeState.modes);
+  setSharedPlayers(modeState.players);
 
   sharedTsFrom = state.tsFrom;
   sharedTsTo   = state.tsTo;
@@ -574,9 +606,13 @@ function sameAscState(a, b) {
 // a warning color — this is a "you might want to save this" nudge, not
 // an error state; plenty of filter changes are just browsing and don't
 // need saving.
+function sameModeState(a, b) {
+  return a.players === b.players && a.modes.length === b.modes.length && a.modes.every(m => b.modes.includes(m));
+}
+
 function sharedFilterStateEquals(a, b) {
   return a.char === b.char
-    && a.mode === b.mode
+    && sameModeState(savedModeState(a), savedModeState(b))
     && (a.mods ?? "all") === (b.mods ?? "all")
     && sameAscState(savedAscState(a), savedAscState(b))
     && a.tsFrom === b.tsFrom

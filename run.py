@@ -648,7 +648,8 @@ def parse_run(path: Path) -> dict:
         start_time      — Unix timestamp (also encoded in the filename)
         ascension       — ascension level (0 = no ascension)
         win             — true/false
-        game_mode       — "standard" or "daily"
+        game_mode       — "standard", "daily", "blitz", "dread" or "custom" (a custom run lists
+                          its rule changes under "modifiers")
         run_time        — total run duration in seconds
         map_point_history — list of acts, each containing the nodes visited;
                             counting nodes gives a proxy for floors reached
@@ -740,6 +741,21 @@ MAX_MODS_PER_RUN = 100
 
 def _mod_text(value) -> str:
     return _MOD_TEXT_UNSAFE.sub("_", value)[:80] if isinstance(value, str) else ""
+
+
+def _run_modifiers(data: dict) -> list[str]:
+    """
+    The rule changes a custom run was set up with, as ids ("MODIFIER.SEALED_DECK").
+
+    Only the game's own "modifiers" list: a custom run can have none, and every other
+    run has no such key. Cut down to plain characters like a mod id, since the run
+    header puts them in a data-tip.
+    """
+    listed = data.get("modifiers")
+    if not isinstance(listed, list):
+        return []
+    ids = (_mod_text(m.get("id")) for m in listed if isinstance(m, dict))
+    return [i for i in ids if i][:MAX_MODS_PER_RUN]
 
 
 def _loaded_mods(data: dict) -> list[dict]:
@@ -963,6 +979,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     timeline = extract_timeline(data, local_idx)
     gold_gained_total = sum(t["goldGained"] for t in timeline)
     mods = _loaded_mods(data)
+    modifiers = _run_modifiers(data)
     maps = _act_maps(data)
 
     return {
@@ -991,6 +1008,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         **extract_deck_history(data, player, local_idx),
         # Only on runs the mod reported mods for, so every other run parses as before.
         **({"mods": mods} if mods else {}),
+        **({"modifiers": modifiers} if modifiers else {}),
         **({"maps": maps} if maps else {}),
     }
 
@@ -1358,11 +1376,14 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="shared-char-selector"></div>
     </div>
     <div class="filter-group">
-      <span class="filter-label">Mode</span>
-      <button class="toggle-btn" id="shared-mode-all">All</button>
-      <button class="toggle-btn" id="shared-mode-solo">Solo</button>
-      <button class="toggle-btn" id="shared-mode-multi">Multi</button>
-      <button class="toggle-btn" id="shared-mode-daily">Daily</button>
+      <span class="filter-label">Players</span>
+      <button class="toggle-btn" id="shared-players-all">All</button>
+      <button class="toggle-btn" id="shared-players-solo">Solo</button>
+      <button class="toggle-btn" id="shared-players-multi">Multi</button>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Modes</span>
+      <div id="shared-modes-checkboxes" style="display:flex;gap:0.4rem;flex-wrap:wrap"></div>
     </div>
     <div class="filter-group" id="shared-mods-group" style="display:none">
       <span class="filter-label">Mods</span>
