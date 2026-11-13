@@ -917,9 +917,10 @@ class ProcessTests(Uploads, unittest.TestCase):
         second = {"character": "CHARACTER.SILENT", "deck": [], "relics": []}
         players = [{"character": "CHARACTER.IRONCLAD", "deck": [], "relics": []}, second]
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002, players=players, win=False),
-                            minimal_run(1700000003, game_mode="daily")))
+                            minimal_run(1700000003, game_mode="daily"),
+                            minimal_run(1700000004, game_mode="blitz"), minimal_run(1700000005, game_mode="dread")))
         s = self.stats()
-        self.assertEqual((s["allRuns"], s["solo"]["runs"], s["multi"]["runs"], s["multi"]["wins"]), (3, 1, 1, 0))
+        self.assertEqual((s["allRuns"], s["solo"]["runs"], s["multi"]["runs"], s["multi"]["wins"]), (5, 1, 1, 0))
 
     def test_multiplayer_reads_only_the_local_players_stats(self):
         # The uploader is index 1 in this run, so every per-player field must

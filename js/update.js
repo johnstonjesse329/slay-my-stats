@@ -106,11 +106,15 @@ const SHARED_FILTER_HARDCODED_DEFAULTS = {
   mode: "all", mods: "all", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
 };
 
-// Whether the Solo / Multi / Daily / All filter lets a run through.
+// Game modes with their own rules and stats (no map in Blitz, a separate ascension
+// track), so a run in one never counts as plain Solo or Multi.
+const OWN_MODES = ["daily", "blitz", "dread"];
+
+// Whether the Solo / Multi / Daily / Blitz / Dread / All filter lets a run through.
 function modeShowsRun(mode, run) {
-  if (mode === "solo")  return !(run.mp || run.mode === "daily");
+  if (mode === "solo")  return !(run.mp || OWN_MODES.includes(run.mode));
   if (mode === "multi") return !!run.mp;
-  if (mode === "daily") return run.mode === "daily";
+  if (OWN_MODES.includes(mode)) return run.mode === mode;
   return true;
 }
 

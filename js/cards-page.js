@@ -301,11 +301,11 @@ function favTalliesYou() {
 }
 
 // The same from the site-wide totals, for the Mode filter's runs (all = solo
-// plus multiplayer; there are no daily-only totals).
+// plus multiplayer; there are no totals for the other modes).
 function favTalliesAll() {
   if (!siteStatsForFavs) return null;
   const modes = sharedActiveMode === "solo" ? ["solo"] : sharedActiveMode === "multi" ? ["multi"]
-    : sharedActiveMode === "daily" ? [] : ["solo", "multi"];
+    : OWN_MODES.includes(sharedActiveMode) ? [] : ["solo", "multi"];
   if (!modes.length) return null;
   const picks = {}, runs = {};
   modes.forEach(mode => {

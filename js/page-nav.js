@@ -51,7 +51,7 @@ function rerenderCurrentPage() {
 // up on each call because the filter bar's own setup rerenders before the
 // rest of this file has run.
 function updateFilterSummary() {
-  const modeLabels = { all: "All modes", solo: "Solo", multi: "Multi", daily: "Daily" };
+  const modeLabels = { all: "All modes", solo: "Solo", multi: "Multi", daily: "Daily", blitz: "Blitz", dread: "Dread" };
   const nAscs = sharedActiveAscs.size;
   const asc = nAscs === DATA.ascensions.length ? "All ascensions"
             : nAscs === 0 ? "No ascensions"
@@ -137,7 +137,7 @@ function openRunLink(ts) {
     if (!sharedActiveAscs.has(run.asc)) { widen.ascGranular = false; widen.ascs = undefined; }
     if (!sharedActiveBuilds.has(run.build)) widen.builds = [...DATA.builds];
     if (run.ts < state.tsFrom || run.ts > state.tsTo) { widen.tsFrom = 0; widen.tsTo = TS_NO_UPPER_BOUND; }
-    if (!modeShowsRun(state.mode, run)) widen.mode = run.mode === "daily" ? "daily" : run.mp ? "multi" : "solo";
+    if (!modeShowsRun(state.mode, run)) widen.mode = OWN_MODES.includes(run.mode) ? run.mode : run.mp ? "multi" : "solo";
     if (!modsShowRun(state.mods, run)) widen.mods = "all";
     if (![...detailTags].every(t => runTags(run).includes(t))) detailTags.clear();
     if (Object.keys(widen).length > 0) {
@@ -341,7 +341,13 @@ const sharedModeButtons = {
   "solo":  document.getElementById("shared-mode-solo"),
   "multi": document.getElementById("shared-mode-multi"),
   "daily": document.getElementById("shared-mode-daily"),
+  "blitz": document.getElementById("shared-mode-blitz"),
+  "dread": document.getElementById("shared-mode-dread"),
 };
+// Blitz and Dread only get a button once the player has a run in them.
+["blitz", "dread"].forEach(m => {
+  sharedModeButtons[m].style.display = DATA.runsData.some(r => r.mode === m) ? "" : "none";
+});
 
 function setSharedMode(mode) {
   sharedActiveMode = mode;

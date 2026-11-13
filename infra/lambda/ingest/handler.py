@@ -841,8 +841,8 @@ def _update_index(store, slug: str, name: str, runs: int, now: float) -> None:
 # record, so an upload's new runs make a small tally that's added onto the
 # totals without rereading anyone's history. Solo and multiplayer runs are
 # counted apart, since their win rates aren't comparable; solo follows the
-# dashboard's Solo filter, which leaves out daily runs (they only count in
-# allRuns). Card and relic counts are kept raw for every id, and the home
+# dashboard's Solo filter, which leaves out daily, Blitz and Dread runs (they only
+# count in allRuns). Card and relic counts are kept raw for every id, and the home
 # page ranks them. Adding a new figure means recounting once with
 # tools/rebuild_stats.py.
 
@@ -897,7 +897,7 @@ def tally(runs: list[dict], slug: str) -> dict:
         stats["allRuns"] += 1
         if r.get("mp"):
             m = stats["multi"]
-        elif r.get("mode") == "daily":
+        elif r.get("mode") in ("daily", "blitz", "dread"):
             continue
         else:
             m = stats["solo"]
