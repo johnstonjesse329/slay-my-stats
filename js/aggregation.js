@@ -161,7 +161,7 @@ function aggregateRuns(filteredRuns) {
 
   filteredRuns.forEach(run => {
     const c = run.char;
-    const a = ascColumnKey(run.asc);
+    const a = ascColumnKey(runAsc(run));
 
     if (byCA[c]) {
       if (byCA[c][a] !== undefined) addToBucket(byCA[c][a], run);

@@ -1152,6 +1152,8 @@ h1 {
 .detail-run-header-row > :not(:first-child, :empty) { padding-left: 0.5rem; }
 .detail-run-char { font-weight: 600; }
 .detail-run-asc  { font-size: var(--fs-sm); text-align: center; }
+.asc-filter-dread { height: 1.5em; width: auto; vertical-align: middle; margin: -0.3em 0.2em -0.3em 0; }
+.detail-run-dread { height: 1.6em; width: auto; vertical-align: middle; margin: -0.3em 0; }
 .detail-run-won  { font-weight: 700; font-size: var(--fs-sm); text-align: center; }
 .detail-run-floor { font-size: var(--fs-sm); text-align: center; }
 .detail-run-read  { text-align: center; }

@@ -69,7 +69,7 @@ let sharedAscGranular  = false;
 // granular. Tables key their buckets by ascColumnKey(run.asc) to match.
 function ascColumns() {
   if (!sharedAscGranular) return ASC_BUCKETS;
-  return [...sharedActiveAscs].sort((a, b) => a - b).map(a => ({ key: a, label: `A${a}`, ascs: [a] }));
+  return [...sharedActiveAscs].sort((a, b) => a - b).map(a => ({ key: a, label: ascLabel(a), ascs: [a] }));
 }
 
 function ascColumnKey(asc) {
@@ -78,7 +78,7 @@ function ascColumnKey(asc) {
 let sharedActiveBuilds = new Set(DATA.builds);
 // "all" | "solo" | "multi", and the ticked game modes (see modeShowsRun).
 let sharedActivePlayers = "all";
-let sharedActiveModes   = new Set(["standard", "daily", "dread"]);
+let sharedActiveModes   = new Set(["standard", "dread"]);
 // "all" | "vanilla" | "modded": whether runs the game mod reported loaded mods
 // for are shown (see modsShowRun).
 let sharedActiveMods   = "all";
@@ -105,7 +105,7 @@ let sharedTsTo         = TS_NO_UPPER_BOUND;
 const SHARED_FILTER_STORAGE_KEY = "sts2_filter_prefs";
 const SHARED_FILTER_HARDCODED_DEFAULTS = {
   char: "ALL", ascGranular: false, builds: [...DATA.builds],
-  players: "all", modes: ["standard", "daily", "dread"], mods: "all", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
+  players: "all", modes: ["standard", "dread"], mods: "all", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
 };
 
 // Game modes with their own rules and stats (no map in Blitz, a separate ascension
@@ -128,7 +128,7 @@ function savedModeState(state) {
     return { players: state.players, modes: (state.modes || []).filter(m => ALL_MODES.includes(m)) };
   }
   const old = state.mode || "all";
-  if (old === "solo" || old === "multi") return { players: old, modes: ["standard"] };
+  if (old === "solo" || old === "multi") return { players: old, modes: ["standard", "dread"] };
   if (OWN_MODES.includes(old)) return { players: "all", modes: [old] };
   return { players: "all", modes: [...SHARED_FILTER_HARDCODED_DEFAULTS.modes] };
 }
@@ -147,7 +147,7 @@ function modsShowRun(mods, run) {
 // those have no checkbox to untick, so they pass.
 function runPassesFilters(run, fromOther = false) {
   if (sharedActiveChar !== "ALL" && run.char !== sharedActiveChar) return false;
-  if (!sharedActiveAscs.has(run.asc)     && !(fromOther && !DATA.ascensions.includes(run.asc))) return false;
+  if (!sharedActiveAscs.has(runAsc(run)) && !(fromOther && !DATA.ascensions.includes(runAsc(run)))) return false;
   if (!sharedActiveBuilds.has(run.build) && !(fromOther && !DATA.builds.includes(run.build)))   return false;
   if (run.ts < sharedTsFrom || run.ts > sharedTsTo) return false;
   return modeShowsRun(sharedActivePlayers, sharedActiveModes, run) && modsShowRun(sharedActiveMods, run);

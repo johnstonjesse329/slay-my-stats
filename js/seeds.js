@@ -312,7 +312,7 @@ function renderSeeds() {
   document.getElementById("seeds-scope").hidden = !seedOwnSlug;
   document.getElementById("seeds-scope-you").classList.toggle("active", !everyone);
   document.getElementById("seeds-scope-all").classList.toggle("active", everyone);
-  const cols = everyone ? 6 : 5;
+  const cols = 6;
 
   // Render sortable headers
   const arrow = col => col === seedSortCol ? (seedSortAsc ? " ▲" : " ▼") : "";
@@ -322,7 +322,7 @@ function renderSeeds() {
     <th style="text-align:left;${thStyle("char")}"    data-col="char" tabindex="0">Character${arrow("char")}</th>
     <th style="text-align:center;${thStyle("won")}"   data-col="won" tabindex="0">Win${arrow("won")}</th>
     <th style="text-align:left;${thStyle("date")}"    data-col="date" tabindex="0">Date${arrow("date")}</th>
-    ${everyone ? `<th class="seed-player" style="text-align:left;${thStyle("player")}" data-col="player" tabindex="0">Player${arrow("player")}</th>` : ""}
+    <th class="seed-player" style="text-align:left;${thStyle("player")}" data-col="player" tabindex="0">Player${arrow("player")}</th>
     <th style="text-align:left">Matched Cards / Relics Offered</th>
   `;
   document.getElementById("seeds-thead-row").querySelectorAll("th[data-col]").forEach(th => {
@@ -399,10 +399,10 @@ function renderSeeds() {
         <span style="color:${color}">${charIconHtml(run.char)}${fmtCharName(run.char)}</span>
       </td>
       <td style="padding:0.4rem 0.75rem;text-align:center">${wonDot}</td>
-      <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:var(--text-dim);font-size:var(--fs-sm)">${fmt(run.ts)}</td>${everyone ? `
+      <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:var(--text-dim);font-size:var(--fs-sm)">${fmt(run.ts)}</td>
       <td class="seed-player" style="padding:0.4rem 0.75rem;white-space:nowrap;font-size:var(--fs-sm)">${run.slug
         ? `<a href="/u/${encodeURIComponent(run.slug)}" style="color:var(--text)">${escapeHtml(run.name || run.slug)}</a>`
-        : `<span style="color:var(--text-dim)">You</span>`}</td>` : ""}
+        : `<span style="color:var(--text-dim)">You</span>`}</td>
       <td style="padding:0.4rem 0.75rem;font-size:var(--fs-sm)">${matchSummary}</td>
     </tr>`;
   }).join("") + moreRow;

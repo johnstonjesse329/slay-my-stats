@@ -957,7 +957,7 @@ class ProcessTests(Uploads, unittest.TestCase):
         handler.remove_profile(self.store, "mrbean", raw=True)
         self.assertNotIn(handler.seeds_key("mrbean"), self.store.objects)
 
-    def test_stats_split_multiplayer_and_leave_out_the_other_modes(self):
+    def test_stats_split_multiplayer_and_leave_out_daily_blitz_and_custom(self):
         second = {"character": "CHARACTER.SILENT", "deck": [], "relics": []}
         players = [{"character": "CHARACTER.IRONCLAD", "deck": [], "relics": []}, second]
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002, players=players, win=False),
@@ -966,7 +966,7 @@ class ProcessTests(Uploads, unittest.TestCase):
                             minimal_run(1700000006, game_mode="custom"),
                             minimal_run(1700000007, game_mode="custom", players=players)))
         s = self.stats()
-        self.assertEqual((s["allRuns"], s["solo"]["runs"], s["multi"]["runs"], s["multi"]["wins"]), (7, 1, 1, 0))
+        self.assertEqual((s["allRuns"], s["solo"]["runs"], s["multi"]["runs"], s["multi"]["wins"]), (7, 2, 1, 0))
 
     def test_multiplayer_reads_only_the_local_players_stats(self):
         # The uploader is index 1 in this run, so every per-player field must

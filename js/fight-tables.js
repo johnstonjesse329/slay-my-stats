@@ -175,6 +175,9 @@ function summarizeFights(bucket) {
   };
 }
 
+// A fight sits at its run's ascension rung, Dread included (the fight record only has asc 10).
+const RUN_ASC_BY_TS = new Map(DATA.runsData.map(run => [run.ts, runAsc(run)]));
+
 function aggregateFights(fights) {
   const allEncs   = [...BOSS_IDS, ...ELITE_IDS];
   const byEncAsc  = {};
@@ -186,7 +189,7 @@ function aggregateFights(fights) {
 
   fights.forEach(f => {
     if (!byEncAsc[f.enc]) return;
-    const b = byEncAsc[f.enc][ascColumnKey(f.asc)];
+    const b = byEncAsc[f.enc][ascColumnKey(RUN_ASC_BY_TS.get(f.ts) ?? f.asc)];
     if (b) addFight(b, f);
     addFight(byEncAsc[f.enc]["ALL"],   f);
   });

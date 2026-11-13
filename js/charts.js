@@ -63,7 +63,7 @@ const runsRecord = (n, wins, losses) =>
 const ascWinChart = new Chart(document.getElementById("ascWinChart"), {
   type: "bar",
   data: {
-    labels:   DATA.ascensions,
+    labels:   DATA.ascensions.map(asc => asc === DREAD_ASC ? "Dread" : asc),
     datasets: [],
   },
   options: {
@@ -101,7 +101,7 @@ function aggregateAscBarDatasets(filteredRuns) {
   const byCharAsc = {};
   filteredRuns.forEach(run => {
     const bucket = (byCharAsc[run.char] ??= {});
-    const b = (bucket[run.asc] ??= { wins: 0, runs: 0 });
+    const b = (bucket[runAsc(run)] ??= { wins: 0, runs: 0 });
     b.runs += 1;
     if (run.won) b.wins += 1;
   });

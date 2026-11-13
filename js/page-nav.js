@@ -59,7 +59,7 @@ function updateFilterSummary() {
   const nAscs = sharedActiveAscs.size;
   const asc = nAscs === DATA.ascensions.length ? "All ascensions"
             : nAscs === 0 ? "No ascensions"
-            : [...sharedActiveAscs].sort((a, b) => a - b).map(a => `A${a}`).join(", ");
+            : [...sharedActiveAscs].sort((a, b) => a - b).map(ascLabel).join(", ");
   const date = sharedTsFrom === 0 && sharedTsTo === TS_NO_UPPER_BOUND ? "All time"
              : `${sharedTsFrom > 0 ? tsToDateStr(sharedTsFrom) : "…"} → ${sharedTsTo !== TS_NO_UPPER_BOUND ? tsToDateStr(sharedTsTo - 86400) : "…"}`;
   const parts = [
@@ -139,7 +139,7 @@ function openRunLink(ts) {
     const state = currentSharedFilterState();
     const widen = {};
     if (state.char !== "ALL" && state.char !== run.char) widen.char = "ALL";
-    if (!sharedActiveAscs.has(run.asc)) { widen.ascGranular = false; widen.ascs = undefined; }
+    if (!sharedActiveAscs.has(runAsc(run))) { widen.ascGranular = false; widen.ascs = undefined; }
     if (!sharedActiveBuilds.has(run.build)) widen.builds = [...DATA.builds];
     if (run.ts < state.tsFrom || run.ts > state.tsTo) { widen.tsFrom = 0; widen.tsTo = TS_NO_UPPER_BOUND; }
     if (state.players !== "all" && (state.players === "multi") !== !!run.mp) widen.players = "all";
@@ -254,7 +254,7 @@ function setSharedAscs(ascs) {
 
 DATA.ascensions.forEach(asc => {
   const label = document.createElement("label");
-  label.innerHTML = `<input type="checkbox" value="${asc}"> A${asc}`;
+  label.innerHTML = `<input type="checkbox" value="${asc}"> ${asc === DREAD_ASC ? `<img class="asc-filter-dread" src="/ui_icons/dread.png" alt="">Dread` : `A${asc}`}`;
   label.querySelector("input").addEventListener("change", e => {
     const next = new Set(sharedActiveAscs);
     if (e.target.checked) next.add(asc); else next.delete(asc);

@@ -473,7 +473,7 @@ function aggregateFinalBossWins(filteredRuns) {
     // A9's one Act 3 boss does; its second has a column of its own (10-2).
     const tierWon = !sharedAscGranular && act3Bosses.length ? act3Bosses[0].won : won;
     const markTier = (bucket) => { bucket.reached += 1; if (tierWon) bucket.won += 1; };
-    const asc  = ascColumnKey(run.asc);
+    const asc  = ascColumnKey(runAsc(run));
     if (byCA[run.char]?.[asc])     markTier(byCA[run.char][asc]);
     if (byCA[run.char]?.["ALL"])   mark(byCA[run.char]["ALL"]);
     if (byCA["ALL"]?.[asc])        markTier(byCA["ALL"][asc]);

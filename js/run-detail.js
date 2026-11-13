@@ -214,7 +214,7 @@ function renderDetailRunList() {
     const active = run.ts === detailSelectedTs;
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
       <span class="detail-run-char">${charIconHtml(run.char)}${label}</span>
-      <span class="detail-run-asc" style="color:var(--text-dim)">A${run.asc}</span>
+      <span class="detail-run-asc" style="color:var(--text-dim)">${run.mode === "dread" ? `<img class="detail-run-dread" src="/ui_icons/dread.png" alt="Dread" data-tip="Dread">` : `A${run.asc}`}</span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
@@ -413,7 +413,7 @@ function renderDetailRun(run) {
     <div class="detail-run-header-bar">
       ${navigator.clipboard ? `<button type="button" class="run-copy-link-icon" aria-label="Copy link to this run" title="Copy link"><svg class="rci-share" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg><svg class="rci-done" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button>` : ""}
       <span style="font-weight:700;font-size:1.1rem">${charIconHtml(run.char)}${label}</span>
-      <span style="color:var(--text-dim)">A${run.asc}</span>
+      ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
       <span style="color:${won ? "#5cba7d" : "#e05c5c"};font-weight:600">${won ? "Victory" : "Defeat"}</span>
       ${runReadingHtml(run)}${runActMarksHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
