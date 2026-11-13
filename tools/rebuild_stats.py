@@ -1,5 +1,7 @@
 """
-tools/rebuild_stats.py — Recount the site-wide stats from every profile.
+tools/rebuild_stats.py — Recount the site-wide stats from every profile, and
+rewrite each player's seed index (users/<slug>/_seeds.json.gz, what the Seeds
+page's "all players" toggle searches).
 
 Uploads keep users/_stats.json.gz up to date by adding each upload's new
 runs onto it (see the ingest handler's tally/merge_stats). That never
@@ -39,11 +41,14 @@ def main():
         if got is None:
             print(f"  {p['slug']}: listed but missing, skipped")
             continue
-        count = 0
+        count, seeded = 0, []
         for _, runs in handler.stored_months(store, p["slug"], handler._unpack(got[0])):
             handler.merge_stats(total, handler.tally(runs, p["slug"]))
+            seeded += handler.seed_entries(runs)
             count += len(runs)
-        print(f"  {p['slug']}: {count} runs")
+        old = store.get(handler.seeds_key(p["slug"]))
+        store.put(handler.seeds_key(p["slug"]), handler._pack({"v": 1, "runs": seeded}), {}, old[2] if old else None)
+        print(f"  {p['slug']}: {count} runs, {len(seeded)} seeded")
 
     # Overwrites whatever is there. An upload landing mid-recount makes this
     # write fail rather than lose its tally; run it again.

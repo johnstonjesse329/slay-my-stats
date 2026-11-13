@@ -1575,7 +1575,11 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div id="seeds-relic-filters" class="seeds-chips"></div>
     </div>
-    <div style="display:flex;align-items:flex-end;padding-bottom:0.25rem">
+    <div style="display:flex;align-items:flex-end;gap:0.75rem;flex-wrap:wrap;padding-bottom:0.25rem">
+      <div class="filter-group" id="seeds-scope" hidden>
+        <button class="toggle-btn active" id="seeds-scope-you">You</button>
+        <button class="toggle-btn" id="seeds-scope-all">All players</button>
+      </div>
       <button class="toggle-btn" id="seeds-clear-btn" style="white-space:nowrap">Clear all</button>
     </div>
   </div>

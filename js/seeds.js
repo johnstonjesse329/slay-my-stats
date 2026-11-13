@@ -47,7 +47,7 @@ function dedupSeedRuns(runs) {
   const map = new Map();
   runs.forEach(run => {
     if (!run.seed) return;
-    const key = run.seed + "|" + run.char;
+    const key = run.seed + "|" + run.char + "|" + (run.slug || "");
     const existing = map.get(key);
     if (!existing || run.ts > existing.ts) map.set(key, run);
   });
@@ -60,6 +60,57 @@ let seedSortCol      = "date";
 let seedSortAsc      = false;
 const SEED_PAGE_SIZE = 100; // rows rendered before the "show more" control
 let seedRowLimit     = SEED_PAGE_SIZE;
+
+// ---- All players ----
+// Every other player's seeded runs, from the seed file the ingest Lambda keeps
+// for each of them (users/<slug>/_seeds.json.gz: seed, character, result and
+// what was offered, where). Fetched the first time the toggle is switched on.
+// null until asked for; false while loading.
+const seedOwnSlug = (location.pathname.match(/^\/u\/([^/]+)/) || [])[1] || null;
+let seedScope  = "you";   // "you" | "all"
+let seedOthers = null;    // [{slug, name, seed, char, won, ts, asc, build, mp, mode, mods, cardsOffered, relicsOffered}]
+
+function expandSeedLocs(locs) {
+  const out = {};
+  for (const [id, list] of Object.entries(locs || {})) {
+    out[id] = list.map(([floor, type, enc, picked]) => ({ floor, type, enc, picked: !!picked }));
+  }
+  return out;
+}
+
+function loadSeedOthers() {
+  if (seedOthers !== null) return;
+  seedOthers = false;
+  const getJson = url => fetch(url, { cache: "no-cache" }).then(r => r.ok ? r.json() : null).catch(() => null);
+  getJson("/users/_index.json.gz").then(index => {
+    const players = ((index && index.players) || []).filter(p => p.slug !== seedOwnSlug);
+    return Promise.all(players.map(p => getJson(`/users/${p.slug}/_seeds.json.gz`).then(doc =>
+      ((doc && doc.runs) || []).map(e => ({
+        slug: p.slug, name: p.name, seed: e.s, char: e.c, won: !!e.w, ts: e.t, asc: e.a, build: e.b,
+        mp: e.p, mode: e.m, mods: e.x,
+        cardsOffered: expandSeedLocs(e.o), relicsOffered: expandSeedLocs(e.r),
+      })))));
+  }).then(lists => {
+    seedOthers = lists.flat();
+    if (currentPage === "seeds") renderSeeds();
+  });
+}
+
+// The month file holding a run carries its final deck and relics, which the
+// seed file leaves out: fetched when someone opens another player's seed.
+const seedMonthDocs = new Map();
+function loadOtherRunDeck(run) {
+  const month = new Date(run.ts * 1000).toISOString().slice(0, 7);
+  const url = `/users/${run.slug}/${month}.json.gz`;
+  if (!seedMonthDocs.has(url)) {
+    seedMonthDocs.set(url, fetch(url, { cache: "no-cache" }).then(r => r.ok ? r.json() : null).catch(() => null));
+  }
+  return seedMonthDocs.get(url).then(doc => {
+    const full = ((doc && doc.runs) || []).find(r => r.ts === run.ts);
+    if (full) { run.finalDeck = full.finalDeck || []; run.finalRelics = full.finalRelics || []; }
+    return !!full;
+  });
+}
 
 // ---- Typeahead helpers ----
 
@@ -185,6 +236,14 @@ buildTypeahead(
   }
 );
 
+["you", "all"].forEach(scope => {
+  document.getElementById(`seeds-scope-${scope}`).addEventListener("click", () => {
+    seedScope = scope;
+    seedRowLimit = SEED_PAGE_SIZE;
+    renderSeeds();
+  });
+});
+
 document.getElementById("seeds-clear-btn").addEventListener("click", () => {
   seedCardFilters  = [];
   seedRelicFilters = [];
@@ -198,7 +257,12 @@ document.getElementById("seeds-clear-btn").addEventListener("click", () => {
 function renderSeeds() {
   // Deduplicate after filtering so date/build/ascension filters are respected
   // before picking the representative run for each seed+character pair.
-  const seedRuns = dedupSeedRuns(filterRuns().filter(r => r.seed));
+  const everyone = seedScope === "all";
+  if (everyone) loadSeedOthers();
+  const pool = everyone && seedOthers
+    ? [...filterRuns(), ...seedOthers.filter(r => runPassesFilters(r, true))]
+    : filterRuns();
+  const seedRuns = dedupSeedRuns(pool.filter(r => r.seed));
   const filtered = seedRuns.filter(run => {
     const offered = run.cardsOffered  || {};
     const relics  = run.relicsOffered || {};
@@ -216,6 +280,7 @@ function renderSeeds() {
   const sortFns = {
     seed:  (a, b) => a.seed.localeCompare(b.seed),
     char:  (a, b) => a.char.localeCompare(b.char),
+    player: (a, b) => (a.name || "").localeCompare(b.name || ""),
     won:   (a, b) => (a.won === b.won ? 0 : a.won ? -1 : 1),
     date:  (a, b) => a.ts - b.ts,
   };
@@ -238,10 +303,16 @@ function renderSeeds() {
     const seeds = `${n} seed${n === 1 ? "" : "s"}`;
     // With nothing searched for there is no match to describe, so say what the
     // list actually is instead of describing a search that never happened.
-    seedsCaption.textContent = hasFilters
-      ? `${seeds} whose run offered every card and relic you searched for.`
-      : `All ${seeds} in the current date, build and ascension filters — search for a card or relic above to narrow them.`;
+    const whose = everyone ? "any player's run" : "run";
+    seedsCaption.textContent = (hasFilters
+      ? `${seeds} whose ${whose} offered every card and relic you searched for.`
+      : `All ${seeds} in the current date, build and ascension filters — search for a card or relic above to narrow them.`)
+      + (everyone && seedOthers === false ? " Loading other players' seeds…" : "");
   }
+  document.getElementById("seeds-scope").hidden = !seedOwnSlug;
+  document.getElementById("seeds-scope-you").classList.toggle("active", !everyone);
+  document.getElementById("seeds-scope-all").classList.toggle("active", everyone);
+  const cols = everyone ? 6 : 5;
 
   // Render sortable headers
   const arrow = col => col === seedSortCol ? (seedSortAsc ? " ▲" : " ▼") : "";
@@ -251,6 +322,7 @@ function renderSeeds() {
     <th style="text-align:left;${thStyle("char")}"    data-col="char" tabindex="0">Character${arrow("char")}</th>
     <th style="text-align:center;${thStyle("won")}"   data-col="won" tabindex="0">Win${arrow("won")}</th>
     <th style="text-align:left;${thStyle("date")}"    data-col="date" tabindex="0">Date${arrow("date")}</th>
+    ${everyone ? `<th class="seed-player" style="text-align:left;${thStyle("player")}" data-col="player" tabindex="0">Player${arrow("player")}</th>` : ""}
     <th style="text-align:left">Matched Cards / Relics Offered</th>
   `;
   document.getElementById("seeds-thead-row").querySelectorAll("th[data-col]").forEach(th => {
@@ -264,7 +336,7 @@ function renderSeeds() {
 
   const tbody = document.getElementById("seeds-tbody");
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:1.5rem">No matching seeds</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:var(--text-dim);padding:1.5rem">No matching seeds</td></tr>`;
     return;
   }
 
@@ -274,6 +346,7 @@ function renderSeeds() {
   _seedDetailRuns = filtered;
 
   tbody.onclick = e => {
+    if (e.target.closest("a")) return;
     const seedEl = e.target.closest(".seed-id");
     if (seedEl) { copySeed(seedEl.dataset.seed, seedEl); return; }
     const row = e.target.closest("tr.seed-row");
@@ -293,7 +366,7 @@ function renderSeeds() {
 
   const visibleRows = filtered.slice(0, seedRowLimit);
   const moreRow = filtered.length > seedRowLimit
-    ? `<tr><td colspan="5" style="text-align:center;padding:0.6rem">
+    ? `<tr><td colspan="${cols}" style="text-align:center;padding:0.6rem">
         <button class="seed-show-more" id="seeds-show-more">Show ${Math.min(SEED_PAGE_SIZE, filtered.length - seedRowLimit)} more</button>
         <button class="seed-show-more" id="seeds-show-all">Show all ${filtered.length}</button>
        </td></tr>`
@@ -326,7 +399,10 @@ function renderSeeds() {
         <span style="color:${color}">${charIconHtml(run.char)}${fmtCharName(run.char)}</span>
       </td>
       <td style="padding:0.4rem 0.75rem;text-align:center">${wonDot}</td>
-      <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:var(--text-dim);font-size:var(--fs-sm)">${fmt(run.ts)}</td>
+      <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:var(--text-dim);font-size:var(--fs-sm)">${fmt(run.ts)}</td>${everyone ? `
+      <td class="seed-player" style="padding:0.4rem 0.75rem;white-space:nowrap;font-size:var(--fs-sm)">${run.slug
+        ? `<a href="/u/${encodeURIComponent(run.slug)}" style="color:var(--text)">${escapeHtml(run.name || run.slug)}</a>`
+        : `<span style="color:var(--text-dim)">You</span>`}</td>` : ""}
       <td style="padding:0.4rem 0.75rem;font-size:var(--fs-sm)">${matchSummary}</td>
     </tr>`;
   }).join("") + moreRow;
@@ -379,11 +455,24 @@ function toggleSeedDetail(row) {
 
   const detail = document.createElement("tr");
   detail.className = "seed-detail-row";
-  detail.innerHTML = `<td colspan="5" style="padding:0;background:#1b1c1f;border-bottom:2px solid #3f4147">${renderSeedDetail(run)}</td>`;
+  detail.innerHTML = `<td colspan="${row.children.length}" style="padding:0;background:#1b1c1f;border-bottom:2px solid #3f4147">${renderSeedDetail(run)}</td>`;
   row.after(detail);
 }
 
+// Another player's run has no deck until its month file is fetched; the panel
+// says so and fills itself in when it arrives.
 function renderSeedDetail(run) {
+  if (!run.slug || run.finalDeck) return renderSeedDetailBody(run);
+  const marker = `${run.slug}|${run.ts}`;
+  loadOtherRunDeck(run).then(() => {
+    document.querySelectorAll(".seed-detail-loading").forEach(el => {
+      if (el.dataset.run === marker) el.outerHTML = renderSeedDetailBody(run);
+    });
+  });
+  return `<div class="seed-detail-panel seed-detail-loading" data-run="${marker}" style="color:var(--text-dim)">Loading…</div>`;
+}
+
+function renderSeedDetailBody(run) {
   const cards  = dedupeCardCounts(run.finalDeck || []);
   const relics = run.finalRelics || [];
 
