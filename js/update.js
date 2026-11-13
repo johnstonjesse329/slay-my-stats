@@ -142,14 +142,19 @@ function modsShowRun(mods, run) {
   return true;
 }
 
+// Whether the shared filters let a run through. A run from another player (the
+// Seeds page's All players) can sit at an ascension or build none of yours did;
+// those have no checkbox to untick, so they pass.
+function runPassesFilters(run, fromOther = false) {
+  if (sharedActiveChar !== "ALL" && run.char !== sharedActiveChar) return false;
+  if (!sharedActiveAscs.has(run.asc)     && !(fromOther && !DATA.ascensions.includes(run.asc))) return false;
+  if (!sharedActiveBuilds.has(run.build) && !(fromOther && !DATA.builds.includes(run.build)))   return false;
+  if (run.ts < sharedTsFrom || run.ts > sharedTsTo) return false;
+  return modeShowsRun(sharedActivePlayers, sharedActiveModes, run) && modsShowRun(sharedActiveMods, run);
+}
+
 function filterRuns() {
-  return DATA.runsData.filter(run => {
-    if (sharedActiveChar !== "ALL" && run.char !== sharedActiveChar) return false;
-    if (!sharedActiveAscs.has(run.asc))     return false;
-    if (!sharedActiveBuilds.has(run.build)) return false;
-    if (run.ts < sharedTsFrom || run.ts > sharedTsTo) return false;
-    return modeShowsRun(sharedActivePlayers, sharedActiveModes, run) && modsShowRun(sharedActiveMods, run);
-  });
+  return DATA.runsData.filter(run => runPassesFilters(run));
 }
 
 function filteredRunTsSet() {

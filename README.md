@@ -24,7 +24,7 @@ bar or **Copy link** in the run's header), and opening one shows that run whatev
 
 The dashboard has four pages: Overview, Runs, Cards and Seeds. They cover win
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
-and seed lookup.
+and seed lookup, among your own runs or everyone's.
 
 **Contents:** [Repository layout](#repository-layout) ·
 [How it fits together](#how-it-fits-together) ·
@@ -78,7 +78,7 @@ slay-my-stats/
 │   ├── smoke_site.py        loads the deployed site as a visitor would; deploy.py runs it last
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
-│   ├── rebuild_stats.py     recount users/_stats.json.gz from every profile
+│   ├── rebuild_stats.py     recount users/_stats.json.gz and each player's _seeds.json.gz
 │   ├── backfill_measured.py give runs uploaded before `measured` their per-floor numbers, from their stored logs
 │   ├── build_measured_cards.py  card costs for the ingest Lambda, cut from card_data.json at bundle time
 │   ├── build_known_ids.py   the game's characters, cards and relics for the ingest Lambda, cut at bundle time
@@ -224,6 +224,7 @@ profile on `/u/<slug>`, which it loads by fetching `/catalog.json`, the profile 
 |-----|--------|----------|
 | `users/<slug>.json.gz` | yes | profile summary: `{"v":2, "name", "parser", "months": {"YYYY-MM": [start times]}, "noRaw"}` |
 | `users/<slug>/<YYYY-MM>.json.gz` | yes | that month's parsed runs: `{"v":2, "runs"}` |
+| `users/<slug>/_seeds.json.gz` | yes | each run's seed, result and the cards and relics it offered, compact, for the Seeds page's All players toggle |
 | `users/_index.json.gz` | yes | every player's slug, name, run count and last upload, for the home page's search |
 | `users/_stats.json.gz` | yes | site-wide running totals for the home page (see below) |
 | `users/_uploads/<id>.json.gz` | yes | one upload's result (counts, or why it failed), which the page that sent it polls. The id is random; expires after 7 days. |
@@ -404,6 +405,10 @@ offer went on to win, for the "All" columns of the card pick rate table (the fil
 it has; a file counted before offers were kept has none, and the page then leaves those columns out until
 `tools/rebuild_stats.py` recounts it).
 
+The Seeds page's All players toggle searches every player's seeds. Each player's `_seeds.json.gz` (about 480 bytes
+a run) is added to by their uploads and fetched only when the toggle is switched on; opening another player's
+seed then loads their month file for the final deck.
+
 The update is best effort, like the player list. `tools/rebuild_stats.py` recounts everything from the
 profiles: run it by hand after adding a new figure, removing or rebuilding a profile, or if an update was
 missed.
@@ -421,7 +426,7 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
   `--redo` re-reads them after the reading changes.
 - `tools/remove_profile.py --slug <slug>` takes a profile off the site. The player's next upload starts a fresh
   one. Add `--raw` to delete their kept uploads too.
-- `tools/rebuild_stats.py` recounts the site-wide stats. Run it after either of the above.
+- `tools/rebuild_stats.py` recounts the site-wide stats and rewrites every player's seed file. Run it after either of the above.
 
 ## Development
 

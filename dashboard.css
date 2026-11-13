@@ -797,6 +797,7 @@ h1 {
    blank ~40% of the table, squeezing the four columns that do have data.
    Keyed off a class seeds.js sets; only the header cell and the seed rows,
    not the expanded detail rows (which span the whole table). */
+#seeds-scope[hidden] { display: none; }
 #seeds-table.no-search thead th:last-child,
 #seeds-table.no-search tr.seed-row > td:last-child { display: none; }
 
@@ -2685,13 +2686,15 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #seeds-table .seed-expand-arrow { margin-right: 0.2rem !important; }
   #seeds-table th, #seeds-table tr.seed-row > td { padding: 0.4rem 0.25rem !important; }
   #seeds-table th { font-size: 0.62rem; letter-spacing: 0; }
-  #seeds-table th:last-child { display: none; }
+  #seeds-table th:last-child, #seeds-table th.seed-player { display: none; }
+  /* The player (All players) goes on its own line under the row's figures. */
+  #seeds-table tr.seed-row > td.seed-player { grid-column: 1 / -1; padding-top: 0 !important; }
   #seeds-table tr.seed-row > td:last-child { grid-column: 1 / -1; padding-top: 0 !important; }
   #seeds-table tr.seed-row > td:last-child:empty { display: none; }
   #seeds-table tr:not(.seed-row) > td { display: block; }
-  /* The opened run's deck: two cards a row, as on Run History. */
+  /* The opened run's deck: three cards a row, as on Run History. */
   #seeds-table .seed-detail-panel { padding-left: 0; padding-right: 0; }
-  #seeds-table .seed-detail-cards .deck-tile-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #seeds-table .seed-detail-cards .deck-tile-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #seeds-table .seed-detail-cards .cardface { width: 100% !important; }
 }
 

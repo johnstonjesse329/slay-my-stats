@@ -976,6 +976,68 @@ def _update_stats(store, delta: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Seed index: what each seeded run offered, for the Seeds page's "all players"
+# ---------------------------------------------------------------------------
+#
+# users/<slug>/_seeds.json.gz holds, for each of a player's runs that has a
+# seed, just what the seed search needs (the run's seed, character, result,
+# ascension and the fields the shared filters read, plus every card and relic
+# it was offered, where, and whether it was taken). The page fetches these
+# only when the toggle is switched on, so searching everyone's seeds costs one
+# small file per player, not their whole history. It is a copy of what the
+# month files already hold: tools/rebuild_stats.py rewrites it from them.
+# A location is [floor, node type, encounter, picked 0/1].
+
+def seeds_key(slug: str) -> str:
+    return f"users/{slug}/_seeds.json.gz"
+
+
+def _seed_locs(offered: dict | None) -> dict:
+    return {item_id: [[l.get("floor"), l.get("type"), l.get("enc"), int(bool(l.get("picked")))] for l in locs]
+            for item_id, locs in (offered or {}).items()}
+
+
+def seed_entry(r: dict) -> dict | None:
+    if not r.get("seed"):
+        return None
+    e = {"s": r["seed"], "c": r.get("char"), "w": int(bool(r.get("won"))), "t": r["ts"],
+         "a": r.get("asc"), "b": r.get("build"), "o": _seed_locs(r.get("cardsOffered")),
+         "r": _seed_locs(r.get("relicsOffered"))}
+    for short, field in (("p", "mp"), ("m", "mode"), ("x", "mods")):
+        if r.get(field):
+            e[short] = r[field]
+    return e
+
+
+def seed_entries(runs: list[dict]) -> list[dict]:
+    return [e for e in map(seed_entry, runs) if e]
+
+
+def merge_seeds(have: list[dict], new: list[dict]) -> list[dict]:
+    """A player's entries with new ones added by ts; a run already there is replaced."""
+    by_ts = {e["t"]: e for e in have}
+    by_ts.update({e["t"]: e for e in new})
+    return [by_ts[t] for t in sorted(by_ts)]
+
+
+def _update_seeds(store, slug: str, entries: list[dict]) -> None:
+    """Add an upload's seeded runs to the player's seed file. Best effort like
+    the stats: a missed update only leaves the file short until the next rebuild."""
+    if not entries:
+        return
+    for _ in range(INDEX_RETRIES):
+        got = store.get(seeds_key(slug))
+        doc = _unpack(got[0]) if got else {"v": 1, "runs": []}
+        try:
+            store.put(seeds_key(slug), _pack({"v": 1, "runs": merge_seeds(doc["runs"], entries)}),
+                      {}, got[2] if got else None)
+            return
+        except StoreConflict:
+            continue
+    print(json.dumps({"warning": "seeds_update_failed", "slug": slug, "runs": len(entries)}))
+
+
+# ---------------------------------------------------------------------------
 # Handing out upload URLs
 # ---------------------------------------------------------------------------
 
@@ -1230,7 +1292,7 @@ def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) ->
                     pass
 
         # One month at a time: merged into its file, written, then dropped.
-        months, delta, changed = {}, empty_stats(), False
+        months, delta, changed, seeded = {}, empty_stats(), False, []
         for m in spool.months():
             ts, added, already, wrote = _merge_month(store, slug, m, spool.runs(m))
             months[m] = ts
@@ -1239,6 +1301,7 @@ def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) ->
             changed |= wrote
             # Only the runs this upload added: the rest are already in the totals.
             merge_stats(delta, tally(added, slug))
+            seeded += seed_entries(added)
 
         if not changed and doc is not None and not (_no_raw(doc) & spool.ts):
             return result
@@ -1267,6 +1330,7 @@ def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) ->
         else:
             raise IngestError(503, "busy", "Your profile is busy. Try again shortly.")
     _update_index(store, slug, name, _total(new), now)
+    _update_seeds(store, slug, seeded)
     if delta["allRuns"]:
         _update_stats(store, delta)
     result.update(slug=slug, name=name, total=_total(new))

@@ -98,7 +98,7 @@ class MemStore:
     def months(self, slug="mrbean"):
         """The month files stored for a profile."""
         prefix = f"users/{slug}/"
-        return sorted(k[len(prefix):-len(".json.gz")] for k in self.objects if k.startswith(prefix))
+        return sorted(k[len(prefix):-len(".json.gz")] for k in self.objects if k.startswith(prefix) and not k.startswith(prefix + "_"))
 
     def index(self):
         return self.json(handler.INDEX_KEY)["players"]
@@ -930,6 +930,32 @@ class ProcessTests(Uploads, unittest.TestCase):
                                 "cardsOffered": {"CARD.BASH": [{"type": "monster", "picked": True}]}}], "a")
         total = handler.merge_stats(old, delta)
         self.assertEqual(total["solo"]["picks"]["IRONCLAD"]["cards"]["CARD.BASH"], [3, 2, 0, 0, 1, 0])
+
+    def test_seed_entry_is_compact_and_skips_seedless_runs(self):
+        run = {"seed": "S1", "char": "IRONCLAD", "won": True, "ts": 5, "asc": 3, "build": "v1",
+               "cardsOffered": {"CARD.BASH": [{"floor": 2, "type": "monster", "enc": "E.X", "picked": True},
+                                              {"floor": 9, "type": "shop", "enc": None, "picked": False}]},
+               "relicsOffered": {}, "mp": True}
+        self.assertEqual(handler.seed_entry(run), {
+            "s": "S1", "c": "IRONCLAD", "w": 1, "t": 5, "a": 3, "b": "v1", "p": True,
+            "o": {"CARD.BASH": [[2, "monster", "E.X", 1], [9, "shop", None, 0]]}, "r": {}})
+        self.assertIsNone(handler.seed_entry({"char": "IRONCLAD", "ts": 6}))
+
+    def test_merge_seeds_replaces_by_ts_and_sorts(self):
+        have = [{"t": 3, "s": "A"}, {"t": 1, "s": "B"}]
+        self.assertEqual(handler.merge_seeds(have, [{"t": 3, "s": "C"}, {"t": 2, "s": "D"}]),
+                         [{"t": 1, "s": "B"}, {"t": 2, "s": "D"}, {"t": 3, "s": "C"}])
+
+    def test_upload_writes_the_seed_file_and_remove_takes_it_along(self):
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002)))
+        self.ingest(body_of(minimal_run(1700000003)), now=NOW + 120, nonce_suffix="second")
+        got = self.store.get(handler.seeds_key("mrbean"))
+        doc = handler._unpack(got[0])
+        self.assertEqual(doc["v"], 1)
+        self.assertEqual([e["t"] for e in doc["runs"]], [1700000001, 1700000002, 1700000003])
+        self.assertEqual(doc["runs"][0]["s"], "ABC123")
+        handler.remove_profile(self.store, "mrbean", raw=True)
+        self.assertNotIn(handler.seeds_key("mrbean"), self.store.objects)
 
     def test_stats_split_multiplayer_and_leave_out_the_other_modes(self):
         second = {"character": "CHARACTER.SILENT", "deck": [], "relics": []}
