@@ -920,9 +920,16 @@ class ProcessTests(Uploads, unittest.TestCase):
         ]
         total = handler.merge_stats(handler.tally(runs[:1], "a"), handler.tally(runs[1:], "b"))
         picks = total["solo"]["picks"]["IRONCLAD"]
-        # [picks, wins when picked, buys, wins when bought]; a skipped offer counts nowhere.
-        self.assertEqual(picks["cards"], {bash: [3, 2, 2, 1]})
-        self.assertEqual(picks["relics"], {"RELIC.ANCHOR": [1, 1, 1, 1]})
+        # [picks, wins when picked, buys, wins when bought, offers, wins when skipped]
+        self.assertEqual(picks["cards"], {bash: [3, 2, 2, 1, 3, 0], "CARD.ANGER": [0, 0, 0, 0, 1, 1]})
+        self.assertEqual(picks["relics"], {"RELIC.ANCHOR": [1, 1, 1, 1, 1, 0]})
+
+    def test_stats_merge_onto_totals_recounted_before_offers_were_kept(self):
+        old = {"solo": {"picks": {"IRONCLAD": {"cards": {"CARD.BASH": [2, 1, 0, 0]}}}}}
+        delta = handler.tally([{"char": "IRONCLAD", "won": True, "mins": 9,
+                                "cardsOffered": {"CARD.BASH": [{"type": "monster", "picked": True}]}}], "a")
+        total = handler.merge_stats(old, delta)
+        self.assertEqual(total["solo"]["picks"]["IRONCLAD"]["cards"]["CARD.BASH"], [3, 2, 0, 0, 1, 0])
 
     def test_stats_split_multiplayer_and_leave_out_the_other_modes(self):
         second = {"character": "CHARACTER.SILENT", "deck": [], "relics": []}

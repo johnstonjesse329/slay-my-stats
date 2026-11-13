@@ -848,9 +848,13 @@ def _update_index(store, slug: str, name: str, runs: int, now: float) -> None:
 
 MODES = ("solo", "multi")
 PAIR_KEYS = ("chars", "cards", "relics")
-# picks[char][kind][id] = [picks, wins when picked, buys, wins when bought]:
-# every time the character took that card or relic, and the share of those
-# that were shop buys, for the Cards page's "all players" favourites.
+# picks[char][kind][id] = [picks, wins when picked, buys, wins when bought,
+# offers, wins when skipped]: every time the character took that card or relic,
+# the share of those that were shop buys, how often it was offered at all and
+# the wins of the runs that turned it down, for the Cards page's "all players"
+# favourites and offer/pick-rate columns. Totals recounted before the last two
+# were added carry four numbers; the page reads the missing two as unknown.
+PICK_SLOTS = 6
 PICK_KINDS = (("cards", "cardsOffered"), ("relics", "relicsOffered"))
 
 
@@ -865,9 +869,11 @@ def _tally_picks(picks: dict, r: dict, won: bool) -> None:
         by_id = by_kind.setdefault(kind, {})
         for item_id, locs in (r.get(field) or {}).items():
             for loc in locs:
+                q = by_id.setdefault(item_id, [0] * PICK_SLOTS)
+                q[4] += 1
                 if not loc.get("picked"):
+                    q[5] += won
                     continue
-                q = by_id.setdefault(item_id, [0, 0, 0, 0])
                 q[0] += 1
                 q[1] += won
                 if loc.get("type") == "shop":
@@ -876,7 +882,9 @@ def _tally_picks(picks: dict, r: dict, won: bool) -> None:
 
 
 def empty_stats() -> dict:
-    return {"v": 1, "allRuns": 0, **{m: _empty_mode() for m in MODES}}
+    # pickSlots says the picks carry offers too: only a total counted from empty
+    # has it, so one recounted before offers were kept never reads as complete.
+    return {"v": 1, "pickSlots": PICK_SLOTS, "allRuns": 0, **{m: _empty_mode() for m in MODES}}
 
 
 def _bump(pairs: dict, key, won: bool) -> None:
@@ -939,7 +947,8 @@ def merge_stats(total: dict, delta: dict) -> dict:
             for kind, by_id in kinds.items():
                 into = picks.setdefault(char, {}).setdefault(kind, {})
                 for item_id, q in by_id.items():
-                    have = into.setdefault(item_id, [0, 0, 0, 0])
+                    have = into.setdefault(item_id, [0] * PICK_SLOTS)
+                    have.extend([0] * (PICK_SLOTS - len(have)))  # a total from before offers were kept
                     for i, n in enumerate(q):
                         have[i] += n
         killers = t.setdefault("killers", {})

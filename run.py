@@ -1580,6 +1580,10 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <h2 id="cards-title">Card offer &amp; pick rates</h2>
   <p class="chart-caption" id="cards-caption">Every card offered under the current filters.</p>
   <input type="text" class="seeds-input" id="cards-name-filter" placeholder="Filter by card name…" aria-label="Filter cards by name" style="max-width:260px;margin-bottom:0.75rem">
+  <div class="filter-group cards-who" id="cards-who" hidden>
+    <button class="toggle-btn active" id="cards-who-you">You</button>
+    <button class="toggle-btn" id="cards-who-all">All players</button>
+  </div>
   <div class="cards-split">
     <div class="pivot-wrap cards-list">
       <table class="pivot" id="cards-table-main" style="table-layout:fixed;min-width:0;width:100%">

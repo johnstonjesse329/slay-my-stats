@@ -272,7 +272,9 @@ h1 {
 /* Card Stats: the table at a snug width, and on wide screens the full card of
    the row under the pointer in the space beside it (previewCard). */
 .cards-split { display: flex; gap: 1.5rem; align-items: stretch; }
-.cards-list { flex: 0 1 1040px; min-width: 0; max-height: min(70vh, 720px); overflow-y: auto; }
+/* You / All players: phones only (the desktop table shows both). */
+#cards-who { display: none; margin-bottom: 0.6rem; }
+.cards-list { flex: 0 1 1500px; min-width: 0; max-height: min(70vh, 720px); overflow-y: auto; }
 .cards-preview { display: none; flex: 1 1 0; min-width: 0; align-items: center; justify-content: flex-start; padding-left: 1.5rem; }
 .cards-preview .cardface, .cards-preview .card-tooltip { width: min(360px, 100%) !important; max-height: min(70vh, 720px); object-fit: contain; }
 #cards-tbody tr.cards-current td { background: rgba(255,255,255,.06); }
@@ -2653,14 +2655,19 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
      them); the numbers stay. The table sets its widths inline, hence
      !important. */
   #cards-table-main { width: 100% !important; }
+  #cards-who:not([hidden]) { display: flex; }
+  /* Room for four figure columns: yours, or (the You / All players switch)
+     the all-players four in their place. */
+  #cards-table-main:not(.show-all) th:nth-child(n+9), #cards-table-main:not(.show-all) td:nth-child(n+9),
+  #cards-table-main.show-all th:nth-child(n+5):nth-child(-n+8), #cards-table-main.show-all td:nth-child(n+5):nth-child(-n+8) { display: none; }
   #cards-table-main th:nth-child(n+2):nth-child(-n+4),
   #cards-table-main td:nth-child(n+2):nth-child(-n+4) { display: none; }
   #cards-table-main th { white-space: normal !important; padding: 0.3rem 0.15rem !important; font-size: 0.6rem !important; letter-spacing: 0 !important; vertical-align: bottom; }
   #cards-table-main th:first-child { width: auto !important; }
-  #cards-table-main th:nth-child(5) { width: 46px !important; }
-  #cards-table-main th:nth-child(6) { width: 50px !important; }
-  #cards-table-main th:nth-child(7) { width: 50px !important; }
-  #cards-table-main th:nth-child(8) { width: 52px !important; }
+  #cards-table-main th:nth-child(5), #cards-table-main th:nth-child(9)  { width: 46px !important; }
+  #cards-table-main th:nth-child(6), #cards-table-main th:nth-child(10) { width: 50px !important; }
+  #cards-table-main th:nth-child(7), #cards-table-main th:nth-child(11) { width: 50px !important; }
+  #cards-table-main th:nth-child(8), #cards-table-main th:nth-child(12) { width: 52px !important; }
   #cards-table-main td { padding: 0.18rem 0.15rem !important; font-size: 0.83rem !important; }
   .cards-thumb { width: 22px; height: 22px; }
   .cards-thumb-wrap { margin-right: 6px; }

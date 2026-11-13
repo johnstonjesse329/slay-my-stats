@@ -29,6 +29,16 @@ let cardsSortDir      = -1; // -1 = descending
     renderCardsPage();
   });
 
+  // You / All players: phones have room for four of the eight figure columns,
+  // so this swaps which four the table shows (the CSS does the rest).
+  ["you","all"].forEach(w => {
+    document.getElementById(`cards-who-${w}`).addEventListener("click", () => {
+      document.getElementById("cards-table-main").classList.toggle("show-all", w === "all");
+      ["you","all"].forEach(x =>
+        document.getElementById(`cards-who-${x}`).classList.toggle("active", x === w));
+    });
+  });
+
   // Type buttons
   ["all","attack","skill","power"].forEach(t => {
     document.getElementById(`cards-type-${t}`).addEventListener("click", () => {
@@ -76,9 +86,33 @@ function aggregateCards() {
   return byCard;
 }
 
+// Everybody's tally of each card under the same filters as the player's own:
+// { id: [picks, wins, buys, buyWins, offers, skipWins] }, or null while the site
+// totals load, when the filters have none (Daily, Blitz, Custom), or when they
+// were counted before offers were kept.
+function globalCardTallies() {
+  const all = favTalliesAll();
+  if (!all || siteStatsForFavs.pickSlots !== 6) return null;
+  const byId = {};
+  const chars = sharedActiveChar === "ALL" ? Object.keys(all.picks) : [sharedActiveChar];
+  chars.forEach(char => Object.entries(all.picks[char]?.cards || {}).forEach(([id, q]) => {
+    const b = byId[id] || (byId[id] = [0, 0, 0, 0, 0, 0]);
+    q.forEach((n, i) => { b[i] += n; });
+  }));
+  return byId;
+}
+
 function renderCardsPage() {
   renderCardFavorites();
   const raw  = aggregateCards();
+  const global = globalCardTallies();
+  // The You / All players switch only exists when there is something to switch to.
+  document.getElementById("cards-who").hidden = !global;
+  if (!global) {
+    document.getElementById("cards-table-main").classList.remove("show-all");
+    document.getElementById("cards-who-you").classList.add("active");
+    document.getElementById("cards-who-all").classList.remove("active");
+  }
   const cardData = DATA.cardData || {};
   const cardChar = DATA.cardChar || {};
 
@@ -92,7 +126,13 @@ function renderCardsPage() {
   const rows = Object.entries(raw).map(([id, b]) => {
     const meta = cardData[id] || {};
     const pool = cardChar[id] || "other";
+    const g = global && global[id];
+    const gSkips = g ? g[4] - g[0] : 0;
     return {
+      gOffered:    g ? g[4] : null,
+      gPickRate:   g && g[4]  ? +(g[0] / g[4] * 100).toFixed(1) : null,
+      gWinPicked:  g && g[0]  ? +(g[1] / g[0] * 100).toFixed(1) : null,
+      gWinSkipped: g && gSkips ? +(g[5] / gSkips * 100).toFixed(1) : null,
       id,
       title:    DATA.cardLabels[id] || id,
       type:     meta.type    || "—",
@@ -154,6 +194,13 @@ function renderCardsPage() {
     { key: "pickRate",   label: "Pick rate",       align: "center", width: "100px"  },
     { key: "winPicked",  label: "Win % if picked", align: "center", width: "130px" },
     { key: "winSkipped", label: "Win % if skipped",align: "center", width: "140px" },
+    // Everybody's, when the site totals have them: the same four, to compare against.
+    ...(global ? [
+      { key: "gOffered",    label: "All offered",      align: "center", width: "90px"  },
+      { key: "gPickRate",   label: "All pick rate",    align: "center", width: "90px"  },
+      { key: "gWinPicked",  label: "All win % picked", align: "center", width: "120px" },
+      { key: "gWinSkipped", label: "All win % skipped",align: "center", width: "130px" },
+    ] : []),
   ];
 
   const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.3rem 0.5rem;font-size:var(--fs-sm);width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "var(--text-dim)"}"`;
@@ -204,7 +251,11 @@ function renderCardsPage() {
     <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.offered}</td>
     <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.pickRate, "#ccc")}</td>
     <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.winPicked,  "#ccc")}</td>
-    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.winSkipped, "#ccc")}</td>
+    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.winSkipped, "#ccc")}</td>${global ? `
+    <td class="cards-all" style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.gOffered ?? "—"}</td>
+    <td class="cards-all" style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.gPickRate, "#aaa")}</td>
+    <td class="cards-all" style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.gWinPicked, "#aaa")}</td>
+    <td class="cards-all" style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.gWinSkipped, "#aaa")}</td>` : ""}
   </tr>`;
   }).join("");
 
@@ -259,7 +310,7 @@ function loadSiteStatsForFavs() {
     .then(stats => {
       if (!stats) return;
       siteStatsForFavs = stats;
-      renderCardFavorites();
+      if (currentPage === "cards") renderCardsPage(); else renderCardFavorites();
     })
     .catch(() => {});
 }
@@ -313,7 +364,7 @@ function favTalliesAll() {
     Object.entries(m.picks || {}).forEach(([char, kinds]) => {
       const into = picks[char] || (picks[char] = { cards: {}, relics: {} });
       ["cards", "relics"].forEach(kind => Object.entries(kinds[kind] || {}).forEach(([id, q]) => {
-        const have = into[kind][id] || (into[kind][id] = [0, 0, 0, 0]);
+        const have = into[kind][id] || (into[kind][id] = [0, 0, 0, 0, 0, 0]);
         q.forEach((n, i) => { have[i] += n; });
       }));
     });
