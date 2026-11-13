@@ -29,6 +29,16 @@ let cardsSortDir      = -1; // -1 = descending
     renderCardsPage();
   });
 
+  // You / All players: phones have room for four of the eight figure columns,
+  // so this swaps which four the table shows (the CSS does the rest).
+  ["you","all"].forEach(w => {
+    document.getElementById(`cards-who-${w}`).addEventListener("click", () => {
+      document.getElementById("cards-table-main").classList.toggle("show-all", w === "all");
+      ["you","all"].forEach(x =>
+        document.getElementById(`cards-who-${x}`).classList.toggle("active", x === w));
+    });
+  });
+
   // Type buttons
   ["all","attack","skill","power"].forEach(t => {
     document.getElementById(`cards-type-${t}`).addEventListener("click", () => {
@@ -96,6 +106,13 @@ function renderCardsPage() {
   renderCardFavorites();
   const raw  = aggregateCards();
   const global = globalCardTallies();
+  // The You / All players switch only exists when there is something to switch to.
+  document.getElementById("cards-who").hidden = !global;
+  if (!global) {
+    document.getElementById("cards-table-main").classList.remove("show-all");
+    document.getElementById("cards-who-you").classList.add("active");
+    document.getElementById("cards-who-all").classList.remove("active");
+  }
   const cardData = DATA.cardData || {};
   const cardChar = DATA.cardChar || {};
 

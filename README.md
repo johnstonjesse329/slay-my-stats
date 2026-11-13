@@ -18,7 +18,7 @@ bar or **Copy link** in the run's header), and opening one shows that run whatev
 
 ![Runs tab showing a run's final deck](images/site-run-detail.png)
 
-**Cards:** your favorite cards and relics beside every player's, and pick and win rates for every card, yours and every player's side by side.
+**Cards:** your favorite cards and relics beside every player's, and pick and win rates for every card, yours and every player's side by side (on a phone, a You / All players switch swaps which set the table shows).
 
 ![Cards tab with card pick rates](images/site-card-stats.png)
 
