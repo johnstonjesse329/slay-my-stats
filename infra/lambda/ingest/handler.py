@@ -1533,6 +1533,93 @@ def remove_profile(store, slug: str, raw: bool = False, dry_run: bool = False) -
     return summary
 
 
+def _line_ts(line: bytes):
+    """The start_time of one raw upload line, or None if it isn't a readable run."""
+    try:
+        return json.loads(line, parse_constant=lambda c: None).get("start_time")
+    except (ValueError, AttributeError):
+        return None
+
+
+def remove_runs(store, slug: str, ts_list, dry_run: bool = False) -> dict:
+    """
+    Take individual runs (by ts) off a profile, for runs that never belonged
+    there, such as mod test runs. Removes them from the month files, from the
+    kept raw uploads (a rebuild re-parses those, so a month-file edit alone
+    would be undone) and from the telemetry store, then rewrites the summary
+    and the player list's run count. Site stats aren't touched: run
+    tools/rebuild_stats.py afterwards. Returns what was (or, with dry_run,
+    would be) removed: {"slug", "months": {month: [ts]}, "raw": {key: runs},
+    "telemetry": [key], "missing": [ts found nowhere]}.
+    """
+    want = {int(t) for t in ts_list}
+    got = store.get(blob_key(slug))
+    if got is None:
+        raise IngestError(404, "no_profile", f"No profile {slug}.")
+    doc = _unpack(got[0])
+    if doc.get("v", 1) < 2:
+        raise IngestError(409, "old_format", f"{slug} isn't in month files yet; migrate it first.")
+    steam_ids = [k[len("ids/"):-len(".json.gz")] for k in store.list("ids/")
+                 if (k2 := store.get(k)) and _unpack(k2[0]).get("slug") == slug]
+
+    out = {"slug": slug, "months": {}, "raw": {}, "telemetry": []}
+    # Raw uploads first: if this stops partway, the month files still show what
+    # is left to remove, and a rebuild can't bring anything back.
+    for s in steam_ids:
+        for key in sorted(store.list(f"raw/{s}/")):
+            rec = store.get(key) if RAW_KEY_RE.match(key) else None
+            if rec is None:
+                continue
+            lines = list(iter_upload_lines(rec[0]))
+            keep = [ln for ln in lines if _line_ts(ln) not in want]
+            if len(keep) == len(lines):
+                continue
+            out["raw"][key] = len(lines) - len(keep)
+            if dry_run:
+                continue
+            if keep:
+                store.put(key, gzip.compress(b"\n".join(keep) + b"\n"), rec[3], rec[2])
+            else:
+                store.delete(key)
+
+    months = {m: list(ts) for m, ts in doc.get("months", {}).items()}
+    for m in sorted(months):
+        hit = want & set(months[m])
+        if not hit:
+            continue
+        out["months"][m] = sorted(hit)
+        if dry_run:
+            continue
+        month = store.get(month_key(slug, m))
+        runs = [r for r in (_unpack(month[0])["runs"] if month else []) if r["ts"] not in want]
+        if runs:
+            _put_over(store, month_key(slug, m), _pack({"v": 2, "runs": runs}))
+            months[m] = [r["ts"] for r in runs]
+        else:
+            store.delete(month_key(slug, m))
+            del months[m]
+
+    for s in steam_ids:
+        for ts in sorted(want):
+            key = telemetry_key(s, ts)
+            if store.get(key) is not None:
+                out["telemetry"].append(key)
+                if not dry_run:
+                    store.delete(key)
+
+    found = {t for ts in out["months"].values() for t in ts}
+    out["missing"] = sorted(want - found)
+    if dry_run:
+        return out
+    no_raw = set(doc.get("noRaw", [])) - want
+    try:
+        store.put(blob_key(slug), _pack(_summary(doc["name"], months, no_raw, doc.get("parser", 0))), got[3], got[2])
+    except StoreConflict:
+        raise IngestError(503, "busy", "The profile changed meanwhile; run it again.")
+    _update_index(store, slug, doc["name"], sum(len(ts) for ts in months.values()), time.time())
+    return out
+
+
 class S3Store:
     def __init__(self, bucket: str):
         import boto3  # only on Lambda; the dev server uses a local store

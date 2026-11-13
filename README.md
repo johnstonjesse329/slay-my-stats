@@ -85,6 +85,7 @@ slay-my-stats/
 │   ├── retired_ids.json     content the game has since removed, still in older runs
 │   ├── find_unknown_ids.py  lists what held runs name, from raw/
 │   ├── remove_profile.py    take a profile off the site
+│   ├── remove_runs.py       take single runs (by ts) off a profile
 │   ├── refresh_game_data.py game-data pipeline driver (see "Refreshing game data")
 │   ├── export_game_data.py  drives the game to export its data and render every card face
 │   ├── import_game_data.py  folds that export into the site's data files
@@ -426,7 +427,10 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
   `--redo` re-reads them after the reading changes.
 - `tools/remove_profile.py --slug <slug>` takes a profile off the site. The player's next upload starts a fresh
   one. Add `--raw` to delete their kept uploads too.
-- `tools/rebuild_stats.py` recounts the site-wide stats and rewrites every player's seed file. Run it after either of the above.
+- `tools/remove_runs.py --slug <slug> --ts <ts> [--ts ...]` takes single runs off a profile (mod test runs, say):
+  month files, kept raw uploads and telemetry, so a rebuild can't bring them back. `--dry-run` lists first. Delete the
+  `.run` file from the game's history folder too, or the next upload sends it again.
+- `tools/rebuild_stats.py` recounts the site-wide stats and rewrites every player's seed file. Run it after any of the above.
 
 ## Development
 

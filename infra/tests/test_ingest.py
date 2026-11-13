@@ -1099,6 +1099,32 @@ class RebuildTests(Uploads, unittest.TestCase):
         res = self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120, nonce_suffix="2")
         self.assertEqual((res["slug"], res["added"], res["total"]), ("mrbean", 1, 1))
 
+    def test_remove_runs(self):
+        self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000), minimal_run(1700000001)))
+        self.store.put(handler.telemetry_key(STEAM_ID, 1700000001), handler._pack({"v": 1}), {}, None)
+        dry = handler.remove_runs(self.store, "mrbean", [1700000001, 1699999999], dry_run=True)
+        self.assertEqual(dry["months"], {"2023-11": [1700000001]})
+        self.assertEqual(dry["missing"], [1699999999])
+        self.assertEqual(len(dry["raw"]), 1)
+        self.assertEqual(len(self.store.runs(STEAM_ID)), 3)  # a dry run changes nothing
+        got = handler.remove_runs(self.store, "mrbean", [1700000001, 1699999999])
+        self.assertEqual(got, dry)
+        self.assertEqual(dry["telemetry"], [handler.telemetry_key(STEAM_ID, 1700000001)])
+        self.assertEqual(self.store.profile()["months"], {"2023-07": [1690000000], "2023-11": [1700000000]})
+        self.assertEqual([p["runs"] for p in self.store.index()], [2])
+        self.assertNotIn(handler.telemetry_key(STEAM_ID, 1700000001), self.store.objects)
+        # A rebuild from the raw uploads can't bring it back.
+        summary = handler.rebuild_profile(self.store, STEAM_ID)
+        self.assertEqual(summary["runs"], 2)
+        self.assertEqual(self.store.profile()["months"], {"2023-07": [1690000000], "2023-11": [1700000000]})
+
+    def test_remove_runs_drops_a_month_and_raw_upload_left_empty(self):
+        self.ingest(body_of(minimal_run(1690000000)))
+        self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120, nonce_suffix="2")
+        handler.remove_runs(self.store, "mrbean", [1700000000])
+        self.assertEqual(self.store.months(), ["2023-07"])
+        self.assertEqual(len([k for k in self.store.objects if k.startswith(f"raw/{STEAM_ID}/")]), 1)
+
     def test_rebuild_needs_a_profile(self):
         with self.assertRaises(handler.IngestError):
             handler.rebuild_profile(self.store, STEAM_ID)
