@@ -882,7 +882,9 @@ def _tally_picks(picks: dict, r: dict, won: bool) -> None:
 
 
 def empty_stats() -> dict:
-    return {"v": 1, "allRuns": 0, **{m: _empty_mode() for m in MODES}}
+    # pickSlots says the picks carry offers too: only a total counted from empty
+    # has it, so one recounted before offers were kept never reads as complete.
+    return {"v": 1, "pickSlots": PICK_SLOTS, "allRuns": 0, **{m: _empty_mode() for m in MODES}}
 
 
 def _bump(pairs: dict, key, won: bool) -> None:

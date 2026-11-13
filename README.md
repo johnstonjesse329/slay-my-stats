@@ -18,7 +18,7 @@ bar or **Copy link** in the run's header), and opening one shows that run whatev
 
 ![Runs tab showing a run's final deck](images/site-run-detail.png)
 
-**Cards:** your favorite cards and relics beside every player's, and pick and win rates for every card.
+**Cards:** your favorite cards and relics beside every player's, and pick and win rates for every card, yours and every player's side by side.
 
 ![Cards tab with card pick rates](images/site-card-stats.png)
 
@@ -396,7 +396,10 @@ Lambda tallies just the runs an upload added and adds that onto `users/_stats.js
 write. No one's history is ever reread, and a duplicate run is never counted twice. The file holds raw
 counts for every card and relic, around 11 KB for 660 runs, so the page does the ranking and its thresholds
 can change without recounting. It also counts each character's card and relic picks, and how many were shop
-buys, for the All players favorites on the Cards page.
+buys, for the All players favorites on the Cards page, plus how often each was offered and how often a skipped
+offer went on to win, for the "All" columns of the card pick rate table (the file's `pickSlots` says which layout
+it has; a file counted before offers were kept has none, and the page then leaves those columns out until
+`tools/rebuild_stats.py` recounts it).
 
 The update is best effort, like the player list. `tools/rebuild_stats.py` recounts everything from the
 profiles: run it by hand after adding a new figure, removing or rebuilding a profile, or if an update was
