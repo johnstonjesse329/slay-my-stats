@@ -133,8 +133,10 @@
 
   // ---- Rebuilding the rest of build_html()'s derived fields ---------------
 
-  function deriveCharacters(runs) {
-    return [...new Set(runs.map(r => r.char))].sort();
+  // Every character the game has, with or without runs, so a new one (or one the
+  // player hasn't tried) shows with zero history; a modded character appears by its runs.
+  function deriveCharacters(catalog, runs) {
+    return [...new Set([...Object.keys(catalog.charColorMap), ...runs.map(r => r.char)])].sort();
   }
 
   function deriveAscensions(runs) {
@@ -185,7 +187,7 @@
   // (it has no functional effect, but matches the Python dict literal so
   // the two are easy to diff against each other).
   function buildData(catalog, runs) {
-    const characters = deriveCharacters(runs);
+    const characters = deriveCharacters(catalog, runs);
     const ascensions = deriveAscensions(runs);
     const builds = deriveBuilds(runs);
     const charColors = characters.map(c => catalog.charColorMap[c] || "#888");
