@@ -2587,9 +2587,9 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #seeds-table tr.seed-row > td:last-child { grid-column: 1 / -1; padding-top: 0 !important; }
   #seeds-table tr.seed-row > td:last-child:empty { display: none; }
   #seeds-table tr:not(.seed-row) > td { display: block; }
-  /* The opened run's deck: two cards a row, as on Run History. */
+  /* The opened run's deck: three cards a row, as on Run History. */
   #seeds-table .seed-detail-panel { padding-left: 0; padding-right: 0; }
-  #seeds-table .seed-detail-cards .deck-tile-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #seeds-table .seed-detail-cards .deck-tile-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #seeds-table .seed-detail-cards .cardface { width: 100% !important; }
 }
 
