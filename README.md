@@ -365,6 +365,8 @@ gameplay, cut down to plain characters, as `mods` on the run. The run's header s
 list on hover, and the shared filter bar has a Mods filter (All / Unmodded / Modded). A run uploaded from files has no such key, so a
 run without the tag isn't known to be unmodded.
 
+A Custom Run (the game's `game_mode` of `custom`) carries `modifiers`, the ids of its rule changes (Sealed Deck, Hoarder, ...), kept as plain ids. Its header shows a gold "Custom" tag listing them on hover, and the shared filter bar's Modes checkboxes (Standard, Daily, Blitz, Dread, Custom) have a Custom box, unticked by default like Blitz; a box shows only once you have a run in that mode, and the Players buttons (All / Solo / Multi) split by party size. Saved filters from before the split map onto the new pair. Custom runs stay on their own page of the run list and out of every site-wide pool (the home-page totals and the fight-demand cuts), since their rules make them poor comparisons to normal games.
+
 ### Held runs
 
 A run that names a character, card or relic the game data doesn't have is held: it's left out of the profile
@@ -385,7 +387,7 @@ the players and builds. After a patch: refresh the game data and deploy. A deplo
 ### Site-wide stats
 
 The home page shows stats across every player's runs, solo and multiplayer side by side (solo leaves out
-daily runs, matching the dashboard's Solo filter): win rate for each and by character; the uncommon and
+daily, Blitz, Dread and Custom runs, matching the dashboard's Standard mode with Players set to Solo): win rate for each and by character; the uncommon and
 rarer cards and the relics with the best win rates (at least 10 runs each); and the fights that end the most
 runs. A card, relic or fight carries a Solo lane and a striped Multi lane under its name -- the two are
 judged apart, since what a card or relic is worth differs between them -- while its place in the list is

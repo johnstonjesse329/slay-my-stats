@@ -64,7 +64,9 @@ function renderPersonalBests() {
   const chars = DATA.characters;
   const allRuns = [...filterRuns()].sort((a, b) => a.ts - b.ts);
 
-  const fresh = () => ({ gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, tiers: {} });
+  const fresh = () => ({ gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, tiers: {},
+    // Every winning run's figure, for the medians the table shows before its ranges.
+    won: { elites: [], cards: [], relics: [], maxHp: [], bossTurns: [] } });
   const bests = {};
   chars.forEach(char => { bests[char] = fresh(); });
   // The Total column is the same tally over every run, so its streaks run
@@ -73,9 +75,13 @@ function renderPersonalBests() {
 
   const tally = (b, run) => {
     b.gamesPlayed = (b.gamesPlayed || 0) + 1;
-    const tier = b.tiers[ascColumnKey(run.asc)] ||= { runs: 0, wins: 0 };
+    // A Dread run is past every ascension, so it gets its own tier and stays out of A8+.
+    const tier = b.tiers[run.mode === "dread" ? "dread" : ascColumnKey(run.asc)] ||= { runs: 0, wins: 0, solo: { runs: 0, wins: 0 }, multi: { runs: 0, wins: 0 } };
     tier.runs++;
     if (run.won) tier.wins++;
+    const side = tier[run.mp ? "multi" : "solo"];
+    side.runs++;
+    if (run.won) side.wins++;
     const bossFights = (run.fights || []).filter(f => f.type === "boss");
     const finalBoss  = bossFights.length ? bossFights[bossFights.length - 1] : null;
     if (finalBoss && !finalBoss.won) {
@@ -91,6 +97,7 @@ function renderPersonalBests() {
     if (finalBoss && finalBoss.won && finalBoss.turns != null) {
       if (b.mostFinalBossTurns === null || finalBoss.turns > b.mostFinalBossTurns.value) b.mostFinalBossTurns = { value: finalBoss.turns, ts: run.ts };
       if (b.fewestFinalBossTurns === null || finalBoss.turns < b.fewestFinalBossTurns.value) b.fewestFinalBossTurns = { value: finalBoss.turns, ts: run.ts };
+      if (run.won) b.won.bossTurns.push(finalBoss.turns);
     }
     if (run.won) {
       b.totalWins = (b.totalWins || 0) + 1;
@@ -106,19 +113,23 @@ function renderPersonalBests() {
       if (finalMaxHp != null) {
         if (b.mostMaxHp === null || finalMaxHp > b.mostMaxHp.value) b.mostMaxHp = { value: finalMaxHp, ts: run.ts };
         if (b.fewestMaxHp === null || finalMaxHp < b.fewestMaxHp.value) b.fewestMaxHp = { value: finalMaxHp, ts: run.ts };
+        b.won.maxHp.push(finalMaxHp);
       }
     }
     const elites = (run.fights || []).filter(f => f.type === "elite" && f.won).length;
     if (run.won) {
       if (b.fewestElites === null || elites < b.fewestElites.value) b.fewestElites = { value: elites, ts: run.ts };
       if (b.mostElitesWin === null || elites > b.mostElitesWin.value) b.mostElitesWin = { value: elites, ts: run.ts };
+      b.won.elites.push(elites);
       if (run.cards != null) {
         if (b.mostCards === null || run.cards > b.mostCards.value) b.mostCards = { value: run.cards, ts: run.ts };
         if (b.fewestCards === null || run.cards < b.fewestCards.value) b.fewestCards = { value: run.cards, ts: run.ts };
+        b.won.cards.push(run.cards);
       }
       if (run.relics != null) {
         if (b.mostRelics === null || run.relics > b.mostRelics.value) b.mostRelics = { value: run.relics, ts: run.ts };
         if (b.fewestRelics === null || run.relics < b.fewestRelics.value) b.fewestRelics = { value: run.relics, ts: run.ts };
+        b.won.relics.push(run.relics);
       }
     }
   };
@@ -147,30 +158,45 @@ function renderPersonalBests() {
   const range = (lo, hi, fmt) => !lo || !hi ? "—"
     : lo.value === hi.value ? link(lo, fmt)
     : `${link(lo, fmt)}<span class="pb-sep">–</span>${link(hi, fmt)}`;
+  // A winning-runs stat: a desktop reads its fewest–most; a phone, short of room, shows the
+  // median and pops the fewest and most runs out on a tap.
+  const medRange = (vals, lo, hi) => !vals.length ? "—"
+    : `<span class="pb-rng">${range(lo, hi)}</span><button type="button" class="pb-med" aria-haspopup="dialog">${Math.round(median(vals))}</button>`;
   // One figure per cell: a share of runs, the counts behind it on hover.
   const pct = (n, d) => !d ? "—"
     : `<span data-tip="${n} of ${d} run${d !== 1 ? "s" : ""}">${Math.round(n / d * 100)}%</span>`;
-  // A tier's win rate over a thin bar in the character's colour.
+  // A tier's win rate over a thin bar in the character's colour. When the filters take in both
+  // solo and multiplayer runs (All), every tier draws both bars, Multi striped as on the home
+  // page, so the two read apart without a second set of figures, and a tier with no runs of
+  // one kind shows that empty bar rather than dropping it.
+  const tierList = Object.values(total.tiers);
+  const bothKinds = tierList.some(t => t.solo.runs) && tierList.some(t => t.multi.runs);
+  const bar = (t, c, cls = "") => `<span class="pb-bar${cls}"><i style="width:${t.runs ? Math.round(t.wins / t.runs * 100) : 0}%;background-color:${c.bar || c.color}"></i></span>`;
+  const runsOf = t => !t.runs ? "no runs" : `${t.wins} of ${t.runs} run${t.runs !== 1 ? "s" : ""} (${Math.round(t.wins / t.runs * 100)}%)`;
   const tierBar = (t, c) => !t ? "—"
-    : `${pct(t.wins, t.runs)}<span class="pb-bar"><i style="width:${Math.round(t.wins / t.runs * 100)}%;background:${c.bar || c.color}"></i></span>`;
+    : !bothKinds ? `${pct(t.wins, t.runs)}${bar(t, c)}`
+    : `<span data-tip="Solo: ${runsOf(t.solo)}\nMulti: ${runsOf(t.multi)}">${Math.round(t.wins / t.runs * 100)}%</span>`
+      + bar(t.solo, c) + bar(t.multi, c, " pb-bar-multi");
 
   // [label, cell, row class]
   const rows = [
     ["Win %", (b, c) => `<span style="color:${c.color}">${pct(b.totalWins, b.gamesPlayed)}</span>`, "pb-headline"],
     // The ascension tiers the other tables split by (ascColumns).
     ...ascColumns().map(col => [col.label, (b, c) => tierBar(b.tiers[col.key], c), "pb-tier"]),
+    // Dread, the pinnacle past A10, keeps its row wherever its runs could show, runs or not.
+    ...(sharedActiveModes.has("dread") ? [["Dread", (b, c) => tierBar(b.tiers.dread, c), "pb-tier pb-tier-dread"]] : []),
     ["Runs",              b => b.gamesPlayed],
     ["Final boss deaths", b => pct(b.finalBossDeaths, b.gamesPlayed)],
     ["Elite deaths",      b => pct(b.eliteDeaths, b.gamesPlayed)],
     ["Current win streak", b => b.currentStreak],
     ["Best win streak",   b => b.longestStreak],
     ["Fastest win",       b => link(b.fastestWin, fmtHrsMin)],
-    "Winning runs",
-    ["Elites",            b => range(b.fewestElites, b.mostElitesWin)],
-    ["Cards",             b => range(b.fewestCards, b.mostCards)],
-    ["Relics",            b => range(b.fewestRelics, b.mostRelics)],
-    ["Max HP",            b => range(b.fewestMaxHp, b.mostMaxHp)],
-    ["Final boss turns",  b => range(b.fewestFinalBossTurns, b.mostFinalBossTurns)],
+    `Winning runs<span class="pb-phone-only">, median</span>`,
+    ["Elites",            b => medRange(b.won.elites, b.fewestElites, b.mostElitesWin), ],
+    ["Cards",             b => medRange(b.won.cards, b.fewestCards, b.mostCards), ],
+    ["Relics",            b => medRange(b.won.relics, b.fewestRelics, b.mostRelics), ],
+    ["Max HP",            b => medRange(b.won.maxHp, b.fewestMaxHp, b.mostMaxHp), ],
+    ["Final boss turns",  b => medRange(b.won.bossTurns, b.fewestFinalBossTurns, b.mostFinalBossTurns), ],
   ];
 
   document.getElementById("personal-bests-cards").innerHTML = !shown.length ? "" :
@@ -181,11 +207,43 @@ function renderPersonalBests() {
           : c.name}</th>`).join("")}</tr></thead>
       <tbody>${rows.map(r => typeof r === "string"
         ? `<tr class="pb-group"><th colspan="${cols.length + 1}">${r}</th></tr>`
-        : `<tr${r[2] ? ` class="${r[2]}"` : ""}><th>${r[0]}</th>${cols.map(c => `<td${c.total ? ` class="pb-total"` : ""}>${r[1](c.b, c)}</td>`).join("")}</tr>`).join("")}
+        : `<tr${r[2] ? ` class="${r[2]}"` : ""}><th>${r[0]}</th>${cols.map(c => `<td${c.total ? ` class="pb-total"` : ""} data-col="${c.name}">${r[1](c.b, c)}</td>`).join("")}</tr>`).join("")}
       </tbody>
     </table>`;
 
-  document.querySelectorAll("#personal-bests-cards .pb-stat-link").forEach(el => {
+  // A phone's median opens a popout under its cell with the fewest and most runs, each a link.
+  const box = document.getElementById("personal-bests-cards");
+  const pop = document.createElement("div");
+  pop.className = "pb-pop";
+  pop.setAttribute("role", "dialog");
+  pop.hidden = true;
+  box.appendChild(pop);
+  const closePop = () => { pop.hidden = true; box.querySelector(".pb-med[aria-expanded=true]")?.setAttribute("aria-expanded", "false"); };
+  box.querySelectorAll(".pb-med").forEach(btn => btn.addEventListener("click", e => {
+    e.stopPropagation();
+    const wasOpen = btn.getAttribute("aria-expanded") === "true";
+    closePop();
+    if (wasOpen) return;
+    const td = btn.closest("td");
+    const [lo, hi] = td.querySelectorAll(".pb-rng .pb-stat-link");
+    const label = `${td.dataset.col} · ${td.parentElement.querySelector("th").textContent}`;
+    pop.setAttribute("aria-label", label);
+    pop.innerHTML = `<div class="pb-pop-title">${label}</div>`
+      + `<div class="pb-pop-row"><span>Median</span><b>${btn.textContent}</b></div>`
+      + `<div class="pb-pop-row"><span>Fewest</span>${lo.outerHTML}</div>`
+      + `<div class="pb-pop-row"><span>Most</span>${(hi || lo).outerHTML}</div>`;
+    pop.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    const b = box.getBoundingClientRect(), r = td.getBoundingClientRect();
+    const left = Math.min(Math.max(r.left + r.width / 2 - pop.offsetWidth / 2 - b.left, 0), b.width - pop.offsetWidth);
+    pop.style.left = `${left}px`;
+    pop.style.top = `${r.bottom - b.top + 4}px`;
+    pop.querySelectorAll(".pb-stat-link").forEach(bindRunLink);
+    if (!e.detail) pop.querySelector(".pb-stat-link").focus();   // opened from the keyboard
+  }));
+  document.addEventListener("click", e => { if (!pop.hidden && !pop.contains(e.target)) closePop(); });
+  pop.addEventListener("keydown", e => { if (e.key === "Escape") { const b = box.querySelector(".pb-med[aria-expanded=true]"); closePop(); b?.focus(); } });
+  function bindRunLink(el) {
     el.setAttribute("role", "link");
     el.setAttribute("tabindex", "0");
     el.addEventListener("click", () => {
@@ -194,7 +252,8 @@ function renderPersonalBests() {
       jumpToRun(ts);
     });
     bindEnterSpace(el);
-  });
+  }
+  box.querySelectorAll(".pb-stat-link").forEach(bindRunLink);
 }
 
 // Ascension Tracker: per character, how far the climb to A10 has got, once for
@@ -232,6 +291,18 @@ function aggregateAscTracker(runs) {
   return { highestWin, top, topWins, topLosses: atTop.length - topWins };
 }
 
+// Dread win streaks over runs in play order: { best, current, wins, runs }. A loss
+// resets, as the game's own count does. (The game also keeps a rotating-character
+// streak apart, but a run file doesn't say which runs were on it.)
+function dreadStreaks(runs) {
+  let best = 0, current = 0, wins = 0;
+  runs.forEach(run => {
+    if (run.won) { wins++; current++; best = Math.max(best, current); }
+    else current = 0;
+  });
+  return { best, current, wins, runs: runs.length };
+}
+
 function renderAscTracker() {
   const fmtDate = ts => new Date(ts * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   const maxAsc = ASC_TRACKER_MAX;
@@ -239,12 +310,20 @@ function renderAscTracker() {
     .filter(run => (run.mode || "standard") === "standard" && run.asc != null)
     .sort((a, b) => a.ts - b.ts);
 
+  const dread = DATA.runsData.filter(run => run.mode === "dread").sort((a, b) => a.ts - b.ts);
+
   const block = (char, color, mode) => {
     const t = aggregateAscTracker(standard.filter(run => run.char === char && mode.test(run)));
     const won = t && t.highestWin ? t.highestWin.value : -1;
+    // Past A10 sits Dread: the game's top-bar gem, lit by a Dread win and carrying the
+    // best Dread win streak the way the game's top bar carries the current one.
+    const d = dreadStreaks(dread.filter(run => run.char === char && mode.test(run)));
+    const gemTip = !d.runs ? "Dread · no runs yet"
+      : `Dread · ${d.wins}W / ${d.runs - d.wins}L\nBest win streak ${d.best} · current ${d.current}`;
+    const gem = `<span class="asc-dread${d.wins ? " asc-dread-won" : ""}" data-tip="${gemTip}">${d.best ? `<b>${d.best}</b>` : ""}</span>`;
     const pips = ASC_TRACKER_LEVELS.map(level => {
       return `<span class="asc-pip" data-tip="A${level}" style="--rung:${level}${won >= level ? `;background:${color}` : ""}"></span>`;
-    }).join("");
+    }).join("") + gem;
     if (!t) {
       return `<div class="asc-mode">
         <div class="asc-mode-label">${mode.label}</div>
@@ -274,8 +353,11 @@ function renderAscTracker() {
   const a10 = standard.filter(run => run.won && run.asc >= maxAsc);
   const first = a10[0];
   const total = DATA.characters.length;
+  // Then Dread back to back per mode: the most Dread wins in a row, any characters.
   document.getElementById("asc-tracker-stats").innerHTML = ASC_TRACKER_MODES.map(mode =>
     `<div><b>${new Set(a10.filter(mode.test).map(run => run.char)).size} / ${total}</b>A${maxAsc} ${mode.label.toLowerCase()}</div>`).join("") +
+    ASC_TRACKER_MODES.map(mode =>
+    `<div class="asc-stat-dread"><b>${dreadStreaks(dread.filter(mode.test)).best}</b>Dread ${mode.label.toLowerCase()} streak</div>`).join("") +
     `<div><b>${first
       ? `<span class="pb-stat-link" data-ts="${first.ts}" data-tip="Jump to this run" style="cursor:pointer">${fmtDate(first.ts)}</span>`
       : "—"}</b>first A${maxAsc} win${first ? ` · ${charIconHtml(first.char)}${fmtCharName(first.char)}` : ""}</div>`;

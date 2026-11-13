@@ -558,6 +558,17 @@ class AuthorizeModTests(Uploads, unittest.TestCase):
         for junk in ("yes", 3, ["A"], {"mods": "A"}, {"mods": {"id": "A"}}, {"modded": True}):
             self.assertNotIn("mods", run.parse_run_data(minimal_run(1700000001, slay_my_stats_mod=junk)))
 
+    def test_a_custom_runs_modifiers_are_kept_as_plain_ids(self):
+        listed = [{"id": "MODIFIER.SEALED_DECK"}, {"id": "MODIFIER.CHARACTER_CARDS", "props": {"model_ids": []}},
+                  {"id": "<b>x</b>"}, {"nope": 1}, "junk"]
+        parsed = run.parse_run_data(minimal_run(1700000001, game_mode="custom", modifiers=listed))
+        self.assertEqual(parsed["mode"], "custom")
+        self.assertEqual(parsed["modifiers"], ["MODIFIER.SEALED_DECK", "MODIFIER.CHARACTER_CARDS", "_b_x__b_"])
+        # None listed, or not a list, leaves the key off like any run without them.
+        for junk in ([], "yes", {"id": "A"}, None):
+            self.assertNotIn("modifiers", run.parse_run_data(minimal_run(1700000002, game_mode="custom", modifiers=junk)))
+        self.assertNotIn("modifiers", run.parse_run_data(minimal_run(1700000003)))
+
     def test_any_steam_account(self):
         # No list to be on: whoever Steam vouches for gets an upload.
         other = "76561198000000002"
@@ -913,14 +924,16 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.assertEqual(picks["cards"], {bash: [3, 2, 2, 1]})
         self.assertEqual(picks["relics"], {"RELIC.ANCHOR": [1, 1, 1, 1]})
 
-    def test_stats_split_multiplayer_and_leave_out_daily(self):
+    def test_stats_split_multiplayer_and_leave_out_the_other_modes(self):
         second = {"character": "CHARACTER.SILENT", "deck": [], "relics": []}
         players = [{"character": "CHARACTER.IRONCLAD", "deck": [], "relics": []}, second]
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002, players=players, win=False),
                             minimal_run(1700000003, game_mode="daily"),
-                            minimal_run(1700000004, game_mode="blitz"), minimal_run(1700000005, game_mode="dread")))
+                            minimal_run(1700000004, game_mode="blitz"), minimal_run(1700000005, game_mode="dread"),
+                            minimal_run(1700000006, game_mode="custom"),
+                            minimal_run(1700000007, game_mode="custom", players=players)))
         s = self.stats()
-        self.assertEqual((s["allRuns"], s["solo"]["runs"], s["multi"]["runs"], s["multi"]["wins"]), (5, 1, 1, 0))
+        self.assertEqual((s["allRuns"], s["solo"]["runs"], s["multi"]["runs"], s["multi"]["wins"]), (7, 1, 1, 0))
 
     def test_multiplayer_reads_only_the_local_players_stats(self):
         # The uploader is index 1 in this run, so every per-player field must

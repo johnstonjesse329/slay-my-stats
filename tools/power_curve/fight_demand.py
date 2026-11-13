@@ -137,11 +137,16 @@ def run_fights(runs):
     """One list of fights per run. A co-op fight's damage taken is the party's mean,
     which is what its averages are built from; the page reads the local player's, and each
     keeps them all so --check can too. An abandoned run stays out of the history; the
-    page still reads one, because its fights happened."""
+    page still reads one, because its fights happened. A run in any mode but standard
+    stays out too: it plays by other rules."""
     out = []
     for raw in runs.values():
         party = len(raw.get("players") or [])
         if not party or raw.get("was_abandoned"):
+            continue
+        # A daily, custom, Blitz or Dread run plays by other rules, so what its winners
+        # took says nothing about a normal fight.
+        if raw.get("game_mode", "standard") != "standard":
             continue
         build = tuple(int(n) for n in re.findall(r"\d+", raw.get("build_id") or ""))
         fights = []
