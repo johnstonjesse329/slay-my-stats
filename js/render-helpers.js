@@ -291,10 +291,10 @@ function aggregateAscTracker(runs) {
   return { highestWin, top, topWins, topLosses: atTop.length - topWins };
 }
 
-// Dread win streaks over runs in play order: { best, current, wins, runs }. A loss
-// resets, as the game's own count does. (The game also keeps a rotating-character
+// Win streaks over runs in play order: { best, current, wins, runs }. A loss
+// resets, as the game's own Dread count does. (The game also keeps a rotating-character
 // streak apart, but a run file doesn't say which runs were on it.)
-function dreadStreaks(runs) {
+function winStreaks(runs) {
   let best = 0, current = 0, wins = 0;
   runs.forEach(run => {
     if (run.won) { wins++; current++; best = Math.max(best, current); }
@@ -317,7 +317,7 @@ function renderAscTracker() {
     const won = t && t.highestWin ? t.highestWin.value : -1;
     // Past A10 sits Dread: the game's top-bar gem, lit by a Dread win and carrying the
     // best Dread win streak the way the game's top bar carries the current one.
-    const d = dreadStreaks(dread.filter(run => run.char === char && mode.test(run)));
+    const d = winStreaks(dread.filter(run => run.char === char && mode.test(run)));
     const gemTip = !d.runs ? "Dread · no runs yet"
       : `Dread · ${d.wins}W / ${d.runs - d.wins}L\nBest win streak ${d.best} · current ${d.current}`;
     const gem = `<span class="asc-dread${d.wins ? " asc-dread-won" : ""}" data-tip="${gemTip}">${d.best ? `<b>${d.best}</b>` : ""}</span>`;
@@ -353,11 +353,17 @@ function renderAscTracker() {
   const a10 = standard.filter(run => run.won && run.asc >= maxAsc);
   const first = a10[0];
   const total = DATA.characters.length;
-  // Then Dread back to back per mode: the most Dread wins in a row, any characters.
-  document.getElementById("asc-tracker-stats").innerHTML = ASC_TRACKER_MODES.map(mode =>
-    `<div><b>${new Set(a10.filter(mode.test).map(run => run.char)).size} / ${total}</b>A${maxAsc} ${mode.label.toLowerCase()}</div>`).join("") +
-    ASC_TRACKER_MODES.map(mode =>
-    `<div class="asc-stat-dread"><b>${dreadStreaks(dread.filter(mode.test)).best}</b>Dread ${mode.label.toLowerCase()} streak</div>`).join("") +
+  // Then the same for Dread, and the back-to-back counts: a single win is the first
+  // goal, a streak (any characters, a loss resets) the rarer one after it. A10
+  // streaks count the standard runs at A10 or above, in play order.
+  const charsWon = (runs, mode) => new Set(runs.filter(run => run.won && mode.test(run)).map(run => run.char)).size;
+  const modeName = mode => mode.label.toLowerCase();
+  const statsHtml = (cls, html) => `<div${cls ? ` class="${cls}"` : ""}>${html}</div>`;
+  document.getElementById("asc-tracker-stats").innerHTML =
+    ASC_TRACKER_MODES.map(mode => statsHtml("", `<b>${charsWon(a10, mode)} / ${total}</b>A${maxAsc} ${modeName(mode)}`)).join("") +
+    ASC_TRACKER_MODES.map(mode => statsHtml("", `<b>${winStreaks(standard.filter(run => run.asc >= maxAsc && mode.test(run))).best}</b>A${maxAsc} ${modeName(mode)} streak`)).join("") +
+    ASC_TRACKER_MODES.map(mode => statsHtml("asc-stat-dread", `<b>${charsWon(dread, mode)} / ${total}</b>Dread ${modeName(mode)}`)).join("") +
+    ASC_TRACKER_MODES.map(mode => statsHtml("asc-stat-dread", `<b>${winStreaks(dread.filter(mode.test)).best}</b>Dread ${modeName(mode)} streak`)).join("") +
     `<div><b>${first
       ? `<span class="pb-stat-link" data-ts="${first.ts}" data-tip="Jump to this run" style="cursor:pointer">${fmtDate(first.ts)}</span>`
       : "—"}</b>first A${maxAsc} win${first ? ` · ${charIconHtml(first.char)}${fmtCharName(first.char)}` : ""}</div>`;

@@ -7,7 +7,7 @@ or install the [Slay My Stats mod](https://steamcommunity.com/sharedfiles/filede
 data and functionality on top. Your profile lives at `/u/<name>`, named after your Steam name, and anyone can
 find it by searching on the home page.
 
-**Overview:** totals, the ascension tracker, then a table of each character's win rates and records.
+**Overview:** totals, the ascension tracker (each character's highest win, the game's Dread gem past A10; its header counts the characters with an A10 win and a Dread win, solo and multiplayer, and the longest A10 and Dread win streaks), then a table of each character's win rates and records.
 
 ![Overview tab of a player profile](images/site-overview.png)
 
