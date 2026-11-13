@@ -1602,37 +1602,31 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
      ================================================================ -->
 <div id="page-seeds" style="display:none">
 
-<div class="chart-box" style="margin-bottom:1.5rem">
-  <h2>Search by cards &amp; relics offered</h2>
+<div class="chart-box">
+  <h2 id="seeds-title">Matching seeds</h2>
   <div class="seeds-search-area">
     <div class="seeds-search-col">
-      <div class="seeds-search-label">Cards</div>
       <div class="seeds-typeahead-wrap">
-        <input type="text" id="seeds-card-input" class="seeds-input" placeholder="Type a card name…" aria-label="Search seeds by card" autocomplete="off">
+        <input type="text" id="seeds-card-input" class="seeds-input" placeholder="Search cards offered…" aria-label="Search seeds by card" autocomplete="off">
         <div id="seeds-card-dropdown" class="seeds-dropdown" style="display:none"></div>
       </div>
       <div id="seeds-card-filters" class="seeds-chips"></div>
     </div>
     <div class="seeds-search-col">
-      <div class="seeds-search-label">Relics</div>
       <div class="seeds-typeahead-wrap">
-        <input type="text" id="seeds-relic-input" class="seeds-input" placeholder="Type a relic name…" aria-label="Search seeds by relic" autocomplete="off">
+        <input type="text" id="seeds-relic-input" class="seeds-input" placeholder="Search relics offered…" aria-label="Search seeds by relic" autocomplete="off">
         <div id="seeds-relic-dropdown" class="seeds-dropdown" style="display:none"></div>
       </div>
       <div id="seeds-relic-filters" class="seeds-chips"></div>
     </div>
-    <div style="display:flex;align-items:flex-end;gap:0.75rem;flex-wrap:wrap;padding-bottom:0.25rem">
+    <div class="seeds-search-actions">
       <div class="filter-group" id="seeds-scope" hidden>
         <button class="toggle-btn active" id="seeds-scope-you">You</button>
         <button class="toggle-btn" id="seeds-scope-all">All players</button>
       </div>
-      <button class="toggle-btn" id="seeds-clear-btn" style="white-space:nowrap">Clear all</button>
+      <button class="toggle-btn" id="seeds-clear-btn">Clear all</button>
     </div>
   </div>
-</div>
-
-<div class="chart-box">
-  <h2 id="seeds-title">Matching seeds</h2>
   <p class="chart-caption" id="seeds-caption">Seeds whose run offered every card and relic you searched for.</p>
   <div class="cards-split">
   <div class="pivot-wrap seeds-list">
