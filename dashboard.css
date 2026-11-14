@@ -376,8 +376,34 @@ h1 {
 .asc-record-separator { color: var(--text-dim); }
 .asc-milestones { margin-top: 0.7rem; border-top: 1px solid var(--panel-border); padding-top: 0.55rem; font-size: var(--fs-sm); color: var(--text-dim); }
 .asc-milestones summary { cursor: pointer; color: var(--text); font-weight: 600; }
-.asc-milestone-content { display: grid; gap: 0.55rem; margin-top: 0.55rem; line-height: 1.45; }
-.asc-milestone-content b { color: var(--text); }
+.asc-milestone-scroll { overflow-x: auto; margin-top: 0.4rem; }
+.asc-milestone-scroll table { border-collapse: collapse; width: 100%; white-space: nowrap; text-align: left; }
+.asc-milestone-scroll th, .asc-milestone-scroll td { padding: 0.25rem 0.6rem 0.25rem 0; border-bottom: 1px solid var(--panel-border); }
+.asc-milestone-scroll th { color: var(--text); }
+.asc-milestone-open { margin-top: 0.5rem; padding: 0; background: none; border: 0; color: var(--text); font: inherit; font-size: var(--fs-sm); text-decoration: underline; cursor: pointer; }
+.asc-milestone-dialog { position: fixed; inset: 0; margin: auto; width: min(1600px, calc(100% - 2rem)); max-width: calc(100% - 2rem); max-height: 85vh; height: fit-content; box-sizing: border-box; background: linear-gradient(145deg, #302c46, #1d1c2e); color: var(--text); border: 1px solid var(--panel-border); border-radius: 10px; padding: 1.4rem; box-shadow: 0 18px 55px rgba(0,0,0,.55); }
+.asc-milestone-dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
+.asc-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.asc-dialog-head h2 { margin: 0; color: var(--milestone-color); }
+.asc-dialog-note { color: var(--text-dim); font-size: var(--fs-sm); }
+.asc-milestone-dialog thead th { color: var(--text-dim); font-size: var(--fs-sm); }
+.asc-milestone-dialog tbody th { color: var(--text); }
+.asc-milestone-dialog tbody tr:nth-child(odd) { background: rgba(255,255,255,.035); }
+.asc-milestone-dialog .asc-milestone-scroll th, .asc-milestone-dialog .asc-milestone-scroll td { padding: 0.55rem 0.65rem; }
+.asc-milestone-dialog .asc-milestone-scroll th, .asc-milestone-dialog .asc-milestone-scroll td { text-align: center; }
+.asc-reading-rough { color: #e28b8b; } .asc-reading-mid { color: #e8c278; }
+.asc-reading-hype { color: #81c99a; } .asc-reading-op { color: #87ceeb; }
+.asc-reading-unrated { color: var(--text-dim); }
+.asc-readings-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.75rem 0; font-size: var(--fs-sm); }
+.asc-readings-chart-rows { display: grid; gap: 0.6rem; }
+.asc-readings-row { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; font-size: var(--fs-sm); }
+.asc-readings-char { font-weight: 600; overflow-wrap: anywhere; }
+.asc-readings-bar { display: flex; height: 1.2rem; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.06); }
+.asc-readings-bar > span { min-width: 2px; }
+.asc-reading-bar-rough { background: #c45d68; } .asc-reading-bar-mid { background: #c79c4b; }
+.asc-reading-bar-hype { background: #5cba7d; } .asc-reading-bar-op { background: #69b9d4; }
+.asc-reading-bar-unrated { background: #747382; }
+.asc-readings-grid-layout > .chart-box:last-child { grid-column: 1 / -1; }
 /* Title and caption left, three headline numbers right. */
 .asc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem 2rem; flex-wrap: wrap; }
 .asc-stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; margin-bottom: 0.9rem; }

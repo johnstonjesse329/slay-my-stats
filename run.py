@@ -1452,7 +1452,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </div>
 
-<h2 class="group-head">Win rates</h2>
+<h2 class="group-head">Run statistics</h2>
 <div class="chart-box" id="personal-bests-cards"></div>
 
 <div class="grid-2 grid-stretch">

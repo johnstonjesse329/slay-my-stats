@@ -344,6 +344,7 @@ function renderAscTracker() {
         <div class="asc-pips">${pips}</div>
         <div class="asc-now">No runs yet</div>
         ${dreadRecord}
+        <button type="button" class="asc-milestone-open" data-char-index="${DATA.characters.indexOf(char)}" data-mode="${mode.label}">View milestones</button>
       </div>`;
     }
     const record = recordHtml(t.topWins, t.topLosses);
@@ -360,24 +361,23 @@ function renderAscTracker() {
       <div class="asc-pips">${pips}</div>
       <div class="asc-now" tabindex="0" data-tip="${topDates}">${now}</div>
       ${dreadRecord}
+      <button type="button" class="asc-milestone-open" data-char-index="${DATA.characters.indexOf(char)}" data-mode="${mode.label}">View milestones</button>
     </div>`;
   };
 
   const milestones = (char, mode) => {
     const runs = standard.filter(run => run.char === char && mode.test(run));
-    const t = aggregateAscTracker(runs);
     const dr = dread.filter(run => run.char === char && mode.test(run));
-    const dw = dr.find(run => run.won);
-    const lines = [];
-    if (t) {
-      lines.push(`A${t.top} first attempted ${fmtDate(t.topFirstTs)}`);
-      if (t.highestWin && t.highestWin.value === t.top) lines.push(`A${t.top} first won ${fmtDate(t.highestWin.ts)}`);
-    }
-    if (dr.length) {
-      lines.push(`Dread first attempted ${fmtDate(dr[0].ts)}`);
-      if (dw) lines.push(`Dread first won ${fmtDate(dw.ts)}`);
-    }
-    return `<div><b>${mode.label}</b><br>${lines.length ? lines.join("<br>") : "No milestones yet"}</div>`;
+    const groups = [...new Set(runs.map(run => run.asc))].sort((a, b) => a - b)
+      .map(asc => [`A${asc}`, runs.filter(run => run.asc === asc)]);
+    if (dr.length) groups.push(["Dread", dr]);
+    const rows = groups.map(([difficulty, attempts]) => {
+      const first = attempts[0], win = attempts.find(run => run.won), streak = winStreaks(attempts);
+      const calendarDay = ts => { const d = new Date(ts * 1000); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
+      const days = win ? Math.round((calendarDay(win.ts) - calendarDay(first.ts)) / 86400000) + 1 : "—";
+      return `<tr><th scope="row">${difficulty}</th><td>${fmtDate(first.ts)}</td><td>${win ? fmtDate(win.ts) : "—"}</td><td>${days}</td><td><span class="asc-record-win">${streak.wins}W</span> / <span class="asc-record-loss">${streak.runs - streak.wins}L</span></td><td>${streak.best}</td></tr>`;
+    }).join("");
+    return rows ? `<p class="asc-dialog-note">Days count calendar dates inclusively.</p><div class="asc-milestone-scroll"><table><thead><tr><th>Difficulty</th><th>First attempt</th><th>First win</th><th>Days to first win</th><th>W/L</th><th>Best streak</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p>No runs yet.</p>`;
   };
 
   // Beside the title: how many characters have an A10 win in each mode.
@@ -405,9 +405,50 @@ function renderAscTracker() {
         ? `<div class="asc-char"><img class="asc-portrait" src="${portrait}" alt=""><div class="asc-name" style="color:${color}">${fmtCharName(char)}</div></div>`
         : `<div class="asc-name" style="color:${color}">${charIconHtml(char)}${fmtCharName(char)}</div>`}
       ${ASC_TRACKER_MODES.map(mode => block(char, color, mode)).join("")}
-      <details class="asc-milestones"><summary>Milestones</summary><div class="asc-milestone-content">${ASC_TRACKER_MODES.map(mode => milestones(char, mode)).join("")}</div></details>
     </div>`;
   }).join("");
+
+  el.querySelectorAll(".asc-milestone-open").forEach(button => button.addEventListener("click", () => {
+    const mode = ASC_TRACKER_MODES.find(m => m.label === button.dataset.mode);
+    const char = DATA.characters[+button.dataset.charIndex];
+    const dialog = document.createElement("dialog");
+    dialog.className = "asc-milestone-dialog";
+    dialog.style.setProperty("--milestone-color", CHAR_COLOR_MAP[char] || "#a0a0b8");
+    dialog.setAttribute("aria-labelledby", "asc-milestone-title");
+    dialog.innerHTML = `<div class="asc-dialog-head"><h2 id="asc-milestone-title"></h2><button type="button" class="toggle-btn asc-dialog-close">Close</button></div>${milestones(char, mode)}`;
+    dialog.querySelector("h2").textContent = `${fmtCharName(char)} · ${mode.label} milestones`;
+    document.body.appendChild(dialog);
+    dialog.querySelector(".asc-dialog-close").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => { dialog.remove(); button.focus(); });
+    dialog.showModal();
+  }));
+
+  let chart = document.getElementById("asc-readings-chart");
+  if (!chart) {
+    chart = document.createElement("section");
+    chart.id = "asc-readings-chart";
+    const grid = document.querySelector("#page-overview .grid-2");
+    grid.classList.add("asc-readings-grid-layout");
+    grid.insertBefore(chart, grid.children[1] || null);
+  }
+  chart.className = "chart-box";
+  chart.innerHTML = `<h2>Run readings by character</h2><p class="chart-caption">Share of filtered runs compared with the shared winning-run baseline. Dread and runs without enough data are unrated.</p><div class="asc-readings-legend"><span class="asc-reading-rough">Rough</span><span class="asc-reading-mid">Mid</span><span class="asc-reading-hype">Hype</span><span class="asc-reading-op">OP</span><span class="asc-reading-unrated">Unrated</span></div><div class="asc-readings-chart-rows"></div>`;
+  // Run reading constants are initialized later in the bundle on first load.
+  setTimeout(() => {
+    if (!chart.isConnected) return;
+    const filtered = filterRuns();
+    chart.querySelector(".asc-readings-chart-rows").innerHTML = DATA.characters.map(char => {
+      const runs = filtered.filter(run => run.char === char);
+      if (!runs.length) return "";
+      const counts = { Rough: 0, Mid: 0, Hype: 0, OP: 0, Unrated: 0 };
+      runs.forEach(run => { const reading = run.mode === "dread" ? null : runReadingOf(run); counts[!reading ? "Unrated" : reading.op ? "OP" : KEEP_WORDS[reading.verdict]]++; });
+      const desc = Object.entries(counts).map(([name, n]) => `${name}: ${n}`).join(", ");
+      const bars = Object.entries(counts).map(([name, n]) => n ? `<span class="asc-reading-bar-${name.toLowerCase()}" style="width:${n / runs.length * 100}%" data-tip="${name}: ${n} of ${runs.length}"></span>` : "").join("");
+      return `<div class="asc-readings-row"><div class="asc-readings-char"></div><div class="asc-readings-bar" role="img" aria-label="${desc}">${bars}</div><span>${runs.length} runs</span></div>`;
+    }).filter(Boolean).join("");
+    const names = DATA.characters.filter(char => filtered.some(run => run.char === char));
+    chart.querySelectorAll(".asc-readings-char").forEach((node, i) => { node.textContent = fmtCharName(names[i]); node.style.color = CHAR_COLOR_MAP[names[i]] || ""; });
+  }, 0);
 
   el.parentElement.querySelectorAll(".pb-stat-link").forEach(link => {
     link.setAttribute("role", "link");
