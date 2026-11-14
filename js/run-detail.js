@@ -336,6 +336,7 @@ function renderDetailRun(run) {
     totalOtherCardsBought > 0 ? { label: "Cards bought",     value: totalOtherCardsBought } : null,
     totalPotionsBought    > 0 ? { label: "Potions bought",   value: totalPotionsBought }    : null,
     totalRelicsBought     > 0 ? { label: "Relics bought",    value: totalRelicsBought }     : null,
+    { label: "Potions gained", value: totalPotionsGained },
   ].filter(Boolean);
 
   const removalItems = [
@@ -346,14 +347,16 @@ function renderDetailRun(run) {
   // By what the room turned out to be: a "?" that was a fight is a fight.
   const fightItems = [
     { label: "Fights", value: tl.filter(n => keepFight(n) && n.type !== "elite" && n.type !== "boss").length },
-    { label: "Events", value: tl.filter(n => n.type === "unknown" && !keepFight(n)).length },
-    { label: "Rest sites", value: countType("rest_site") },
-    { label: "Shops", value: countType("shop") },
     { label: "Damage taken", value: totalDmg },
     { label: "HP healed", value: totalHealed },
     totalRewardsSkipped > 0 ? { label: "Card rewards skipped", value: totalRewardsSkipped } : null,
-    { label: "Potions gained", value: totalPotionsGained },
   ].filter(Boolean);
+
+  const roomItems = [
+    { label: "Events", value: tl.filter(n => n.type === "unknown" && !keepFight(n)).length },
+    { label: "Rest sites", value: countType("rest_site") },
+    { label: "Shops", value: countType("shop") },
+  ];
 
   // Same number-over-label pairing as the headline row above, a size down.
   const statHtml = items => items.map(i =>
@@ -383,7 +386,7 @@ function renderDetailRun(run) {
       }).join("")}</span><span class="run-headline-label">Ancient boons</span></span>`
     : "";
 
-  const allGroups = [purchaseItems, removalItems, fightItems].filter(g => g.length > 0);
+  const allGroups = [purchaseItems, removalItems, fightItems, roomItems].filter(g => g.length > 0);
   // Fights/events/shop counts, buys and damage/healing totals sit in their own
   // row as they are, with no disclosure to open first.
   // Each group wraps as a unit, so a group is never split across two lines.
