@@ -285,10 +285,11 @@ function renderDetailRun(run) {
   const totalDmg    = tl.reduce((s, n) => s + (n.dmg       || 0), 0);
   const totalHealed = tl.reduce((s, n) => s + (n.healed    || 0), 0);
   const totalGold   = tl.reduce((s, n) => s + (n.goldGained|| 0), 0);
-  // Cards passed up on a card reward. A shop's shelf is stock, not a choice you
-  // turned down (7 a visit, 21 over a full run), so it stays out of this count;
-  // the per-node lists still show it (see nodeTooltipHtml).
-  const totalCardsSkipped = tl.reduce((n, node) => n + (node.type === "shop" ? 0 : (node.cardsSkipped || []).length), 0);
+  // Card rewards where you hit Skip: cards were offered and none taken. The
+  // two you leave behind when you do pick one aren't skips, and a shop's shelf
+  // is stock, not a reward. The per-node lists still show every card passed up
+  // (see nodeTooltipHtml).
+  const totalRewardsSkipped = tl.filter(node => node.type !== "shop" && (node.cardsSkipped || []).length && !(node.cardsRewarded || []).length).length;
   const ancientRelics = tl.filter(n => n.type === "ancient" && n.relicPicked).map(n => n.relicPicked);
   const elitesKilled = (run.fights || []).filter(f => f.type === "elite" && f.won).length;
 
@@ -340,7 +341,7 @@ function renderDetailRun(run) {
   const purchaseItems = [
     totalColorlessBought  > 0 ? { label: "Colorless bought", value: totalColorlessBought }  : null,
     totalOtherCardsBought > 0 ? { label: "Cards bought",     value: totalOtherCardsBought } : null,
-    totalCardsSkipped     > 0 ? { label: "Cards skipped",    value: totalCardsSkipped }     : null,
+    totalRewardsSkipped   > 0 ? { label: "Rewards skipped",  value: totalRewardsSkipped }     : null,
     totalPotionsBought    > 0 ? { label: "Potions bought",   value: totalPotionsBought }    : null,
     totalRelicsBought     > 0 ? { label: "Relics bought",    value: totalRelicsBought }     : null,
     totalShopRemoves      > 0 ? { label: "Shop removes",     value: totalShopRemoves }      : null,
@@ -391,7 +392,7 @@ function renderDetailRun(run) {
   // two) that the last row isn't left holding one or two stats on their own;
   // when the count already divides by three, none do. Desktop keeps them all
   // separate (both are in the page, CSS shows one).
-  const PHONE_PAIRS = [["Damage taken", "HP healed"], ["Fights", "Events"], ["Cards bought", "Cards skipped"]];
+  const PHONE_PAIRS = [["Damage taken", "HP healed"], ["Fights", "Events"], ["Cards bought", "Rewards skipped"]];
   const flatStats = allGroups.flat();
   const pairsToJoin = flatStats.length % 3;
   // Pairs are picked in list order, by where the first stat of each sits.
