@@ -341,7 +341,7 @@ function renderDetailRun(run) {
   const purchaseItems = [
     totalColorlessBought  > 0 ? { label: "Colorless bought", value: totalColorlessBought }  : null,
     totalOtherCardsBought > 0 ? { label: "Cards bought",     value: totalOtherCardsBought } : null,
-    totalRewardsSkipped   > 0 ? { label: "Rewards skipped",  value: totalRewardsSkipped }     : null,
+    totalRewardsSkipped   > 0 ? { label: "Card rewards skipped", value: totalRewardsSkipped }     : null,
     totalPotionsBought    > 0 ? { label: "Potions bought",   value: totalPotionsBought }    : null,
     totalRelicsBought     > 0 ? { label: "Relics bought",    value: totalRelicsBought }     : null,
     totalShopRemoves      > 0 ? { label: "Shop removes",     value: totalShopRemoves }      : null,
@@ -392,7 +392,7 @@ function renderDetailRun(run) {
   // two) that the last row isn't left holding one or two stats on their own;
   // when the count already divides by three, none do. Desktop keeps them all
   // separate (both are in the page, CSS shows one).
-  const PHONE_PAIRS = [["Damage taken", "HP healed"], ["Fights", "Events"], ["Cards bought", "Rewards skipped"]];
+  const PHONE_PAIRS = [["Damage taken", "HP healed"], ["Fights", "Events"], ["Cards bought", "Card rewards skipped"]];
   const flatStats = allGroups.flat();
   const pairsToJoin = flatStats.length % 3;
   // Pairs are picked in list order, by where the first stat of each sits.
