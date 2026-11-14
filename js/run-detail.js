@@ -336,7 +336,7 @@ function renderDetailRun(run) {
     { label: "Rest sites",  value: countType("rest_site") },
     { label: "Shops",  value: countType("shop") },
   ];
-  if (totalRemoves > 0) statItems.push({ label: "Total removes", value: totalRemoves });
+  if (totalRemoves > 0) statItems.push({ label: "Card removes", value: totalRemoves });
 
   const purchaseItems = [
     totalColorlessBought  > 0 ? { label: "Colorless bought", value: totalColorlessBought }  : null,
