@@ -342,12 +342,12 @@ h1 {
   padding: 0.7rem 0.8rem;
   min-width: 0;
 }
-.asc-name { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.asc-name { font-size: var(--fs-md); font-weight: 600; color: var(--text); overflow-wrap: anywhere; min-width: 0; }
 .asc-char { display: flex; align-items: flex-end; gap: 0.6rem; }
 .asc-portrait { height: 5.5rem; width: auto; flex: none; }
 .asc-mode { margin-top: 0.5rem; }
 .asc-mode + .asc-mode { border-top: 1px solid var(--panel-border); margin-top: 0.65rem; padding-top: 0.6rem; }
-.asc-mode-label { font-size: var(--fs-xs); color: var(--text-dim); }
+.asc-mode-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text); margin-bottom: 0.2rem; }
 .asc-big { font-size: var(--fs-xl); font-weight: 700; line-height: 1.1; }
 .asc-big.asc-none { color: var(--text-dim) !important; opacity: 0.6; }
 .asc-sub { font-size: var(--fs-sm); color: var(--text-dim); }
@@ -369,7 +369,15 @@ h1 {
   text-shadow: -1px -1px 0 #06335f, 1px -1px 0 #06335f, -1px 1px 0 #06335f, 1px 1px 0 #06335f;
 }
 .asc-stats .asc-stat-dread b { color: #87ceeb; }
-.asc-now { font-size: var(--fs-sm); color: var(--text); opacity: 0.85; }
+.asc-now { font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.45; }
+.asc-current { color: var(--text); font-weight: 600; }
+.asc-record-win { color: #81c99a; }
+.asc-record-loss { color: #e28b8b; }
+.asc-record-separator { color: var(--text-dim); }
+.asc-milestones { margin-top: 0.7rem; border-top: 1px solid var(--panel-border); padding-top: 0.55rem; font-size: var(--fs-sm); color: var(--text-dim); }
+.asc-milestones summary { cursor: pointer; color: var(--text); font-weight: 600; }
+.asc-milestone-content { display: grid; gap: 0.55rem; margin-top: 0.55rem; line-height: 1.45; }
+.asc-milestone-content b { color: var(--text); }
 /* Title and caption left, three headline numbers right. */
 .asc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem 2rem; flex-wrap: wrap; }
 .asc-stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; margin-bottom: 0.9rem; }
@@ -1087,6 +1095,12 @@ h1 {
 .run-tag-btn:hover { color: var(--gold); border-color: var(--gold-glow); }
 .run-tag-btn[aria-pressed="true"] { color: var(--bg-deep); background: var(--gold); border-color: var(--gold); }
 .run-tag-n { font-weight: 400; opacity: 0.75; }
+
+#detail-jump-notice {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  padding: 0.5rem 0;
+}
 
 #detail-run-list {
   background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);

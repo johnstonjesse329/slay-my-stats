@@ -236,6 +236,7 @@ function renderDetailRunList() {
       const ts = +el.dataset.ts;
       const run = DATA.runsData.find(r => r.ts === ts);
       if (!run) return;
+      document.getElementById("detail-jump-notice").hidden = true;
       detailSelectedTs = ts;
       syncRunHash();
       container.querySelectorAll(".detail-run-item").forEach(r => r.classList.toggle("active", +r.dataset.ts === ts));

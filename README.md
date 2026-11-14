@@ -371,6 +371,8 @@ A Custom Run (the game's `game_mode` of `custom`) carries `modifiers`, the ids o
 
 ### Held runs
 
+A reference for investigated missing IDs is kept in [tools/held-run-sources.md](tools/held-run-sources.md).
+
 A run that names a character, card or relic the game data doesn't have is held: it's left out of the profile
 and the stats, but kept in `raw/` like every upload. That helps remove modded characters and runs with
 content that materially alter the stats for the site.

@@ -93,7 +93,7 @@ function renderPersonalBests() {
     if (lastFight && lastFight.type === "elite" && !lastFight.won) b.eliteDeaths++;
     // Every "best" below is { value, ts } rather than a bare number, so the
     // card can link straight to the specific run that produced it — see
-    // statLink below, which routes through jumpToRun().
+    // statLink below, which opens the run and widens any filters hiding it.
     if (finalBoss && finalBoss.won && finalBoss.turns != null) {
       if (b.mostFinalBossTurns === null || finalBoss.turns > b.mostFinalBossTurns.value) b.mostFinalBossTurns = { value: finalBoss.turns, ts: run.ts };
       if (b.fewestFinalBossTurns === null || finalBoss.turns < b.fewestFinalBossTurns.value) b.fewestFinalBossTurns = { value: finalBoss.turns, ts: run.ts };
@@ -249,7 +249,7 @@ function renderPersonalBests() {
     el.addEventListener("click", () => {
       const ts = +el.dataset.ts;
       if (!DATA.runsData.find(r => r.ts === ts)) return;
-      jumpToRun(ts);
+      openRunLink(ts);
     });
     bindEnterSpace(el);
   }
@@ -288,7 +288,7 @@ function aggregateAscTracker(runs) {
   const top = Math.max(...runs.map(run => run.asc));
   const atTop = runs.filter(run => run.asc === top);
   const topWins = atTop.filter(run => run.won).length;
-  return { highestWin, top, topWins, topLosses: atTop.length - topWins };
+  return { highestWin, top, topFirstTs: Math.min(...atTop.map(run => run.ts)), topWins, topLosses: atTop.length - topWins };
 }
 
 // Win streaks over runs in play order: { best, current, wins, runs }. A loss
@@ -311,16 +311,28 @@ function renderAscTracker() {
     .sort((a, b) => a.ts - b.ts);
 
   const dread = DATA.runsData.filter(run => run.mode === "dread").sort((a, b) => a.ts - b.ts);
+  // An observed Dread run establishes access even if older runs are missing.
+  // Otherwise infer it from recorded A10 wins across the core character roster.
+  const coreChars = ["IRONCLAD", "SILENT", "DEFECT", "NECROBINDER", "REGENT", "FOOL"];
+  const dreadReached = dread.length > 0 || (coreChars.length > 0 && coreChars.every(char =>
+    standard.some(run => run.char === char && run.won && run.asc >= maxAsc)));
 
   const block = (char, color, mode) => {
     const t = aggregateAscTracker(standard.filter(run => run.char === char && mode.test(run)));
     const won = t && t.highestWin ? t.highestWin.value : -1;
     // Past A10 sits Dread: the game's top-bar gem, lit by a Dread win and carrying the
     // best Dread win streak the way the game's top bar carries the current one.
-    const d = winStreaks(dread.filter(run => run.char === char && mode.test(run)));
+    const dreadRuns = dread.filter(run => run.char === char && mode.test(run));
+    const d = winStreaks(dreadRuns);
     const gemTip = !d.runs ? "Dread · no runs yet"
       : `Dread · ${d.wins}W / ${d.runs - d.wins}L\nBest win streak ${d.best} · current ${d.current}`;
     const gem = `<span class="asc-dread${d.wins ? " asc-dread-won" : ""}" data-tip="${gemTip}">${d.best ? `<b>${d.best}</b>` : ""}</span>`;
+    const recordHtml = (wins, losses) => `<span class="asc-record-win">${wins}W</span><span class="asc-record-separator"> / </span><span class="asc-record-loss">${losses}L</span>`;
+    const dreadStatus = d.runs ? recordHtml(d.wins, d.runs - d.wins)
+      : dreadReached ? "not attempted" : "not yet reached";
+    const firstDreadWin = dreadRuns.find(run => run.won);
+    const dreadDates = d.runs ? `First attempted ${fmtDate(dreadRuns[0].ts)}${firstDreadWin ? `\nFirst won ${fmtDate(firstDreadWin.ts)}` : ""}` : "";
+    const dreadRecord = `<div class="asc-now"${dreadDates ? ` tabindex="0" data-tip="${dreadDates}"` : ""}><span class="asc-current">Dread:</span> ${dreadStatus}</div>`;
     const pips = ASC_TRACKER_LEVELS.map(level => {
       return `<span class="asc-pip" data-tip="A${level}" style="--rung:${level}${won >= level ? `;background:${color}` : ""}"></span>`;
     }).join("") + gem;
@@ -328,30 +340,48 @@ function renderAscTracker() {
       return `<div class="asc-mode">
         <div class="asc-mode-label">${mode.label}</div>
         <div class="asc-big asc-none">—</div>
-        <div class="asc-sub">no runs</div>
+        <div class="asc-sub">No runs</div>
         <div class="asc-pips">${pips}</div>
+        <div class="asc-now">No runs yet</div>
+        ${dreadRecord}
       </div>`;
     }
-    const record = `${t.topWins}W / ${t.topLosses}L`;
+    const record = recordHtml(t.topWins, t.topLosses);
     const big = t.highestWin
       ? `<span class="pb-stat-link" data-ts="${t.highestWin.ts}" data-tip="Jump to this run" style="cursor:pointer">A${won}</span>`
       : "—";
-    const now = won >= maxAsc
-      ? `A${maxAsc} won ${fmtDate(t.highestWin.ts)}<br>${record} at A${maxAsc}`
-      : `Now on A${t.top}<br>${record} there`;
+    const topDates = `First attempted ${fmtDate(t.topFirstTs)}` +
+      (t.highestWin && t.highestWin.value === t.top ? `\nFirst won ${fmtDate(t.highestWin.ts)}` : "");
+    const now = `<span class="asc-current">A${t.top}:</span> ${record}`;
     return `<div class="asc-mode">
       <div class="asc-mode-label">${mode.label}</div>
       <div class="asc-big${t.highestWin ? "" : " asc-none"}" style="color:${color}">${big}</div>
-      <div class="asc-sub">${t.highestWin ? "highest ascension won" : "no wins yet"}</div>
+      <div class="asc-sub">${t.highestWin ? `Highest ascension won · ${fmtDate(t.highestWin.ts)}` : "No wins yet"}</div>
       <div class="asc-pips">${pips}</div>
-      <div class="asc-now">${now}</div>
+      <div class="asc-now" tabindex="0" data-tip="${topDates}">${now}</div>
+      ${dreadRecord}
     </div>`;
   };
 
-  // Beside the title: how many characters have an A10 win in each mode, and
-  // the first A10 win of all.
+  const milestones = (char, mode) => {
+    const runs = standard.filter(run => run.char === char && mode.test(run));
+    const t = aggregateAscTracker(runs);
+    const dr = dread.filter(run => run.char === char && mode.test(run));
+    const dw = dr.find(run => run.won);
+    const lines = [];
+    if (t) {
+      lines.push(`A${t.top} first attempted ${fmtDate(t.topFirstTs)}`);
+      if (t.highestWin && t.highestWin.value === t.top) lines.push(`A${t.top} first won ${fmtDate(t.highestWin.ts)}`);
+    }
+    if (dr.length) {
+      lines.push(`Dread first attempted ${fmtDate(dr[0].ts)}`);
+      if (dw) lines.push(`Dread first won ${fmtDate(dw.ts)}`);
+    }
+    return `<div><b>${mode.label}</b><br>${lines.length ? lines.join("<br>") : "No milestones yet"}</div>`;
+  };
+
+  // Beside the title: how many characters have an A10 win in each mode.
   const a10 = standard.filter(run => run.won && run.asc >= maxAsc);
-  const first = a10[0];
   const total = DATA.characters.length;
   // Then the same for Dread, and the back-to-back counts: a single win is the first
   // goal, a streak (any characters, a loss resets) the rarer one after it. A10
@@ -363,10 +393,7 @@ function renderAscTracker() {
     ASC_TRACKER_MODES.map(mode => statsHtml("", `<b>${charsWon(a10, mode)} / ${total}</b>A${maxAsc} ${modeName(mode)}`)).join("") +
     ASC_TRACKER_MODES.map(mode => statsHtml("", `<b>${winStreaks(standard.filter(run => run.asc >= maxAsc && mode.test(run))).best}</b>A${maxAsc} ${modeName(mode)} streak`)).join("") +
     ASC_TRACKER_MODES.map(mode => statsHtml("asc-stat-dread", `<b>${charsWon(dread, mode)} / ${total}</b>Dread ${modeName(mode)}`)).join("") +
-    ASC_TRACKER_MODES.map(mode => statsHtml("asc-stat-dread", `<b>${winStreaks(dread.filter(mode.test)).best}</b>Dread ${modeName(mode)} streak`)).join("") +
-    `<div><b>${first
-      ? `<span class="pb-stat-link" data-ts="${first.ts}" data-tip="Jump to this run" style="cursor:pointer">${fmtDate(first.ts)}</span>`
-      : "—"}</b>first A${maxAsc} win${first ? ` · <span style="color:${CHAR_COLOR_MAP[first.char] || "#a0a0b8"}">${charIconHtml(first.char)}${fmtCharName(first.char)}</span>` : ""}</div>`;
+    ASC_TRACKER_MODES.map(mode => statsHtml("asc-stat-dread", `<b>${winStreaks(dread.filter(mode.test)).best}</b>Dread ${modeName(mode)} streak`)).join("");
 
   const el = document.getElementById("asc-tracker-cards");
   el.innerHTML = DATA.characters.map(char => {
@@ -378,13 +405,14 @@ function renderAscTracker() {
         ? `<div class="asc-char"><img class="asc-portrait" src="${portrait}" alt=""><div class="asc-name" style="color:${color}">${fmtCharName(char)}</div></div>`
         : `<div class="asc-name" style="color:${color}">${charIconHtml(char)}${fmtCharName(char)}</div>`}
       ${ASC_TRACKER_MODES.map(mode => block(char, color, mode)).join("")}
+      <details class="asc-milestones"><summary>Milestones</summary><div class="asc-milestone-content">${ASC_TRACKER_MODES.map(mode => milestones(char, mode)).join("")}</div></details>
     </div>`;
   }).join("");
 
   el.parentElement.querySelectorAll(".pb-stat-link").forEach(link => {
     link.setAttribute("role", "link");
     link.setAttribute("tabindex", "0");
-    link.addEventListener("click", () => jumpToRun(+link.dataset.ts));
+    link.addEventListener("click", () => openRunLink(+link.dataset.ts));
     bindEnterSpace(link);
   });
 }

@@ -135,6 +135,7 @@ function jumpToRun(ts) {
 // for lands on Run Detail's usual first run.
 function openRunLink(ts) {
   const run = DATA.runsData.find(r => r.ts === ts);
+  const changed = [];
   if (run) {
     const state = currentSharedFilterState();
     const widen = {};
@@ -145,7 +146,9 @@ function openRunLink(ts) {
     if (state.players !== "all" && (state.players === "multi") !== !!run.mp) widen.players = "all";
     if (!state.modes.includes(runModeOf(run))) widen.modes = [...state.modes, runModeOf(run)];
     if (!modsShowRun(state.mods, run)) widen.mods = "all";
-    if (![...detailTags].every(t => runTags(run).includes(t))) detailTags.clear();
+    if (![...detailTags].every(t => runTags(run).includes(t))) { detailTags.clear(); changed.push("tags"); }
+    const names = { char: "character", ascGranular: "ascension", builds: "build", tsFrom: "date", players: "players", modes: "mode", mods: "mods" };
+    Object.keys(names).forEach(key => { if (key in widen) changed.push(names[key]); });
     if (Object.keys(widen).length > 0) {
       applySharedFilterState({ ...state, ...widen }, "detail");
       // applySharedFilterState() re-rendered the page behind this one partway
@@ -156,6 +159,9 @@ function openRunLink(ts) {
     }
   }
   jumpToRun(ts);
+  const notice = document.getElementById("detail-jump-notice");
+  notice.textContent = changed.length ? `Filters adjusted to show this run: ${changed.join(", ")}.` : "";
+  notice.hidden = !changed.length;
 }
 
 // A link pasted into the address bar of a page that is already open only

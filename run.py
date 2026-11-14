@@ -1665,6 +1665,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="tag-filter-chips"></div>
     </div>
+    <div id="detail-jump-notice" role="status" hidden></div>
     <div id="detail-run-list"></div>
   </div>
   <div id="detail-main">
