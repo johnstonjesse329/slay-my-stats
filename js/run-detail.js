@@ -1173,12 +1173,16 @@ function iconAxis(extra = {}) {
     // Chart.js counts its steps from the stretched bottom (2, 12, 22...);
     // put them back on round numbers from zero, none below it.
     afterBuildTicks(scale) {
-      const step = scale.ticks.length > 1 ? Math.abs(scale.ticks[1].value - scale.ticks[0].value) : 0;
-      if (!step) return;
+      // With a small maxTicksLimit on a short range Chart.js can hand back repeats (9, 9, 4), so its
+      // own spacing isn't trusted: take the step from the range and the tick limit instead.
+      const range = scale.max - scale.min;
+      if (!(range > 0)) return;
+      const step = range / ((scale.options.ticks.maxTicksLimit || 6) - 1);
       const nice = Math.pow(10, Math.floor(Math.log10(step)));
       const s = [1, 2, 2.5, 5, 10].map(m => m * nice).find(m => m >= step - 1e-9);
       scale.ticks = [];
-      for (let v = Math.max(0, Math.ceil(scale.min / s) * s); v <= scale.max; v += s) scale.ticks.push({ value: v });
+      const first = Math.max(0, Math.ceil(scale.min / s - 1e-9));
+      for (let k = first; k * s <= scale.max; k++) scale.ticks.push({ value: +(k * s).toFixed(10) });
     },
   };
 }
@@ -2779,7 +2783,8 @@ function renderDetailKeepCharts(run) {
       `<span class="fl-item"><span class="strength-key" style="background:${s.borderDash?.length ? `repeating-linear-gradient(90deg, ${s.borderColor} 0 4px, transparent 4px 7px)` : s.borderColor}"></span>${s.label}</span>`
     ).join("")}${ring}</div>`;
     // Room for a ring that sits above everything else on the chart.
-    const yAxis = { ...iconAxis({ min: 0 }), stacked: false, ticks: { maxTicksLimit: 5 }, reverse: !!up };
+    const base = iconAxis({ min: 0 });
+    const yAxis = { ...base, stacked: false, ticks: { ...base.ticks, maxTicksLimit: 5 }, reverse: !!up };
     const stretch = yAxis.afterDataLimits;
     yAxis.afterDataLimits = scale => {
       const v = actView(nodes);   // only the bars in view, on a phone showing one act
