@@ -1687,7 +1687,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="keep-actpick" id="detail-keep-actpick"></div>
         <div id="detail-hp-box">
           <h3 class="strength-label">HP by floor</h3>
-          <p class="chart-caption">Your HP after each floor, against your max HP. The dotted line is the HP your median win left each fight with.</p>
+          <p class="chart-caption">Your HP after each floor, against your max HP.</p>
           <div class="chart-wrap"><canvas id="detail-hp-chart"></canvas></div>
           <div class="floor-legend" id="detail-hp-legend"></div>
         </div>

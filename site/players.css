@@ -113,6 +113,10 @@
   background: var(--panel-glass);
   border-bottom: 1px solid var(--panel-border);
   backdrop-filter: blur(6px);
+  /* backdrop-filter makes this its own stacking context, so the search dropdown's z-index only
+     counts inside it. Without a z-index of its own the whole bar painted under any tab's sticky
+     heads and hover cards (z-index 1-200). Above those, below the lightbox and chart tooltips. */
+  position: relative; z-index: 300;
 }
 .site-brand {
   font-family: var(--font-head);

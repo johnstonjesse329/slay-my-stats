@@ -413,7 +413,7 @@ function renderDetailRun(run) {
     <div class="detail-run-header-bar">
       ${navigator.clipboard ? `<button type="button" class="run-copy-link-icon" aria-label="Copy link to this run" title="Copy link"><svg class="rci-share" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg><svg class="rci-done" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button>` : ""}
       <span style="font-weight:700;font-size:1.1rem;color:${color}">${charIconHtml(run.char)}${label}</span>
-      ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
+      ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
       <span style="color:${won ? "#5cba7d" : "#e05c5c"};font-weight:600">${won ? "Victory" : "Defeat"}</span>
       ${runReadingHtml(run)}${runActMarksHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
@@ -1335,31 +1335,11 @@ function normalFights() {
 function hpWinsByNode(run, nodes) {
   const tier = keepTier(run.asc), by = {};
   ALL_FIGHTS.filter(playsLikeNormal).concat(normalFights()).forEach(f => { if (keepTier(f.asc) === tier) addFight(by[f.enc] ||= fightBucket(), f); });
-  const left = winsLeftWith(tier);
   return nodes.map(n => {
     const enc = keepFight(n);
     const s = enc && by[enc] ? summarizeFights(by[enc]) : null;
-    if (!s || !s.wins) return null;
-    // The HP the wins left it with, which is what the chart's HP line shows for the floor.
-    const out = (left[enc] || []).sort((a, b) => a - b);
-    const lowest = out.slice(0, Math.max(1, Math.round(out.length * BAND_SHARE)));
-    const highest = out.slice(-lowest.length);
-    return { ...s, left_avg: median(out), left_low: median(lowest), left_high: median(highest) };
+    return s && s.wins ? s : null;
   });
-}
-
-// HP left after each won fight, by encounter, across every run at one tuning tier. Read off the
-// timelines (the fight records only carry the HP entering), so it counts healing after the fight.
-function winsLeftWith(tier) {
-  const by = {};
-  DATA.runsData.filter(playsLikeNormal).forEach(run => {
-    if (keepTier(run.asc) !== tier) return;
-    (run.timeline || []).forEach(n => {
-      const enc = keepFight(n);
-      if (enc && n.hpAfter > 0) (by[enc] ||= []).push(n.hpAfter);
-    });
-  });
-  return by;
 }
 
 // On each fight floor, a bar from the best quarter of this player's wins to the worst: a green cap at
@@ -1433,25 +1413,19 @@ function tipKey() {
 
 function hpTip(run, n, s) {
   const head = floorTipHead(n);
-  const row = (label, you, med, low) => `<tr><td>${label}</td><td><b>${you}</b></td>` +
-    (s ? `<td class="ft-win">${med ?? ""}</td><td class="ft-win">${low ?? ""}</td>` : "") + `</tr>`;
-  const left = row("Left with", `${n.hpAfter}<small>/${n.maxHp}</small>`, s?.left_avg, s?.left_low);
+  const row = (label, you) => `<tr><td>${label}</td><td><b>${you}</b></td></tr>`;
+  const left = row("Left with", `${n.hpAfter}<small>/${n.maxHp}</small>`);
   const healed = n.healed > 0 ? row("Healed", `+${n.healed}`) : "";
   if (!s) return `${head}<table>${healed}${left}</table>`;
-  // The lanes lead, then the table. Both share one track, 0 to whichever is highest of max HP, the
-  // wins' medians and this run's own figures, so HP lost and HP left read against each other. The
-  // worst quarter is at the high end for HP lost and the low end for HP left.
-  const top = Math.max(n.maxHp, s.left_avg, s.left_high, n.dmg, s.heavy_wins_dmg);
+  // What the fight cost beside what their wins lose: the damage comparison, which is the signal.
+  // HP left isn't compared: it is HP entering minus this, so it carries every earlier floor too.
+  const top = Math.max(n.maxHp, n.dmg, s.heavy_wins_dmg);
   const lost = tipLane(top, { you: n.dmg, youColour: "var(--gold)", mid: s.avg_dmg, good: s.light_wins_dmg, bad: s.heavy_wins_dmg,
     what: `Lost ${n.dmg} HP; your wins' median ${s.avg_dmg}, worst quarter ${s.heavy_wins_dmg}, best quarter ${s.light_wins_dmg}` });
-  const kept = tipLane(top, { you: n.hpAfter, youColour: "var(--gold)", mid: s.left_avg, good: s.left_high, bad: s.left_low,
-    what: `Left with ${n.hpAfter}; your wins' median ${s.left_avg}, worst quarter ${s.left_low}, best quarter ${s.left_high}` });
   return `${head}<div class="ft-lost"><div class="ft-lost-big">Lost <b${n.dmg > s.avg_dmg ? ` class="ft-worse"` : ""}>${n.dmg} HP</b></div>` +
     `<div class="ft-cap">Wins usually lose ${s.avg_dmg} · the worst quarter lose ${s.heavy_wins_dmg}</div></div>` +
-    `<div class="ft-lanelabel">HP lost</div>${lost}<div class="ft-lanelabel">HP left</div>${kept}${tipKey()}` +
-    `<table><thead><tr><th></th><th colspan="1">This run</th><th colspan="2" class="ft-win">Your wins</th></tr>` +
-    `<tr class="ft-sub"><th></th><th></th><th class="ft-win">Median</th><th class="ft-win">Worst 25%</th></tr></thead>` +
-    `${row("Entered with", n.hpBefore, s.avg_hp, s.band_wins_hp)}${healed}${left}</table>` +
+    `<div class="ft-lanelabel">HP lost</div>${lost}${tipKey()}` +
+    `<table>${row("Entered with", n.hpBefore)}${healed}${left}</table>` +
     `<div class="ft-cap">Won ${s.wins} of ${s.runs} (${s.win_pct}%) at ${KEEP_TIER_NAMES[keepTier(run.asc)]}</div>`;
 }
 
@@ -1472,32 +1446,20 @@ function renderDetailHpChart(run) {
 
   if (detailHpChart) { detailHpChart.destroy(); detailHpChart = null; }
 
+  // Only the hover box reads the wins now: what a fight cost beside what their wins lose.
   const wins = hpWinsByNode(run, nodes);
-  const anyWins = wins.some(s => s);
-  // The HP your wins left each fight with, floor by floor: a dotted line, the same dotted grey as
-  // "Average win" on the damage charts. Floors with no fight, or no win to read, are skipped over.
-  const winHp = wins.map(w => w ? w.left_avg : null);
 
-  // HP's swatch is the area's own fill; Max HP's is its thin line. The dot on each fight floor is
-  // the HP this player's wins left that fight with; its bar runs down to the worst quarter.
+  // HP's swatch is the area's own fill; Max HP's is its thin line.
   document.getElementById("detail-hp-legend").innerHTML = `<div class="fl-items">` +
     `<span class="fl-item"><span class="fl-swatch" style="background:${color}33;border:2px solid ${color}"></span>HP</span>` +
-    `<span class="fl-item"><span class="strength-key" style="background:#8a8aa0"></span>Max HP</span>` +
-    `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, #b9b9c4 0 2px, transparent 2px 6px)"></span>HP left, median win</span>` +
-    (anyWins ? rangeKey("Best and worst 25% of wins", false) : "") + `</div>`;
+    `<span class="fl-item"><span class="strength-key" style="background:#8a8aa0"></span>Max HP</span></div>`;
 
-  // Room for a median win, or the best quarter's bar, that finished above this run's own max HP.
   const yAxis = iconAxis({ min: 0 });
-  const stretch = yAxis.afterDataLimits;
-  yAxis.afterDataLimits = scale => {
-    wins.forEach(s => { if (s) scale.max = Math.max(scale.max, s.left_avg, s.left_high); });
-    stretch(scale);
-  };
 
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeWinRangePlugin(wins.map(s => s ? { bad: s.left_low, good: s.left_high } : null))],
+    plugins: [makeActBoundaryPlugin(nodes)],
     data: {
       labels,
       datasets: [
@@ -1519,18 +1481,6 @@ function renderDetailHpChart(run) {
           borderWidth: 1,
           pointRadius: 0,
           stepped: "before",
-          fill: false,
-        },
-        {
-          label: "HP left, median win",
-          data: winHp,
-          borderColor: "#b9b9c4",
-          borderDash: [2, 4],
-          borderWidth: 1.5,
-          pointRadius: 0,
-          pointHoverRadius: 0,
-          spanGaps: true,
-          cubicInterpolationMode: "monotone",
           fill: false,
         },
       ],
