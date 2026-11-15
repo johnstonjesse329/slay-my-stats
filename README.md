@@ -13,7 +13,10 @@ find it by searching on the home page.
 
 **Runs:** every run in a list; pick one to see its path, fights, its deck and relics floor by floor, and
 its final deck, including any enchantment a card is carrying. Each deck is tagged with what it's built
-around (Exhaust, Poison, Souls...) and the list filters on those tags. Each run has its own link (`/u/<name>#detail/<run timestamp>`, the address
+around (Exhaust, Poison, Souls...) and the list filters on those tags. The final deck's **Explore
+synergies** section groups its connections by archetype (Strength, Exhaust, Orbs, Osty, Shots...), each
+group showing what feeds a payoff and what it pays off, the reason they connect, and a card or relic to
+open. Each run has its own link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 
 ![Runs tab showing a run's final deck](images/site-run-detail.png)
@@ -25,6 +28,22 @@ bar or **Copy link** in the run's header), and opening one shows that run whatev
 The dashboard has four pages: Overview, Runs, Cards and Seeds. They cover win
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup, among your own runs or everyone's.
+
+Overview always shows the full history, ignoring saved filters and filter links. Its
+statistics and charts cover Standard and Dread runs across all characters, builds, dates,
+mods and party sizes; a mode breakdown separately counts Daily, Custom and Blitz runs.
+The filter bar stays visible and locked on Overview. Filters can be changed on Runs,
+Cards and Seeds, and survive a visit to Overview. The normal bar says Default filters
+applied. Selections that differ from the built-in defaults highlight the bar and say
+Filters applied, with the matching run count and selections.
+Reset filters also clears the saved default in
+that browser. Saving All builds includes future patches; a saved build selection with
+no builds in common with another profile falls back to all of that profile's builds.
+The filter bar's Filter set dropdown pins Default above saved presets.
+It selects a matching preset as controls change, otherwise prompting to choose a preset.
+Named presets are stored in this browser; Save as default remembers the current
+selection for future visits. Copy filter link includes the selections and takes precedence
+over the recipient's saved default; opening a link does not overwrite that default.
 
 **Contents:** [Repository layout](#repository-layout) ·
 [How it fits together](#how-it-fits-together) ·
@@ -64,13 +83,15 @@ slay-my-stats/
 │   ├── fonts/               Kreon (headings), with its licence
 │   ├── players.css          site bar, finder, site stats, pages
 │   ├── upload.js            Steam sign-in and the upload panel
-│   └── upload.css
+│   ├── upload.css
+│   └── feedback.js          gamma-only feedback panel (inert elsewhere; talks to /auth/feedback)
 ├── infra/                   CDK app
 │   ├── app.py
 │   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
-│   ├── lambda/ingest/handler.py               the upload Lambdas (ingest, process, failure)
+│   ├── lambda/ingest/handler.py               the upload Lambdas (ingest, process, failure), the gamma Steam login and the feedback router
 │   ├── lambda/ingest/measured.py              per-floor energy and card numbers, read from a run's event log at upload
-│   ├── tests/test_ingest.py, test_measured.py
+│   ├── lambda/ingest/feedback.py              the gamma feedback inbox (session check, notes, resolve)
+│   ├── tests/test_ingest.py, test_measured.py, test_feedback.py, test_gamma_auth.py
 │   └── requirements.txt     CDK, boto3
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
@@ -92,6 +113,7 @@ slay-my-stats/
 │   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
 │   ├── diff_game_data.py    what changed in the cards, relics and potions between two game versions
 │   ├── extract_power_data.py  power_data.json, from the game DLL
+│   ├── synergy_precision.py   trims the broad card-text synergy matches to the ones a deck's play justifies
 │   ├── power_curve/         offline deck-strength tools: the sim, the formula and its fit (see its README)
 │   └── requirements.txt     pipeline requirements
 ├── githooks/pre-push        runs tools/deploy.py when main or gamma is pushed
@@ -545,10 +567,24 @@ certificate (for `gamma.slay-my-stats.com`, in us-east-1) and the hosted zone th
 as `"gammaCertificateArn"` and `"gammaHostedZoneId"` in `infra/cdk.context.json`. Without those two the gamma
 stack isn't built at all.
 
-Gamma isn't public. It answers only the addresses listed as `"gammaAllowedIps"` in `infra/cdk.context.json`
-(e.g. `["203.0.113.7"]`) and returns 403 to everyone else, pages and uploads both (for the site, a short
-"403 Forbidden" page). If your address changes,
-update the list and deploy gamma again.
+Gamma requires Steam sign-in. Only SteamID64 strings listed in `"gammaAllowedSteamIds"` in
+`infra/cdk.context.json` can enter, for example `["76561198000000001"]`. Set `"gammaSessionSecret"`
+to a cryptographically random secret (at least 64 characters; `python -c "import secrets; print(secrets.token_hex(32))"`).
+Keep this ignored configuration and generated CDK templates private: the signing key is deployed in the
+CloudFront function and login Lambda. Rotating it invalidates existing sessions.
+
+Visitors are redirected through Steam; a verified, allowed account receives a Secure, HttpOnly,
+host-only cookie valid for 12 hours. CloudFront checks its signature, expiry and current allowlist
+before serving pages, assets or profile data, including cached files. Upload endpoints independently
+check the Steam account after verifying OpenID or the mod's ticket, including direct Function URL calls.
+Removing an account and redeploying revokes its access. Production stays public.
+Gamma deploy smoke checks use a short-lived signed session from the same private configuration.
+
+Signed-in reviewers also get a **Feedback** panel in the lower right: pin a note to an element or drag out
+a region, or comment on the whole page, and the inbox collects the latest 200 shared notes with resolve,
+reopen and a copy-ready report. Notes are JSON objects under `feedback/` in the gamma data bucket, reached
+through `/auth/feedback`; production never shows the panel. See
+[docs/gamma-feedback.md](docs/gamma-feedback.md).
 
 ### Publishing gamma to production
 
@@ -652,7 +688,7 @@ From a change to gamma, with the commands to type. Production comes after, once 
    checked out. If the stack changed it shows the `cdk diff` and asks y/N (any change to `run.py` or the
    handler counts, as new Lambda code). It ends with `Deployed.`
 
-4. Look at https://gamma.slay-my-stats.com from an address in `gammaAllowedIps`. `app.js` and `index.html` are
+4. Look at https://gamma.slay-my-stats.com after signing in with an account in `gammaAllowedSteamIds`. `app.js` and `index.html` are
    invalidated by the deploy; the stylesheets can be up to 5 minutes old, so hard-refresh if a style looks
    wrong.
 
