@@ -45,7 +45,8 @@ DRAWN = {
 NOT_DRAWN = {  # plumbing inside a drawn box, or an output
     "SiteCertificate": "the ACM cert is noted inside the CloudFront box",
     "ProfileUrlRewriteFunction": "the URL rewrite is noted inside the CloudFront box",
-    "IpAllowlistFunction": "gamma-only gate",
+    "SteamGateFunction": "gamma-only Steam session check; the diagram shows production",
+    "GammaAuthFunction": "gamma-only Steam login; the diagram shows production",
     "DigestSchedule": "the 8 AM schedule is noted inside the Digest box",
 }
 OUTPUT_ID = re.compile(r"(Name|Domain\w*|Url)$")

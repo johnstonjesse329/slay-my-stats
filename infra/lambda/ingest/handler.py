@@ -1063,6 +1063,7 @@ def authorize(params: dict, ip: str, store, allowed_return_to: list[str], presig
     # A sign-in can be used again until it expires; whether Steam accepts the
     # same one twice is up to Steam. The cooldown and IP limit still apply.
     steam_id = verify_openid(params, allowed_return_to, now=now, post=post)
+    require_allowed_steam_id(steam_id)
     got = store.get(steam_limit_key(steam_id))
     if got and now - _unpack(got[0]).get("at", 0) < COOLDOWN_SECONDS:
         raise IngestError(429, "cooldown", "You just uploaded. Wait a minute and try again.")
@@ -1090,6 +1091,7 @@ def _mod_player(body: dict, verify=None) -> str:
         raise IngestError(400, "bad_request", "Expected a steamId and a ticket.")
     if (verify or verify_ticket)(body.get("ticket")) != steam_id:
         raise IngestError(401, "bad_ticket", "That ticket belongs to a different Steam account.")
+    require_allowed_steam_id(steam_id)
     return steam_id
 
 
@@ -1749,10 +1751,11 @@ def _mod_body(event) -> dict:
     return body if isinstance(body, dict) else {}
 
 
-def _ip_allowed(ip: str, allowed: list[str]) -> bool:
-    """An entry ending in "." or ":" is a prefix; anything else is exact.
-    Mirrors IP_ALLOWLIST_CODE in the stack."""
-    return any(ip.startswith(a) if a[-1] in ".:" else ip == a for a in allowed)
+def require_allowed_steam_id(steam_id: str) -> None:
+    """Also applied to direct Function URL calls, after Steam verification."""
+    allowed = os.environ.get("ALLOWED_STEAM_IDS")
+    if allowed is not None and steam_id not in allowed.split(","):
+        raise IngestError(403, "forbidden", "This Steam account does not have gamma access.")
 
 
 def record_upload(store, event: dict, result: dict, via: str, now: float | None = None) -> None:
@@ -1781,10 +1784,6 @@ def record_upload(store, event: dict, result: dict, via: str, now: float | None 
 def lambda_handler(event, context):
     """The Function URL (payload format 2.0): hands out upload URLs."""
     http = event.get("requestContext", {}).get("http", {})
-    # Set only on a stage that isn't public (gamma).
-    allowed_ips = [p for p in os.environ.get("ALLOWED_IPS", "").split(",") if p]
-    if allowed_ips and not _ip_allowed(http.get("sourceIp", ""), allowed_ips):
-        return _response(403, {"error": "forbidden", "message": "Not available from this address."})
     if http.get("method") != "POST":
         return _response(405, {"error": "method_not_allowed", "message": "POST only."})
     # Log lines from the mod's way in say so: the stack counts them, and
@@ -1815,6 +1814,64 @@ def lambda_handler(event, context):
     print(json.dumps({**via, "status": 200, "uploadId": result["uploadId"]}))
     record_upload(store, event, result, "mod" if via else "site")
     return _response(200, result)
+
+
+def gamma_auth_handler(event, context):
+    """Steam OpenID login for gamma; issue a host-only, signed 12-hour cookie."""
+    import hmac
+    import secrets
+    from http.cookies import CookieError, SimpleCookie
+
+    origin = os.environ["GAMMA_ORIGIN"]
+    secret = os.environ["GAMMA_SESSION_SECRET"]
+    cookies = SimpleCookie()
+    try:
+        cookies.load("; ".join(event.get("cookies", [])))
+    except CookieError:
+        cookies = SimpleCookie()
+
+    def redirect(location, set_cookies=()):
+        return {"statusCode": 302, "headers": {"location": location, "cache-control": "no-store",
+                "referrer-policy": "no-referrer"}, "cookies": list(set_cookies), "body": ""}
+
+    def cookie(name, value, age):
+        return f"{name}={value}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age={age}"
+
+    path = event.get("rawPath", "")
+    if path == "/auth/feedback":
+        from feedback import handle
+        return handle(event)
+    if event.get("requestContext", {}).get("http", {}).get("method") != "GET":
+        return _response(405, {"error": "method_not_allowed"})
+    if path == "/auth/login":
+        state = secrets.token_hex(32)
+        params = {"openid.ns": "http://specs.openid.net/auth/2.0", "openid.mode": "checkid_setup",
+                  "openid.return_to": origin + "/auth/callback?state=" + state, "openid.realm": origin + "/",
+                  "openid.identity": "http://specs.openid.net/auth/2.0/identifier_select",
+                  "openid.claimed_id": "http://specs.openid.net/auth/2.0/identifier_select"}
+        return redirect(STEAM_OPENID_ENDPOINT + "?" + urllib.parse.urlencode(params),
+                        [cookie("__Host-gamma-state", state, 600)])
+    if path != "/auth/callback":
+        return _response(404, {"error": "not_found"})
+    params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", "")))
+    state = cookies.get("__Host-gamma-state")
+    try:
+        if not state or not re.fullmatch(r"[a-f0-9]{64}", state.value) or not hmac.compare_digest(
+                state.value.encode(), params.get("state", "").encode()):
+            raise IngestError(401, "bad_state", "Start a new gamma sign-in.")
+        if params.get("openid.return_to") != origin + "/auth/callback?state=" + state.value:
+            raise IngestError(401, "bad_openid", "Sign-in was for a different callback.")
+        steam_id = verify_openid(params, [origin])
+        require_allowed_steam_id(steam_id)
+    except IngestError as e:
+        response = _response(e.status, {"error": e.code, "message": e.message})
+        response["headers"]["cache-control"] = "no-store"
+        response["cookies"] = [cookie("__Host-gamma-state", "", 0)]
+        return response
+    payload = steam_id + "." + str(int(time.time()) + 12 * 3600)
+    signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return redirect("/", [cookie("__Host-gamma", payload + "." + signature, 12 * 3600),
+                          cookie("__Host-gamma-state", "", 0)])
 
 
 def process_handler(event, context):
