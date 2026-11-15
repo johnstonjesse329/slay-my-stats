@@ -30,7 +30,8 @@ def handle(event):
     method = event.get("requestContext", {}).get("http", {}).get("method")
     if method not in ("GET", "POST"):
         return reply(405, {"message": "Method not allowed."})
-    if method == "POST" and event.get("headers", {}).get("origin") != os.environ["GAMMA_ORIGIN"]:
+    origin = os.environ["GAMMA_ORIGIN"]
+    if method == "POST" and event.get("headers", {}).get("origin") != origin:
         return reply(403, {"message": "Feedback must be submitted from gamma."})
     import boto3
     store = boto3.client("s3")
@@ -61,9 +62,15 @@ def handle(event):
                     or not isinstance(path, str) or not path.startswith("/") or path.startswith("//") or len(path) > 3000
                     or not isinstance(target, dict) or len(json.dumps(target)) > 12000):
                 raise ValueError()
+            # The exact page URL, so a report can be reopened without guessing the host.
+            # Older clients send only the path; those notes still get one.
+            url = data.get("url") or origin + path
+            if (not isinstance(url, str) or len(url) > 3200
+                    or not (url == origin or url.startswith(origin + "/"))):
+                raise ValueError()
             key = f"feedback/{9999999999 - int(time.time()):010d}-{uuid.uuid4().hex}.json"
             note = {"id": key, "created": int(time.time()), "author": steam,
-                    "comment": comment.strip(), "path": path, "target": target, "resolved": False}
+                    "comment": comment.strip(), "path": path, "url": url, "target": target, "resolved": False}
         else:
             raise ValueError()
     except (ValueError, TypeError, AttributeError):

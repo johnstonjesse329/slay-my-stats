@@ -42,17 +42,32 @@ def main():
             page.goto('https://gamma.slay-my-stats.com/')
             page.get_by_role('button', name='Feedback', exact=True).click()
             page.get_by_role('button', name='Whole page', exact=True).click()
+            assert page.locator('#page-url').inner_text() == 'https://gamma.slay-my-stats.com/'
             page.get_by_label('What should change?').fill('Make this clearer')
             page.get_by_role('button', name='Send feedback').click()
             page.get_by_text('Feedback sent to the shared inbox.').wait_for()
+            assert notes[0]['url'] == 'https://gamma.slay-my-stats.com/', notes[0]
             page.get_by_role('button', name='Inbox', exact=True).click()
+            page.get_by_text('1 latest note · 1 place', exact=True).wait_for()
+            assert page.locator('.bucket').count() == 1
+            assert 'Whole page' in page.locator('.bucket summary').first.inner_text()
+            assert page.locator('.note-url').first.inner_text() == 'https://gamma.slay-my-stats.com/'
             page.get_by_role('button', name='Resolve', exact=True).click()
-            page.get_by_role('button', name='Reopen', exact=True).wait_for()
+            page.get_by_role('button', name='Reopen', exact=True).click()
+            page.get_by_role('button', name='Resolve', exact=True).wait_for()
             page.get_by_role('button', name='Pin to element / region').click()
             heading = page.locator('h1:visible, h2:visible').first
             heading.click()
             page.get_by_text('Pinned element:', exact=False).wait_for()
             page.get_by_label('What should change?').fill('Pinned comment')
+            page.get_by_role('button', name='Send feedback').click()
+            page.get_by_text('1 earlier note here', exact=False).wait_for()
+            assert 'Pinned comment' in page.locator('#prior').inner_text()
+            assert page.locator('#launcher-count').text_content() == '2'
+            page.get_by_role('button', name='Inbox', exact=True).click()
+            page.get_by_text('2 latest notes · 2 places', exact=True).wait_for()
+            assert page.locator('.bucket').count() == 2, page.locator('.bucket summary').all_inner_texts()
+            assert any('Whole page' in text for text in page.locator('.bucket summary').all_inner_texts())
             if name == 'desktop':
                 page.get_by_role('button', name='Pin to element / region').click()
                 page.mouse.move(80, 320)

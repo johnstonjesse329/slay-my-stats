@@ -1,11 +1,19 @@
 # Gamma feedback
 
 After deploying the site and gamma CDK stack, signed-in gamma reviewers see
-**Feedback** in the lower right on every page. Production does not show it.
+**Feedback** in the lower right on every page. Production does not show it. The
+button carries how many notes are open on the page you are looking at.
 
 - Choose **Pin to element / region**, then click an element or drag a rectangle.
 - Choose **Whole page** for a general comment, enter the comment, and send it.
-- **Inbox** shows the latest 200 shared notes, including resolved notes.
+  The composer shows the exact page URL that goes with the note, including its
+  hash and query, so a report can be reopened without guessing the host.
+- The composer lists earlier notes for that same element, region or whole page,
+  with who wrote them and whether they are resolved, so the same point is not
+  raised twice.
+- **Inbox** groups notes into one bucket per whole page and per pinned element or
+  region, newest bucket first, each with its note and open counts. A bucket can be
+  collapsed; that choice lasts for the session.
 - **Open location** opens the original page and highlights the element or saved
   region. Layout changes can invalidate a selector; saved target text and viewport
   dimensions remain available in the copied report.
@@ -13,7 +21,9 @@ After deploying the site and gamma CDK stack, signed-in gamma reviewers see
 - **Copy open notes** copies the loaded unresolved notes, with page URLs, target
   details, author Steam IDs, and timestamps, ready to paste into Codex.
 
-Notes are private JSON objects under `feedback/` in the gamma data bucket. They
+Notes are private JSON objects under `feedback/` in the gamma data bucket. Each
+note stores the page's exact `url` (gamma origin, path, query and hash) next to
+the same-site `path`, which **Open location** uses. They
 are accessed through `/auth/feedback`, not through the public profile behavior.
 The endpoint verifies the existing signed gamma session independently of
 CloudFront, checks the Steam allowlist, and checks Origin on writes. The gamma
