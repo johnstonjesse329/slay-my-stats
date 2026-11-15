@@ -54,3 +54,188 @@ python -m http.server 8765 --bind 127.0.0.1   # then open /power_curve.html
 (`{"names": {id: name}, "picks": {character: [id, start_time]}}`). Pass the
 player's Steam id to `curve(run, steamid)`: in co-op runs it picks whose deck
 is scored.
+
+## Solo act readiness experiment
+
+`act_readiness.py` builds completed-fight checkpoints from a production snapshot in
+`local_data/act_validation/{raw,users,telemetry}`. Held/unpublished runs, non-core
+characters, abandoned runs, other modes and all multiplayer runs are excluded.
+It compares state-only, recent-performance and trend logistic models with whole-run,
+whole-player and chronological holdouts. Encounter references use training data only.
+Outputs are local and ignored by Git: `review.md`, `review.ipynb`, `validation.png`,
+`audit.json`, checkpoint/prediction CSVs and model metrics. No live ratings change.
+
+Install `analysis-requirements.txt` into the repository virtual environment, then run:
+
+```powershell
+infra/.venv/Scripts/python.exe tools/power_curve/act_readiness.py
+infra/.venv/Scripts/python.exe tools/power_curve/summarize_act_readiness.py
+infra/.venv/Scripts/python.exe -m unittest discover -s tools/power_curve -p test_act_readiness.py
+```
+
+`validate_act_targets.py` is the earlier raw-data exploratory screen. Its published
+results are superseded by this experiment's accepted-profile filtering. HP-loss bands
+are hypotheses, not validated readiness thresholds.
+
+`summarize_act_readiness.py` adds paired run-bootstrap uncertainty, per-player and
+difficulty metrics, a hashed snapshot manifest, and standalone `review.html`. The
+bootstrap uses fixed held-out predictions; it does not capture model-refitting or
+new-player population uncertainty.
+
+`act_targets.py` searches fixed turn-count / net-HP-loss / current-HP rules on older
+runs, evaluates them unchanged on later runs, and separately checks the selection
+procedure with each player held out. It writes `targets.html`, a descriptive grid,
+rule results, HP/character/player/elite strata and failure audits under the same
+ignored output folder. Run with the repository Python; validate with
+`python -m unittest discover -s tools/power_curve -p test_act_targets.py`.
+Rules are exploratory and do not modify site ratings.
+
+## Boss-entry experiments
+
+`boss_readiness.py` predicts the next boss and the entire boss sequence separately,
+using the preceding room's HP and only completed earlier fights. Whole-run,
+whole-player and forward-time tests compare context, health, recent performance
+and equal-player-weight variants. `calibrate_boss_readiness.py` fits probability
+corrections with nested training-only predictions. `report_boss_readiness.py`
+writes the current experiment review, paired run-bootstrap comparisons and plots.
+Run those three scripts in order with the repository Python; outputs live in
+`local_data/act_validation/boss/`. The report's narrative describes the November 14
+snapshot and must be reviewed when inputs change. Regression checks:
+`python -m unittest discover -s tools/power_curve -p test_boss_readiness.py`.
+
+The current evidence supports further boss-entry research, not a universal
+90% confidence claim: player transfer and A9/A10 sample coverage remain unresolved.
+
+`boss_player_history.py` compares forward-time performance models with and without
+strictly earlier-run player history. Outputs include failure rates by boss and tier,
+paired error uncertainty, and `boss/history/review.html`. Availability is approximated
+by start + play duration, which omits pauses and does not reconstruct upload time;
+this is retrospective evidence only. `test_boss_player_history.py` checks same-run,
+future-run and unfinished-history exclusion and explicit cold starts.
+`audit_boss_strata.py` checks performance gains within HP, act, difficulty and boss
+strata, with paired whole-run bootstrap intervals from fixed held-out predictions.
+
+`boss_healing_sensitivity.py` explicitly tests cumulative Weary Traveler at A2+,
+observed act-entry HP and removal of current HP. It writes `boss/healing/` outputs.
+Tests: `test_boss_healing_sensitivity.py`. A0–7 enemy equivalence does not mean
+equal player resources; inherited missing HP must not be labeled current-act
+deck weakness. Current HP remains an input to survival probability.
+
+`path_to_boss.py` models boss arrival, clearance conditional on arrival, their
+product and direct sequence clearance at fixed completed-fight checkpoints 3/6.
+No future boss identity or entry HP enters checkpoint predictors. It writes
+`local_data/act_validation/path_to_boss/`. See `test_path_to_boss.py` for leakage
+and cumulative healing-rule checks and `docs/boss-readiness-evidence.md` for
+proposed instrumentation and prospective confirmation requirements.
+
+`boss_development.py` tests forward-only card-development events before each
+first boss. It does not read final decks/relics or claim a full starter-deck
+reconstruction. Outputs: `boss/development/`. Targeted checks are in
+`test_boss_development.py`; results remain exploratory and do not modify ratings.
+
+`ablate_boss_development.py` reports process, partial composition, cost, full
+and without-upgrade feature variants, plus full-model player/resource-tier
+calibration and paired uncertainty. Outputs: `boss/development/ablation/`.
+It reports exploratory tests rather than selecting a product model from
+repeatedly reused holdouts. Tests: `test_ablate_boss_development.py`.
+
+`audit_boss_telemetry.py` inventories eligible measured fights by player, ascension
+and boss status using the frozen production snapshot. It writes
+`boss/telemetry_audit/`. An inventory count is not a validation of measurement
+accuracy or completeness; truncated flags are retained for subsequent filtering.
+
+## Frozen confirmation harness
+
+`freeze_boss_experiment.py` exports fixed health, performance and acquired-card
+composition candidates as integrity-checked JSON. `freeze`, `score` and `evaluate`
+are local commands. `freeze` never overwrites a destination. Score accepts only
+pre-boss prefix fields; evaluation joins outcomes separately and excludes training
+examples. Default research artifact: `local_data/act_validation/boss/frozen-v1/`.
+Read its README before using it. Caller timestamps are not independently attested;
+a live prediction capture path is still needed for prospective evidence. No live
+logger or production score is deployed by this harness. Checks:
+`python -m unittest discover -s tools/power_curve -p test_freeze_boss_experiment.py`.
+
+`check_new_boss_uploads.py` compares a separate confirmation download with the
+frozen snapshot and applies fixed candidates to newly discovered run IDs. It
+labels pre-freeze uploads as retrospective and flags Fool as unsupported by v1.
+Current audit found the old five-character eligibility filter excluded Fool, a
+core character in the extracted catalog. Earlier results apply only to that
+restricted population; v1 must stay immutable while eligibility is corrected.
+
+`six_character_boss_study.py` corrects eligibility using CharacterPools from
+the extracted catalog and reruns the fixed ablations in a separate output
+folder (`local_data/act_validation/six_character/`). It preserves frozen v1.
+`audit_current_boss_telemetry.py` inventories all accepted solo non-abandoned
+measured runs, including pre-boss deaths; it does not condition on boss arrival.
+Tests: `test_six_character_boss_study.py`. Neither script deploys a score.
+
+`confirm_future_boss_runs.py` evaluates frozen candidates only on runs whose
+start time and S3 upload timestamp both follow the freeze. It reads a separate
+confirmation snapshot and stored S3 metadata; no refitting occurs. It outputs
+`confirmation/future-cohort-evaluation.json` and flags unsupported Fool entries.
+Post-run prefix reconstruction tests the fixed algorithm on future outcomes,
+not actual live capture. Tests: `test_confirm_future_boss_runs.py`.
+
+Confirmation checks accept `--snapshot-root <dated-copy>` to keep experiment
+inputs separate. Reports count new future-started uploads and exclusions
+(multiplayer, modes, abandonment, unsupported/unpublished, missing boss entry)
+so an empty confirmation set is not mistaken for a missing-data error.
+
+`boss_interactions.py` compares fixed shallow regularized boosted-tree models
+with the linear candidate on the existing six-character snapshot. Outputs are
+in `six_character/interactions/`. No hyperparameter search or new uploads are
+used. It tests nonlinear interactions and reports the tradeoff between time
+and whole-player generalization instead of treating the best pooled rate as
+a universally calibrated score.
+
+`checkpoint_interactions.py` evaluates fixed nonlinear and linear models after
+non-boss fights 3/6, including pre-boss deaths after each checkpoint. Composition
+is built from observed prefixes only; no future boss identity or entry HP is
+available. Outputs: `six_character/checkpoint_interactions/`. Regression checks
+are in `test_checkpoint_interactions.py` (future cards/outcomes/final-deck
+isolation, prefix-only acquisitions, pre-boss deaths, A10 two-boss outcome).
+
+`boss_abandonment_sensitivity.py` scores accepted abandoned runs with fixed
+other-player nonlinear models and reports lower/upper clearance bounds without
+claiming abandonment is a loss. `audit_readiness_players.py` reports equal-player
+and pooled selected-group success plus descriptive player-resampling uncertainty.
+These produce `six_character/abandonment/` and `six_character/player_robustness/`.
+The consolidated current-snapshot interpretation is `six_character/decision.html`.
+
+`measured_boss_readiness.py` tests direct measured damage/absorbed-block/HP-cost
+features from prior fights, with exact raw/log encounter sequence agreement and
+HP-flow balance. It omits impossible whole-player validation when only one player
+remains. Outputs: `six_character/measured_mechanics/`. Tests distinguish actual
+removed HP, absorbed vs generated block and enemy damage vs HP cost in
+`test_measured_boss_readiness.py`. This strict cohort is smaller than the log
+inventory; mismatch audits must precede relaxing alignment for extra coverage.
+
+`aligned_measured_readiness.py` admits a locally complete three-fight predecessor
+window before a unique logged boss start, while rejecting ambiguous target
+retries and HP-flow mismatches. Outputs: `six_character/aligned_measurements/`.
+Tests are in `test_aligned_measured_readiness.py`. Final snapshot-level claims
+and unsupported hypotheses are summarized in
+`local_data/act_validation/six_character/snapshot-final-assessment.html`.
+
+## Bounded four-family investigation
+
+Use `bounded_readiness_goal.py`, `report_bounded_readiness.py`,
+`run_bounded_validation.py`, then `audit_bounded_population.py` to reproduce
+the fixed snapshot investigation and its audit. The bounded study compares
+damage/pace, setup/burst safety, defense/endurance and consistency separately
+and combined, with fixed linear/tree models and player/time evaluations.
+Outputs: `local_data/act_validation/six_character/bounded_goal/report.html`.
+The decision contract and completion audit are in
+`docs/act-boss-readiness-instrumentation.md` and
+`docs/act-boss-readiness-completion-audit.md`. No deployed score is produced.
+
+## Retrospective combat explanations
+
+`explain_boss_outcomes.py` builds checked completed-fight resource accounts from
+the existing copied snapshot, with explicit raw-death endpoint fallback, overkill
+and attribution flags. `plot_outcome_explanations.py` adds actual turn profiles.
+Read `docs/retrospective-combat-explanations.md` for the distinction between
+recorded results, comparable-encounter history and unvalidated same-deck replay
+probabilities. Outputs: `six_character/outcome_explanations/review.html`.
+Tests: `test_explain_boss_outcomes.py`. No prediction fitting or deployment.
