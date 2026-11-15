@@ -301,6 +301,8 @@ function renderDetailDeckRelics(run) {
     ${groupsHtml}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
+  // The explorer's relic panels carry their art as deferred data-src.
+  loadDeferredImages(document.getElementById("detail-deck-relics"));
 }
 
 // What the final deck is built around: every archetype of the character's
@@ -430,6 +432,11 @@ function renderDeckLinksHtml(deck, relics, character) {
   };
   const tile = item => {
     const card = item.card || deck.find(c => c.id === item.id);
+    if (!card && item.id.startsWith("RELIC.")) {
+      // No card face, and the lane has the room: show the relic's art and text whole.
+      const relic = buildRelicTooltip(item.id);
+      if (relic) return `<div class="synergy-relic">${relic}</div>`;
+    }
     const data = encodeURIComponent(JSON.stringify(card || { id: item.id }));
     const face = card ? renderCardFace(card.id, card.upgrade || 0, "var(--synergy-card-width)", { props: card.props }) : "";
     return `<button type="button" class="synergy-item${face ? " synergy-item-with-face" : ""}${item.id.startsWith("RELIC.") ? " synergy-item-relic" : ""}" data-synergy-item="${data}" aria-label="Inspect ${escapeHtml(item.name)}"><span class="synergy-item-portrait">${image(item)}</span>${face ? `<span class="synergy-item-face">${face}</span>` : ""}<span class="synergy-item-name">${escapeHtml(item.name)}${card?.upgrade > 0 ? " +" : ""}</span></button>`;

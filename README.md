@@ -15,8 +15,9 @@ find it by searching on the home page.
 its final deck, including any enchantment a card is carrying. Each deck is tagged with what it's built
 around (Exhaust, Poison, Souls...) and the list filters on those tags. The final deck's **Explore
 synergies** section groups its connections by archetype (Strength, Exhaust, Orbs, Osty, Shots...), each
-group showing what feeds a payoff and what it pays off, the reason they connect, and a card or relic to
-open. Each run has its own link (`/u/<name>#detail/<run timestamp>`, the address
+group showing what feeds a payoff and what it pays off and the reason they connect. Cards open on tap;
+relics show their art and rules text in place, since there is room beside the cards. Each run has its own
+link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 
 ![Runs tab showing a run's final deck](images/site-run-detail.png)

@@ -1921,6 +1921,10 @@ h1 {
 .synergy-lane-label { color: #b9def5; font-size: var(--fs-md); font-weight: 700; line-height: 1.5; margin-bottom: 10px; }
 .synergy-flow > div:last-child .synergy-lane-label { color: #efd6a0; }
 .synergy-items { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.synergy-relic { width: min(100%, 360px); }
+.synergy-relic > .relic-tooltip { display: block; position: static; width: 100%; }
+.synergy-relic .rt-art { height: 150px; }
+.synergy-items > .synergy-relic { grid-column: 1 / -1; }
 .synergy-item { display: flex; align-items: center; gap: 5px; text-align: left; max-width: 100%; border: 1px solid var(--panel-border); border-radius: 5px; background: rgba(255,255,255,.04); color: var(--text); padding: 3px 6px 3px 3px; cursor: pointer; font: inherit; font-size: var(--fs-sm); line-height: 1.4; }
 .synergy-item-portrait { display: flex; flex-shrink: 0; }
 .synergy-item-face { display: block; }

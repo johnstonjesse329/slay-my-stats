@@ -44,23 +44,30 @@ def main():
                 assert aim.locator('.synergy-items').first.evaluate("el => getComputedStyle(el).gridTemplateColumns.split(' ').length === 3")
                 assert synergy_face.bounding_box()['width'] <= deck_face.bounding_box()['width'] + 1
             assert synergy_face.get_attribute('src') == deck_face.get_attribute('src')
-            for role in ("Song Bow", "Heavy Shot"):
-                item = aim.get_by_role("button", name="Inspect " + role, exact=True)
-                if not device.get("has_touch"):
-                    item.hover()
-                    tooltip = page.locator(".chart-tooltip-rich")
-                    assert tooltip.is_visible()
-                    assert tooltip.evaluate("el => getComputedStyle(el).opacity === '1'")
-                    assert tooltip.locator("img").count() > 0
-                item.click()
-                dialog = page.get_by_role("dialog")
-                assert dialog.is_visible()
-                assert dialog.locator("img").count() > 0
-                page.keyboard.press("Tab")
-                assert page.get_by_role("button", name="Close preview").evaluate("el => el === document.activeElement")
-                page.keyboard.press("Escape")
-                assert page.get_by_role("dialog").count() == 0
-                assert item.evaluate("el => el === document.activeElement")
+            item = aim.get_by_role("button", name="Inspect Heavy Shot", exact=True)
+            if not device.get("has_touch"):
+                item.hover()
+                tooltip = page.locator(".chart-tooltip-rich")
+                assert tooltip.is_visible()
+                assert tooltip.evaluate("el => getComputedStyle(el).opacity === '1'")
+                assert tooltip.locator("img").count() > 0
+            item.click()
+            dialog = page.get_by_role("dialog")
+            assert dialog.is_visible()
+            assert dialog.locator("img").count() > 0
+            page.keyboard.press("Tab")
+            assert page.get_by_role("button", name="Close preview").evaluate("el => el === document.activeElement")
+            page.keyboard.press("Escape")
+            assert page.get_by_role("dialog").count() == 0
+            assert item.evaluate("el => el === document.activeElement")
+            # Relics are shown whole: art, name and rules text inline, not a tile to open.
+            relic = aim.locator(".synergy-relic").first
+            assert relic.is_visible()
+            assert "Song Bow" in relic.inner_text()
+            assert relic.locator(".rt-desc").inner_text().strip()
+            assert relic.locator("img").count() == 1
+            assert relic.locator("img").evaluate("el => el.getAttribute('src')")
+            assert aim.get_by_role("button", name="Inspect Song Bow", exact=True).count() == 0
             sadness = page.locator(".synergy-archetype").filter(has=page.locator(".synergy-group-title", has_text="Sadness"))
             sadness.locator(":scope > summary").click()
             assert page.locator(".synergy-archetype[open]").count() == 2
@@ -111,7 +118,7 @@ def main():
             page.wait_for_function("Array.from(document.querySelectorAll('.synergy-explorer img')).every(img => img.complete && img.naturalWidth > 0)")
             page.locator(".synergy-archetype").first.screenshot(path=str(ROOT / f"local_data/synergy-orbs-{name}.png"), scale="css")
             assert not errors, errors
-            print(f"{name}: groups, card/relic inspection, keyboard, overflow, and all six characters passed.")
+            print(f"{name}: groups, card preview, inline relics, overflow, and all six characters passed.")
             page.close()
             browser.close()
 
