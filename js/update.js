@@ -3,7 +3,12 @@
 // -------------------------------------------------------------------------
 
 function updateAll() {
-  const filteredRuns = filterRuns();
+  const filteredRuns = overviewRuns();
+  const counts = new Map(ALL_MODES.map(mode => [mode, 0]));
+  DATA.runsData.forEach(run => counts.set(runModeOf(run), (counts.get(runModeOf(run)) || 0) + 1));
+  document.getElementById("overview-history-summary").textContent =
+    `${DATA.runsData.length} runs uploaded · ` + [...counts].filter(([, n]) => n)
+      .map(([mode, n]) => `${n} ${MODE_LABELS[mode] || mode}`).join(" · ");
 
   const { pivot, grand, charStats } = aggregateRuns(filteredRuns);
 
@@ -68,12 +73,12 @@ let sharedAscGranular  = false;
 // column: the ASC_BUCKETS ranges by default, or each checked level when
 // granular. Tables key their buckets by ascColumnKey(run.asc) to match.
 function ascColumns() {
-  if (!sharedAscGranular) return ASC_BUCKETS;
+  if (currentPage === "overview" || !sharedAscGranular) return ASC_BUCKETS;
   return [...sharedActiveAscs].sort((a, b) => a - b).map(a => ({ key: a, label: ascLabel(a), ascs: [a] }));
 }
 
 function ascColumnKey(asc) {
-  return sharedAscGranular ? asc : ASC_BUCKETS.find(b => b.ascs.includes(asc))?.key;
+  return currentPage !== "overview" && sharedAscGranular ? asc : ASC_BUCKETS.find(b => b.ascs.includes(asc))?.key;
 }
 let sharedActiveBuilds = new Set(DATA.builds);
 // "all" | "solo" | "multi", and the ticked game modes (see modeShowsRun).
@@ -103,8 +108,9 @@ let sharedTsTo         = TS_NO_UPPER_BOUND;
 // default wiring can possibly call that chain, not just before the
 // buttons that visibly use them render.
 const SHARED_FILTER_STORAGE_KEY = "sts2_filter_prefs";
+let sharedFiltersLoaded = false;
 const SHARED_FILTER_HARDCODED_DEFAULTS = {
-  char: "ALL", ascGranular: false, builds: [...DATA.builds],
+  char: "ALL", ascGranular: false, allBuilds: true, builds: [...DATA.builds],
   players: "all", modes: ["standard", "dread"], mods: "all", tsFrom: 0, tsTo: TS_NO_UPPER_BOUND,
 };
 
@@ -153,8 +159,14 @@ function runPassesFilters(run, fromOther = false) {
   return modeShowsRun(sharedActivePlayers, sharedActiveModes, run) && modsShowRun(sharedActiveMods, run);
 }
 
+function overviewRuns() {
+  return DATA.runsData.filter(run => ["standard", "dread"].includes(runModeOf(run)));
+}
+
 function filterRuns() {
-  return DATA.runsData.filter(run => runPassesFilters(run));
+  // Overview is a fixed history summary. Shared selections belong only to
+  // Runs, Cards and Seeds and remain intact when passing through Overview.
+  return currentPage === "overview" ? overviewRuns() : DATA.runsData.filter(run => runPassesFilters(run));
 }
 
 function filteredRunTsSet() {

@@ -1755,7 +1755,8 @@ function makeMarkPlugin(marks, totals, colors) {
               img.naturalWidth * s, img.naturalHeight * s);
             ctx.restore();
           } else if (img) {
-            img.addEventListener("load", () => chart.draw(), { once: true });
+            // Switching filters can destroy this chart before its art loads.
+            img.addEventListener("load", () => { if (chart.ctx) chart.draw(); }, { once: true });
           }
           ctx.beginPath();
           ctx.arc(cx, cy, r - 1.25, 0, Math.PI * 2);

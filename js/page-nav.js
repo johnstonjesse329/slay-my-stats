@@ -43,6 +43,12 @@ function rerenderCurrentPage() {
   // already finished its initial top-to-bottom run, so this is safe.
   if (typeof updateUnsavedIndicator === "function") updateUnsavedIndicator();
   updateFilterSummary();
+  // Keep an opened/copied filter link accurate as its controls change.
+  if (sharedFiltersLoaded && new URL(location.href).searchParams.has("filters")) {
+    const url = new URL(location.href);
+    url.searchParams.set("filters", JSON.stringify(currentSharedFilterState()));
+    history.replaceState(null, "", url);
+  }
 }
 
 // The one-line summary the filter rows collapse behind (.filter-summary in
@@ -68,10 +74,30 @@ function updateFilterSummary() {
     modes.length ? modes.join(", ") : "No modes",
     ...(sharedActiveMods !== "all" ? [sharedActiveMods === "modded" ? "Modded" : "Unmodded"] : []),
     asc,
-    sharedBuildSummary(),
+    sharedActiveBuilds.size === 1 ? [...sharedActiveBuilds][0] : sharedBuildSummary(),
     date,
   ];
-  document.querySelector("#shared-filter-summary .filter-summary-text").textContent = parts.join(" · ");
+  const locked = currentPage === "overview";
+  const visible = DATA.runsData.filter(run => runPassesFilters(run)).length;
+  const isDefault = sharedFilterStateEquals(currentSharedFilterState(), SHARED_FILTER_HARDCODED_DEFAULTS);
+  const active = !locked && !isDefault;
+  const bar = document.getElementById("shared-filter-bar");
+  if (sharedFiltersLoaded) syncFilterPresetSelection();
+  bar.classList.toggle("filters-locked", locked);
+  bar.classList.toggle("filters-active", active);
+  bar.querySelectorAll(".filter-row button, .filter-row input, .filter-row select").forEach(control => {
+    control.disabled = locked || (control.id === "shared-filter-preset-delete"
+      && !document.getElementById("shared-filter-presets").value.startsWith("preset:"));
+  });
+  document.querySelector("#shared-filter-summary .filter-label").textContent =
+    locked ? "Filters locked" : active ? "Filters applied" : "Default filters applied";
+  const summary = locked
+    ? "Overview · Full history · Standard + Dread"
+    : `${visible} of ${DATA.runsData.length} runs · ${parts.join(" · ")}`;
+  const summaryText = document.querySelector("#shared-filter-summary .filter-summary-text");
+  summaryText.textContent = summary;
+  summaryText.title = summary;
+
 }
 
 document.getElementById("shared-filter-summary").addEventListener("click", e => {
@@ -114,6 +140,7 @@ function showPage(page) {
     pageDirty[page] = false;
   }
   location.hash = pageHash(page);
+  updateFilterSummary();
 }
 
 // Jump to a specific run in Run Detail from anywhere else in the app
@@ -474,8 +501,7 @@ document.getElementById("shared-date-alltime").addEventListener("click", () => {
 // that can survive a reload/regeneration — keyed to the browser, not the
 // file content. "Save as default" snapshots the 5 shared filter values;
 // "Reset filters" reverts the live filters to the hardcoded defaults,
-// never to "whatever was last saved", but leaves the snapshot alone until
-// the user saves over it.
+// and clears the saved snapshot so the reset survives reloads and profile changes.
 
 function currentSharedFilterState() {
   return {
@@ -487,6 +513,7 @@ function currentSharedFilterState() {
     ascGranular: sharedAscGranular,
     ...(sharedAscGranular && { ascs: [...sharedActiveAscs] }),
     builds: [...sharedActiveBuilds],
+    allBuilds: sharedActiveBuilds.size === DATA.builds.length,
     players: sharedActivePlayers,
     modes:  [...sharedActiveModes],
     mods:   sharedActiveMods,
@@ -530,17 +557,14 @@ function charIsLocked(page) {
 // the URL hash isn't resolved into the real landing page until the very
 // end of the script, after this runs.
 function applySharedFilterState(state, targetPage = currentPage) {
+  state = normalizeSharedFilterState(state);
   lastUnlockedChar = state.char;
   if (!charIsLocked(targetPage)) {
     sharedActiveChar = state.char;
     updateSharedCharBtns();
   }
 
-  // Builds are filtered against DATA.builds so a saved preference that
-  // references an older export's build strings doesn't silently leave
-  // every run excluded if this dashboard was regenerated against a
-  // different set of builds since the preference was saved.
-  const validBuilds = state.builds.filter(b => DATA.builds.includes(b));
+  const validBuilds = savedBuilds(state);
   const asc = savedAscState(state);
   sharedAscGranular = asc.granular;
   sharedActiveAscs  = new Set(asc.ascs);
@@ -581,13 +605,125 @@ document.getElementById("shared-filters-save").addEventListener("click", e => {
 });
 
 document.getElementById("shared-filters-reset").addEventListener("click", () => {
-  // Only the live filters reset; the saved default stays until Save is
-  // clicked, so a misclick is undone by reloading.
+  localStorage.removeItem(SHARED_FILTER_STORAGE_KEY);
+  document.getElementById("shared-filter-presets").value = "default";
+  document.getElementById("shared-filter-preset-name").value = "";
+  const url = new URL(location.href);
+  url.searchParams.delete("filters");
+  history.replaceState(null, "", url);
   applySharedFilterState(SHARED_FILTER_HARDCODED_DEFAULTS);
   rerenderCurrentPage();
-  showFilterStatus("Reset — Save as default to keep it");
+  showFilterStatus("Filters reset — saved default cleared");
   updateUnsavedIndicator();
 });
+
+// "All builds" stays all when a new patch appears. A selection from another
+// profile with no matching builds falls back to all; an intentional empty
+// selection stays empty. Legacy saves still carry an explicit builds array.
+function savedBuilds(state) {
+  if (state.allBuilds || !Array.isArray(state.builds)) return [...DATA.builds];
+  const valid = state.builds.filter(b => DATA.builds.includes(b));
+  return state.builds.length && !valid.length ? [...DATA.builds] : valid;
+}
+
+// Links and browser storage are untrusted input. Keep valid selections, and
+// fill missing/invalid fields with defaults before they reach the controls.
+function normalizeSharedFilterState(state) {
+  if (!state || typeof state !== "object" || Array.isArray(state)) throw new Error("Invalid filters");
+  const base = SHARED_FILTER_HARDCODED_DEFAULTS;
+  const mode = savedModeState(state);
+  const result = { ...base, ...state,
+    char: state.char === "ALL" || DATA.characters.includes(state.char) ? state.char : "ALL",
+    builds: Array.isArray(state.builds) ? state.builds.filter(b => typeof b === "string").slice(0, 240) : [...DATA.builds],
+    allBuilds: state.allBuilds === true || !Array.isArray(state.builds),
+    players: ["all", "solo", "multi"].includes(mode.players) ? mode.players : "all",
+    modes: Array.isArray(mode.modes) ? mode.modes.filter(m => ALL_MODES.includes(m)) : [...base.modes],
+    mods: ["all", "vanilla", "modded"].includes(state.mods) ? state.mods : "all",
+    tsFrom: Number.isSafeInteger(state.tsFrom) && state.tsFrom >= 0 ? state.tsFrom : base.tsFrom,
+    tsTo: Number.isSafeInteger(state.tsTo) && state.tsTo >= 0 ? state.tsTo : base.tsTo,
+  };
+  // Preserve legacy granular saves while preventing malformed flags/lists.
+  if (typeof state.ascGranular !== "boolean") delete result.ascGranular;
+  if (!Array.isArray(state.ascs)) delete result.ascs;
+  return result;
+}
+
+const FILTER_PRESETS_KEY = "sts2_filter_presets";
+function readFilterPresets() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTER_PRESETS_KEY) || "[]");
+    return Array.isArray(saved) ? saved.filter(p => p && typeof p.name === "string" && p.state).slice(0, 50) : [];
+  } catch { return []; }
+}
+function refreshFilterPresets(selected = "") {
+  const select = document.getElementById("shared-filter-presets");
+  select.replaceChildren(new Option("Default", "default"), new Option("Choose a preset", ""));
+  select.options[1].disabled = true;
+  select.options[1].hidden = true;
+  readFilterPresets().forEach(p => select.add(new Option(p.name, `preset:${p.name}`)));
+  if (selected) select.value = `preset:${selected}`;
+  syncFilterPresetSelection();
+}
+function syncFilterPresetSelection() {
+  const select = document.getElementById("shared-filter-presets");
+  const state = currentSharedFilterState();
+  const matches = readFilterPresets().filter(p => {
+    try { return sharedFilterStateEquals(state, normalizeSharedFilterState(p.state)); }
+    catch { return false; }
+  });
+  select.value = matches.find(p => select.value === `preset:${p.name}`) ? select.value
+    : sharedFilterStateEquals(state, SHARED_FILTER_HARDCODED_DEFAULTS) ? "default"
+    : matches.length ? `preset:${matches[0].name}` : "";
+  document.getElementById("shared-filter-preset-delete").disabled = currentPage === "overview" || !select.value.startsWith("preset:");
+}
+document.getElementById("shared-filter-preset-save").addEventListener("click", () => {
+  const input = document.getElementById("shared-filter-preset-name");
+  const name = input.value.trim().slice(0, 60);
+  if (!name) { input.focus(); showFilterStatus("Enter a name for these filters"); return; }
+  const presets = readFilterPresets().filter(p => p.name !== name);
+  if (presets.length >= 50) { showFilterStatus("Delete a preset before saving another"); return; }
+  presets.push({ name, state: currentSharedFilterState() });
+  try { localStorage.setItem(FILTER_PRESETS_KEY, JSON.stringify(presets)); }
+  catch { showFilterStatus("Browser storage is unavailable"); return; }
+  refreshFilterPresets(name);
+  input.value = "";
+  showFilterStatus("Filter preset saved in this browser");
+});
+document.getElementById("shared-filter-presets").addEventListener("change", e => {
+  if (e.target.value === "default") { document.getElementById("shared-filters-reset").click(); return; }
+  const preset = readFilterPresets().find(p => `preset:${p.name}` === e.target.value);
+  if (!preset) return;
+  try {
+    applySharedFilterState(preset.state);
+    rerenderCurrentPage();
+    refreshFilterPresets(preset.name);
+    document.getElementById("shared-filter-preset-name").value = preset.name;
+    showFilterStatus("Preset applied");
+  } catch { showFilterStatus("This preset could not be loaded"); }
+});
+document.getElementById("shared-filter-preset-delete").addEventListener("click", () => {
+  const selected = document.getElementById("shared-filter-presets").value;
+  if (!selected.startsWith("preset:")) return;
+  const name = selected.slice("preset:".length);
+  try { localStorage.setItem(FILTER_PRESETS_KEY, JSON.stringify(readFilterPresets().filter(p => p.name !== name))); }
+  catch { showFilterStatus("Could not delete preset — browser storage is unavailable"); return; }
+  document.getElementById("shared-filter-preset-name").value = "";
+  refreshFilterPresets();
+  showFilterStatus("Preset deleted");
+});
+window.addEventListener("storage", e => {
+  if (e.key === FILTER_PRESETS_KEY || e.key === null) refreshFilterPresets();
+});
+document.getElementById("shared-filter-copy-link").addEventListener("click", async () => {
+  const url = new URL(location.href);
+  url.searchParams.set("filters", JSON.stringify(currentSharedFilterState()));
+  try {
+    await navigator.clipboard.writeText(url.href);
+    history.replaceState(null, "", url);
+    showFilterStatus("Link with filters copied");
+  } catch { showFilterStatus("Could not copy the link — clipboard access was blocked"); }
+});
+refreshFilterPresets();
 
 // A save only carries ascension picks when granular view was on; otherwise every
 // level is included. Saves from before granular view existed have no ascGranular and
@@ -617,13 +753,14 @@ function sameModeState(a, b) {
 }
 
 function sharedFilterStateEquals(a, b) {
+  const aBuilds = savedBuilds(a), bBuilds = savedBuilds(b);
   return a.char === b.char
     && sameModeState(savedModeState(a), savedModeState(b))
     && (a.mods ?? "all") === (b.mods ?? "all")
     && sameAscState(savedAscState(a), savedAscState(b))
     && a.tsFrom === b.tsFrom
     && a.tsTo === b.tsTo
-    && a.builds.length === b.builds.length && [...a.builds].sort().join(",") === [...b.builds].sort().join(",");
+    && aBuilds.length === bBuilds.length && aBuilds.sort().join(",") === bBuilds.sort().join(",");
 }
 
 function sharedFilterBaseline() {
@@ -647,6 +784,18 @@ function updateUnsavedIndicator() {
 // Apply any saved preference on load, after every control above has
 // finished wiring up its default state and event listeners.
 (function loadSavedSharedFilters() {
+  const { page } = parsePageHash();
+  const targetPage = PAGES.includes(page) ? page : "overview";
+  const linked = new URL(location.href).searchParams.get("filters");
+  if (linked) {
+    try {
+      if (linked.length > 16000) throw new Error("Filter link too long");
+      applySharedFilterState(JSON.parse(linked), targetPage);
+      updateUnsavedIndicator();
+      showFilterStatus("Filters loaded from link");
+      return;
+    } catch { showFilterStatus("Invalid filter link — using your defaults"); }
+  }
   const raw = localStorage.getItem(SHARED_FILTER_STORAGE_KEY);
   if (raw) {
     try {
@@ -660,9 +809,12 @@ function updateUnsavedIndicator() {
       const { page } = parsePageHash();
       const targetPage = PAGES.includes(page) ? page : "overview";
       applySharedFilterState(JSON.parse(raw), targetPage);
-    } catch {
+    } catch (error) {
+      console.warn("Could not restore saved filters:", error.message);
       localStorage.removeItem(SHARED_FILTER_STORAGE_KEY);
     }
   }
   updateUnsavedIndicator();
 })();
+sharedFiltersLoaded = true;
+syncFilterPresetSelection();

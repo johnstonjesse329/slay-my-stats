@@ -184,7 +184,7 @@ function renderPersonalBests() {
     // The ascension tiers the other tables split by (ascColumns).
     ...ascColumns().map(col => [col.label, (b, c) => tierBar(b.tiers[col.key], c), "pb-tier"]),
     // Dread, the pinnacle past A10, keeps its row wherever its runs could show, runs or not.
-    ...(sharedActiveModes.has("dread") ? [["Dread", (b, c) => tierBar(b.tiers.dread, c), "pb-tier pb-tier-dread"]] : []),
+    ...(currentPage === "overview" || sharedActiveModes.has("dread") ? [["Dread", (b, c) => tierBar(b.tiers.dread, c), "pb-tier pb-tier-dread"]] : []),
     ["Runs",              b => b.gamesPlayed],
     ["Final boss deaths", b => pct(b.finalBossDeaths, b.gamesPlayed)],
     ["Elite deaths",      b => pct(b.eliteDeaths, b.gamesPlayed)],
@@ -432,11 +432,11 @@ function renderAscTracker() {
     grid.insertBefore(chart, grid.children[1] || null);
   }
   chart.className = "chart-box";
-  chart.innerHTML = `<h2>Run readings by character</h2><p class="chart-caption">Share of filtered runs compared with the shared winning-run baseline. Dread and runs without enough data are unrated.</p><div class="asc-readings-legend"><span class="asc-reading-rough">Rough</span><span class="asc-reading-mid">Mid</span><span class="asc-reading-hype">Hype</span><span class="asc-reading-op">OP</span><span class="asc-reading-unrated">Unrated</span></div><div class="asc-readings-chart-rows"></div>`;
+  chart.innerHTML = `<h2>Run readings by character</h2><p class="chart-caption">All Standard and Dread runs compared with the shared winning-run baseline. Dread and runs without enough data are unrated.</p><div class="asc-readings-legend"><span class="asc-reading-rough">Rough</span><span class="asc-reading-mid">Mid</span><span class="asc-reading-hype">Hype</span><span class="asc-reading-op">OP</span><span class="asc-reading-unrated">Unrated</span></div><div class="asc-readings-chart-rows"></div>`;
   // Run reading constants are initialized later in the bundle on first load.
   setTimeout(() => {
     if (!chart.isConnected) return;
-    const filtered = filterRuns();
+    const filtered = overviewRuns();
     chart.querySelector(".asc-readings-chart-rows").innerHTML = DATA.characters.map(char => {
       const runs = filtered.filter(run => run.char === char);
       if (!runs.length) return "";

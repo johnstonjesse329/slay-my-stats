@@ -1370,6 +1370,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <span class="filter-summary-text"></span>
     <span class="filter-summary-caret" aria-hidden="true">▾</span>
   </button>
+  <p class="filter-lock-note">Overview always shows the full history. These saved selections are preserved for Runs, Cards and Seeds.</p>
+
   <div class="filter-row">
     <div class="filter-group">
       <span class="filter-label">Character</span>
@@ -1426,11 +1428,22 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <button class="toggle-btn" id="shared-date-today">Today</button>
       <button class="toggle-btn" id="shared-date-alltime">All time</button>
     </div>
-    <div class="filter-group">
-      <button class="toggle-btn" id="shared-filters-save" title="Remember the current filters and use them as the default next time you open this dashboard">Save as default</button>
-      <button class="toggle-btn" id="shared-filters-reset" title="Revert to the built-in filters. Your saved default is kept unless you click Save as default">Reset filters</button>
-      <span id="shared-filters-unsaved" title="You've changed filters since your last save — click Save as default to keep them" style="display:none;align-items:center;justify-content:center;width:1.15rem;height:1.15rem;margin-left:0.4rem;border-radius:50%;background:#e0c468;color:#13132a;font-size:0.75rem;font-weight:700;cursor:default;user-select:none">!</span>
-      <span id="shared-filters-status" style="color:var(--text-dim);font-size:0.8rem;margin-left:0.4rem"></span>
+
+  </div>
+  <div class="filter-row filter-preset-toolbar">
+    <div class="filter-group filter-presets">
+      <label for="shared-filter-presets">Filter set</label>
+      <select id="shared-filter-presets" aria-label="Current filter set"></select>
+      <button type="button" class="toggle-btn" id="shared-filter-preset-delete" disabled>Delete preset</button>
+      <input type="text" id="shared-filter-preset-name" maxlength="60" aria-label="Filter preset name" placeholder="Name this filter set">
+      <button type="button" class="toggle-btn" id="shared-filter-preset-save">Save preset</button>
+    </div>
+    <div class="filter-group filter-actions">
+      <button class="toggle-btn" id="shared-filters-save" title="Remember the current filters as your default in this browser">Save as default</button>
+      <button type="button" class="toggle-btn" id="shared-filter-copy-link">Copy filter link</button>
+      <button class="toggle-btn" id="shared-filters-reset" title="Restore built-in filters and clear your saved default in this browser">Reset filters</button>
+      <span id="shared-filters-unsaved" title="You've changed filters since your last save — click Save as default to keep them" hidden>!</span>
+      <span id="shared-filters-status" role="status"></span>
     </div>
   </div>
 </nav>
@@ -1438,6 +1451,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <main id="main-content">
 <div id="page-overview">
+<p id="overview-history-summary"></p>
+<p class="chart-caption">Full history across all characters, builds, dates, mods and party sizes. Statistics and charts cover Standard and Dread runs; Daily, Custom and Blitz runs are counted separately above. Filters apply only to Runs, Cards and Seeds.</p>
 <div class="cards" id="summary-cards"></div>
 <div class="grid-1">
   <div class="chart-box">

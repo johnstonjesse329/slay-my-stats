@@ -166,6 +166,10 @@ h1 {
    leads with each character's win rate, its tiers as bars, then one short
    figure per cell; counts are on hover. */
 #personal-bests-cards { margin-bottom: 2rem; }
+.filter-presets { flex-wrap: wrap; }
+.filter-presets select, .filter-presets input { min-width: 0; max-width: 100%; padding: 0.4rem 0.6rem; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 4px; font: inherit; font-size: var(--fs-sm); }
+.filter-actions #shared-filters-status { font-size: var(--fs-sm); color: var(--text-dim); margin-left: 0.4rem; }
+.filter-actions #shared-filters-unsaved { align-items: center; justify-content: center; width: 1.15rem; height: 1.15rem; margin-left: 0.4rem; border-radius: 50%; background: var(--gold); color: #13132a; font-size: 0.75rem; font-weight: 700; cursor: default; user-select: none; }
 .pb-table {
   width: 100%; border-collapse: collapse; table-layout: fixed;
   font-variant-numeric: tabular-nums; font-size: var(--fs-md);
@@ -651,6 +655,13 @@ h1 {
 }
 .filter-bar-2row .filter-summary-caret { color: var(--text-dim); transition: transform 0.15s; }
 .filter-bar-2row:not(.expanded) .filter-row { display: none; }
+.filter-bar-2row.filters-active { border-color: var(--gold); box-shadow: inset 3px 0 var(--gold); }
+.filter-bar-2row.filters-active .filter-summary > .filter-label { color: var(--gold); font-weight: 700; }
+.filter-bar-2row.filters-active .filter-summary-text { color: var(--gold); }
+.filter-lock-note { display: none; margin: 0; font-size: var(--fs-sm); color: var(--text-dim); }
+.filters-locked.expanded .filter-lock-note { display: block; }
+.filters-locked .filter-row { opacity: 0.55; }
+.filters-locked .filter-row :disabled { cursor: not-allowed; }
 .filter-bar-2row.expanded .filter-summary {
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--hairline);
