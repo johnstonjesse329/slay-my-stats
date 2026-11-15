@@ -103,7 +103,7 @@ def repo_url(p: Path) -> str:
 # (Strength, Poison, Osty, Shiv, Stars...) go to the site. Winning didn't track
 # links through the broad keys once run length was held fixed, so no score is built.
 BROAD_SYNERGY_KEYS = {"block", "draw", "attacks", "skills", "powers", "generated",
-                      "strike", "exhaust", "discard", "shuffle"}
+                      "strike", "exhaust", "discard", "shuffle", "orbs"}
 
 # Links power_data can't draw, read off the card and relic text instead:
 # key -> (what makes it, what pays off on it). power_data's "exhaust" counts every
@@ -118,24 +118,21 @@ _rx = lambda p: re.compile(re.sub(r"\bN\b", lambda _: _N, p)) if p else None  # 
 TEXT_SYNERGY = {k: (_rx(m), _rx(u)) for k, (m, u) in {
     "exhaust": (r"(?<!you )\bExhaust (?!Pile)[\w{]",
                 r"is Exhausted|you Exhaust|Exhausted a card|card Exhausted this combat|"
-                r"(cards? in your|more cards in your) Exhaust Pile"),
+                r"(cards? in your|more cards in your|this is in your) Exhaust Pile"),
     "souls":   (r"\b([Aa]dd|[Tt]ransform)\b[^.]*\b[Ss]ouls?\b",
                 r"(play|create) a Soul|Soul in your Exhaust Pile"),
     "HP loss": (r"\b[Ll]ose N HP",
                 r"lost HP|[Yy]ou lose HP"),
     # Strength lands on every hit, so attacks that hit more than once pay off on it.
     "power:Strength":   (r"\b[Gg]ain N Strength",
-                         r"for each Strength|you gain Strength each|damage N times|damage twice|hits twice"),
+                         r"for each Strength|you gain Strength each|damage(?: to [^.\n]+)? N times|damage(?: to [^.\n]+)? twice|hits twice"),
     "power:Vulnerable": (None, r"Vulnerable enemies|[Ee]nemies with Vulnerable|Vulnerable and Weak|"
                                r"apply Vulnerable|Vulnerable on the enemy|enemy is Vulnerable"),
     "power:Weak":       (None, r"Weak enemies|[Ee]nemies with Weak|Vulnerable and Weak"),
-    "power:Poison":     (None, r"Poison is triggered|Poison triggers|apply Poison|has Poison|Poison on"),
-    "power:Doom":       (None, r"applied Doom|you apply Doom|dies to Doom|much Doom as HP|"
+    "power:Poison":     (r"\bapply N Poison", r"Poison is triggered|Poison triggers|apply Poison|has Poison|Poison on"),
+    "power:Doom":       (r"\bapply N Doom", r"applied Doom|you apply Doom|dies to Doom|much Doom as HP|"
                                r"enemy's Doom|Doom already"),
     "osty":    (None, r"Osty's|Osty attacks|If Osty is alive"),
-    "orbs":    (r"(?<!you )\bChannels? ",
-                r"[Gg]ain N Focus|with N Focus|Focus this turn for each|(Gain|additional) Orb Slots?|Evoke|passive|"
-                r"Channeled Orb|unique Orb|Channel N Orbs"),
     "lightning": (r"\bChannels? [^.\n]*\bLightning", r"Lightning deals|Evoke Lightning|all Lightning|Lightning already"),
     "frost":   (r"\bChannels? [^.\n]*\bFrost", r"your Frost|have Frost"),
     "dark":    (r"\bChannels? [^.\n]*\bDark\b", r"Dark Orbs"),
@@ -143,7 +140,7 @@ TEXT_SYNERGY = {k: (_rx(m), _rx(u)) for k, (m, u) in {
     "discard": (r"\b[Dd]iscard (N|your Hand|any number|all cards)",
                 r"\bSly\b|cards? discarded|you discard a card"),
     "ethereal": (r"(^|\n)Ethereal\.|gains Ethereal|Add Ethereal|Ethereal cards? into|gain Ethereal|Ethereal copy",
-                 r"(each|an|the next|ALL) Ethereal card"),
+                 r"(each|an|[Tt]he next|ALL) Ethereal card"),
     "status":  (r"\b(Add|shuffle) (a|N) (Dazed|Wounds?|Burns?|Void|Slimed)\b",
                 r"create a Status|draw a Status|Status cards"),
     "colorless": (r"random Colorless cards? (into|to|and add)", r"Colorless card in your Hand"),
@@ -151,12 +148,107 @@ TEXT_SYNERGY = {k: (_rx(m), _rx(u)) for k, (m, u) in {
     # Stacking the top of the Draw Pile feeds the cards that play it blind.
     "top of Draw Pile": (r"(?<!if this is )on top of your Draw Pile",
                          r"top (N )?cards? of your Draw Pile|if this is on top of your Draw Pile"),
+    "aim": (r"(?:[Gg]ain|with) N Aim", r"(?:^|\n)Shoot an Arrow"),
+    "shots": (r"(?:^|\n)Shoot an Arrow", r"[Ww]henever you Shoot|damage from Shots|next Shot|Arrows deal|cards that Shoot|card that can Shoot"),
+    "impale": (r"(?:^|\n)Shoot an Arrow", r"\bImpaled\b|[Ww]henever you Impale|this Dislodges an Arrow"),
+    "dislodge": (r"(?:^|\n|, )Dislodge\b|this Dislodges an Arrow",
+                  r"(?:Whenever you|time you) Dislodge"),
+    "arrows": (r"Gain N additional Arrow|(?:^|\n|, )Dislodge\b|this Dislodges an Arrow",
+               r"(?:^|\n)Shoot an Arrow|If you have an Arrow"),
+    "sadness": (r"\b[Aa]dd\b[^.\n]*\bSadness\b|Transform this into Sadness",
+                r"create a Sadness|Sadness you have created|Transform[^.\n]*Sadness|Exhaust ALL Sadness"),
+    "stretch": (r"(?:[Gg]ain|with|player) N Stretch|N Vigor and N Stretch|gain Stretch equal|Regain any spent Stretch",
+                r"\bGain N Block|Regain any spent Stretch"),
+    "stars": (r"[Gg]ain\s*(?:N\s*)?✦+", r"(?:spend|spent|gained)[^.\n]*✦|✦ gained"),
+    "creation": (r"\b[Aa]dd\b[^.\n]*(?:into|to) [^.\n]*Hand|Fill your Hand with|Transform [^.\n]*into|create The Shot",
+                 r"[Ww]henever you create a card|card you created|cards? created"),
+    # Block alone is broad; link it only to explicit scaling/retention payoffs.
+    "block scaling": (r"\b[Gg]ain N Block",
+                      r"equal to your Block|Double your Block|Block is not removed|Whenever you gain Block|double the amount gained"),
 }.items()}
+
+
+def extra_synergy(item_id, item, made, need):
+    """Metadata relationships that printed rules text alone cannot identify."""
+    if item_id.startswith("CARD."):
+        if item_id == "CARD.SOVEREIGN_BLADE":
+            need.add("forge")
+        # Song tags are granted by the named card, not by mentioning another song.
+        parts = item_id.removeprefix("CARD.").split("_")
+        for song in ("WAH", "CHO", "KI"):
+            if song in parts:
+                made.add("melodies")
+                made.add(song.lower() + " melody")
+                made.add(song.lower() + " cards")
+        if item.get("type") not in ("Curse", "Status"):
+            if item.get("energy") == 0 and not item.get("costsX"):
+                made.add("zero-cost")
+                if item.get("type") == "Attack":
+                    made.add("zero-cost attacks")
+            if item.get("stars", -1) > 0 or item.get("starsX"):
+                need.add("stars")
+                made.add("star-cost cards")
+    desc = item.get("desc", "")
+    if re.search(r"every Melody|each Melody|Melodies|gain a Melody", desc):
+        need.add("melodies")
+    for song in ("Wah", "Cho", "Ki"):
+        if song + " Melody" in desc:
+            need.add(song.lower() + " melody")
+        if re.search(r'[“"]' + song + r'[”"]', desc):
+            need.add(song.lower() + " cards")
+    if "0⚡ cards" in desc or "0 ⚡ cards" in desc:
+        need.add("zero-cost")
+    if re.search(r"0 ?⚡ Attack", desc):
+        need.add("zero-cost attacks")
+    if re.search(r"(?:cost to 0 ?⚡|0 ?⚡ copy)", desc):
+        made.add("zero-cost")
+        if item.get("type") == "Attack":
+            made.add("zero-cost attacks")
+    if "cards that have a ✦ cost" in desc:
+        need.add("star-cost cards")
+
+
+def orb_synergy(export, item, made, need):
+    """Separate orb types and operations; Plasma never benefits from Focus.
+
+    Generic Orb text used to connect every channel card to every kind of
+    support, including allies' Plasma and unrelated passive effects.
+    """
+    if export.get("multiplayerOnly"):
+        return
+    desc = item.get("desc", "")
+    ops = export.get("orbOps", [])
+    channels = {op.get("orb", "").lower() for op in ops if op.get("op") == "channel"}
+    channels |= {h.get("channel", "").lower() for h in export.get("orbHooks", [])}
+    channels |= made & {"lightning", "frost", "dark"}
+    if re.search(r"\bChannels? [^.\n]*Plasma", desc):
+        channels.add("plasma")
+    focus = bool(_rx(r"(?:[Gg]ain|with) N Focus").search(desc))
+    slots = any(op.get("op") == "slots" for op in ops) or bool(_rx(r"(?:[Gg]ain N|additional) Orb Slots?").search(desc))
+    evoke = any(op.get("op") == "evoke" for op in ops) or bool(re.search(r"(?:^|\n|, )Evoke\b", desc))
+    passive = bool(re.search(r"(?:Trigger|trigger)[^.\n]*passive", desc)) and not re.search(r"Dark Orbs", desc)
+    for orb in ("lightning", "frost", "dark", "plasma"):
+        if orb in channels:
+            made.add(orb + " evoke")
+            made.add(orb + " passive")
+            need.add(orb + " slots")
+            if orb != "plasma":
+                need.add(orb + " focus")
+        if focus and orb != "plasma":
+            made.add(orb + " focus")
+        if slots:
+            made.add(orb + " slots")
+        if evoke:
+            need.add(orb + " evoke")
+        if passive:
+            need.add(orb + " passive")
 
 
 def build_synergy() -> dict | None:
     """
-    {"cards": {id: [produces, consumes]}, "relics": {...}}: what each card or relic
+    {"cards": {id: [produces, consumes]}, "relics": {...}, "cardVariants": {...}}:
+    cards is the union for catalog consumers; cardVariants supplies separate base
+    and upgraded rows for the actual copies in a run. What each card or relic
     makes and what it needs, from tools/extract_power_data.py's power_data.json
     (gitignored, so None when it hasn't been generated). Only the specific keys,
     plus TEXT_SYNERGY's from the card and relic text; curses and statuses are left out,
@@ -172,21 +264,46 @@ def build_synergy() -> dict | None:
         "relics": json.loads((run._HERE / "relic_data.json").read_text(encoding="utf-8")),
     }
     junk = {k for k, c in texts["cards"].items() if c.get("type") in ("Curse", "Status")}
+    from tools.synergy_precision import refine
     out = {}
+    card_variants = {}
     for section in ("cards", "relics"):
         table = {}
         for item_id in set(data.get(section, {})) | set(texts[section]):
             if item_id in junk:
                 continue
             e = data.get(section, {}).get(item_id, {})
-            made = set(e.get("produces", [])) - BROAD_SYNERGY_KEYS
-            need = set(e.get("consumes", [])) - BROAD_SYNERGY_KEYS
-            desc = texts[section].get(item_id, {}).get("desc", "")
-            for key, (makes, uses) in TEXT_SYNERGY.items():
-                if makes and makes.search(desc):
-                    made.add(key)
-                if uses and uses.search(desc):
-                    need.add(key)
+            base_made = set(e.get("produces", [])) - BROAD_SYNERGY_KEYS
+            base_need = set(e.get("consumes", [])) - BROAD_SYNERGY_KEYS
+            if "generated" in e.get("produces", []):
+                base_made.add("creation")
+            if "block" in e.get("produces", []):
+                base_made.add("block scaling")
+            item = texts[section].get(item_id, {})
+            variants = [item]
+            if section == "cards" and item.get("maxUpgradeLevel", 0):
+                variants.append({**item, "desc": item.get("descUpgraded", item.get("desc", "")),
+                                 "energy": item.get("energyUpgraded", item.get("energy")),
+                                 "stars": item.get("starsUpgraded", item.get("stars", -1)),
+                                 "keywords": item.get("keywordsUpgraded", item.get("keywords", []))})
+            made, need = set(), set()
+            rows = []
+            for variant in variants:
+                vm, vn = set(base_made), set(base_need)
+                desc = variant.get("desc", "")
+                for key, (makes, uses) in TEXT_SYNERGY.items():
+                    if makes and makes.search(desc):
+                        vm.add(key)
+                    if uses and uses.search(desc):
+                        vn.add(key)
+                extra_synergy(item_id, variant, vm, vn)
+                orb_synergy(e, variant, vm, vn)
+                refine(item_id, variant, e, vm, vn)
+                rows.append([vm, vn])
+                made |= vm
+                need |= vn
+            if section == "cards":
+                card_variants[item_id] = rows
             table[item_id] = [made, need]
         out[section] = table
     # Most power keys belong to the one card that applies them (Inflame's power:Inflame):
@@ -203,6 +320,8 @@ def build_synergy() -> dict | None:
     for section, table in out.items():
         out[section] = {i: [sorted(m & live), sorted(n & live)]
                         for i, (m, n) in table.items() if (m | n) & live}
+    out["cardVariants"] = {cid: [[sorted(m & live), sorted(n & live)] for m, n in rows]
+                           for cid, rows in card_variants.items() if any((m | n) & live for m, n in rows)}
     return out
 
 
@@ -228,6 +347,8 @@ def build_archetypes() -> dict | None:
     finally:
         sys.path.pop(0)
     rarity = {k: v.get("rarity") for k, v in json.loads((run._HERE / "card_data.json").read_text(encoding="utf-8")).items()}
+    # Newly exported cards can have text signatures before power extraction catches up.
+    ids = dict.fromkeys([*ids, *rarity])
     out = {ch: {name: {"cards": [], "needs": []} for name in sigs} for ch, sigs in arch.SIGS.items()}
     tests = [("cards", ch, name, f) for ch, sigs in arch.SIGS.items() for name, f in sigs.items()]
     tests += [("needs", ch, name, f) for ch, p in arch.PAYOFFS.items() for name, f in p.items()]
@@ -361,6 +482,7 @@ def build_index_html() -> str:
 {shared_scripts}
 <script src="/boot.js"></script>
 <script src="/upload.js"></script>
+<script src="/feedback.js"></script>
 </body>
 </html>"""
 
@@ -394,7 +516,7 @@ def main():
         write("boot.js", _SITE_BOOT_JS.read_text(encoding="utf-8"))
     else:
         print(f"WARNING: {_SITE_BOOT_JS} does not exist yet — dist/boot.js not written.")
-    for name in ("upload.js", "upload.css", "players.css"):
+    for name in ("upload.js", "upload.css", "players.css", "feedback.js"):
         write(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
     for f in SITE_FILES:
         write(f.name, f.read_bytes())
