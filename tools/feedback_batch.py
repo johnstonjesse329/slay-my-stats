@@ -3,6 +3,7 @@
     python tools/feedback_batch.py pull              # open notes -> local_data/feedback/batch.json
     python tools/feedback_batch.py report            # the batch as markdown, grouped by theme
     python tools/feedback_batch.py evidence          # the tl;dr table with screenshots (REPORT.md)
+    python tools/feedback_batch.py review            # per-page checklist: where to look, how to answer
     python tools/feedback_batch.py resolve           # dry run: what approved entries would close
     python tools/feedback_batch.py resolve --apply   # write the resolutions to the bucket
 
@@ -153,6 +154,40 @@ def evidence():
         print(f"| {e['n']} | {e['status']} | {e.get('commit') or '-'} | {tldr} | {shot} |")
 
 
+PREVIEW = "http://localhost:8095/"
+PAGES = [  # (title, hash on the preview, matcher on the note's url hash, what to do there)
+    ("Run detail", "#detail", "detail", "Open any run, then check each item below."),
+    ("Overview", "#overview", "overview", "Scroll the page; use a phone-width window for the phone items."),
+    ("Seeds", "#seeds", "seeds", "Check the rows on a phone-width window."),
+    ("Profile header / whole site", "#overview", "", "Look at the header, the ascension cards, and the Feedback button."),
+]
+
+
+def review():
+    """A checklist per page: where to click, what to look at, and how to answer each item."""
+    entries = _load()["entries"]
+    print("# Review checklist")
+    print()
+    print(f"Start the preview first: `python tools/serve_site.py --port 8095` ({PREVIEW}).")
+    print("Answer per item with `ok`, `change: <what>` or `decline`. Items you skip stay unapproved.")
+    placed = set()
+    for title, hash_, key, todo in PAGES:
+        rows = [e for e in entries if e["n"] not in placed and e["status"] in ("built", "blocked", "audited")
+                and "/u/" in e["url"] and (key == "" or ("#" + key) in e["url"])]
+        if not rows:
+            continue
+        placed.update(e["n"] for e in rows)
+        print(f"\n## {title}\n\n**Open:** {PREVIEW}{hash_}  \n**Do:** {todo}\n")
+        for e in rows:
+            shot = Path(e["evidence"]).name if e.get("evidence") else "none"
+            print(f"- [ ] **#{e['n']}** {e.get('tldr') or e['plan']}  \n"
+                  f"  Reply: `ok {e['n']}` / `change {e['n']}: ...`  · screenshot: `{shot}`")
+    print("\n## Not a page\n")
+    print("- **#24** digest emails: nothing to click until the schedule is deployed. After deploy, "
+          "check Tuesday's email: one message, Steam names. Reply `ok 24` to approve the deploy.")
+    print("- **#21** performance: Lambda Cache-Control is not deployed; reply `ok 21` to approve the deploy.")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "pull":
@@ -161,6 +196,8 @@ if __name__ == "__main__":
         report()
     elif cmd == "evidence":
         evidence()
+    elif cmd == "review":
+        review()
     elif cmd == "resolve":
         resolve("--apply" in sys.argv)
     else:

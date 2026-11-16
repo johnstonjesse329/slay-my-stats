@@ -27,7 +27,10 @@ How a pile of gamma feedback notes becomes verified, evidenced, closed notes.
 5. `python tools/feedback_batch.py evidence > local_data/feedback/evidence/REPORT.md` builds the one-table
    tl;dr list (status, commit, what is now true, screenshot) from the batch file. The orchestrator opens a few screenshots, rejects any without visible proof, and
    re-briefs that item.
-6. The owner reviews locally or on gamma. For approved entries set `status: approved`
+6. `PYTHONUTF8=1 python tools/feedback_batch.py review > local_data/feedback/evidence/REVIEW.md`
+   builds the owner's checklist: per page, where to open the preview, what to look at, the
+   screenshot, and the reply for each item (`ok N` / `change N: ...`).
+7. The owner reviews locally or on gamma. For approved entries set `status: approved`
    and a `close_note`, then `feedback_batch.py resolve` (dry run), then `--apply`.
 
 ## Worker output (what comes back)
