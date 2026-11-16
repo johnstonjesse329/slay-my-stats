@@ -2090,16 +2090,13 @@ const nodeEnemyCount = n => {
   return d ? d.count || (d.many ? 3 : 1) : 1;
 };
 
-// A multi-enemy fight wears one icon per enemy on every floor chart that draws fight icons (HP,
-// damage done, damage taken, keeping up): the marker plus a dimmed copy beside it for each extra
-// enemy, up to three, drawn under the line. Fanned copies behind the marker were lost where floors
-// sit close together; side by side and dimmed they read as a pair. Past three, a "×N" badge under
-// the icon gives the exact count (Kaiser Crab's claws count too when their data says so).
+// A multi-enemy normal or elite fight wears its icon as a depth stack on every floor chart that
+// draws fight icons: the marker in front, full size and opaque, and behind it one copy per extra
+// enemy (up to three), each smaller and fainter and stepped up and to the right, like enemies
+// receding into the distance. Drawn under the line. Bosses keep the single icon.
 function makeManyIconPlugin(nodes) {
   return {
     id: "manyIcons",
-    // Behind the marker: a dimmed copy of the icon beside it for each extra enemy (up to two), so
-    // a pair reads as a pair on its own and the copies are drawn under the line, not into a blob.
     beforeDatasetsDraw(chart) {
       const { ctx, scales: { x, y } } = chart;
       ctx.save();
@@ -2108,40 +2105,16 @@ function makeManyIconPlugin(nodes) {
         ds.pointRadius.forEach((radius, i) => {
           const img = ds.pointStyle && ds.pointStyle[i];
           if (!(radius > 0) || !(img instanceof HTMLImageElement)) return;
-          const count = nodeEnemyCount(nodes[i]);
+          const node = nodes[i];
+          const count = node && node.type !== "boss" ? nodeEnemyCount(node) : 1;
           if (count < 2 || i < x.min || i > x.max) return;
           const cx = x.getPixelForValue(i), cy = y.getPixelForValue(ds.data[i]);
-          const w = img.width || radius * 2, h = img.height || radius * 2;
-          ctx.globalAlpha = 0.9;
-          ctx.filter = "brightness(0.75)";
-          for (let k = Math.min(count, 3) - 1; k >= 1; k--)
-            ctx.drawImage(img, cx + k * radius * 1.15 - w / 2, cy - h / 2, w, h);
-        });
-      });
-      ctx.restore();
-    },
-    afterDatasetsDraw(chart) {
-      const { ctx, scales: { x, y } } = chart;
-      ctx.save();
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      chart.data.datasets.forEach(ds => {
-        if (!Array.isArray(ds.pointRadius)) return;
-        ds.pointRadius.forEach((radius, i) => {
-          const img = ds.pointStyle && ds.pointStyle[i];
-          if (!(radius > 0) || !(img instanceof HTMLImageElement)) return;
-          const count = nodeEnemyCount(nodes[i]);
-          if (count < 4 || i < x.min || i > x.max) return;
-          // "×N" right under the icon, outlined so it reads over the line and the range bar.
-          const label = `×${count}`;
-          const cx = x.getPixelForValue(i), cy = y.getPixelForValue(ds.data[i]) + radius + 9;
-          ctx.font = `700 ${Math.max(10, Math.round(radius * 0.8))}px sans-serif`;
-          ctx.lineJoin = "round";
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = "#14141f";
-          ctx.strokeText(label, cx, cy);
-          ctx.fillStyle = "#fff";
-          ctx.fillText(label, cx, cy);
+          const w0 = img.width || radius * 2, h0 = img.height || radius * 2;
+          for (let k = Math.min(count, 4) - 1; k >= 1; k--) {
+            const sc = 1 - 0.2 * k, w = w0 * sc, h = h0 * sc;
+            ctx.globalAlpha = 1 - 0.25 * k;
+            ctx.drawImage(img, cx + k * radius * 1.0 - w / 2, cy - k * radius * 0.5 - h / 2, w, h);
+          }
         });
       });
       ctx.restore();
