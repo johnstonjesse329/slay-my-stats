@@ -373,7 +373,6 @@ function renderSeeds() {
     : "";
 
   tbody.innerHTML = visibleRows.map((run, i) => {
-    const color = charColor(run);
     const wonDot = `<span style="color:${run.won ? "#e0e0e0" : "var(--text-dim)"}">${run.won ? "Win" : "Loss"}</span>`;
 
     let matchSummary = "";
@@ -396,7 +395,7 @@ function renderSeeds() {
         <span class="seed-expand-arrow" style="color:var(--text-dim);font-size:var(--fs-xs);margin-right:0.4rem">▶</span><span class="seed-id" role="button" tabindex="0" aria-label="Copy seed ${run.seed}" style="cursor:pointer;color:#e0c468" data-tip="Click to copy" data-seed="${run.seed}">${run.seed}</span>
       </td>
       <td style="padding:0.4rem 0.75rem;white-space:nowrap">
-        <span style="color:${color};font-weight:600">${charIconHtml(run.char)}${fmtCharName(run.char)}</span>
+        ${charLabelHtml(run.char)}
       </td>
       <td style="padding:0.4rem 0.75rem;text-align:center">${wonDot}</td>
       <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:var(--text-dim);font-size:var(--fs-sm)">${fmt(run.ts)}</td>

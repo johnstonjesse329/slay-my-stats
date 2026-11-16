@@ -179,7 +179,7 @@ h1 {
 .pb-table thead th:first-child { width: 11rem; }
 .pb-table tbody th { text-align: left; color: var(--text-dim); font-weight: 500; }
 .pb-table td { text-align: center; color: var(--text); font-weight: 500; }
-.pb-char-name, .pb-table thead th.pb-total { font-size: var(--fs-sm); font-weight: 600; }
+.pb-table thead th.pb-total { font-size: var(--fs-sm); font-weight: 600; }
 .pb-char-icon { width: 22px; height: 22px; vertical-align: middle; margin-right: 0.4rem; }
 .pb-table tr.pb-headline td { font-size: 1.6rem; font-weight: 700; padding: 0.6rem 0.5rem 0.3rem; border-bottom: 0; }
 .pb-table tr.pb-headline th { color: var(--text); font-weight: 700; border-bottom: 0; }
@@ -343,7 +343,7 @@ h1 {
   padding: 0.7rem 0.8rem;
   min-width: 0;
 }
-.asc-name { font-size: var(--fs-md); font-weight: 600; color: var(--text); overflow-wrap: anywhere; min-width: 0; }
+.asc-name { overflow-wrap: anywhere; min-width: 0; }
 .asc-char { display: flex; align-items: flex-end; gap: 0.6rem; }
 .asc-portrait { height: 5.5rem; width: auto; flex: none; }
 .asc-mode { margin-top: 0.5rem; }
@@ -398,7 +398,7 @@ h1 {
 .asc-readings-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.75rem 0; font-size: var(--fs-sm); }
 .asc-readings-chart-rows { display: grid; gap: 0.6rem; }
 .asc-readings-row { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; font-size: var(--fs-sm); }
-.asc-readings-char { font-weight: 600; overflow-wrap: anywhere; }
+.asc-readings-char { overflow-wrap: anywhere; }
 .asc-readings-bar { display: flex; height: 1.2rem; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.06); }
 .asc-readings-bar > span { min-width: 2px; }
 .asc-reading-bar-rough { background: #c45d68; } .asc-reading-bar-mid { background: #c79c4b; }
@@ -787,6 +787,10 @@ h1 {
 .char-btn:disabled { color: var(--text-faint); border-color: var(--hairline); cursor: not-allowed; }
 
 /* A character's head, before its name wherever the name is shown. */
+/* A character's name, wherever the site shows one: one size, one weight, the character's color.
+   Only a character's own pane or heading is larger. Build it with charLabelHtml (js/tooltip.js). */
+.char-label { font-size: var(--fs-sm); font-weight: 600; color: var(--char-color, inherit); }
+.char-label-lg { font-size: var(--fs-md); }
 .char-icon { width: 1.15em; height: 1.15em; vertical-align: -0.22em; margin-right: 0.3em; }
 /* On the selected button the head sits on its own colour (the Fool's is nearly the
    same yellow), so give it a thin dark edge to stay readable. */
@@ -1196,7 +1200,6 @@ h1 {
 .detail-run-char.detail-run-sort > span::after { right: auto; left: 100%; padding: 0 0 0 1px; }
 .detail-run-item > :not(:first-child, :empty),
 .detail-run-header-row > :not(:first-child, :empty) { padding-left: 0.5rem; }
-.detail-run-char { font-weight: 600; }
 .detail-run-asc  { font-size: var(--fs-sm); text-align: center; }
 .asc-filter-dread { height: 1.5em; width: auto; vertical-align: middle; margin: -0.3em 0.2em -0.3em 0; }
 .detail-run-dread { height: 1.6em; width: auto; vertical-align: middle; margin: -0.3em 0; }
