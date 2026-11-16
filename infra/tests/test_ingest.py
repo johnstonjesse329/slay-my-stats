@@ -979,7 +979,14 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.assertEqual([n["cardPicked"] for n in run_doc["timeline"]], ["CARD.SNAKEBITE"])
         self.assertEqual(run_doc["timeline"][0]["hpAfter"], 70)
         self.assertEqual(run_doc["timeline"][0]["goldGained"], 100)
+        # The party's characters, in the save's slot order, never their Steam IDs.
+        self.assertEqual(run_doc["party"], ["IRONCLAD", "SILENT"])
 
+    def test_party_is_kept_for_multiplayer_runs_only(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        self.assertNotIn("party", self.store.runs()[0])
+        self.ingest(body_of(multiplayer_run(1700000002)), now=NOW + 120, nonce_suffix="second")
+        self.assertEqual([r["party"] for r in self.store.runs() if "party" in r], [["IRONCLAD", "SILENT"]])
     def test_shop_card_buys_come_from_cards_gained(self):
         # The shelf (card_choices) is all was_picked false; the bought card is
         # in cards_gained -- both cardsOffered (Most bought) and the Run Detail

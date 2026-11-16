@@ -687,7 +687,7 @@ def parse_run(path: Path) -> dict:
 # when each card and relic entered and left, for Run Detail's deck-by-floor charts.
 # v6: timeline nodes name the `fight` behind an event, and `turns` is that fight's,
 # so a fight an event started reads against the winners of the same fight.
-PARSER_VERSION = 6
+PARSER_VERSION = 7
 
 
 def _card_props(card: dict) -> dict:
@@ -994,6 +994,10 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         "defends":       defends,
         "ts":            ts,
         "mp":            len(players) > 1,
+        # Who played, in the save's slot order, so the run list can show their
+        # character heads instead of just "Multi". Characters only: never Steam IDs.
+        **({"party": [strip_prefix(p.get("character", ""), "CHARACTER.") for p in players if p.get("character")]}
+           if len(players) > 1 else {}),
         "mode":          data.get("game_mode", "standard"),
         "build":         data.get("build_id", "UNKNOWN"),
         "seed":          data.get("seed", ""),
@@ -1717,7 +1721,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
         <h3 class="strength-label">Keeping up, fight by fight</h3>
-        <p class="chart-caption">Damage taken and turns on each fight as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">Ticks mark recent deck changes to line up against the fights that followed; hover for the change and the fight's shape (kind, multi-enemy).</span> Breadcrumbs for troubleshooting, not proof.</p>
+        <p class="chart-caption">Damage taken and turns on each fight as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">Ticks mark recent deck changes to line up against the fights that followed; hover for the change, and stacked fight icons mean more than one enemy.</span> Breadcrumbs for troubleshooting, not proof.</p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-share-legend"></div>
         <div id="detail-keep-deck">

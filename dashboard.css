@@ -1090,11 +1090,11 @@ h1 {
   /* minmax(0, ...): a bare 1fr never shrinks below its content, and a drawn
      chart canvas is content, so narrowing the window (or zooming in) left
      the timeline as wide as before, clipped off the right edge. */
-  grid-template-columns: var(--run-list-width, 386px) minmax(0, 1fr);
+  grid-template-columns: var(--run-list-width, 396px) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
-/* 386px fits the widest columns (Necrobinder, A10, Solo/Multi, F48, an OP tag, a two-digit
+/* 396px fits the widest columns (Necrobinder, A10, four party heads, F48, an OP tag, a two-digit
    month and day) beside a scrollbar. A variable, so the phone layout's single
    column still wins. */
 
@@ -1243,7 +1243,11 @@ h1 {
 .detail-run-asc  { font-size: var(--fs-sm); text-align: center; }
 .asc-filter-dread { height: 1.5em; width: auto; vertical-align: middle; margin: -0.3em 0.2em -0.3em 0; }
 .detail-run-dread { height: 1.6em; width: auto; vertical-align: middle; margin: -0.3em 0; }
-.detail-run-players { font-size: var(--fs-sm); text-align: center; white-space: nowrap; }
+/* A party reads as a stack of heads, the way an avatar row does; the ring keeps
+   overlapping ones apart. Four is the most a run can carry. */
+.detail-run-players { display: flex; justify-content: center; align-items: center; white-space: nowrap; }
+.detail-run-players .char-icon { width: 16px; height: 16px; margin-right: 0; border-radius: 50%; object-fit: cover; background: #1b1a26; box-shadow: 0 0 0 1px #191c20; }
+.detail-run-players .char-icon + .char-icon { margin-left: -3px; }
 .detail-run-won  { font-weight: 700; font-size: var(--fs-sm); text-align: center; }
 .detail-run-floor { font-size: var(--fs-sm); text-align: center; }
 .detail-run-read  { text-align: center; }

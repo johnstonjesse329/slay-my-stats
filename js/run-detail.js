@@ -78,7 +78,7 @@ let detailSortAsc = false;
 const DETAIL_SORT_FNS = {
   char:  (a, b) => fmtCharName(a.char).localeCompare(fmtCharName(b.char)),
   asc:   (a, b) => a.asc - b.asc,
-  players: (a, b) => (a.mp ? 1 : 0) - (b.mp ? 1 : 0),
+  players: (a, b) => (a.mp ? (a.party?.length || 2) : 1) - (b.mp ? (b.party?.length || 2) : 1),
   won:   (a, b) => a.won - b.won,
   floor: (a, b) => a.floor - b.floor,
   read:  (a, b) => runReadingRank(a) - runReadingRank(b),
@@ -214,10 +214,14 @@ function renderDetailRunList() {
     const won    = run.won;
     const label  = fmtCharName(run.char);
     const active = run.ts === detailSelectedTs;
+    // A multiplayer run names its party's characters, so show their heads; a solo run is one head.
+    const party = run.mp ? (run.party || []) : [run.char];
+    const partyLabel = run.mp ? (party.length ? `Party: ${party.map(fmtCharName).join(", ")}` : "Multiplayer") : `Solo: ${fmtCharName(run.char)}`;
+    const partyHtml = party.length ? party.slice(0, 4).map(c => charIconHtml(c)).join("") : (run.mp ? "Multi" : "Solo");
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
       <span class="detail-run-char" style="color:${CHAR_COLOR_MAP[run.char] || "#a0a0b8"}">${charIconHtml(run.char)}${label}</span>
       <span class="detail-run-asc" style="color:var(--text-dim)">${run.mode === "dread" ? `<img class="detail-run-dread" src="/ui_icons/dread.png" alt="Dread" data-tip="Dread">` : `A${run.asc}`}</span>
-      <span class="detail-run-players" style="color:${run.mp ? "var(--text)" : "var(--text-dim)"}">${run.mp ? "Multi" : "Solo"}</span>
+      <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}">${partyHtml}</span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
@@ -1511,7 +1515,7 @@ function renderDetailHpChart(run) {
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes)],
+    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes)],
     data: {
       labels,
       datasets: [
@@ -1579,7 +1583,7 @@ function renderDetailGoldChart(run) {
   const ctx = document.getElementById("detail-gold-chart").getContext("2d");
   detailGoldChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes)],
+    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes)],
     data: {
       labels,
       datasets: [{
@@ -2034,10 +2038,48 @@ function markHeadroom(marks, totals, step) {
   };
 }
 
+// More than one enemy in the fight: fight_demand.py's `many`. It only knows "many", not how
+// many, so a chart can show a second icon but never an invented count. Bosses get it too when
+// their data says so (Kaiser Crab's claws).
+const nodeManyEnemies = n => {
+  const enc = n && n.turns ? n.fight || n.enc : "";
+  return !!(enc && DATA.fightDemand && DATA.fightDemand.encounters && DATA.fightDemand.encounters[enc]?.many);
+};
+
+// A multi-enemy fight gets its marker icon fanned into a cluster of three -- two copies behind
+// it, one either side -- so a group reads at a glance on every floor chart that draws fight
+// icons (HP, damage done, damage taken, keeping up). fight_demand.py only knows "many", not how
+// many, so it is a cluster, not a count. Bosses get it too when their data says so (Kaiser
+// Crab's claws). Drawn before the line and the marker, so the marker still pins the exact
+// point.
+function makeManyIconPlugin(nodes) {
+  return {
+    id: "manyIcons",
+    beforeDatasetsDraw(chart) {
+      const { ctx, scales: { x, y } } = chart;
+      ctx.save();
+      chart.data.datasets.forEach(ds => {
+        if (!Array.isArray(ds.pointRadius)) return;
+        ds.pointRadius.forEach((radius, i) => {
+          const img = ds.pointStyle && ds.pointStyle[i];
+          if (!(radius > 0) || !(img instanceof HTMLImageElement) || !nodeManyEnemies(nodes[i])) return;
+          if (i < x.min || i > x.max) return;
+          const size = radius * 2;
+          const px = x.getPixelForValue(i), py = y.getPixelForValue(ds.data[i]);
+          ctx.globalAlpha = 0.8;
+          [[-0.55, -0.25], [0.55, -0.25]].forEach(([fx, fy]) =>
+            ctx.drawImage(img, px - radius + fx * radius, py - radius + fy * radius, size, size));
+        });
+      });
+      ctx.restore();
+    },
+  };
+}
+
 function floorChartConfig(nodes, plugins, tip, y, datasets, view = {}) {
   return {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), ...plugins],
+    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), ...plugins],
     data: { labels: floorLabels(nodes), datasets },
     options: {
       responsive: true,
@@ -2826,7 +2868,7 @@ function renderDetailKeepCharts(run) {
     cubicInterpolationMode: "monotone",
   });
   const ranges = keepRanges(run, nodes, rows);
-  const chart = (id, series, tipFor, marks, up, plugins = []) => {
+  const chart = (id, series, tipFor, marks, up, plugins = [], floorAtZero = false) => {
     // Only the lines.
     // The ring, where the chart has any, is the HP chart's: the best quarter of the wins.
     const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 25% of wins", false) : "";
@@ -2841,6 +2883,8 @@ function renderDetailKeepCharts(run) {
       const v = actView(nodes);   // only the bars in view, on a phone showing one act
       (marks || []).forEach((m, i) => { if (m && (!v || (i >= v.from && i <= v.to))) scale.max = Math.max(scale.max, m.bad, m.good); });
       stretch(scale);
+      // A ratio axis has no below-zero: the icon stretch must not put one there.
+      if (floorAtZero) scale.min = Math.max(0, scale.min);
     };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
       floorChartConfig(nodes, [...(marks ? [makeWinRangePlugin(marks)] : []), ...plugins], tipFor, yAxis, series, actWindow(nodes))));
@@ -2893,10 +2937,10 @@ function renderDetailKeepCharts(run) {
     pointHoverBackgroundColor: "#b9b9c4", borderWidth: 1.5, borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 0 };
   chart("share", [
     average,
-    line(KEEP_LINES.taken, r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1)),
+    line(KEEP_LINES.taken, r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1), "share"),
     line({ label: "Fight turns", color: KEEP_TURN_COLOR, dash: [6, 3] },
       r => r.winTurns === undefined ? undefined : r.turns / r.winTurns),
-  ], shareTip, null, false, ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : []);
+  ], shareTip, null, false, ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : [], true);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";
