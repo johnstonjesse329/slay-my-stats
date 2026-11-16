@@ -212,14 +212,13 @@ function renderDetailRunList() {
     ${sortHead("date", "Date")}
   </div>` + runs.map((run, i) => {
     const won    = run.won;
-    const label  = fmtCharName(run.char);
     const active = run.ts === detailSelectedTs;
     // A multiplayer run names its party's characters, so show their heads; a solo run is one head.
     const party = run.mp ? (run.party || []) : [run.char];
     const partyLabel = run.mp ? (party.length ? `Party: ${party.map(fmtCharName).join(", ")}` : "Multiplayer") : `Solo: ${fmtCharName(run.char)}`;
     const partyHtml = party.length ? party.slice(0, 4).map(c => charIconHtml(c)).join("") : (run.mp ? "Multi" : "Solo");
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
-      <span class="detail-run-char" style="color:${CHAR_COLOR_MAP[run.char] || "#a0a0b8"}">${charIconHtml(run.char)}${label}</span>
+      <span class="detail-run-char">${charLabelHtml(run.char)}</span>
       <span class="detail-run-asc" style="color:var(--text-dim)">${run.mode === "dread" ? `<img class="detail-run-dread" src="/ui_icons/dread.png" alt="Dread" data-tip="Dread">` : `A${run.asc}`}</span>
       <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}"><span class="detail-run-party-heads">${partyHtml}</span><span class="detail-run-party-text" aria-hidden="true">${run.mp ? "Multi" : "Solo"}</span></span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
@@ -270,9 +269,7 @@ function renderDetailRun(run) {
   document.getElementById("detail-placeholder").style.display = "none";
   document.getElementById("detail-content").style.display = "";
 
-  const color  = CHAR_COLOR_MAP[run.char] || "#a0a0b8";
   const won    = run.won;
-  const label  = fmtCharName(run.char);
   const fmtDate = ts => new Date(ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
   const tl = run.timeline || [];
@@ -426,7 +423,7 @@ function renderDetailRun(run) {
   document.getElementById("detail-run-header").innerHTML = `
     <div class="detail-run-header-bar">
       ${navigator.clipboard ? `<button type="button" class="run-copy-link-icon" aria-label="Copy link to this run" title="Copy link"><svg class="rci-share" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg><svg class="rci-done" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button>` : ""}
-      <span style="font-weight:700;font-size:1.1rem;color:${color}">${charIconHtml(run.char)}${label}</span>
+      ${charLabelHtml(run.char, true)}
       ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
       <span style="color:${won ? "#5cba7d" : "#e05c5c"};font-weight:600">${won ? "Victory" : "Defeat"}</span>
       ${runReadingHtml(run)}${runActMarksHtml(run)}

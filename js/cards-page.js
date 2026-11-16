@@ -275,7 +275,7 @@ function renderCardsPage() {
     const icon = art ? `<span class="cards-thumb-wrap">${art}</span>` : "";
     return `<tr>
     <td style="padding:0.45rem 0.6rem;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
-    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "var(--text-dim)"}">${charIconHtml(r.pool)}${r.owner}</td>
+    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:var(--text-dim)">${r.pool === "colorless" ? `${charIconHtml(r.pool)}${r.owner}` : charLabelHtml(r.pool)}</td>
     <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
     <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}</td>
     <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.offered}</td>
