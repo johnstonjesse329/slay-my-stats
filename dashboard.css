@@ -1090,11 +1090,11 @@ h1 {
   /* minmax(0, ...): a bare 1fr never shrinks below its content, and a drawn
      chart canvas is content, so narrowing the window (or zooming in) left
      the timeline as wide as before, clipped off the right edge. */
-  grid-template-columns: var(--run-list-width, 396px) minmax(0, 1fr);
+  grid-template-columns: var(--run-list-width, 398px) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
-/* 396px fits the widest columns (Necrobinder, A10, four party heads, F48, an OP tag, a two-digit
+/* 398px fits the widest columns (Necrobinder, A10, four party heads, F48, an OP tag, a two-digit
    month and day) beside a scrollbar. A variable, so the phone layout's single
    column still wins. */
 
@@ -2914,4 +2914,10 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 @media (max-width: 700px) {
   .run-boon-stat { flex: 1 0 100%; flex-direction: column-reverse; align-items: flex-start; gap: 0.35rem; margin-left: 0; padding: 0.5rem 0 0; border-left: 0; border-top: 1px solid var(--hairline); }
   .run-boon-icons { flex-wrap: wrap; gap: 6px 14px; }
+}
+
+/* A phone's run list is narrower than four full-size party heads, so shrink the stack. */
+@media (max-width: 560px) {
+  .detail-run-players .char-icon { width: 14px; height: 14px; }
+  .detail-run-players .char-icon + .char-icon { margin-left: -4px; }
 }
