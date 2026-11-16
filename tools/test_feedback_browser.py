@@ -86,6 +86,15 @@ def main():
             assert created['category'] == 'bug', created
             assert page.get_by_role('radio', name='Bug', exact=True).get_attribute('aria-checked') == 'false'
             assert page.locator('#launcher-count').text_content() == '1'
+            # The badge counts the page you are on, hash included: moving to another tab or run
+            # must not keep showing the count from the page you left.
+            page.evaluate("location.hash = '#elsewhere'")
+            page.wait_for_function("document.getElementById('gamma-feedback').shadowRoot"
+                                   ".getElementById('launcher-count').hidden")
+            page.evaluate("history.back()")
+            page.wait_for_function("!document.getElementById('gamma-feedback').shadowRoot"
+                                   ".getElementById('launcher-count').hidden")
+            assert page.locator('#launcher-count').text_content() == '1'
             # The inbox is a tab of the same panel, not a second button.
             page.get_by_role('tab', name='Inbox', exact=True).click()
             wait_summary(page, '1 note · 1 open · 1 place')

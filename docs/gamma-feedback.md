@@ -42,6 +42,9 @@ panel's X or Escape.
 - **Copy all notes (N)** copies every note in the list (resolved or not, in a collapsed
   group or not), with page URLs, target details, author Steam IDs and timestamps,
   ready to paste into Codex. Each note also has its own **Copy details** for just that one.
+- The number on the Feedback button is the open notes on the page you are on, and a
+  page includes its `#hash`, so it is re-read when you move to another tab or run.
+  The inbox's **Whole site** and **Copy all notes** count every note on the site.
 - Authors and resolvers show by Steam display name. The Lambda looks the name up when it
   serves a note (cached for six hours); names are never stored on the note, and a
   note falls back to the last four digits of the ID if Steam can't be asked.

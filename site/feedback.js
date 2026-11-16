@@ -383,7 +383,14 @@
   }
   // pageCache feeds the launcher badge and the composer's earlier notes; the
   // inbox owns its own paged list in `notes`.
-  async function refreshPageNotes() { pageCache=(await api(null,{scope:'page',path:currentPath()})).notes; updateCount(); return pageCache; }
+  async function refreshPageNotes() {
+    const path=currentPath(), found=(await api(null,{scope:'page',path})).notes;
+    if(path!==currentPath()) return pageCache;  // navigated on while this was in flight
+    pageCache=found; updateCount(); return pageCache;
+  }
+  // The site moves between tabs and runs by changing the hash, which is part of a note's path:
+  // the badge has to follow, or it keeps counting the page you left.
+  addEventListener('hashchange',()=>{ refreshPageNotes().then(()=>{ if(view==='compose') renderPrior(); }).catch(()=>{}); });
   async function load(reset=true) {
     if(reset){notes=[];nextCursor=null;$('summary').textContent='Loading…';say('','inbox');}
     try {
