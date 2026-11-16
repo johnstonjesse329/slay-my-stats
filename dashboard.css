@@ -1057,11 +1057,11 @@ h1 {
   /* minmax(0, ...): a bare 1fr never shrinks below its content, and a drawn
      chart canvas is content, so narrowing the window (or zooming in) left
      the timeline as wide as before, clipped off the right edge. */
-  grid-template-columns: var(--run-list-width, 340px) minmax(0, 1fr);
+  grid-template-columns: var(--run-list-width, 386px) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
-/* 340px fits the widest columns (Necrobinder, A10, F48, an OP tag, a two-digit
+/* 386px fits the widest columns (Necrobinder, A10, Solo/Multi, F48, an OP tag, a two-digit
    month and day) beside a scrollbar. A variable, so the phone layout's single
    column still wins. */
 
@@ -1152,13 +1152,13 @@ h1 {
   box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
   /* One set of columns for every row (each row is a subgrid of it), so each
      column is as wide as its widest entry and they line up down the list:
-     char, asc, W/L, floor, reading, date. Spacing is each cell's left padding,
+     char, asc, players, W/L, floor, reading, date. Spacing is each cell's left padding,
      not a column gap. */
   display: grid;
   /* Char takes what it needs; the five columns after it share whatever room
      is left equally, so the spacing is even across the row instead of all of
      it piling up before the date. */
-  grid-template-columns: auto repeat(5, minmax(min-content, 1fr));
+  grid-template-columns: auto repeat(6, minmax(min-content, 1fr));
   align-content: start;
 }
 #detail-run-list > * { grid-column: 1 / -1; }
@@ -1210,6 +1210,7 @@ h1 {
 .detail-run-asc  { font-size: var(--fs-sm); text-align: center; }
 .asc-filter-dread { height: 1.5em; width: auto; vertical-align: middle; margin: -0.3em 0.2em -0.3em 0; }
 .detail-run-dread { height: 1.6em; width: auto; vertical-align: middle; margin: -0.3em 0; }
+.detail-run-players { font-size: var(--fs-sm); text-align: center; white-space: nowrap; }
 .detail-run-won  { font-weight: 700; font-size: var(--fs-sm); text-align: center; }
 .detail-run-floor { font-size: var(--fs-sm); text-align: center; }
 .detail-run-read  { text-align: center; }

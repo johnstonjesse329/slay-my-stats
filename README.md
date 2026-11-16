@@ -11,7 +11,7 @@ find it by searching on the home page.
 
 ![Overview tab of a player profile](images/site-overview.png)
 
-**Runs:** every run in a list; pick one to see its path, fights, its deck and relics floor by floor, and
+**Runs:** every run in a list, with its character, ascension, Solo or Multi, result, floor, reading and date; pick one to see its path, fights, its deck and relics floor by floor, and
 its final deck, including any enchantment a card is carrying. Each deck is tagged with what it's built
 around (Exhaust, Poison, Souls...) and the list filters on those tags. The final deck's **Explore
 synergies** section groups its connections by archetype (Strength, Exhaust, Orbs, Osty, Shots...), each

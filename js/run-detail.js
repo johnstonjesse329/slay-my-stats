@@ -78,6 +78,7 @@ let detailSortAsc = false;
 const DETAIL_SORT_FNS = {
   char:  (a, b) => fmtCharName(a.char).localeCompare(fmtCharName(b.char)),
   asc:   (a, b) => a.asc - b.asc,
+  players: (a, b) => (a.mp ? 1 : 0) - (b.mp ? 1 : 0),
   won:   (a, b) => a.won - b.won,
   floor: (a, b) => a.floor - b.floor,
   read:  (a, b) => runReadingRank(a) - runReadingRank(b),
@@ -204,6 +205,7 @@ function renderDetailRunList() {
   container.innerHTML = `<div class="detail-run-header-row">
     ${sortHead("char", "Char")}
     ${sortHead("asc", "Asc")}
+    ${sortHead("players", "Players", "Solo or multiplayer; sorting puts solo first.")}
     ${sortHead("won", "W/L")}
     ${sortHead("floor", "Floor")}
     ${sortHead("read", "+/–", `Hype, Mid or Rough against the average win on this run's fights.\nOP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
@@ -215,6 +217,7 @@ function renderDetailRunList() {
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
       <span class="detail-run-char" style="color:${CHAR_COLOR_MAP[run.char] || "#a0a0b8"}">${charIconHtml(run.char)}${label}</span>
       <span class="detail-run-asc" style="color:var(--text-dim)">${run.mode === "dread" ? `<img class="detail-run-dread" src="/ui_icons/dread.png" alt="Dread" data-tip="Dread">` : `A${run.asc}`}</span>
+      <span class="detail-run-players" style="color:${run.mp ? "var(--text)" : "var(--text-dim)"}">${run.mp ? "Multi" : "Solo"}</span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
