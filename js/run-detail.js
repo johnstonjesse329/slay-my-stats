@@ -158,7 +158,7 @@ function renderDetailTagFilter(runs) {
   detailTags.forEach(t => { counts[t] = counts[t] || 0; });
   const tags = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
   box.style.display = tags.length ? "" : "none";
-  box.querySelector(".tag-filter-text").textContent = detailTags.size ? [...detailTags].join(" + ") : "All builds";
+  box.querySelector(".tag-filter-text").textContent = detailTags.size ? [...detailTags].join(" + ") : "All";
   box.querySelector(".tag-filter-clear").hidden = detailTags.size === 0;
   const chips = box.querySelector(".tag-filter-chips");
   chips.innerHTML = tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="run-tag-n">${counts[t]}</span></button>`).join("");
