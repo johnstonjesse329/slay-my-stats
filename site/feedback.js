@@ -87,6 +87,21 @@
     [hidden]{display:none!important}
     #hint{background:#191c20;padding:12px;max-width:320px;border:1px solid #edc782;border-radius:8px;order:0}
     @media(max-height:520px){:host{bottom:8px;right:8px}#panel{max-height:calc(100dvh - 78px);width:460px}textarea{min-height:64px}#launcher{padding:9px 14px;font-size:14px}}
+    @media(max-width:600px){
+      :host{left:0;right:0;bottom:0;padding:0 12px calc(12px + env(safe-area-inset-bottom));align-items:flex-end}
+      #panel,#panel.placed{position:fixed!important;left:0!important;right:0!important;top:auto!important;bottom:0!important;width:auto!important;min-width:0;max-width:none;min-height:0;max-height:85dvh!important;resize:none;border-radius:14px 14px 0 0;padding:12px 14px calc(14px + env(safe-area-inset-bottom));overscroll-behavior:contain}
+      header{cursor:default;touch-action:auto;margin-bottom:6px}h2::before{display:none}
+      #close{width:40px;height:40px}
+      #tabs{margin-bottom:8px}#tabs button,#scope button{padding:9px 16px}
+      #page-url{display:none}
+      #modes{margin-bottom:8px}#pick,#page{min-height:44px}
+      #kinds{margin:4px 0}#kinds button{padding:8px 12px;font-size:13px}
+      textarea,select,.close-form input{font-size:16px}
+      textarea{min-height:72px}
+      #save{min-height:46px}
+      #prior ul{max-height:80px}
+      #launcher{padding:10px 16px}
+    }
   </style>
   <div id="hint" hidden>Click near what you mean, or drag across it. Press Escape to cancel. <button id="cancel" type="button">Cancel</button></div>
   <section id="panel" role="dialog" aria-label="Feedback" hidden>
@@ -161,7 +176,7 @@
   // A view that fills in later (the inbox loads its notes) makes the panel taller; keep its bottom in view.
   new ResizeObserver(keepOnScreen).observe($('panel'));
   $('panel').querySelector('header').addEventListener('pointerdown', e => {
-    if (e.button || e.target.closest('button')) return;
+    if (e.button || e.target.closest('button') || matchMedia('(max-width:600px)').matches) return;
     const head = e.currentTarget, panel = $('panel'), r = panel.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
     const move = ev => {
       panel.style.left = Math.max(8 - r.width + 80, Math.min(ev.clientX - dx, innerWidth - 80)) + 'px';

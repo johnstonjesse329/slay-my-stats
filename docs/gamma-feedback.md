@@ -57,7 +57,9 @@ overwritten or deleted note can be recovered from its earlier versions. Versions
 everything but `feedback/` expire after 30 days; feedback versions are kept.
 
 The panel can be dragged by its header and resized from its bottom-right corner; it
-keeps its place between openings. **Clear** on the New note tab drops a pinned
+keeps its place between openings. On screens 600px wide or narrower it is instead a
+full-width bottom sheet (no dragging or resizing, 16px inputs so iOS doesn't zoom, larger
+tap targets). **Clear** on the New note tab drops a pinned
 element and the typed text.
 
 **Emails.** The gamma stack also emails the alert address: each morning (8 AM
