@@ -1515,7 +1515,7 @@ function renderDetailHpChart(run) {
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes)],
+    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin()],
     data: {
       labels,
       datasets: [
@@ -1583,7 +1583,7 @@ function renderDetailGoldChart(run) {
   const ctx = document.getElementById("detail-gold-chart").getContext("2d");
   detailGoldChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes)],
+    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin()],
     data: {
       labels,
       datasets: [{
@@ -2076,10 +2076,47 @@ function makeManyIconPlugin(nodes) {
   };
 }
 
+// A floor chart draws its points as icons, not as dots, so a hovered floor would otherwise show
+// nothing for itself but the hover box beside it. This puts a dot on the point the pointer is
+// on: the line's own colour, ringed in the panel's, so it reads over an icon, an area fill or a
+// bare line. Datasets that hide their points on hover (the average-win lines) are skipped, so
+// the dot always lands on the series the floor is read from; the stacked bands (the deck and
+// relic charts) have no points, so there the dot goes on top of the stack instead.
+function makeHoverDotPlugin() {
+  const points = ds => {
+    const r = ds.pointHoverRadius;
+    return Array.isArray(r) ? r.some(v => v > 0) : r === undefined || r > 0;
+  };
+  return {
+    id: "hoverDot",
+    afterDatasetsDraw(chart) {
+      const active = (chart.tooltip?.getActiveElements?.() || [])
+        .filter(a => a.element && chart.data.datasets[a.datasetIndex].data[a.index] != null);
+      if (!active.length) return;
+      const line = active.find(a => points(chart.data.datasets[a.datasetIndex]));
+      const hit = line || active.reduce((best, a) => a.element.y < best.element.y ? a : best);
+      const ds = chart.data.datasets[hit.datasetIndex];
+      const own = Array.isArray(ds.borderColor) ? ds.borderColor[0] : ds.borderColor;
+      const color = line ? own : "#e6e6ee";
+      if (!color) return;
+      const { ctx } = chart;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(hit.element.x, hit.element.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#16142a";
+      ctx.stroke();
+      ctx.restore();
+    },
+  };
+}
+
 function floorChartConfig(nodes, plugins, tip, y, datasets, view = {}) {
   return {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), ...plugins],
+    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin(), ...plugins],
     data: { labels: floorLabels(nodes), datasets },
     options: {
       responsive: true,
