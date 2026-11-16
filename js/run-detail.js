@@ -2083,36 +2083,19 @@ const nodeEnemyCount = n => {
   return d ? d.count || (d.many ? 3 : 1) : 1;
 };
 
-// Where the other enemies sit behind the one on the point, as fractions of its radius: a pair
-// reads one behind the other, three as the fan it always was, four and five in a wider arc. Four
-// is the most the game fields at once, and a fifth is drawn for anything longer.
-const ENEMY_OFFSETS = {
-  2: [[0.95, -0.12]],   // beside the marker, not behind it: straight up it read as one icon
-  3: [[-0.55, -0.45], [0.55, -0.45]],
-  4: [[-0.5, -0.35], [0, -0.7], [0.5, -0.35]],
-  5: [[-0.8, -0.28], [-0.32, -0.62], [0.32, -0.62], [0.8, -0.28]],
-};
-
-// A multi-enemy fight gets its marker icon fanned into that many icons -- the enemies behind the
-// one on the point, so the group reads at a glance and the count matches the fight -- on every
-// floor chart that draws fight icons (HP, damage done, damage taken, keeping up). Copies further
-// back are smaller and fainter, the way a crowd reads behind the front of it, so three of them
-// look like a mob rather than one blob. Bosses get it too when their data says so (Kaiser Crab's
-// claws). Drawn before the line and the marker, so the marker still pins the exact point.
+// A multi-enemy fight gets a count badge on its marker icon ("2", "3"...) on every floor chart
+// that draws fight icons (HP, damage done, damage taken, keeping up). Copies of the icon fanned
+// behind the marker were lost where floors sit close together (a pair beside a neighbour read as
+// three); a number is exact and takes no room of its own. Bosses get it too when their data says
+// so (Kaiser Crab's claws). Drawn after the markers so it sits on top, right under the icon.
 function makeManyIconPlugin(nodes) {
-  // Depth behind the marker, 0 for the copies nearest it: the same distance back fades and
-  // shrinks the same, so a fan reads level rather than lopsided.
-  const depthsOf = offsets => {
-    const d = [...new Set(offsets.map(([fx, fy]) => +Math.hypot(fx, fy).toFixed(2)))].sort((a, b) => a - b);
-    return offsets.map(([fx, fy]) => d.indexOf(+Math.hypot(fx, fy).toFixed(2)));
-  };
-  const SIZE_STEP = 0.78;   // how much smaller each step back is
-  const FADE_STEP = 0.55;   // and how much fainter
   return {
     id: "manyIcons",
-    beforeDatasetsDraw(chart) {
+    afterDatasetsDraw(chart) {
       const { ctx, scales: { x, y } } = chart;
       ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
       chart.data.datasets.forEach(ds => {
         if (!Array.isArray(ds.pointRadius)) return;
         ds.pointRadius.forEach((radius, i) => {
@@ -2120,16 +2103,16 @@ function makeManyIconPlugin(nodes) {
           if (!(radius > 0) || !(img instanceof HTMLImageElement)) return;
           const count = nodeEnemyCount(nodes[i]);
           if (count < 2 || i < x.min || i > x.max) return;
-          const size = radius * 2;
-          const px = x.getPixelForValue(i), py = y.getPixelForValue(ds.data[i]);
-          const offsets = ENEMY_OFFSETS[Math.min(count, 5)] || ENEMY_OFFSETS[5];
-          const depths = depthsOf(offsets);
-          offsets.forEach(([fx, fy], k) => {
-            const depth = depths[k];
-            const s = size * Math.pow(SIZE_STEP, depth + 1);
-            ctx.globalAlpha = 0.7 * Math.pow(FADE_STEP, depth);
-            ctx.drawImage(img, px + fx * radius - s / 2, py + fy * radius - s / 2, s, s);
-          });
+          // "×N" right under the icon, outlined so it reads over the line and the range bar.
+          const label = `×${count}`;
+          const cx = x.getPixelForValue(i), cy = y.getPixelForValue(ds.data[i]) + radius + 9;
+          ctx.font = `700 ${Math.max(10, Math.round(radius * 0.8))}px sans-serif`;
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "#14141f";
+          ctx.strokeText(label, cx, cy);
+          ctx.fillStyle = "#fff";
+          ctx.fillText(label, cx, cy);
         });
       });
       ctx.restore();
