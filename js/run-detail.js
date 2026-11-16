@@ -1136,7 +1136,7 @@ const GOLD_ICON_KEYS = new Set(["shop", "unknown_shop", "event"]);
 const nodePointImages = new Map();  // "size src" -> Image
 // The clip for a chart's floor icons: none, or the plot's sides alone where one act is on show.
 const iconClip = () => narrowScreen.matches ? { left: 0, right: 0, top: false, bottom: false } : false;
-function nodePoints(nodes, getChart, highlight, size = NODE_POINT, keyOf = nodeIconKey) {
+function nodePoints(nodes, getChart, highlight, size = nodePointSize(), keyOf = nodeIconKey) {
   const srcs = nodes.map((n, i) => {
     const key = keyOf(n);
     return highlight(n, key, i) && DATA.nodeIcons ? DATA.nodeIcons[key] : null;
@@ -1161,7 +1161,11 @@ function nodePoints(nodes, getChart, highlight, size = NODE_POINT, keyOf = nodeI
     clip: iconClip(),
   };
 }
-const NODE_POINT = 30;
+const NODE_POINT = 40;
+// A phone shows one act at a time, so the floors are close together: the desktop's icons would
+// overlap into a smear over the line. Sized to sit just inside the floor spacing instead.
+const NODE_POINT_PHONE = 22;
+const nodePointSize = () => narrowScreen.matches ? NODE_POINT_PHONE : NODE_POINT;
 
 // The y axis for a chart with floor icons: stretched past the data by an
 // icon's height, so one on a peak or down at zero isn't cut off by the top or
@@ -1177,7 +1181,7 @@ function iconAxis(extra = {}) {
     afterDataLimits(scale) {
       // The plot's height isn't laid out yet: the canvas less the act band,
       // floor axis and legend is close enough.
-      const pad = (NODE_POINT / 2 + 3) / Math.max(100, scale.chart.height - ACT_BAND - 80);
+      const pad = (nodePointSize() / 2 + 3) / Math.max(100, scale.chart.height - ACT_BAND - 80);
       const range = (scale.max - scale.min) || 1, grow = range * pad / (1 - pad);
       const icons = scale.chart.data.datasets.flatMap(ds =>
         Array.isArray(ds.pointRadius) ? ds.data.filter((_, i) => ds.pointRadius[i] > 0) : []);
@@ -2325,7 +2329,13 @@ const KEEP_OP_ACTS = [2, 3];
 const KEEP_SIGNS = { ahead: "▲", meeting: `<i class="bullseye"></i>`, behind: "▼" };
 // Fight icons on a chart, in px: up to the HP and gold charts' size, and a floor and a
 // half wide when a run has many floors; still readable on a phone.
-const KEEP_ICON = { min: 16, max: NODE_POINT };
+const KEEP_ICON = { min: 21, max: NODE_POINT };
+// How big a fight icon is on those charts. A desktop has room for a floor and a half; a phone
+// fits one act into its width, so the icon goes just under the floor spacing there instead of
+// piling up on its neighbours.
+const keepIconSize = (width, floors) => narrowScreen.matches
+  ? Math.round(Math.min(NODE_POINT_PHONE, Math.max(12, width / floors)))
+  : Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * width / floors)));
 // The kinds of fight, in the order an act card lists them.
 const KEEP_KINDS = { monster: "Normal", elite: "Elites", boss: "Boss" };
 // How each tier is named on the page: fight_demand.py's TIER_NAMES, for a reader.
@@ -2690,7 +2700,7 @@ function renderKeepActs(run, nodes, measured) {
   const kindOf = key => key in KEEP_KINDS ? key : "boss";
   const order = Object.keys(KEEP_KINDS);
   const kinds = a => Object.entries(a.kinds).sort(([x], [y]) => order.indexOf(kindOf(x)) - order.indexOf(kindOf(y))).map(([key, n]) =>
-    `<span class="keep-kind" title="${KEEP_KINDS[kindOf(key)]}: ${n}">${nodeIconHtml(key, 20, kindOf(key))}${n}</span>`).join("");
+    `<span class="keep-kind" title="${KEEP_KINDS[kindOf(key)]}: ${n}">${nodeIconHtml(key, 27, kindOf(key))}${n}</span>`).join("");
   // The run's rating first, across the grid: its totals on the same two meters, and how it is read.
   const whole = runReadingOf(run);
   const wholeMeters = whole ? keepReadingMeters(whole) : null;
@@ -2785,7 +2795,18 @@ document.addEventListener("click", e => {
   const b = e.target.closest("#detail-keep-actpick button[data-act]");
   if (b) { keepAct = Number(b.dataset.act); applyKeepAct(); }
 });
-narrowScreen.addEventListener("change", () => { if (keepActNodes.length) applyKeepAct(); });
+narrowScreen.addEventListener("change", () => {
+  // The floor charts size their icons to the screen, so crossing the breakpoint redraws them:
+  // full-size faces on a desktop, small ones that fit the floors on a phone.
+  const run = DATA.runsData?.find(r => r.ts === detailSelectedTs);
+  if (run && document.getElementById("detail-content").style.display !== "none") {
+    renderDetailHpChart(run);
+    renderDetailGoldChart(run);
+    renderDetailDeckChart(run);
+    renderDetailRelicChart(run);
+    renderDetailKeepCharts(run);
+  } else if (keepActNodes.length) applyKeepAct();
+});
 
 function renderDetailKeepCharts(run) {
   const nodes = run.timeline || [];
@@ -2886,7 +2907,7 @@ function renderDetailKeepCharts(run) {
 
   const view = actView(nodes);
   const floorsShown = view ? view.to - view.from + 1 : nodes.length;
-  const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * box.clientWidth / floorsShown)));
+  const iconSize = keepIconSize(box.clientWidth, floorsShown);
   // `icons` is the chart's id when its floors carry the fight icons: always on your own line,
   // as on the HP chart, so the icon never moves to somewhere else on the chart.
   const line = ({ label, color, dash }, pick, icons) => ({
