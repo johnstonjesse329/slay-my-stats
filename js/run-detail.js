@@ -468,6 +468,16 @@ function renderDetailRun(run) {
   document.querySelectorAll("#detail-run-header .run-copy-link, #detail-run-header .run-copy-link-icon").forEach(copyBtn =>
     copyBtn.addEventListener("click", () => copyRunLink(run.ts, copyBtn)));
 
+  // The span a drag picks is per run: a new run starts with none, and its own floor-by-floor
+  // changes are what the panel adds up.
+  clearRange();
+  rangeNodes = run.timeline || [];
+  rangeChanges = run.deckAdded || run.relicsAdded
+    ? floorChanges(rangeNodes,
+      heldItems(run.finalDeck || [], run.deckAdded || [], run.cardsLost || []),
+      heldItems(run.finalRelics || [], run.relicsAdded || [], run.relicsLost || []))
+    : null;
+
   renderDetailTimeline(run);
   renderDetailMaps(run);
   renderDetailHpChart(run);
@@ -1519,7 +1529,7 @@ function renderDetailHpChart(run) {
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin()],
+    plugins: [makeRangeBandPlugin(), makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin()],
     data: {
       labels,
       datasets: [
@@ -1565,6 +1575,7 @@ function renderDetailHpChart(run) {
       },
     },
   });
+  bindRangeSelect(detailHpChart, nodes);
 }
 
 // ---- Gold chart ----
@@ -1587,7 +1598,7 @@ function renderDetailGoldChart(run) {
   const ctx = document.getElementById("detail-gold-chart").getContext("2d");
   detailGoldChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin()],
+    plugins: [makeRangeBandPlugin(), makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin()],
     data: {
       labels,
       datasets: [{
@@ -1630,6 +1641,7 @@ function renderDetailGoldChart(run) {
       },
     },
   });
+  bindRangeSelect(detailGoldChart, nodes);
 }
 
 // ---- Deck and relics by floor ----
@@ -1955,6 +1967,8 @@ function createFloorTip() {
   }, { passive: true });
 }
 function showFloorTip(context, html) {
+  // Picking a span of floors: the box would sit over the band being dragged.
+  if (rangeDrag) return;
   if (!floorTip) createFloorTip();
   // Pointer is on the box: the chart can't see it any more, and its updates mean nothing.
   if (floorTipOver) return;
@@ -2128,10 +2142,192 @@ function makeHoverDotPlugin() {
   };
 }
 
+// ---- A span of floors ----
+// Dragging across any floor chart picks the floors under the pointer, and the page adds up what
+// the run changed inside them: cards in, out and upgraded, relics gained and lost, beside what
+// the span cost in fights, damage and gold. A stretch that went wrong can then be read as a
+// whole instead of floor by floor. One span is live at a time and every floor chart draws it, so
+// the HP chart's dip and the deck's growth line up under the same band. A finger already scrubs
+// the hover box, so a span is a pointer (mouse or pen) gesture; Esc or a click clears it.
+let rangeSel = null;      // {from, to}: floor numbers, as the axis numbers them (1-based)
+let rangeChanges = null;  // the run's floorChanges(), or null when it has no deck history
+let rangeNodes = [];      // its timeline
+let rangeDrag = null;     // {chart, nodes, host, from, moved} while a pointer is down on a chart
+let rangePanel = null;    // the panel, moved under whichever chart the span was dragged on
+
+const floorOf = n => n.floor + 1;
+
+function makeRangeBandPlugin() {
+  const paint = (chart, ctx) => {
+    const { chartArea, scales: { x } } = chart;
+    const hits = [];
+    chart.data.labels.forEach((label, i) => {
+      const f = Number(label);
+      if (f >= rangeSel.from && f <= rangeSel.to) hits.push(i);
+    });
+    if (!hits.length) return;
+    // A category axis puts each point in the middle of its band, so the band is half a step out
+    // either side of the first and last floor in the span.
+    const step = Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) || 24;
+    const left = Math.max(chartArea.left, x.getPixelForValue(hits[0]) - step / 2);
+    const right = Math.min(chartArea.right, x.getPixelForValue(hits[hits.length - 1]) + step / 2);
+    ctx.save();
+    ctx.fillStyle = "rgba(224, 196, 104, 0.13)";
+    ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+    ctx.strokeStyle = "rgba(224, 196, 104, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left + 0.5, chartArea.top);
+    ctx.lineTo(left + 0.5, chartArea.bottom);
+    ctx.moveTo(right - 0.5, chartArea.top);
+    ctx.lineTo(right - 0.5, chartArea.bottom);
+    ctx.stroke();
+    ctx.restore();
+  };
+  return {
+    id: "rangeBand",
+    // First, so the band sits under the lines, the icons and the markers.
+    beforeDatasetsDraw(chart) { if (rangeSel) paint(chart, chart.ctx); },
+  };
+}
+
+// The floor under a pointer: the chart's own axis decides, so a span lands on the right floor
+// whatever that chart has filtered out of its own points.
+function floorAtPointer(chart, nodes, clientX) {
+  const idx = Math.round(chart.scales.x.getValueForPixel(clientX - chart.canvas.getBoundingClientRect().left));
+  const node = nodes[Math.max(0, Math.min(nodes.length - 1, idx))];
+  return node ? floorOf(node) : null;
+}
+
+function floorCharts() {
+  return [detailHpChart, detailGoldChart, detailDeckChart, detailRelicChart, ...detailKeepCharts].filter(Boolean);
+}
+
+function drawFloorCharts() {
+  floorCharts().forEach(c => c.draw("none"));
+}
+
+function bindRangeSelect(chart, nodes) {
+  const canvas = chart.canvas;
+  const host = canvas.closest(".chart-wrap") || canvas.parentElement;
+  canvas.addEventListener("pointerdown", e => {
+    if (e.button !== 0 || e.pointerType === "touch" || !rangeChanges) return;
+    const from = floorAtPointer(chart, nodes, e.clientX);
+    if (from == null) return;
+    rangeDrag = { chart, nodes, host, from, moved: false };
+    canvas.setPointerCapture(e.pointerId);
+    closeFloorTip();
+  });
+  canvas.addEventListener("pointermove", e => {
+    if (!rangeDrag || rangeDrag.chart !== chart) return;
+    const to = floorAtPointer(chart, nodes, e.clientX);
+    if (to == null) return;
+    if (to !== rangeDrag.from) rangeDrag.moved = true;
+    showRange(Math.min(rangeDrag.from, to), Math.max(rangeDrag.from, to), host);
+  });
+  const end = e => {
+    if (!rangeDrag || rangeDrag.chart !== chart) return;
+    const wasClick = !rangeDrag.moved;
+    rangeDrag = null;
+    if (canvas.hasPointerCapture?.(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    if (wasClick) clearRange();
+  };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+}
+
+function showRange(from, to, host) {
+  rangeSel = { from, to };
+  drawFloorCharts();
+  if (!rangePanel) {
+    rangePanel = document.createElement("div");
+    rangePanel.id = "detail-range-panel";
+    rangePanel.className = "range-panel";
+    rangePanel.addEventListener("click", e => { if (e.target.closest("[data-range-clear]")) clearRange(); });
+  }
+  // After the chart's key, so the panel reads as that chart's without splitting the key from it.
+  let anchor = host;
+  while (anchor.nextElementSibling?.classList.contains("floor-legend")) anchor = anchor.nextElementSibling;
+  anchor.after(rangePanel);
+  rangePanel.innerHTML = rangeSummaryHtml();
+}
+
+function clearRange() {
+  rangeSel = null;
+  rangeDrag = null;
+  if (rangePanel) { rangePanel.remove(); rangePanel = null; }
+  drawFloorCharts();
+}
+
+document.addEventListener("keydown", e => { if (e.key === "Escape" && rangeSel) clearRange(); });
+// A click anywhere off the panel clears the span; a click on a chart is that chart's own
+// business (it clears there, or starts another drag).
+document.addEventListener("pointerdown", e => {
+  if (!rangeSel || rangeDrag) return;
+  if (e.target.closest?.("#detail-range-panel") || e.target.tagName === "CANVAS") return;
+  clearRange();
+});
+
+// The span added up: what went into the deck and what came out, the relics, and what the floors
+// cost. Every list is one entry per card or relic, merged into a count when the same one came in
+// twice, and a card that was upgraded wears an arrow instead of counting as one out and one in.
+function rangeSummaryHtml() {
+  const { from, to } = rangeSel;
+  const floors = rangeNodes.filter(n => floorOf(n) >= from && floorOf(n) <= to);
+  const fights = floors.filter(n => n.turns).length;
+  const dmg = floors.reduce((s, n) => s + (n.dmg || 0), 0);
+  const gold = floors.reduce((s, n) => s + (n.goldGained || 0), 0);
+  // Where the span left the HP: the first floor's starting HP to the last one's, so a dip is
+  // read at a glance without counting the line.
+  const hp = floors.length && floors[0].hpBefore != null && floors[floors.length - 1].hpAfter != null
+    ? [floors[0].hpBefore, floors[floors.length - 1].hpAfter] : null;
+  const inPlay = { added: [], removed: [], upgraded: [], relicsIn: [], relicsOut: [] };
+  (rangeChanges || []).forEach((change, i) => {
+    const f = floorOf(rangeNodes[i]);
+    if (f < from || f > to) return;
+    change.cards.forEach(([id, up, dir]) =>
+      inPlay[dir > 0 ? "added" : dir < 0 ? "removed" : "upgraded"].push({ id, up }));
+    change.relics.forEach(([id, , dir]) => inPlay[dir > 0 ? "relicsIn" : "relicsOut"].push({ id }));
+  });
+  const tally = list => {
+    const counts = new Map();
+    list.forEach(({ id }) => counts.set(id, (counts.get(id) || 0) + 1));
+    return [...counts].map(([id, n]) => ({ id, n }));
+  };
+  const chip = (src, label, n, cls = "", id = "") =>
+    `<span class="range-chip${cls}"${id ? ` data-id="${escapeHtml(id)}"` : ""}>${src ? `<img src="${src}" alt="">` : ""}${escapeHtml(label)}${n > 1 ? ` ×${n}` : ""}</span>`;
+  const cardName = id => cardInfo(id)?.title || fmtCardLabel(id);
+  const relicName = id => relicInfo(id)?.title || fmtRelicLabel(id);
+  const group = (head, list, kind, name, cls = "") => {
+    if (!list.length) return "";
+    const src = kind === "card" ? cardImgSrc : relicImgSrc;
+    return `<div class="range-group"><span class="range-head">${head}</span>` +
+      tally(list).map(({ id, n }) => chip(src(id), name(id), n, cls, id)).join("") + `</div>`;
+  };
+  const groups = group("Cards in", inPlay.added, "card", cardName) +
+    group("Upgraded", inPlay.upgraded, "card", cardName, " up") +
+    group("Cards out", inPlay.removed, "card", cardName) +
+    group("Relics in", inPlay.relicsIn, "relic", relicName) +
+    group("Relics out", inPlay.relicsOut, "relic", relicName);
+  const meta = [
+    `${floors.length} ${floors.length === 1 ? "floor" : "floors"}`,
+    fights ? `${fights} ${fights === 1 ? "fight" : "fights"}` : "",
+    dmg ? `${dmg} damage taken` : "",
+    gold ? `${gold} gold gained` : "",
+    hp ? `HP ${hp[0]} → ${hp[1]}` : "",
+  ].filter(Boolean).join(" · ");
+  const empty = rangeChanges ? "Nothing changed in these floors." : "This run has no deck history to add up.";
+  return `<div class="range-top"><span class="range-title">${from === to ? `Floor ${from}` : `Floors ${from}–${to}`}</span>` +
+    `<span class="range-meta">${meta}</span>` +
+    `<button type="button" class="range-clear" data-range-clear aria-label="Clear the selected floors">✕</button></div>` +
+    `<div class="range-groups">${groups || `<span class="range-empty">${empty}</span>`}</div>` +
+    `<div class="range-hint">Drag across any floor chart to pick another span; Esc or a click clears it.</div>`;
+}
+
 function floorChartConfig(nodes, plugins, tip, y, datasets, view = {}) {
   return {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin(), ...plugins],
+    plugins: [makeRangeBandPlugin(), makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin(), ...plugins],
     data: { labels: floorLabels(nodes), datasets },
     options: {
       responsive: true,
@@ -2244,6 +2440,7 @@ function renderDetailDeckChart(run) {
       ...tKeys.map(k => ({ key: k, data: byT[k], color: T.color[k], stack: "type" })),
       ...rKeys.map(k => ({ key: k, data: byR[k].map(v => -v), color: R.color[k], stack: "rarity" })),
     ])));
+  bindRangeSelect(detailDeckChart, nodes);
 
   document.getElementById("detail-deck-legend").innerHTML =
     floorLegendRow("▲ Type", tKeys, T.color) +
@@ -2283,6 +2480,7 @@ function renderDetailRelicChart(run) {
     floorChartConfig(nodes, [makeMarkPlugin(marks, totals, G.color)], tip,
       { min: 0, max: Math.ceil(peak * 1.3 / 2) * 2, afterDataLimits: markHeadroom(marks, totals, 2) },
       floorBands(keys.map(k => ({ key: k, data: counts[k], color: G.color[k], stack: "relics" })))));
+  bindRangeSelect(detailRelicChart, nodes);
 
   document.getElementById("detail-relic-legend").innerHTML =
     floorLegendRow("Rarity", keys, G.color) +
@@ -2964,6 +3162,7 @@ function renderDetailKeepCharts(run) {
     };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
       floorChartConfig(nodes, [...(marks ? [makeWinRangePlugin(marks)] : []), ...plugins], tipFor, yAxis, series, actWindow(nodes))));
+    bindRangeSelect(detailKeepCharts[detailKeepCharts.length - 1], nodes);
   };
 
   // Cards in the deck after each floor: a line per type (the total is in the hover box, not drawn: it dwarfed the types), so what

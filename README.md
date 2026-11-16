@@ -12,7 +12,11 @@ find it by searching on the home page.
 ![Overview tab of a player profile](images/site-overview.png)
 
 **Runs:** every run in a list, with its character, ascension, the party's character heads (one head when solo, and on a phone the word Solo or Multi, since four heads don't fit there), result, floor, reading and date; pick one to see its path, fights, its deck and relics floor by floor, and
-its final deck, including any enchantment a card is carrying. Each deck is tagged with what it's built
+its final deck, including any enchantment a card is carrying. The run's floor charts all share the
+same floors, and dragging across any of them picks a span: a panel under that chart adds up what
+changed in it — cards in, out and upgraded, relics gained and lost, the fights and damage, and where
+the HP ended up — so a stretch that went wrong can be read as a whole instead of floor by floor. Esc
+or a click clears it. Each deck is tagged with what it's built
 around (Exhaust, Poison, Souls...) and the list filters on those tags. The final deck's **Explore
 synergies** section groups its connections by archetype (Strength, Exhaust, Orbs, Osty, Shots...), each
 group showing what feeds a payoff and what it pays off and the reason they connect. Cards open on tap;
