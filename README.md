@@ -752,8 +752,8 @@ Each refresh keeps a copy of the card, relic and potion data in `local_data/game
 The Runs page's Keeping Up charts need one more file, made after the refresh:
 `python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in
 `tools/power_curve/gamma_raw/`. Without it the charts are hidden. It also records how many enemies each
-encounter fields, from the opening line-up the run files list, which the charts fan into that many icons on a
-fight's floor and the hover box names ("3 enemies"). Their energy and cards chart also needs
+encounter fields, from the opening line-up the run files list, which the charts show as a two-icon depth stack (the
+icon with a smaller, fainter copy behind it; bosses keep one icon) on a fight's floor, and the hover box names ("3 enemies"). Their energy and cards chart also needs
 `python tools/power_curve/export_measured.py` (writes `measured_runs.json`) for logs on this machine. Runs uploaded
 through the site carry the same numbers as `measured`, worked out when they were uploaded. It shows only on runs
 with an event log. The "Keeping up, fight by fight" chart uses the same `fight_demand.json` and needs nothing else:
