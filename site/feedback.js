@@ -333,7 +333,7 @@
       row.append(done,cancel);form.append(outcome,text,commit,twin,row);
       resolve.hidden=true;actions.after(form);text.focus();
     };
-    const copyOne=document.createElement('button');copyOne.type='button';copyOne.textContent='Copy';
+    const copyOne=document.createElement('button');copyOne.type='button';copyOne.textContent='Copy details';
     copyOne.title='Copy just this note';
     copyOne.onclick=()=>copyText(report(note),'Copied this note.');
     actions.className='note-actions';actions.append(resolve,copyOne);
@@ -377,7 +377,7 @@
     $('scope-page').setAttribute('aria-pressed',String(scope==='page'));
     $('scope-site').setAttribute('aria-pressed',String(scope==='site'));
     $('load-more').hidden=!nextCursor;
-    $('copy').textContent=notes.length?`Copy all ${notes.length} note${notes.length===1?'':'s'}${nextCursor?' loaded':''}`:'Copy all notes';
+    $('copy').textContent=notes.length?`Copy all notes (${notes.length}${nextCursor?' loaded':''})`:'Copy all notes';
     $('copy').disabled=!notes.length;
     say(groups.length?'':(status==='all'&&!filterKind?(scope==='page'?'No notes on this page yet.':'No notes yet.'):'No notes match.'),'inbox');
   }

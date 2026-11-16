@@ -93,8 +93,8 @@ def main():
             assert 'Whole page' in page.locator('.bucket summary').first.inner_text()
             assert page.locator('.note-url').first.inner_text() == 'https://gamma.slay-my-stats.com/'
             # One note listed: its own Copy, and a copy-all that says how many it takes.
-            assert page.get_by_role('button', name='Copy', exact=True).count() == 1
-            assert page.get_by_role('button', name='Copy all 1 note', exact=True).is_visible()
+            assert page.get_by_role('button', name='Copy details', exact=True).count() == 1
+            assert page.get_by_role('button', name='Copy all notes (1)', exact=True).is_visible()
             page.get_by_role('button', name='Whole site', exact=True).click()
             wait_summary(page, '2 notes · 2 open · 2 places')
             assert page.locator('.bucket').count() == 2

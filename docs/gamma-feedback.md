@@ -39,9 +39,9 @@ panel's X or Escape.
   notes leave the Open list and show under Resolved with their outcome. Reopening keeps
   that resolution in the note's `history`, so a note closed, reopened and closed again
   shows every step. Notes resolved before outcomes existed show as plain Resolved.
-- **Copy all notes** copies every note in the list (resolved or not, in a collapsed
+- **Copy all notes (N)** copies every note in the list (resolved or not, in a collapsed
   group or not), with page URLs, target details, author Steam IDs and timestamps,
-  ready to paste into Codex. Each note also has its own **Copy** for just that one.
+  ready to paste into Codex. Each note also has its own **Copy details** for just that one.
 - Authors and resolvers show by Steam display name. The Lambda looks the name up when it
   serves a note (cached for six hours); names are never stored on the note, and a
   note falls back to the last four digits of the ID if Steam can't be asked.
