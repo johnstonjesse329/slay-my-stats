@@ -2087,7 +2087,7 @@ const nodeEnemyCount = n => {
 // reads one behind the other, three as the fan it always was, four and five in a wider arc. Four
 // is the most the game fields at once, and a fifth is drawn for anything longer.
 const ENEMY_OFFSETS = {
-  2: [[0, -0.5]],
+  2: [[0.95, -0.12]],   // beside the marker, not behind it: straight up it read as one icon
   3: [[-0.55, -0.45], [0.55, -0.45]],
   4: [[-0.5, -0.35], [0, -0.7], [0.5, -0.35]],
   5: [[-0.8, -0.28], [-0.32, -0.62], [0.32, -0.62], [0.8, -0.28]],
