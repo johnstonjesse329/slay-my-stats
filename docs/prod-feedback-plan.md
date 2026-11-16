@@ -77,7 +77,7 @@ the note's counter.
    gamma first.
 3. `tools/feedback_admin.py`, then prod.
 
-## Open
+## Decided
 
-- Whether every signed-in player sees every note (the plan assumes yes).
-- Moving gamma's existing notes into the table, or starting it empty.
+- Every signed-in player sees every note.
+- Gamma's existing notes are test junk; the table starts empty and they are not moved.
