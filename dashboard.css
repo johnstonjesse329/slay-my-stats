@@ -385,10 +385,9 @@ h1 {
   padding: 0.7rem 0.8rem;
   min-width: 0;
 }
-.asc-name { overflow-wrap: anywhere; min-width: 0; }
-/* The one place a character's name may break: the tracker's cards are narrow and the name sits beside a portrait. */
-.asc-name .char-label { white-space: normal; }
-.asc-char { display: flex; align-items: flex-end; gap: 0.6rem; }
+.asc-name { min-width: 0; }
+/* Name beside the portrait while it fits; wraps below it as a whole, never mid-word. */
+.asc-char { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.3rem 0.6rem; }
 .asc-portrait { height: 5.5rem; width: auto; flex: none; }
 .asc-mode { margin-top: 0.5rem; }
 .asc-mode + .asc-mode { border-top: 1px solid var(--panel-border); margin-top: 0.65rem; padding-top: 0.6rem; }
@@ -464,6 +463,14 @@ h1 {
 @media (max-width: 700px) {
   .asc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1rem; }
   .asc-stats div:last-child { grid-column: 1 / -1; }
+  /* Cards are two across: the name sits under the portrait on one line in every card. */
+  .asc-char { flex-direction: column; align-items: flex-start; }
+  /* The milestone table fits the screen: cells wrap rather than scroll sideways. */
+  .asc-milestone-dialog { padding: 1rem 0.6rem; }
+  .asc-milestone-dialog .asc-milestone-scroll th, .asc-milestone-dialog .asc-milestone-scroll td { white-space: normal; }
+  .asc-milestone-dialog .asc-milestone-scroll td.asc-ms-date { min-width: 3.6rem; }
+  .asc-milestone-dialog .asc-milestone-scroll td.asc-ms-tries { white-space: nowrap; }
+  .asc-milestone-dialog .asc-milestone-scroll th, .asc-milestone-dialog .asc-milestone-scroll td { padding: 0.45rem 0.25rem; font-size: var(--fs-xs); }
 }
 
 /* ---- Fight lanes (Overview): win rate, HP entering, damage taken ---- */
@@ -2952,6 +2959,8 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #seeds-table th:last-child, #seeds-table th.seed-player { display: none; }
   /* The player (All players) goes on its own line under the row's figures. */
   #seeds-table tr.seed-row > td.seed-player { grid-column: 1 / -1; padding-top: 0 !important; }
+  /* Your own seeds say nothing new with "You" on every row, so it takes no line. */
+  #seeds-table tr.seed-row > td.seed-player-you { display: none; }
   #seeds-table tr.seed-row > td:last-child { grid-column: 1 / -1; padding-top: 0 !important; }
   #seeds-table tr.seed-row > td:last-child:empty { display: none; }
   #seeds-table tr:not(.seed-row) > td { display: block; }

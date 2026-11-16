@@ -370,10 +370,13 @@ function renderAscTracker() {
     const rows = groups.map(([difficulty, attempts]) => {
       const first = attempts[0], win = attempts.find(run => run.won), streak = winStreaks(attempts);
       const calendarDay = ts => { const d = new Date(ts * 1000); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
-      const days = win ? Math.round((calendarDay(win.ts) - calendarDay(first.ts)) / 86400000) + 1 : "—";
-      return `<tr><th scope="row">${difficulty}</th><td>${fmtDate(first.ts)}</td><td>${win ? fmtDate(win.ts) : "—"}</td><td>${days}</td><td><span class="asc-record-win">${streak.wins}W</span> / <span class="asc-record-loss">${streak.runs - streak.wins}L</span></td><td>${streak.best}</td></tr>`;
+      const days = win ? Math.round((calendarDay(win.ts) - calendarDay(first.ts)) / 86400000) + 1 : 0;
+      // Days alone hide how often they tried: runs up to and including the first win go beside them.
+      const tries = win ? attempts.indexOf(win) + 1 : 0;
+      const toWin = win ? `${tries} ${tries === 1 ? "run" : "runs"}<br>${days} ${days === 1 ? "day" : "days"}` : "—";
+      return `<tr><th scope="row">${difficulty}</th><td class="asc-ms-date">${fmtDate(first.ts)}</td><td class="asc-ms-date">${win ? fmtDate(win.ts) : "—"}</td><td class="asc-ms-tries">${toWin}</td><td><span class="asc-record-win">${streak.wins}W</span> / <span class="asc-record-loss">${streak.runs - streak.wins}L</span></td><td>${streak.best}</td></tr>`;
     }).join("");
-    return rows ? `<p class="asc-dialog-note">Days count calendar dates inclusively.</p><div class="asc-milestone-scroll"><table><thead><tr><th>Difficulty</th><th>First attempt</th><th>First win</th><th>Days to first win</th><th>W/L</th><th>Best streak</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p>No runs yet.</p>`;
+    return rows ? `<p class="asc-dialog-note">Days count calendar dates inclusively.</p><div class="asc-milestone-scroll"><table><thead><tr><th>Difficulty</th><th>First attempt</th><th>First win</th><th>To first win</th><th>W/L</th><th>Best streak</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p>No runs yet.</p>`;
   };
 
   // Beside the title: how many characters have an A10 win in each mode.
@@ -398,7 +401,7 @@ function renderAscTracker() {
     const portrait = (DATA.charIcons || {})[char]?.select;
     return `<div class="asc-card" style="border-top-color:${color}">
       ${portrait
-        ? `<div class="asc-char"><img class="asc-portrait" src="${portrait}" alt=""><div class="asc-name">${charLabelHtml(char, true)}</div></div>`
+        ? `<div class="asc-char"><img class="asc-portrait" src="${portrait}" alt=""><div class="asc-name">${charLabelHtml(char, true, false)}</div></div>`
         : `<div class="asc-name">${charLabelHtml(char, true)}</div>`}
       ${ASC_TRACKER_MODES.map(mode => block(char, color, mode)).join("")}
     </div>`;

@@ -397,7 +397,7 @@ function renderSeeds() {
       </td>
       <td style="padding:0.4rem 0.75rem;text-align:center">${wonDot}</td>
       <td style="padding:0.4rem 0.75rem;white-space:nowrap;color:var(--text-dim);font-size:var(--fs-sm)">${fmt(run.ts)}</td>
-      <td class="seed-player" style="padding:0.4rem 0.75rem;white-space:nowrap;font-size:var(--fs-sm)">${run.slug
+      <td class="seed-player${run.slug ? "" : " seed-player-you"}" style="padding:0.4rem 0.75rem;white-space:nowrap;font-size:var(--fs-sm)">${run.slug
         ? `<a href="/u/${encodeURIComponent(run.slug)}" style="color:var(--text)">${escapeHtml(run.name || run.slug)}</a>`
         : `<span style="color:var(--text-dim)">You</span>`}</td>
       <td style="padding:0.4rem 0.75rem;font-size:var(--fs-sm)">${matchSummary}</td>
