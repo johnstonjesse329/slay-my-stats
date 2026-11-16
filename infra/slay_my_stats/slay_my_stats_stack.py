@@ -608,10 +608,20 @@ class SlayMyStatsStack(Stack):
                     "GAMMA_SESSION_SECRET": session_key,
                     "GAMMA_ORIGIN": f"https://{domain_name}",
                     "DATA_BUCKET": data_bucket.bucket_name,
+                    "STEAM_API_KEY_PARAM_NAME": STEAM_API_KEY_PARAM_NAME,
                 },
             )
             auth_url = auth_fn.add_function_url(auth_type=lambda_.FunctionUrlAuthType.NONE)
             data_bucket.grant_read_write(auth_fn, "feedback/*")
+            # Feedback shows authors and resolvers by Steam name, looked up with the Web API key
+            # (Steam's public profile page is unreliable from AWS addresses).
+            steam_api_key_param.grant_read(auth_fn)
+            auth_fn.add_to_role_policy(
+                iam.PolicyStatement(
+                    actions=["kms:Decrypt"],
+                    resources=[self.format_arn(service="kms", resource="alias", resource_name="aws/ssm")],
+                )
+            )
 
             # The owner's feedback emails, to the same alert address: new notes each morning
             # (nothing on a quiet day), and on Mondays the open, incoming and resolved counts.
