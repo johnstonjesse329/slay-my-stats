@@ -554,9 +554,7 @@ h1 {
   font-size: var(--fs-xs);
   white-space: nowrap;
   box-shadow: 0 4px 16px #0007;
-  transition: opacity 0.35s ease;
 }
-.drag-hint.gone { opacity: 0; }
 /* Touch: a finger dragged along a chart scrubs its floors, so it must not start a text selection or
    the callout, and a sideways drag stays with the chart while an up-down one still scrolls the page. */
 @media (pointer: coarse) {

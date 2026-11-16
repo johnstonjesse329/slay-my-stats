@@ -2176,7 +2176,9 @@ const hasFinePointer = () => window.matchMedia("(any-pointer: fine)").matches;
 function renderRangeTip() {
   const tip = document.getElementById("detail-range-tip");
   if (!tip) return;
-  tip.hidden = !hasFinePointer() || rangeTipSeen() || rangeUsed();
+  // The gesture does not retire the line: someone who drags once may still be the one showing a
+  // friend, and the line is quiet enough to live with. Only its own x puts it away.
+  tip.hidden = !hasFinePointer() || rangeTipSeen();
   if (tip.dataset.wired) return;
   tip.dataset.wired = "1";
   tip.querySelector(".range-tip-close")?.addEventListener("click", () => {
@@ -2184,13 +2186,6 @@ function renderRangeTip() {
     tip.hidden = true;
   });
 }
-
-function hideRangeTip() {
-  const tip = document.getElementById("detail-range-tip");
-  if (tip) tip.hidden = true;
-}
-let rangeHintShown = false;  // the pill explains the gesture once a visit, not on every chart
-
 const floorOf = n => n.floor + 1;
 
 function makeRangeBandPlugin() {
@@ -2247,23 +2242,20 @@ function bindRangeSelect(chart, nodes) {
   const canvas = chart.canvas;
   const host = canvas.closest(".chart-wrap") || canvas.parentElement;
   host.classList.add("range-ready");
-  // The gesture is invisible until someone does it, so the first hover on a chart says what it
-  // is: a pill over the plot, once per browser, and only where a mouse can drag (a finger
-  // scrubs the hover box instead).
-  const firstTime = () => {
-    if (!hasFinePointer()) return;
-    if (rangeUsed() || rangeTipSeen() || rangeHintShown) return;
-    if (host.querySelector(".drag-hint")) return;
-    rangeHintShown = true;
+  // The same advice as the line above the charts, put where the eye is: a pill over the plot
+  // while the pointer is on the chart. It stays as long as the pointer does -- no timer, so it
+  // can't vanish while someone is reading it -- and stops once the gesture has been used or the
+  // line has been dismissed.
+  const dropPill = () => host.querySelector(".drag-hint")?.remove();
+  const showPill = () => {
+    if (!hasFinePointer() || rangeUsed() || rangeTipSeen() || host.querySelector(".drag-hint")) return;
     const hint = document.createElement("span");
     hint.className = "drag-hint";
     hint.textContent = "Drag across the chart to add up what changed over these floors";
     host.appendChild(hint);
-    const clear = () => { hint.classList.add("gone"); setTimeout(() => hint.remove(), 400); };
-    host.addEventListener("pointerleave", clear, { once: true });
-    setTimeout(clear, 6000);
   };
-  host.addEventListener("pointerenter", firstTime);
+  host.addEventListener("pointerenter", showPill);
+  host.addEventListener("pointerleave", dropPill);
   canvas.addEventListener("pointerdown", e => {
     if (e.button !== 0 || e.pointerType === "touch" || !rangeChanges) return;
     const from = floorAtPointer(chart, nodes, e.clientX);
@@ -2271,8 +2263,7 @@ function bindRangeSelect(chart, nodes) {
     rangeDrag = { chart, nodes, host, from, moved: false };
     canvas.setPointerCapture(e.pointerId);
     closeFloorTip();
-    host.querySelector(".drag-hint")?.remove();
-    hideRangeTip();
+    dropPill();
     try { localStorage.setItem(RANGE_HINT_KEY, "1"); } catch { /* private mode */ }
   });
   canvas.addEventListener("pointermove", e => {

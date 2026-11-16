@@ -116,8 +116,8 @@ def main():
         assert el.evaluate("el => getComputedStyle(el).cursor") == "crosshair"
 
         drag(page, "detail-keep-damage-chart", FROM, TO)
-        assert page.locator(".drag-hint").count() == 0, "the hint goes once the chart is dragged"
-        assert page.locator("#detail-range-tip").is_visible() is False, "and the line above the charts goes"
+        assert page.locator(".drag-hint").count() == 0, "the pill goes once the chart is dragged"
+        assert page.locator("#detail-range-tip").is_visible(), "the line above the charts stays"
 
         panel = page.locator("#detail-range-panel")
         assert panel.count() == 1, "the drag should open the panel"
@@ -147,6 +147,11 @@ def main():
         page.mouse.click(30, 30)
         page.wait_for_timeout(300)
         assert page.locator("#detail-range-panel").count() == 0, "a click should clear the span"
+
+        # The line above the charts is only put away by its own x.
+        page.locator("#detail-range-tip .range-tip-close").click()
+        page.wait_for_timeout(200)
+        assert page.locator("#detail-range-tip").is_visible() is False, "the x puts the line away"
         assert not errors, errors
         print(f"range select: floors {FROM}-{TO}, {want['cards_in']} cards in, "
               f"{want['relics_in']} relics, band on {charts} charts, clear on click.")
