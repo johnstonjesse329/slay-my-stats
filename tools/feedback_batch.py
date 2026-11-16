@@ -2,6 +2,7 @@
 
     python tools/feedback_batch.py pull              # open notes -> local_data/feedback/batch.json
     python tools/feedback_batch.py report            # the batch as markdown, grouped by theme
+    python tools/feedback_batch.py evidence          # the tl;dr table with screenshots (REPORT.md)
     python tools/feedback_batch.py resolve           # dry run: what approved entries would close
     python tools/feedback_batch.py resolve --apply   # write the resolutions to the bucket
 
@@ -139,12 +140,27 @@ def resolve(apply):
     print(f"{closed} {'closed' if apply else 'would close (rerun with --apply)'}")
 
 
+def evidence():
+    """One row per entry: status, commit, what is now true, and its screenshot, as markdown."""
+    print("# Feedback batch evidence (tl;dr)")
+    print()
+    print("| # | Status | Commit | What is now true | Screenshot |")
+    print("|---|---|---|---|---|")
+    for e in _load()["entries"]:
+        shot = e.get("evidence") or ""
+        shot = f"![]({Path(shot).name})" if shot else "-"
+        tldr = (e.get("tldr") or e.get("plan") or "").replace("|", "/").replace("\n", " ")
+        print(f"| {e['n']} | {e['status']} | {e.get('commit') or '-'} | {tldr} | {shot} |")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "pull":
         pull()
     elif cmd == "report":
         report()
+    elif cmd == "evidence":
+        evidence()
     elif cmd == "resolve":
         resolve("--apply" in sys.argv)
     else:
