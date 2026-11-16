@@ -127,12 +127,19 @@ def check_page(base: str, path: str) -> list[str]:
 
 def check_data(base: str, player: str | None) -> list[str]:
     problems = []
-    s, _, b = get(base + "/catalog.json")
+    # The catalog is served under a name carrying its content hash; the manifest maps it.
+    s, _, b = get(base + "/asset-manifest.json")
+    try:
+        catalog = "/" + json.loads(b)["catalog.json"] if s == 200 else "/catalog.json"
+    except (ValueError, KeyError):
+        problems.append("/asset-manifest.json: not the manifest")
+        catalog = "/catalog.json"
+    s, _, b = get(base + catalog)
     try:
         if s != 200 or not json.loads(b):
-            problems.append(f"/catalog.json: HTTP {s} or empty")
+            problems.append(f"{catalog}: HTTP {s} or empty")
     except ValueError:
-        problems.append("/catalog.json: not JSON")
+        problems.append(f"{catalog}: not JSON")
     if not player:
         return problems
     s, _, b = get(f"{base}/users/{player}.json.gz")

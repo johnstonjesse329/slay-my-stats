@@ -176,9 +176,12 @@ from its edge locations worldwide. No server builds pages: visiting `/u/<name>` 
 `users/<slug>.json.gz`, then a file per month of runs), and the dashboard code computes every stat in the browser.
 
 **Uploads appear on the next page load.** The browser sends new runs straight to S3, and a Lambda parses them with
-`run.py` and writes them into the player's month files; there's no build step. Profile files are never cached by
+`run.py` and writes them into the player's month files; there's no build step. The profile summary is never cached by
 CloudFront, and the browser checks for a newer copy on every visit, so a new upload shows up right away. If nothing changed, that check returns a few
-hundred bytes.
+hundred bytes. Month files are fetched at a URL that carries the month's run count and newest run (`?v=`), so the
+browser keeps them for a year and only a month that changed is downloaded again. The built files (`app`, `catalog`, `boot`,
+the CSS and the other scripts) carry a hash of their content in the name (`app.5d4c14bd6b.js`) and are cached for a year too;
+`index.html`, which names them, is checked on every visit, so a deploy reaches everyone at once.
 
 **The home page** reads two small files the Lambda also updates on each upload: the player list for search, and
 the site-wide running totals (see [Site-wide stats](#site-wide-stats)).
@@ -237,15 +240,15 @@ scripts read).
 | `/u/*` | rewrite to `/index.html` | site bucket | optimized (`/index.html`'s cache entry) |
 | `/<page>`, `/<page>/` (one pair per `site/pages/` file) | rewrite to `/index.html` | site bucket | optimized |
 | `/users/*` | none | data bucket | **disabled**, so a profile shows an upload straight away |
-| everything else (`/`, `/app.js`, `/catalog.json`, art) | none | site bucket | optimized |
+| everything else (`/`, `/app.<hash>.js`, `/catalog.<hash>.json`, art) | none | site bucket | optimized |
 
 `ids/*` in the data bucket has no behavior, so it's unreachable from outside.
 
 Inside the page, `site/boot.js` decides what to draw from `location.pathname`: the player finder and
 site-wide stats on `/`, a hand-written page on `/<page>` (fetched from `/page-<page>.html`), or a
-profile on `/u/<slug>`, which it loads by fetching `/catalog.json`, the profile summary
+profile on `/u/<slug>`, which it loads by fetching the catalog (`/catalog.<hash>.json`), the profile summary
 `/users/<slug>.json.gz` and then all its month files at once, joining them into `window.DATA` and then loading
-`/app.js`.
+`/app.<hash>.js`.
 
 ### Stored data
 

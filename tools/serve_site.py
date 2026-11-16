@@ -49,6 +49,7 @@ import email.parser
 import json
 import os
 import subprocess
+import re
 import sys
 import threading
 import time
@@ -277,7 +278,10 @@ class Handler(BaseHTTPRequestHandler):
         # change only when the art is re-baked, and re-fetching 200 thumbnails on
         # every navigation is the one thing that would make this server
         # noticeably slow to use.
-        if "?v=" in self.path and "/users/" in self.path:
+        if re.search(r"\.[0-9a-f]{10}\.(js|css|json)$", urlsplit(self.path).path):
+            # A content-hashed build file: the name changes when the content does.
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        elif "?v=" in self.path and "/users/" in self.path:
             # A month file at its versioned URL: the real bucket lets browsers keep it.
             self.send_header("Cache-Control", "public, max-age=31536000")
         elif content_type.startswith("text/") or "json" in content_type:
