@@ -2098,17 +2098,19 @@ const ENEMY_OFFSETS = {
 
 // A multi-enemy fight gets its marker icon fanned into that many icons -- the enemies behind the
 // one on the point, so the group reads at a glance and the count matches the fight -- on every
-// floor chart that draws fight icons (HP, damage done, damage taken, keeping up). Each copy is a
-// fifth fainter than the one in front of it, so two or three of them read as a group without the
-// cluster turning into one blob over the line. Bosses get it too when their data says so (Kaiser
-// Crab's claws). Drawn before the line and the marker, so the marker still pins the exact point.
+// floor chart that draws fight icons (HP, damage done, damage taken, keeping up). Copies further
+// back are smaller and fainter, the way a crowd reads behind the front of it, so three of them
+// look like a mob rather than one blob. Bosses get it too when their data says so (Kaiser Crab's
+// claws). Drawn before the line and the marker, so the marker still pins the exact point.
 function makeManyIconPlugin(nodes) {
-  // How faint a copy at each distance behind the marker is: the same distance behind fades the
-  // same, so a fan reads level rather than lopsided.
-  const fade = offsets => {
-    const depth = [...new Set(offsets.map(([fx, fy]) => +Math.hypot(fx, fy).toFixed(2)))].sort((a, b) => a - b);
-    return offsets.map(([fx, fy]) => 0.85 * Math.pow(0.8, depth.indexOf(+Math.hypot(fx, fy).toFixed(2))));
+  // Depth behind the marker, 0 for the copies nearest it: the same distance back fades and
+  // shrinks the same, so a fan reads level rather than lopsided.
+  const depthsOf = offsets => {
+    const d = [...new Set(offsets.map(([fx, fy]) => +Math.hypot(fx, fy).toFixed(2)))].sort((a, b) => a - b);
+    return offsets.map(([fx, fy]) => d.indexOf(+Math.hypot(fx, fy).toFixed(2)));
   };
+  const SIZE_STEP = 0.78;   // how much smaller each step back is
+  const FADE_STEP = 0.55;   // and how much fainter
   return {
     id: "manyIcons",
     beforeDatasetsDraw(chart) {
@@ -2124,10 +2126,12 @@ function makeManyIconPlugin(nodes) {
           const size = radius * 2;
           const px = x.getPixelForValue(i), py = y.getPixelForValue(ds.data[i]);
           const offsets = ENEMY_OFFSETS[Math.min(count, 5)] || ENEMY_OFFSETS[5];
-          const alphas = fade(offsets);
+          const depths = depthsOf(offsets);
           offsets.forEach(([fx, fy], k) => {
-            ctx.globalAlpha = alphas[k];
-            ctx.drawImage(img, px - radius + fx * radius, py - radius + fy * radius, size, size);
+            const depth = depths[k];
+            const s = size * Math.pow(SIZE_STEP, depth + 1);
+            ctx.globalAlpha = 0.7 * Math.pow(FADE_STEP, depth);
+            ctx.drawImage(img, px + fx * radius - s / 2, py + fy * radius - s / 2, s, s);
           });
         });
       });
@@ -2266,13 +2270,13 @@ function bindRangeSelect(chart, nodes) {
   const canvas = chart.canvas;
   const host = canvas.closest(".chart-wrap") || canvas.parentElement;
   host.classList.add("range-ready");
-  // The same advice as the line above the charts, put where the eye is: a pill over the plot
-  // while the pointer is on the chart. It stays as long as the pointer does -- no timer, so it
-  // can't vanish while someone is reading it -- and stops once the gesture has been used or the
-  // line has been dismissed.
+  // The same advice as the note under Keeping Up, put where the eye is: a pill over the plot
+  // while the pointer is on the chart. It lives exactly as long as the pointer does -- no timer,
+  // so it can't vanish while someone is reading it -- and it is not remembered away, because a
+  // hint nobody can call back is no use to whoever is looking next.
   const dropPill = () => host.querySelector(".drag-hint")?.remove();
   const showPill = () => {
-    if (!hasFinePointer() || rangeUsed() || rangeTipSeen() || host.querySelector(".drag-hint")) return;
+    if (!hasFinePointer() || host.querySelector(".drag-hint")) return;
     const hint = document.createElement("span");
     hint.className = "drag-hint";
     hint.textContent = "Drag across the chart to add up what changed over these floors";
