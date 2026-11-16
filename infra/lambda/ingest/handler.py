@@ -2004,3 +2004,16 @@ def digest_handler(event, context):
     subject, body = build_digest(_get_store(), time.time())
     print(json.dumps({"digest": subject}))
     _alert(subject, body)
+
+
+def feedback_digest_handler(event, context):
+    """Run by EventBridge Scheduler on gamma: a daily email of new feedback and a weekly one with the
+    open, incoming and resolved counts. The schedule's input names which ("period")."""
+    import boto3
+    from feedback import _all_notes, build_report
+    period = "weekly" if event.get("period") == "weekly" else "daily"
+    notes = _all_notes(boto3.client("s3"), os.environ["DATA_BUCKET"])
+    report = build_report(notes, time.time(), period, os.environ["GAMMA_ORIGIN"])
+    print(json.dumps({"feedback_digest": period, "sent": bool(report), "notes": len(notes)}))
+    if report:
+        _alert(*report)

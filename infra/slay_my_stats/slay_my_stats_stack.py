@@ -600,6 +600,42 @@ class SlayMyStatsStack(Stack):
             )
             auth_url = auth_fn.add_function_url(auth_type=lambda_.FunctionUrlAuthType.NONE)
             data_bucket.grant_read_write(auth_fn, "feedback/*")
+
+            # The owner's feedback emails, to the same alert address: new notes each morning
+            # (nothing on a quiet day), and on Mondays the open, incoming and resolved counts.
+            feedback_log_group = logs.LogGroup(
+                self, "FeedbackDigestLogGroup",
+                retention=logs.RetentionDays.ONE_MONTH,
+                removal_policy=RemovalPolicy.DESTROY,
+            )
+            feedback_digest_fn = lambda_.Function(
+                self, "FeedbackDigestFunction",
+                runtime=lambda_.Runtime.PYTHON_3_12,
+                handler="handler.feedback_digest_handler",
+                code=ingest_code,
+                timeout=Duration.seconds(60),
+                memory_size=256,
+                log_group=feedback_log_group,
+                environment={"DATA_BUCKET": data_bucket.bucket_name, "GAMMA_ORIGIN": f"https://{domain_name}",
+                             "ALERT_TOPIC_ARN": alert_topic.topic_arn},
+            )
+            data_bucket.grant_read(feedback_digest_fn, "feedback/*")
+            alert_topic.grant_publish(feedback_digest_fn)
+            scheduler.Schedule(
+                self, "FeedbackDigestDailySchedule",
+                schedule=scheduler.ScheduleExpression.cron(minute="0", hour="8", time_zone=TimeZone.AMERICA_CHICAGO),
+                target=scheduler_targets.LambdaInvoke(
+                    feedback_digest_fn, input=scheduler.ScheduleTargetInput.from_object({"period": "daily"})),
+                description="Daily gamma feedback email",
+            )
+            scheduler.Schedule(
+                self, "FeedbackDigestWeeklySchedule",
+                schedule=scheduler.ScheduleExpression.cron(
+                    minute="0", hour="8", week_day="MON", time_zone=TimeZone.AMERICA_CHICAGO),
+                target=scheduler_targets.LambdaInvoke(
+                    feedback_digest_fn, input=scheduler.ScheduleTargetInput.from_object({"period": "weekly"})),
+                description="Weekly gamma feedback email",
+            )
             distribution.add_behavior(
                 "auth/*", origins.HttpOrigin(Fn.select(2, Fn.split("/", auth_url.url))),
                 allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
