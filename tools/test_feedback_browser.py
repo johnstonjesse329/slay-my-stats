@@ -1,7 +1,7 @@
 """Exercise feedback with an isolated mocked inbox at the required device sizes."""
 import json
 from pathlib import Path
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, quote as urlquote, urlsplit
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +41,7 @@ def main():
                             note = next(item for item in notes if item['id'] == body['id'])
                             note['resolved'] = body['resolved']
                             if body['resolved']:
-                                note.update(resolved_by='76561198000000001', resolved_at=1800000100,
+                                note.update(resolved_by='76561198000000001', resolved_by_name='Test Admin', resolved_at=1800000100,
                                             outcome=body.get('outcome'), close_note=body.get('close_note'),
                                             resolved_in=body.get('resolved_in'))
                         else:
@@ -92,6 +92,9 @@ def main():
             assert page.locator('.bucket').count() == 1
             assert 'Whole page' in page.locator('.bucket summary').first.inner_text()
             assert page.locator('.note-url').first.inner_text() == 'https://gamma.slay-my-stats.com/'
+            # One note listed: its own Copy, and a copy-all that says how many it takes.
+            assert page.get_by_role('button', name='Copy', exact=True).count() == 1
+            assert page.get_by_role('button', name='Copy all 1 note', exact=True).is_visible()
             page.get_by_role('button', name='Whole site', exact=True).click()
             wait_summary(page, '2 notes · 2 open · 2 places')
             assert page.locator('.bucket').count() == 2
@@ -107,6 +110,8 @@ def main():
             wait_summary(page, '0 notes · 0 open · 0 places')
             page.get_by_label('Status').select_option('resolved')
             page.get_by_text('Declined', exact=False).first.wait_for()
+            # The resolver shows by name (the mock serves one), not by the end of a Steam ID.
+            page.get_by_text('Declined by Test Admin', exact=False).wait_for()
             page.get_by_text('Not planned').wait_for()
             page.get_by_role('button', name='Reopen', exact=True).click()
             wait_summary(page, '0 notes · 0 open · 0 places')
@@ -162,6 +167,11 @@ def main():
             output = ROOT / '.playwright-mcp' / f'feedback-{name}.png'
             output.parent.mkdir(exist_ok=True)
             page.screenshot(path=str(output))
+            # Opening an existing note from its link must not copy its text into the entry.
+            page.goto('https://gamma.slay-my-stats.com/?feedback=' + urlquote(notes[0]['id'], safe=''))
+            page.get_by_text('Reviewing:', exact=False).wait_for()
+            assert page.get_by_label('What should change?').input_value() == ''
+            assert page.get_by_role('radio', name='Bug', exact=True).get_attribute('aria-checked') == 'false'
             assert not errors, errors
             print(f'{name}: passed; {output}')
             browser.close()

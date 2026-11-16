@@ -64,6 +64,35 @@ def _resolve(note, steam, resolved, fields):
         note.setdefault("history", []).append(entry)
         note["resolved"] = False
 
+_NAMES = {}          # steam id -> (looked up at, display name); warm Lambdas reuse it
+NAME_TTL = 6 * 3600
+
+
+def _steam_name(steam):
+    """A player's current Steam display name, or None if Steam could not be asked."""
+    cached = _NAMES.get(steam)
+    if cached and time.time() - cached[0] < NAME_TTL:
+        return cached[1]
+    try:
+        from handler import lookup_steam_name
+        name = lookup_steam_name(steam)
+    except Exception:
+        name = None
+    if name:
+        _NAMES[steam] = (time.time(), name)
+    return name
+
+
+def _named(note):
+    """The note as sent to the page: who wrote and who resolved it, by Steam name. Names are looked
+    up per response, never stored on the note, so a rename shows up and nothing extra is kept."""
+    out = dict(note)
+    for field in ("author", "resolved_by"):
+        name = note.get(field) and _steam_name(str(note[field]))
+        if name:
+            out[field + "_name"] = name
+    return out
+
 
 def _valid_path(path) -> bool:
     return isinstance(path, str) and path.startswith("/") and not path.startswith("//") and len(path) <= 3000
@@ -145,7 +174,7 @@ def handle(event):
         if cursor and not CURSOR.fullmatch(cursor):
             return reply(400, {"message": "Invalid page cursor."})
         notes, following = _read_notes(store, bucket, scope, params.get("path", ""), cursor, status, category)
-        return reply(200, {"notes": notes, "next": following, "scope": scope})
+        return reply(200, {"notes": [_named(n) for n in notes], "next": following, "scope": scope})
     try:
         raw = event.get("body") or ""
         if len(raw) > 40000:
@@ -186,7 +215,7 @@ def handle(event):
     except (ValueError, TypeError, AttributeError):
         return reply(400, {"message": "Invalid feedback. Use a comment of 1–4000 characters."})
     store.put_object(Bucket=bucket, Key=key, Body=json.dumps(note).encode(), ContentType="application/json")
-    return reply(200, {"note": note})
+    return reply(200, {"note": _named(note)})
 
 
 def _all_notes(store, bucket):
