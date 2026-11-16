@@ -469,14 +469,20 @@ function renderDetailRun(run) {
     copyBtn.addEventListener("click", () => copyRunLink(run.ts, copyBtn)));
 
   // The span a drag picks is per run: a new run starts with none, and its own floor-by-floor
-  // changes are what the panel adds up.
+  // changes are what the panel adds up. A run whose history doesn't fit the shape leaves the
+  // charts alone and only loses the span.
   clearRange();
   rangeNodes = run.timeline || [];
-  rangeChanges = run.deckAdded || run.relicsAdded
-    ? floorChanges(rangeNodes,
-      heldItems(run.finalDeck || [], run.deckAdded || [], run.cardsLost || []),
-      heldItems(run.finalRelics || [], run.relicsAdded || [], run.relicsLost || []))
-    : null;
+  try {
+    rangeChanges = run.deckAdded || run.relicsAdded
+      ? floorChanges(rangeNodes,
+        heldItems(run.finalDeck || [], run.deckAdded || [], run.cardsLost || []),
+        heldItems(run.finalRelics || [], run.relicsAdded || [], run.relicsLost || []))
+      : null;
+  } catch (err) {
+    console.warn("range select: no floor changes for this run", err);
+    rangeChanges = null;
+  }
 
   renderDetailTimeline(run);
   renderDetailMaps(run);
@@ -2155,19 +2161,19 @@ let rangeChanges = null;  // the run's floorChanges(), or null when it has no de
 let rangeNodes = [];      // its timeline
 let rangeDrag = null;     // {chart, nodes, host, from, moved} while a pointer is down on a chart
 let rangePanel = null;    // the panel, moved under whichever chart the span was dragged on
-const RANGE_HINT_KEY = "slay-my-stats:range-hint";  // set once the gesture has been used
-const RANGE_TIP_KEY = "slay-my-stats:range-tip-dismissed";
+const RANGE_HINT_KEY = "slay-my-stats:range-used:v2";          // the gesture has been used
+const RANGE_TIP_KEY = "slay-my-stats:range-tip-dismissed:v2";  // the line above the charts was closed
 const rangeTipSeen = () => { try { return !!localStorage.getItem(RANGE_TIP_KEY); } catch { return false; } };
 const rangeUsed = () => { try { return !!localStorage.getItem(RANGE_HINT_KEY); } catch { return false; } };
+// A drag needs a pointer, not a finger, but a laptop with a touchscreen usually has both, and the
+// mouse still drags: the line shows wherever any precise pointer exists.
+const hasFinePointer = () => window.matchMedia("(any-pointer: fine)").matches;
 
 // A line above the charts saying what they can do, until it is dismissed or the gesture is used.
 // A hint that only appears on hover is no good to someone who never thinks to hover; this one is
 // there when the run opens.
 function renderRangeTip() {
-  // Only where a drag is possible: a finger scrubs the hover box instead, so the line would be
-  // telling a phone about a gesture it doesn't have.
-  if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
-  if (rangeTipSeen() || rangeUsed()) return;
+  if (!hasFinePointer() || rangeTipSeen() || rangeUsed()) return;
   if (document.getElementById("detail-range-tip")) return;
   const box = document.getElementById("detail-hp-box");
   if (!box) return;
@@ -2248,7 +2254,7 @@ function bindRangeSelect(chart, nodes) {
   // is: a pill over the plot, once per browser, and only where a mouse can drag (a finger
   // scrubs the hover box instead).
   const firstTime = () => {
-    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    if (!hasFinePointer()) return;
     if (rangeUsed() || rangeTipSeen() || rangeHintShown) return;
     if (host.querySelector(".drag-hint")) return;
     rangeHintShown = true;
