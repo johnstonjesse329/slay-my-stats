@@ -186,6 +186,7 @@ function aggregateMonthlyWinPct(filteredRuns) {
 }
 
 let monthlyWinChart = null;
+let lastMonthlyRuns = [];
 
 // Draws dashed vertical lines at the given x-axis indices, one per month a
 // new game build first appeared (see aggregateMonthlyWinPct's MIN_BUILD_RUNS
@@ -215,6 +216,7 @@ function buildChangeVlinePlugin(buildChangeMonths) {
       ctx.fillStyle = "#e0c468";
       ctx.textBaseline = "bottom";
       ctx.textAlign = "center";
+      const rightEdge = [];
       buildChangeMonths.forEach(({ index, builds }) => {
         const px = x.getPixelForValue(index);
         builds.forEach((b, i) => {
@@ -223,6 +225,11 @@ function buildChangeVlinePlugin(buildChangeMonths) {
           // push half the label off-canvas. Clamp horizontally so it can't clip.
           const half = ctx.measureText(b.build).width / 2;
           const cx = Math.min(Math.max(px, 4 + half), ctx.canvas.width - 4 - half);
+          // Neighbouring months on a narrow chart would print over each other:
+          // a label that would touch the last one drawn in its row is left out
+          // (its dashed line still marks the build).
+          if (cx - half < (rightEdge[i] ?? -Infinity) + 4) return;
+          rightEdge[i] = cx + half;
           ctx.fillText(b.build, cx, top - 2 - i * 13);
         });
       });
@@ -231,8 +238,38 @@ function buildChangeVlinePlugin(buildChangeMonths) {
   };
 }
 
+// On a phone the chart opens on the latest months only (a point per month for
+// six characters is unreadable across all of them); a button reveals the rest.
+const PHONE_MONTHS = 6;
+let monthlyShowAll = false;
+const isPhoneWidth = () => window.matchMedia("(max-width: 700px)").matches;
+
 function updateMonthlyWinChart(filteredRuns) {
-  const { months, byMonth, buildChangeMonths } = aggregateMonthlyWinPct(filteredRuns);
+  const full = aggregateMonthlyWinPct(filteredRuns);
+  const phone = isPhoneWidth();
+  const clipped = phone && !monthlyShowAll && full.months.length > PHONE_MONTHS;
+  const first = clipped ? full.months.length - PHONE_MONTHS : 0;
+  const months = full.months.slice(first);
+  const byMonth = full.byMonth;
+  // A build first seen before the visible window has no line in it. On a phone
+  // each month keeps only its newest build label, so labels never stack.
+  const buildChangeMonths = full.buildChangeMonths
+    .filter(g => g.index >= first)
+    .map(g => ({ index: g.index - first, builds: phone ? g.builds.slice(-1) : g.builds }));
+
+  const wrap = document.getElementById("monthlyWinChart").parentElement;
+  let more = document.getElementById("monthlyWinMore");
+  if (!more) {
+    more = document.createElement("button");
+    more.type = "button";
+    more.id = "monthlyWinMore";
+    more.className = "chart-more";
+    more.addEventListener("click", () => { monthlyShowAll = !monthlyShowAll; updateMonthlyWinChart(lastMonthlyRuns); });
+    wrap.after(more);
+  }
+  lastMonthlyRuns = filteredRuns;
+  more.hidden = !(phone && full.months.length > PHONE_MONTHS);
+  more.textContent = monthlyShowAll ? `Show latest ${PHONE_MONTHS} months` : `Show all ${full.months.length} months`;
   // The version labels are stacked upward one per build (13px apart) above the
   // plot area, so a month that introduced many builds needs that much headroom
   // or the stack clips off the top of the chart. Reserve padding for the
@@ -253,7 +290,7 @@ function updateMonthlyWinChart(filteredRuns) {
       borderColor: color,
       backgroundColor: color,
       borderWidth: 2,
-      pointRadius: 3,
+      pointRadius: phone ? 4 : 3,
       tension: 0.3,
       fill: false,
       spanGaps: true,
@@ -292,7 +329,7 @@ function updateMonthlyWinChart(filteredRuns) {
       scales: {
         x: {
           grid:  { color: "#3f4147" },
-          ticks: { color: "#d2cdea" },
+          ticks: { color: "#d2cdea", maxRotation: 0, autoSkip: true, maxTicksLimit: phone ? 6 : 24 },
         },
         y: {
           grid:        { color: "#3f4147" },

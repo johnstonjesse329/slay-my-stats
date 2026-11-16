@@ -505,6 +505,14 @@ h1 {
   .re-rows .fl-section .fl-legend { display: block; margin: 0.15rem 0 0; font-size: var(--fs-xs); white-space: nowrap; }
 }
 
+.chart-more[hidden] { display: none; }
+.chart-more { display: block; margin: 0.5rem auto 0; padding: 0.4rem 1rem; background: transparent; color: var(--gold); border: 1px solid var(--gold); border-radius: 999px; font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+@media (max-width: 700px) {
+  .re-rows .fl-lane { height: 22px; }
+  .re-rows .fl-value { font-size: var(--fs-sm); color: var(--text); top: 2px; }
+  .re-rows > div:not(.fl-section):not(.fl-lane) { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.45rem; margin-top: 0.5rem; }
+}
+
 /* ---- Chart layout grids ---- */
 .grid-2 {
   display: grid;

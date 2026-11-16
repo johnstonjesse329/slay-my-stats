@@ -313,7 +313,7 @@ function renderAscTracker() {
   const dread = DATA.runsData.filter(run => run.mode === "dread").sort((a, b) => a.ts - b.ts);
   // An observed Dread run establishes access even if older runs are missing.
   // Otherwise infer it from recorded A10 wins across the core character roster.
-  const coreChars = ["IRONCLAD", "SILENT", "DEFECT", "NECROBINDER", "REGENT", "FOOL"];
+  const coreChars = DATA.characters;
   const dreadReached = dread.length > 0 || (coreChars.length > 0 && coreChars.every(char =>
     standard.some(run => run.char === char && run.won && run.asc >= maxAsc)));
 

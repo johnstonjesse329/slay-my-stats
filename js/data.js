@@ -23,6 +23,20 @@ if (DATA.runsData.some(run => run.mode === "dread")) {
   DATA.ascensions = [...new Set(DATA.runsData.map(runAsc))].sort((a, b) => a - b);
 }
 
+// The one character roster. Every chart, table and lane iterates DATA.characters, and a
+// character found only in the runs (a new one the catalog or colour list lacks) is added
+// here, so none can go missing from one chart while shown in another.
+{
+  const seen = new Set(DATA.characters);
+  DATA.runsData.forEach(run => {
+    if (run.char && !seen.has(run.char)) {
+      seen.add(run.char);
+      DATA.characters.push(run.char);
+      DATA.charColors.push("#888");
+    }
+  });
+}
+
 Chart.defaults.color = "#d2cdea";
 Chart.defaults.scale.ticks.color = "#d2cdea";
 Chart.defaults.scales.category.ticks.color = "#d2cdea";
