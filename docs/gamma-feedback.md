@@ -12,6 +12,9 @@ panel's X or Escape.
 - Choose **Whole page** for a general comment, enter it, and send it.
   The composer shows the exact page URL that goes with the note, including its
   hash and query, so a report can be reopened without guessing the host.
+- Pick a type: **Bug**, **Feature request** or **Improvement idea**. It is required,
+  is stored on the note as `category` and shows on it in the inbox and the emails.
+  Notes from before categories have none.
 - The composer lists earlier notes for that same element, region or whole page,
   with who wrote them and whether they are resolved, so the same point is not
   raised twice.
@@ -32,6 +35,10 @@ panel's X or Escape.
 - **Copy open notes** copies the loaded unresolved notes, with page URLs, target
   details, author Steam IDs, and timestamps, ready to paste into Codex.
 - Notes load 25 at a time; **Load more** fetches the next page.
+
+The gamma data bucket is retained when the stack is deleted and is versioned, so an
+overwritten or deleted note can be recovered from its earlier versions. Versions of
+everything but `feedback/` expire after 30 days; feedback versions are kept.
 
 The panel can be dragged by its header and resized from its bottom-right corner; it
 keeps its place between openings. **Clear** on the New note tab drops a pinned

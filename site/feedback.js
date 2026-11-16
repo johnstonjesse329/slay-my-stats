@@ -61,6 +61,10 @@
     .bucket-meta{color:#bcb8b0;font-size:11px;white-space:nowrap}
     .bucket-body{padding:2px 11px 10px}
     article{padding:10px 0;border-top:1px solid #2a2740}article:first-child{border-top:0}
+    #kinds{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+    #kinds button{padding:4px 10px;border-radius:999px;border:1px solid #4a4666;background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer}
+    #kinds button[aria-checked="true"]{background:#d4af37;border-color:#d4af37;color:#16141f;font-weight:700}
+    .pill.kind{background:#2a2740;color:#e8e4f4}
     .note-comment{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere}
     .note-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0;font-size:11px;color:#bcb8b0}
     .pill{padding:1px 7px;border-radius:999px;font-weight:700;font-size:10px;letter-spacing:.03em;text-transform:uppercase}
@@ -90,6 +94,7 @@
       <div id="modes"><button id="pick" type="button">Pick on page</button><button id="page" type="button">Whole page</button></div>
       <div id="target-row"><p id="target">Whole page</p><button id="clear" type="button" hidden>Clear</button></div>
       <div id="prior" hidden></div>
+      <div id="kinds" role="radiogroup" aria-label="Type"><button type="button" role="radio" aria-checked="false" data-kind="bug">Bug</button><button type="button" role="radio" aria-checked="false" data-kind="feature">Feature request</button><button type="button" role="radio" aria-checked="false" data-kind="improvement">Improvement idea</button></div>
       <label for="comment">What should change?</label>
       <textarea id="comment" maxlength="4000" placeholder="Describe the issue or suggestion…"></textarea>
       <button id="save" type="button">Send</button>
@@ -169,7 +174,14 @@
   function composer() { say(''); showView('compose'); }
   // Clear shows whenever there is something to take back: a pinned element or region, or text typed.
   function syncClear() { $('clear').hidden = target.kind === 'page' && !$('comment').value; }
+  const KINDS = {bug: 'Bug', feature: 'Feature request', improvement: 'Improvement idea'};
+  let kind = '';
+  function setKind(value) {
+    kind = value;
+    for (const b of $('kinds').children) b.setAttribute('aria-checked', String(b.dataset.kind === value));
+  }
   function resetNote() {
+    setKind('');
     target = {kind: 'page', viewport: {width: innerWidth, height: innerHeight}};
     $('target').textContent = 'Whole page'; $('comment').value = ''; say(''); syncClear(); $('comment').focus();
   }
@@ -187,7 +199,7 @@
     title.textContent=`${matches.length} earlier note${matches.length===1?'':'s'} here`+(open?` · ${open} open`:' · all resolved');
     for(const note of matches.slice(0,8)) {
       const li=document.createElement('li');
-      li.textContent=`${note.resolved?'[resolved] ':''}${note.comment.replace(/\s+/g,' ').slice(0,240)}`;
+      li.textContent=`${note.resolved?'[resolved] ':''}${note.category?`[${KINDS[note.category]||note.category}] `:''}${note.comment.replace(/\s+/g,' ').slice(0,240)}`;
       if(note.resolved) li.className='resolved';
       list.append(li);
     }
@@ -235,7 +247,7 @@
     if(!response.ok) throw new Error(response.status===401?'Sign in to gamma again.':`Could not ${body?'save':'load'} feedback. Please retry.`);
     return response.json();
   }
-  const report = note => `Feedback ${note.id}\n${note.resolved?'Resolved':'Open'} · ${new Date(note.created*1000).toISOString()}\n${note.url || ORIGIN + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
+  const report = note => `Feedback ${note.id}\n${note.category?(KINDS[note.category]||note.category)+' · ':''}${note.resolved?'Resolved':'Open'} · ${new Date(note.created*1000).toISOString()}\n${note.url || ORIGIN + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
   function updateCount() {
     const open=pageCache.filter(note=>!note.resolved).length;
     $('launcher-count').textContent=open?String(open):'';
@@ -277,7 +289,9 @@
     who.textContent='…'+author(note.author);who.title='Steam ID '+note.author;
     const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
     place.href=openUrl.href;place.textContent='Open location';
-    meta.className='note-meta';meta.append(pill,time,who,place);
+    meta.className='note-meta';
+    if(note.category){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=KINDS[note.category]||note.category;meta.append(tag);}
+    meta.append(pill,time,who,place);
     url.className='note-url';url.textContent=note.url || ORIGIN + note.path;
     resolve.textContent=note.resolved?'Reopen':'Resolve';
     const send=async(fields,button)=>{
@@ -371,10 +385,12 @@
   $('load-more').onclick=()=>load(false);
   $('scope-page').onclick=()=>{if(scope!=='page'){scope='page';load(true);}};
   $('scope-site').onclick=()=>{if(scope!=='site'){scope='site';load(true);}};
+  $('kinds').onclick=e=>{const b=e.target.closest('button');if(b)setKind(b.dataset.kind);};
   $('save').onclick=async()=>{
+    if(!kind){say('Pick a type first: bug, feature request or improvement idea.');return;}
     if(!$('comment').value.trim()){say('Add a comment first.');$('comment').focus();return;}
     $('save').disabled=true;
-    try{const url=new URL(pageUrl());await api({comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';syncClear();say('Sent. Everyone on gamma can see it.');await refreshPageNotes();renderPrior();}
+    try{const url=new URL(pageUrl());await api({category:kind,comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';setKind('');syncClear();say('Sent. Everyone on gamma can see it.');await refreshPageNotes();renderPrior();}
     catch(e){say(e.message);}finally{$('save').disabled=false;}
   };
   $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(notes.filter(n=>!n.resolved).map(report).join('\n\n---\n\n'));say('Copied. Paste them into your conversation.','inbox');}catch{say('Clipboard unavailable. Select and copy below.','inbox');const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=notes.filter(n=>!n.resolved).map(report).join('\n\n');$('notes').replaceChildren(pre);}};
@@ -385,7 +401,7 @@
     showView('compose');
     api(null,{scope:'site'}).then(data=>{
       const note=data.notes.find(n=>n.id===requested);if(!note){say('This note is outside the latest notes.');return;}
-      $('comment').value=note.comment;$('target').textContent=`Reviewing: ${note.target.text || note.path}`;syncClear();
+      setKind(note.category||'');$('comment').value=note.comment;$('target').textContent=`Reviewing: ${note.target.text || note.path}`;syncClear();
       let attempts=0;
       const timer=setInterval(()=>{
         let el;try{el=note.target.selector && document.querySelector(note.target.selector);}catch{}

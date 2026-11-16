@@ -55,6 +55,17 @@ class FeedbackTest(unittest.TestCase):
         self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps(note).encode())}
         self.assertEqual(json.loads(feedback.handle(self.event())['body'])['notes'], [note])
 
+    def test_category_is_kept_and_checked(self):
+        body = {'comment': 'x', 'path': '/'}
+        for category in ('bug', 'feature', 'improvement'):
+            note = json.loads(feedback.handle(self.event({**body, 'category': category}))['body'])['note']
+            self.assertEqual(note['category'], category)
+        self.assertNotIn('category', json.loads(feedback.handle(self.event(body))['body'])['note'])
+        self.assertEqual(feedback.handle(self.event({**body, 'category': 'idea'}))['statusCode'], 400)
+        _, text = feedback.build_report([{'created': 100, 'author': '1234', 'comment': 'x', 'path': '/',
+                                          'category': 'feature'}], 100, 'daily', 'https://gamma.test')
+        self.assertIn('[Feature request] x', text)
+
     def test_refuses_cross_origin_and_invalid_notes(self):
         event = self.event({'comment': 'hello', 'path': '/'})
         event['headers']['origin'] = 'https://elsewhere.test'

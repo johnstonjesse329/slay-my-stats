@@ -74,9 +74,14 @@ def main():
             assert page.locator('#page-url').inner_text() == 'https://gamma.slay-my-stats.com/'
             page.get_by_label('What should change?').fill('Make this clearer')
             page.get_by_role('button', name='Send', exact=True).click()
+            page.get_by_text('Pick a type first', exact=False).wait_for()
+            page.get_by_role('radio', name='Bug', exact=True).click()
+            page.get_by_role('button', name='Send', exact=True).click()
             page.get_by_text('Sent. Everyone on gamma can see it.').wait_for()
             created = next(item for item in notes if item['path'] == '/')
             assert created['url'] == 'https://gamma.slay-my-stats.com/', created
+            assert created['category'] == 'bug', created
+            assert page.get_by_role('radio', name='Bug', exact=True).get_attribute('aria-checked') == 'false'
             assert page.locator('#launcher-count').text_content() == '1'
             # The inbox is a tab of the same panel, not a second button.
             page.get_by_role('tab', name='Inbox', exact=True).click()
@@ -102,6 +107,7 @@ def main():
             heading.click()
             page.get_by_text('Pinned:', exact=False).first.wait_for()
             page.get_by_label('What should change?').fill('Pinned comment')
+            page.get_by_role('radio', name='Improvement idea', exact=True).click()
             page.get_by_role('button', name='Send', exact=True).click()
             page.get_by_text('1 earlier note here', exact=False).wait_for()
             assert 'Pinned comment' in page.locator('#prior').inner_text()

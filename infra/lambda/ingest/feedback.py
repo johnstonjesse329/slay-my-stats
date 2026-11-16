@@ -14,6 +14,7 @@ PAGE_SIZE = 25
 SCAN_LIMIT = 400  # objects read in one request; a page-scoped view may skip most
 CURSOR = re.compile(r"feedback/\d{10}-[a-f0-9]{32}\.json")
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
+CATEGORIES = {"bug": "Bug", "feature": "Feature request", "improvement": "Improvement idea"}
 RESOLUTION = ("resolved_by", "resolved_at", "close_note", "resolved_in")
 
 
@@ -124,6 +125,9 @@ def handle(event):
             _resolve(note, steam, bool(data.get("resolved")), close_note.strip(), commit)
         elif action == "create":
             comment = data.get("comment", "")
+            category = data.get("category")  # notes from before categories have none
+            if category is not None and category not in CATEGORIES:
+                raise ValueError()
             path = data.get("path", "")
             target = data.get("target", {})
             if (not isinstance(comment, str) or not 1 <= len(comment.strip()) <= 4000
@@ -139,6 +143,8 @@ def handle(event):
             key = f"feedback/{9999999999 - int(time.time()):010d}-{uuid.uuid4().hex}.json"
             note = {"id": key, "created": int(time.time()), "author": steam,
                     "comment": comment.strip(), "path": path, "url": url, "target": target, "resolved": False}
+            if category:
+                note["category"] = category
         else:
             raise ValueError()
     except (ValueError, TypeError, AttributeError):
@@ -165,6 +171,8 @@ def _all_notes(store, bucket):
 def _line(note, origin):
     text = " ".join(note.get("comment", "").split())
     text = text if len(text) <= 100 else text[:99] + "…"
+    kind = CATEGORIES.get(note.get("category"))
+    text = f"[{kind}] {text}" if kind else text
     return f"…{str(note.get('author', '?'))[-4:]}: {text}\n  {note.get('url') or origin + note.get('path', '')}"
 
 
