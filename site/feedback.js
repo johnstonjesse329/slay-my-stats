@@ -13,6 +13,7 @@
     button:hover{background:#514635}button:disabled{opacity:.5}a{color:#edc782}
     #launcher{display:flex;align-items:center;gap:8px;padding:12px 20px;border:1px solid #f6e3b0;border-radius:999px;background:linear-gradient(#f4dda6,#e0c468);color:#191c20;font-size:15px;font-weight:700;box-shadow:0 6px 20px #000a;order:2}
     #launcher:hover{background:linear-gradient(#f9e7ba,#e8cf7c)}
+    #launcher.sent{background:linear-gradient(#cfe8b5,#9fcb7a);border-color:#cfe8b5}
     #launcher-count{min-width:20px;padding:1px 6px;border-radius:999px;background:#191c20;color:#f4dda6;font-size:12px;font-weight:700;text-align:center}
     #launcher:focus-visible,button:focus-visible{outline:3px solid #f6c66d;outline-offset:2px}
     #panel{order:1;background:#191c20;border:1px solid #82735b;border-radius:12px;padding:16px;width:420px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 100px);min-width:300px;min-height:180px;overflow:auto;resize:both;box-shadow:0 8px 40px #0009}
@@ -66,7 +67,12 @@
     #kinds button[aria-checked="true"]{background:#d4af37;border-color:#d4af37;color:#16141f;font-weight:700}
     .pill.kind{background:#2a2740;color:#e8e4f4}
     .note-comment{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere}
+    .note-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 4px;font-size:12px;color:#bcb8b0}
+    .note-who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f4f0e7;font-weight:600}
+    .note-who.bare{color:#8f8a80;font-weight:400}
+    .note-head time{flex:none;white-space:nowrap}
     .note-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0;font-size:11px;color:#bcb8b0}
+    .note-meta a{margin-left:auto}
     .pill{padding:1px 7px;border-radius:999px;font-weight:700;font-size:10px;letter-spacing:.03em;text-transform:uppercase}
     .pill.open{background:#e0c468;color:#191c20}.pill.resolved{background:#3a3460;color:#c9c4d8}
     .note-url{display:block;margin:6px 0 8px;color:#8f8a80;font-size:11px;overflow-wrap:anywhere}
@@ -113,7 +119,7 @@
       <div id="inbox-foot"><button id="copy" type="button">Copy all notes</button><button id="refresh" type="button">Refresh</button></div>
     </div>
   </section>
-  <button id="launcher" type="button"><span aria-hidden="true">✎</span> Feedback<span id="launcher-count" aria-hidden="true" hidden></span></button>`;
+  <button id="launcher" type="button"><span aria-hidden="true">✎</span> <span id="launcher-label">Feedback</span><span id="launcher-count" aria-hidden="true" hidden></span></button>`;
   const $ = id => root.getElementById(id);
   const ORIGIN = location.origin;
   let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'page', status = 'open', filterKind = '', nextCursor = null, view = 'inbox', picking = false, start, previousFocus, oldTouchAction;
@@ -282,22 +288,32 @@
   }
   const when = ts => new Date(ts*1000).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
   const matchesFilter = note => (status==='all'||!!note.resolved===(status==='resolved'))&&(!filterKind||note.category===filterKind);
-  const author = (note, field = 'author') => note[field + '_name'] || '…' + String(note[field]).slice(-4);
+  // A name the lookup gave once stays for the session, so a later response where Steam could not be
+  // asked does not turn the same person back into an ID fragment.
+  const names = new Map();
+  const nameOf = (note, field = 'author') => {
+    const id = String(note[field]), name = note[field + '_name'];
+    if (name) names.set(id, name);
+    return names.get(id) || '';
+  };
+  const author = (note, field = 'author') => nameOf(note, field) || 'Steam …' + String(note[field]).slice(-4);
   const OUTCOMES = {done:'Done',declined:'Declined',duplicate:'Duplicate'};
   function noteArticle(note) {
     const article=document.createElement('article'),comment=document.createElement('p'),meta=document.createElement('p'),
-      pill=document.createElement('span'),time=document.createElement('span'),who=document.createElement('span'),
+      pill=document.createElement('span'),time=document.createElement('time'),who=document.createElement('span'),head=document.createElement('p'),
       place=document.createElement('a'),actions=document.createElement('div'),resolve=document.createElement('button'),
       url=document.createElement('small');
     comment.className='note-comment';comment.textContent=note.comment;
     pill.className='pill '+(note.resolved?'resolved':'open');pill.textContent=note.resolved?(OUTCOMES[note.outcome]||'Resolved'):'Open';
     time.textContent=when(note.created);
-    who.textContent=author(note);
+    who.textContent=author(note);who.className='note-who'+(nameOf(note)?'':' bare');who.title=String(note.author);
+    head.className='note-head';head.append(who,time);
     const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
     place.href=openUrl.href;place.textContent='Open location';
     meta.className='note-meta';
+    meta.append(pill);
     if(note.category){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=KINDS[note.category]||note.category;meta.append(tag);}
-    meta.append(pill,time,who,place);
+    meta.append(place);
     url.className='note-url';url.textContent=note.url || ORIGIN + note.path;
     resolve.textContent=note.resolved?'Reopen':'Resolve';
     const send=async(fields,button)=>{
@@ -337,7 +353,7 @@
     copyOne.title='Copy just this note';
     copyOne.onclick=()=>copyText(report(note),'Copied this note.');
     actions.className='note-actions';actions.append(resolve,copyOne);
-    article.append(comment,meta,url);
+    article.append(head,comment,meta,url);
     if(note.resolved){
       const line=document.createElement('p');line.className='note-resolution';
       line.textContent=[(OUTCOMES[note.outcome]||'Resolved')+(note.resolved_by?' by '+author(note,'resolved_by'):'')+(note.resolved_at?' · '+when(note.resolved_at):''),
@@ -391,7 +407,10 @@
   // The site moves between tabs and runs by changing the hash, which is part of a note's path:
   // the badge has to follow, or it keeps counting the page you left.
   addEventListener('hashchange',()=>{ refreshPageNotes().then(()=>{ if(view==='compose') renderPrior(); }).catch(()=>{}); });
+  // Only the newest request may fill the list: two quick loads (tab then filter) must not both append.
+  let loadId=0;
   async function load(reset=true) {
+    const mine=++loadId;
     if(reset){notes=[];nextCursor=null;$('summary').textContent='Loading…';say('','inbox');}
     try {
       const params={scope,status};
@@ -399,8 +418,9 @@
       if(scope==='page') params.path=currentPath();
       if(nextCursor) params.cursor=nextCursor;
       const data=await api(null,params);
+      if(mine!==loadId) return;
       notes=notes.concat(data.notes);nextCursor=data.next||null;renderInbox();
-    } catch(e){ $('summary').textContent='';say(e.message,'inbox'); }
+    } catch(e){ if(mine!==loadId) return; $('summary').textContent='';say(e.message,'inbox'); }
   }
   $('launcher').onclick=openPanel;
   $('close').onclick=closePanel;$('cancel').onclick=stop;
@@ -421,9 +441,17 @@
     if(!kind){say('Pick a type first: bug, feature request or improvement idea.');return;}
     if(!$('comment').value.trim()){say('Add a comment first.');$('comment').focus();return;}
     $('save').disabled=true;
-    try{const url=new URL(pageUrl());await api({category:kind,comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';setKind('');syncClear();say('Sent. Everyone on gamma can see it.');await refreshPageNotes();renderPrior();}
+    try{const url=new URL(pageUrl());await api({category:kind,comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';setKind('');syncClear();say('');view='inbox';closePanel();sentFlash();refreshPageNotes().then(renderPrior).catch(()=>{});}
     catch(e){say(e.message);}finally{$('save').disabled=false;}
   };
+  // The panel closes on a successful send; the launcher says so for a moment.
+  let flashTimer;
+  function sentFlash() {
+    const button=$('launcher'), label=$('launcher-label');
+    label.textContent='Sent';button.classList.add('sent');
+    clearTimeout(flashTimer);
+    flashTimer=setTimeout(()=>{label.textContent='Feedback';button.classList.remove('sent');},2500);
+  }
   // Clipboard with a visible fallback: the text is shown in the list to select by hand.
   async function copyText(text,done) {
     try{await navigator.clipboard.writeText(text);say(done,'inbox');}
