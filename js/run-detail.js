@@ -159,7 +159,7 @@ function renderDetailTagFilter(runs) {
   detailTags.forEach(t => { counts[t] = counts[t] || 0; });
   const tags = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
   box.style.display = tags.length ? "" : "none";
-  box.querySelector(".tag-filter-text").textContent = detailTags.size ? [...detailTags].join(" + ") : "All";
+  box.querySelector(".tag-filter-text").textContent = detailTags.size ? [...detailTags].join(" + ") : "All builds";
   box.querySelector(".tag-filter-clear").hidden = detailTags.size === 0;
   const chips = box.querySelector(".tag-filter-chips");
   chips.innerHTML = tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="run-tag-n">${counts[t]}</span></button>`).join("");
@@ -338,9 +338,7 @@ function renderDetailRun(run) {
   const purchaseItems = [
     totalColorlessBought  > 0 ? { label: "Colorless bought", value: totalColorlessBought }  : null,
     totalOtherCardsBought > 0 ? { label: "Cards bought",     value: totalOtherCardsBought } : null,
-    totalPotionsBought    > 0 ? { label: "Potions bought",   value: totalPotionsBought }    : null,
     totalRelicsBought     > 0 ? { label: "Relics bought",    value: totalRelicsBought }     : null,
-    { label: "Potions gained", value: totalPotionsGained },
   ].filter(Boolean);
 
   const removalItems = [
@@ -353,6 +351,9 @@ function renderDetailRun(run) {
     { label: "Fights", value: tl.filter(n => keepFight(n) && n.type !== "elite" && n.type !== "boss").length },
     { label: "Damage taken", value: totalDmg },
     { label: "HP healed", value: totalHealed },
+    // One potions number: what the run picked up (rewards and shop buys alike), found along with
+    // the fights, with the shop part in its tooltip rather than a second near-duplicate stat.
+    { label: "Potions", value: totalPotionsGained, title: totalPotionsBought > 0 ? `${totalPotionsBought} bought in shops` : "" },
     totalRewardsSkipped > 0 ? { label: "Card rewards skipped", value: totalRewardsSkipped } : null,
   ].filter(Boolean);
 
@@ -364,7 +365,7 @@ function renderDetailRun(run) {
 
   // Same number-over-label pairing as the headline row above, a size down.
   const statHtml = items => items.map(i =>
-    `<span class="run-headline-stat"><span class="run-headline-value">${i.value}</span><span class="run-headline-label">${i.label}</span></span>`
+    `<span class="run-headline-stat"${i.title ? ` data-tip="${i.title}"` : ""}><span class="run-headline-value">${i.value}</span><span class="run-headline-label">${i.label}</span></span>`
   ).join("");
 
   // Same rich hover tooltip (portrait, rarity, description) as the Relics
@@ -401,7 +402,7 @@ function renderDetailRun(run) {
   // two) that the last row isn't left holding one or two stats on their own;
   // when the count already divides by three, none do. Desktop keeps them all
   // separate (both are in the page, CSS shows one).
-  const PHONE_PAIRS = [["Damage taken", "HP healed"], ["Fights", "Events"], ["Cards bought", "Card rewards skipped"]];
+  const PHONE_PAIRS = [["Damage taken", "HP healed"], ["Fights", "Events"], ["Cards bought", "Card rewards skipped"], ["Events", "Rest sites"], ["Rest sites", "Shops"]];
   const flatStats = allGroups.flat();
   const pairsToJoin = flatStats.length % 3;
   // Pairs are picked in list order, by where the first stat of each sits.
@@ -432,7 +433,7 @@ function renderDetailRun(run) {
       ${modeTagHtml(run)}${customTagHtml(run, true)}${moddedTagHtml(run, true)}
       <span class="rh-meta">
         <span class="rh-date">${fmtDate(run.ts)}</span>
-        ${run.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed: </span>${run.seed}</span>` : ""}
+        ${run.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed</span>${run.seed}</span>` : ""}
         ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
       </span>
     </div>
@@ -1899,6 +1900,7 @@ document.addEventListener("pointermove", e => {
 }, { passive: true, capture: true });
 document.addEventListener("pointerdown", e => {
   floorTipTouch = e.pointerType === "touch";
+  floorTipPointer.x = e.clientX; floorTipPointer.y = e.clientY;
   if (floorTipTouch && floorTip && floorTip.style.display === "block" && !floorTip.contains(e.target) && e.target.tagName !== "CANVAS") closeFloorTip();
 });
 const FLOOR_TIP_GRACE = 450;
@@ -1991,15 +1993,22 @@ function showFloorTip(context, html) {
   floorTip.style.display = "block";
   const { clientWidth: vw, clientHeight: vh } = document.documentElement;
   const r = context.chart.canvas.getBoundingClientRect();
-  // A finger covers what it points at, and a box beside it covers the rest of a phone's
-  // chart. So on touch the box is a sheet on the screen edge away from the chart (CSS
-  // sizes it): the chart stays in view and the finger keeps scrubbing it.
-  floorTip.classList.toggle("docked", floorTipTouch);
+  // A finger covers what it points at, so on touch the box sits beside the touched point: above
+  // it (below when the point is near the top of the screen), centred on the floor's column and
+  // held inside the screen on both sides.
+  floorTip.classList.remove("docked");
   if (floorTipTouch) {
-    floorTip.classList.remove("above");
-    floorTip.classList.toggle("docked-top", (r.top + r.bottom) / 2 > vh / 2);
-    floorTip.style.left = floorTip.style.top = "";
+    floorTip.style.left = floorTip.style.top = "0px";
     floorTip.scrollTop = 0;
+    const w = floorTip.offsetWidth, h = floorTip.offsetHeight;
+    const px = r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
+    const lift = 44;   // clears the fingertip
+    const above = py - lift - h >= 8;
+    const top = above ? py - lift - h : Math.min(py + lift, vh - 8 - h);
+    floorTip.classList.toggle("above", above);
+    floorTip.classList.toggle("passive", !floorTip.querySelector("[data-pick]"));
+    floorTip.style.left = Math.max(8, Math.min(px - w / 2, vw - 8 - w)) + "px";
+    floorTip.style.top = Math.max(8, top) + "px";
     return;
   }
   // Measured at the origin, so the last position near an edge can't squeeze it narrower.
@@ -2083,14 +2092,36 @@ const nodeEnemyCount = n => {
   return d ? d.count || (d.many ? 3 : 1) : 1;
 };
 
-// A multi-enemy fight gets a count badge on its marker icon ("2", "3"...) on every floor chart
-// that draws fight icons (HP, damage done, damage taken, keeping up). Copies of the icon fanned
-// behind the marker were lost where floors sit close together (a pair beside a neighbour read as
-// three); a number is exact and takes no room of its own. Bosses get it too when their data says
-// so (Kaiser Crab's claws). Drawn after the markers so it sits on top, right under the icon.
+// A multi-enemy fight wears one icon per enemy on every floor chart that draws fight icons (HP,
+// damage done, damage taken, keeping up): the marker plus a dimmed copy beside it for each extra
+// enemy, up to three, drawn under the line. Fanned copies behind the marker were lost where floors
+// sit close together; side by side and dimmed they read as a pair. Past three, a "×N" badge under
+// the icon gives the exact count (Kaiser Crab's claws count too when their data says so).
 function makeManyIconPlugin(nodes) {
   return {
     id: "manyIcons",
+    // Behind the marker: a dimmed copy of the icon beside it for each extra enemy (up to two), so
+    // a pair reads as a pair on its own and the copies are drawn under the line, not into a blob.
+    beforeDatasetsDraw(chart) {
+      const { ctx, scales: { x, y } } = chart;
+      ctx.save();
+      chart.data.datasets.forEach(ds => {
+        if (!Array.isArray(ds.pointRadius)) return;
+        ds.pointRadius.forEach((radius, i) => {
+          const img = ds.pointStyle && ds.pointStyle[i];
+          if (!(radius > 0) || !(img instanceof HTMLImageElement)) return;
+          const count = nodeEnemyCount(nodes[i]);
+          if (count < 2 || i < x.min || i > x.max) return;
+          const cx = x.getPixelForValue(i), cy = y.getPixelForValue(ds.data[i]);
+          const w = img.width || radius * 2, h = img.height || radius * 2;
+          ctx.globalAlpha = 0.9;
+          ctx.filter = "brightness(0.75)";
+          for (let k = Math.min(count, 3) - 1; k >= 1; k--)
+            ctx.drawImage(img, cx + k * radius * 1.15 - w / 2, cy - h / 2, w, h);
+        });
+      });
+      ctx.restore();
+    },
     afterDatasetsDraw(chart) {
       const { ctx, scales: { x, y } } = chart;
       ctx.save();
@@ -2102,7 +2133,7 @@ function makeManyIconPlugin(nodes) {
           const img = ds.pointStyle && ds.pointStyle[i];
           if (!(radius > 0) || !(img instanceof HTMLImageElement)) return;
           const count = nodeEnemyCount(nodes[i]);
-          if (count < 2 || i < x.min || i > x.max) return;
+          if (count < 4 || i < x.min || i > x.max) return;
           // "×N" right under the icon, outlined so it reads over the line and the range bar.
           const label = `×${count}`;
           const cx = x.getPixelForValue(i), cy = y.getPixelForValue(ds.data[i]) + radius + 9;
@@ -2162,8 +2193,10 @@ function makeHoverDotPlugin() {
 // the run changed inside them: cards in, out and upgraded, relics gained and lost, beside what
 // the span cost in fights, damage and gold. A stretch that went wrong can then be read as a
 // whole instead of floor by floor. One span is live at a time and every floor chart draws it, so
-// the HP chart's dip and the deck's growth line up under the same band. A finger already scrubs
-// the hover box, so a span is a pointer (mouse or pen) gesture; Esc or a click clears it.
+// the HP chart's dip and the deck's growth line up under the same band. A mouse drags as soon as
+// it is down; a finger drags once it has moved sideways (a tap is still the hover box, and an
+// up-and-down swipe is still the page scrolling: the canvas only claims pan-y). Esc or a click
+// clears it.
 let rangeSel = null;      // {from, to}: floor numbers, as the axis numbers them (1-based)
 let rangeChanges = null;  // the run's floorChanges(), or null when it has no deck history
 let rangeNodes = [];      // its timeline
@@ -2265,16 +2298,28 @@ function bindRangeSelect(chart, nodes) {
   host.addEventListener("pointerenter", showPill);
   host.addEventListener("pointerleave", dropPill);
   canvas.addEventListener("pointerdown", e => {
-    if (e.button !== 0 || e.pointerType === "touch" || !rangeChanges) return;
+    if (e.button !== 0 || !rangeChanges) return;
     const from = floorAtPointer(chart, nodes, e.clientX);
     if (from == null) return;
+    if (e.pointerType === "touch") {   // armed: becomes a drag once the finger moves sideways
+      touchStart = { x: e.clientX, y: e.clientY, from, id: e.pointerId };
+      return;
+    }
+    beginDrag(e, from);
+  });
+  let touchStart = null;
+  const beginDrag = (e, from) => {
     rangeDrag = { chart, nodes, host, from, moved: false };
-    canvas.setPointerCapture(e.pointerId);
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
     closeFloorTip();
     dropPill();
     try { localStorage.setItem(RANGE_HINT_KEY, "1"); } catch { /* private mode */ }
-  });
+  };
   canvas.addEventListener("pointermove", e => {
+    if (touchStart && !rangeDrag && e.pointerId === touchStart.id) {
+      const dx = Math.abs(e.clientX - touchStart.x), dy = Math.abs(e.clientY - touchStart.y);
+      if (dx > 10 && dx > dy) beginDrag(e, touchStart.from);
+    }
     if (!rangeDrag || rangeDrag.chart !== chart) return;
     const to = floorAtPointer(chart, nodes, e.clientX);
     if (to == null) return;
@@ -2282,6 +2327,8 @@ function bindRangeSelect(chart, nodes) {
     showRange(Math.min(rangeDrag.from, to), Math.max(rangeDrag.from, to));
   });
   const end = e => {
+    // A swipe the page took for scrolling cancels the pointer: nothing was picked.
+    if (e.pointerType === "touch") { touchStart = null; if (e.type === "pointercancel" && !rangeDrag) return; }
     if (!rangeDrag || rangeDrag.chart !== chart) return;
     const wasClick = !rangeDrag.moved;
     rangeDrag = null;

@@ -1386,7 +1386,8 @@ h1 {
 .rh-meta { display: contents; }
 .run-copy-link-icon { display: none; }
 .rh-date { color:var(--text-dim); font-size: var(--fs-sm); }
-.rh-seed { color:var(--text-dim); font-size: var(--fs-sm); font-family: monospace; }
+.rh-seed { color:var(--text); font-size: var(--fs-sm); font-family: monospace; }
+.rh-seed-label { margin-right: 0.4em; color: var(--text-dim); font-family: inherit; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
 
 .detail-run-headline-stats {
   display: flex;
@@ -2870,7 +2871,6 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .detail-run-header-bar { gap: 0.3rem 0.6rem; }
   .rh-meta { display: flex; align-items: center; gap: 0.3rem 0.6rem; flex: 1 0 100%; }
   .rh-date, .rh-seed { font-size: var(--fs-xs); white-space: nowrap; }
-  .rh-seed-label { display: none; }
   .detail-run-header-bar .run-copy-link { display: none; }
   /* Phone: Copy link becomes an icon button at the top right of the header's
      first line (the small text button in the bar is hidden). */

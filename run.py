@@ -1677,7 +1677,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <div id="detail-tag-filter" style="display:none">
       <div class="tag-filter-head">
         <button type="button" class="tag-filter-summary" aria-expanded="false">
-          <span class="filter-label">Tags</span>
+          <span class="filter-label">Build</span>
           <span class="tag-filter-text"></span>
           <span class="tag-filter-caret" aria-hidden="true">▾</span>
         </button>
