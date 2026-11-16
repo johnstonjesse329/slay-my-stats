@@ -184,7 +184,7 @@ function renderPersonalBests() {
     // The ascension tiers the other tables split by (ascColumns).
     ...ascColumns().map(col => [col.label, (b, c) => tierBar(b.tiers[col.key], c), "pb-tier"]),
     // Dread, the pinnacle past A10, keeps its row wherever its runs could show, runs or not.
-    ...(sharedActiveModes.has("dread") ? [["Dread", (b, c) => tierBar(b.tiers.dread, c), "pb-tier pb-tier-dread"]] : []),
+    ...(currentPage === "overview" || sharedActiveModes.has("dread") ? [["Dread", (b, c) => tierBar(b.tiers.dread, c), "pb-tier pb-tier-dread"]] : []),
     ["Runs",              b => b.gamesPlayed],
     ["Final boss deaths", b => pct(b.finalBossDeaths, b.gamesPlayed)],
     ["Elite deaths",      b => pct(b.eliteDeaths, b.gamesPlayed)],
@@ -203,7 +203,7 @@ function renderPersonalBests() {
     `<table class="pb-table">
       <thead><tr><th></th>${cols.map(c =>
         `<th${c.total ? ` class="pb-total"` : ""} style="color:${c.color}">${c.icon
-          ? `<img class="pb-char-icon" src="${c.icon}" alt="${c.name}" data-tip="${c.name}"><span class="pb-char-name">${c.name}</span>`
+          ? `<img class="pb-char-icon" src="${c.icon}" alt="${c.name}" data-tip="${c.name}"><span class="pb-char-name char-label">${c.name}</span>`
           : c.name}</th>`).join("")}</tr></thead>
       <tbody>${rows.map(r => typeof r === "string"
         ? `<tr class="pb-group"><th colspan="${cols.length + 1}">${r}</th></tr>`
@@ -402,8 +402,8 @@ function renderAscTracker() {
     const portrait = (DATA.charIcons || {})[char]?.select;
     return `<div class="asc-card" style="border-top-color:${color}">
       ${portrait
-        ? `<div class="asc-char"><img class="asc-portrait" src="${portrait}" alt=""><div class="asc-name" style="color:${color}">${fmtCharName(char)}</div></div>`
-        : `<div class="asc-name" style="color:${color}">${charIconHtml(char)}${fmtCharName(char)}</div>`}
+        ? `<div class="asc-char"><img class="asc-portrait" src="${portrait}" alt=""><div class="asc-name">${charLabelHtml(char, true)}</div></div>`
+        : `<div class="asc-name">${charLabelHtml(char, true)}</div>`}
       ${ASC_TRACKER_MODES.map(mode => block(char, color, mode)).join("")}
     </div>`;
   }).join("");
@@ -432,11 +432,11 @@ function renderAscTracker() {
     grid.insertBefore(chart, grid.children[1] || null);
   }
   chart.className = "chart-box";
-  chart.innerHTML = `<h2>Run readings by character</h2><p class="chart-caption">Share of filtered runs compared with the shared winning-run baseline. Dread and runs without enough data are unrated.</p><div class="asc-readings-legend"><span class="asc-reading-rough">Rough</span><span class="asc-reading-mid">Mid</span><span class="asc-reading-hype">Hype</span><span class="asc-reading-op">OP</span><span class="asc-reading-unrated">Unrated</span></div><div class="asc-readings-chart-rows"></div>`;
+  chart.innerHTML = `<h2>Run readings by character</h2><p class="chart-caption">All Standard and Dread runs compared with the shared winning-run baseline. Dread and runs without enough data are unrated.</p><div class="asc-readings-legend"><div class="asc-readings-legend-items"><span class="asc-reading-rough">Rough</span><span class="asc-reading-mid">Mid</span><span class="asc-reading-hype">Hype</span><span class="asc-reading-op">OP</span><span class="asc-reading-unrated">Unrated</span></div></div><div class="asc-readings-chart-rows"></div>`;
   // Run reading constants are initialized later in the bundle on first load.
   setTimeout(() => {
     if (!chart.isConnected) return;
-    const filtered = filterRuns();
+    const filtered = overviewRuns();
     chart.querySelector(".asc-readings-chart-rows").innerHTML = DATA.characters.map(char => {
       const runs = filtered.filter(run => run.char === char);
       if (!runs.length) return "";
@@ -447,7 +447,7 @@ function renderAscTracker() {
       return `<div class="asc-readings-row"><div class="asc-readings-char"></div><div class="asc-readings-bar" role="img" aria-label="${desc}">${bars}</div><span>${runs.length} runs</span></div>`;
     }).filter(Boolean).join("");
     const names = DATA.characters.filter(char => filtered.some(run => run.char === char));
-    chart.querySelectorAll(".asc-readings-char").forEach((node, i) => { node.textContent = fmtCharName(names[i]); node.style.color = CHAR_COLOR_MAP[names[i]] || ""; });
+    chart.querySelectorAll(".asc-readings-char").forEach((node, i) => { node.innerHTML = charLabelHtml(names[i]); });
   }, 0);
 
   el.parentElement.querySelectorAll(".pb-stat-link").forEach(link => {
@@ -459,7 +459,7 @@ function renderAscTracker() {
 }
 
 function charNameCell(char) {
-  return `<td class="char-name" style="color:${CHAR_COLOR_MAP[char] || "#a0a0b8"}">${charIconHtml(char)}${fmtCharName(char)}</td>`;
+  return `<td class="char-name">${charLabelHtml(char)}</td>`;
 }
 
 // Shared win-%-to-color mapping for every pivot-table cell in the dashboard.
@@ -655,7 +655,7 @@ function renderCharLanes(elId, pivotData, headers, lanes, axes, legend = "") {
   let html = `${legend}<div class="re-rows"><span></span>${headers.map(h => `<div class="fl-section">${h}</div>`).join("")}`;
   stats.forEach(([char, s]) => {
     const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
-    html += `<div style="color:${color};font-weight:600">${charIconHtml(char)}${fmtCharName(char)}</div>${lanes(s, color).join("")}`;
+    html += `<div>${charLabelHtml(char)}</div>${lanes(s, color).join("")}`;
   });
   document.getElementById(elId).innerHTML = html + `<span></span>${axes.join("")}</div>`;
 }

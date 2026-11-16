@@ -145,6 +145,16 @@ SIGS = {
         # Cards that make cards (Colorless, Debris, Minions) and the ones that count them.
         "Creation": says(r"Colorless|\bcreated?\b|Debris|Minion"),
     },
+    "FOOL": {
+        # Printed text covers Fool mechanics not yet traced by power_data.
+        "Shots": says(r"\bShoot\b|\bShots?\b|\bAim\b|\bArrows?\b", re.I),
+        "Impale": says(r"\bImpale[ds]?\b|\bDislodge[sd]?\b", re.I),
+        # Wah/Cho/Ki cards grant melodies even when their text doesn't name one.
+        "Melodies": lambda c: says(r"\bMelod(?:y|ies)\b|[“\"](?:Wah|Cho|Ki)[”\"]")(c)
+                              or c["id"].startswith(("CARD.WAH_", "CARD.CHO_", "CARD.KI_")),
+        "Sadness": says(r"\bSadness\b|\bJoy\b"),
+        "Stretch": says(r"\bStretch\b"),
+    },
 }
 
 

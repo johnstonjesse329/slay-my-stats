@@ -1,5 +1,6 @@
 from aws_cdk import (
     CfnOutput,
+    Fn,
     Duration,
     RemovalPolicy,
     Stack,
@@ -57,7 +58,7 @@ SITE_PAGES = sorted(f.stem for f in (Path(__file__).resolve().parents[2] / "site
 @jsii.implements(ILocalBundling)
 class _CopyIngestSources:
     def try_bundle(self, output_dir: str, *, image=None, **_kwargs) -> bool:
-        for name in ("handler.py", "measured.py"):
+        for name in ("handler.py", "measured.py", "feedback.py"):
             shutil.copy(INGEST_DIR / name, output_dir)
         shutil.copy(RUN_PY, output_dir)
         shutil.copy(DERIVE_PY, output_dir)
@@ -82,7 +83,7 @@ class _CopyIngestSources:
 def _ingest_asset_hash() -> str:
     import hashlib
     h = hashlib.sha256()
-    for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
+    for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", INGEST_DIR / "feedback.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
               IDS_PY, RELIC_DATA, RETIRED_IDS):
         if p.exists():
             h.update(p.read_bytes())
@@ -141,44 +142,30 @@ function handler(event) {
 }
 """
 
-# Gamma only: a test copy has no reason to be public, so every request to its
-# distribution is checked against the addresses in "gammaAllowedIps" before
-# the cache is consulted. An entry ending in "." or ":" matches as a prefix
-# (an IPv6 /64, say); anything else must match exactly.
-#
-# The refusal carries a page of its own. A 403 with no body and no
-# Content-Type isn't shown as an error by a phone's browser: it shows nothing,
-# or offers to save an empty file.
-IP_ALLOWLIST_CODE = """
-var ALLOWED_IPS = %s;
-
-var FORBIDDEN_PAGE = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
-    + '<meta name="viewport" content="width=device-width, initial-scale=1"><title>403 Forbidden</title></head>'
-    + '<body><h1>403 Forbidden</h1><p>This test site only answers the addresses on its allowlist.</p></body></html>';
-
-function allowed(ip) {
-    for (var i = 0; i < ALLOWED_IPS.length; i++) {
-        var entry = ALLOWED_IPS[i];
-        var prefix = entry.endsWith(".") || entry.endsWith(":");
-        if (prefix ? ip.startsWith(entry) : ip === entry) return true;
-    }
-    return false;
-}
-
+# Checked on every request, before CloudFront consults its cache.
+STEAM_GATE_CODE = """
+var crypto = require('crypto');
+var ALLOWED_IDS = %s;
+var SESSION_KEY = %s;
 function handler(event) {
-    if (!allowed(event.viewer.ip)) {
-        return {
-            statusCode: 403,
-            statusDescription: "Forbidden",
-            // no-store: once the address is allowed, the browser must ask again.
-            headers: {
-                "content-type": { value: "text/html; charset=utf-8" },
-                "cache-control": { value: "no-store" },
-            },
-            body: { encoding: "text", data: FORBIDDEN_PAGE },
-        };
-    }
     var request = event.request;
+    var cookie = request.cookies['__Host-gamma'];
+    var token = cookie ? cookie.value : '';
+    var m = token.match(/^(\\d{17})\\.(\\d{10})\\.([a-f0-9]{64})$/);
+    var valid = false;
+    if (m && ALLOWED_IDS.indexOf(m[1]) !== -1 && Number(m[2]) > Date.now() / 1000) {
+        var signature = crypto.createHmac('sha256', SESSION_KEY).update(m[1] + '.' + m[2]).digest('hex');
+        var diff = 0;
+        for (var i = 0; i < 64; i++) diff |= signature.charCodeAt(i) ^ m[3].charCodeAt(i);
+        valid = diff === 0;
+    }
+    if (!valid) return {
+        statusCode: 302,
+        headers: {
+            location: { value: '/auth/login' },
+            'cache-control': { value: 'no-store' }
+        }
+    };
 %s    return request;
 }
 """
@@ -191,7 +178,7 @@ class SlayMyStatsStack(Stack):
     against real CloudFront before production sees it. Gamma has its own
     buckets, upload function and kill switch, and shares only the Steam API
     key. Its data bucket is deleted with the stack: nothing in it is real.
-    Gamma answers only the addresses in the "gammaAllowedIps" context list.
+    Gamma answers only accounts in the "gammaAllowedSteamIds" context list.
     """
 
     def __init__(self, scope: Construct, construct_id: str, *, stage: str = "prod", **kwargs) -> None:
@@ -212,9 +199,13 @@ class SlayMyStatsStack(Stack):
         # Where failed uploads are emailed. Kept out of the repo with the rest.
         alert_email = required_context("alertEmail")
         # Required, not optional: a gamma deploy without it would be public.
-        allowed_ips = required_context("gammaAllowedIps") if gamma else []
-        if gamma and not (isinstance(allowed_ips, list) and all(isinstance(ip, str) and ip for ip in allowed_ips)):
-            raise ValueError('"gammaAllowedIps" in infra/cdk.context.json must be a list of IP addresses.')
+        allowed_ids = required_context("gammaAllowedSteamIds") if gamma else []
+        if gamma and not (isinstance(allowed_ids, list) and all(
+                isinstance(sid, str) and len(sid) == 17 and sid.isascii() and sid.isdigit() for sid in allowed_ids)):
+            raise ValueError('"gammaAllowedSteamIds" must be a nonempty list of SteamID64 strings.')
+        session_key = required_context("gammaSessionSecret") if gamma else ""
+        if gamma and not (isinstance(session_key, str) and len(session_key) >= 64):
+            raise ValueError('"gammaSessionSecret" must be a random secret of at least 64 characters.')
 
         # users/<slug>.json.gz and users/<slug>/<YYYY-MM>.json.gz: each
         # player's profile summary and runs by month, plus the public
@@ -226,13 +217,17 @@ class SlayMyStatsStack(Stack):
         # rebuilt after a parser fix.
         # RETAIN: players' uploads live only here, so tearing the stack down
         # leaves the bucket behind. Standing the stack up again then needs it
-        # imported or emptied and deleted by hand first.
+        # imported or emptied and deleted by hand first. Gamma is retained too,
+        # for its feedback notes, and is versioned so an overwritten or deleted
+        # note can be recovered. Versioning is per bucket, so the rules below
+        # expire old versions of everything but feedback/, which keeps them.
+        # Prod can take the same by setting `versioned` for both stacks.
         data_bucket = s3.Bucket(
             self, "DataBucket",
             bucket_name=f"{name_prefix}-data",
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY if gamma else RemovalPolicy.RETAIN,
-            auto_delete_objects=gamma,
+            removal_policy=RemovalPolicy.RETAIN,
+            versioned=gamma,
             # The upload page POSTs each upload straight here, with a
             # presigned form the ingest function hands out.
             cors=[s3.CorsRule(
@@ -244,7 +239,15 @@ class SlayMyStatsStack(Stack):
             # Nothing else here expires: raw/ and analytics/ are kept for good.
             lifecycle_rules=[
                 s3.LifecycleRule(prefix="users/_uploads/", expiration=Duration.days(7)),
-            ],
+            ] + ([
+                # Gamma is versioned: a month of history for everything that is
+                # rewritten often, none expired under feedback/.
+                s3.LifecycleRule(
+                    prefix=prefix,
+                    noncurrent_version_expiration=Duration.days(30),
+                    expired_object_delete_marker=True,
+                ) for prefix in ("users/", "ids/", "limits/", "analytics/", "raw/")
+            ] if gamma else []),
         )
 
         # Built static site (index.html, js/*.js, dashboard.css, game art).
@@ -273,16 +276,16 @@ class SlayMyStatsStack(Stack):
             self, "ProfileUrlRewriteFunction",
             runtime=cloudfront.FunctionRuntime.JS_2_0,
             code=cloudfront.FunctionCode.from_inline(
-                IP_ALLOWLIST_CODE % (json.dumps(allowed_ips), '    request.uri = "/index.html";\n')
+                STEAM_GATE_CODE % (json.dumps(allowed_ids), json.dumps(session_key), '    request.uri = "/index.html";\n')
                 if gamma else PAGE_URL_REWRITE_CODE),
         )
         # Everything that isn't a page: assets, art and users/* data.
         gate_associations = [
             cloudfront.FunctionAssociation(
                 function=cloudfront.Function(
-                    self, "IpAllowlistFunction",
+                    self, "SteamGateFunction",
                     runtime=cloudfront.FunctionRuntime.JS_2_0,
-                    code=cloudfront.FunctionCode.from_inline(IP_ALLOWLIST_CODE % (json.dumps(allowed_ips), "")),
+                    code=cloudfront.FunctionCode.from_inline(STEAM_GATE_CODE % (json.dumps(allowed_ids), json.dumps(session_key), "")),
                 ),
                 event_type=cloudfront.FunctionEventType.VIEWER_REQUEST,
             ),
@@ -388,8 +391,8 @@ class SlayMyStatsStack(Stack):
                 # assertion Steam issued for any other site is refused.
                 "ALLOWED_RETURN_TO": f"https://{domain_name}/",
                 # The Function URL is reachable directly, past CloudFront's
-                # allowlist, so the handler checks the caller itself.
-                **({"ALLOWED_IPS": ",".join(allowed_ips)} if gamma else {}),
+                # gate, so the handler checks the verified Steam account itself.
+                **({"ALLOWED_STEAM_IDS": ",".join(allowed_ids)} if gamma else {}),
             },
         )
         # Read/write covers the limits, the slug lookup, and signing the
@@ -503,7 +506,7 @@ class SlayMyStatsStack(Stack):
                 "DATA_BUCKET": data_bucket.bucket_name,
                 "ENTRY": "mod",
                 "STEAM_API_KEY_PARAM_NAME": STEAM_API_KEY_PARAM_NAME,
-                **({"ALLOWED_IPS": ",".join(allowed_ips)} if gamma else {}),
+                **({"ALLOWED_STEAM_IDS": ",".join(allowed_ids)} if gamma else {}),
             },
         )
         data_bucket.grant_read_write(mod_fn)
@@ -592,6 +595,77 @@ class SlayMyStatsStack(Stack):
             ),
         )
 
+        if gamma:
+            auth_fn = lambda_.Function(
+                self, "GammaAuthFunction",
+                runtime=lambda_.Runtime.PYTHON_3_12,
+                handler="handler.gamma_auth_handler",
+                code=ingest_code,
+                timeout=Duration.seconds(15),
+                memory_size=256,
+                environment={
+                    "ALLOWED_STEAM_IDS": ",".join(allowed_ids),
+                    "GAMMA_SESSION_SECRET": session_key,
+                    "GAMMA_ORIGIN": f"https://{domain_name}",
+                    "DATA_BUCKET": data_bucket.bucket_name,
+                    "STEAM_API_KEY_PARAM_NAME": STEAM_API_KEY_PARAM_NAME,
+                },
+            )
+            auth_url = auth_fn.add_function_url(auth_type=lambda_.FunctionUrlAuthType.NONE)
+            data_bucket.grant_read_write(auth_fn, "feedback/*")
+            # Feedback shows authors and resolvers by Steam name, looked up with the Web API key
+            # (Steam's public profile page is unreliable from AWS addresses).
+            steam_api_key_param.grant_read(auth_fn)
+            auth_fn.add_to_role_policy(
+                iam.PolicyStatement(
+                    actions=["kms:Decrypt"],
+                    resources=[self.format_arn(service="kms", resource="alias", resource_name="aws/ssm")],
+                )
+            )
+
+            # The owner's feedback emails, to the same alert address: new notes each morning
+            # (nothing on a quiet day), and on Mondays the open, incoming and resolved counts.
+            feedback_log_group = logs.LogGroup(
+                self, "FeedbackDigestLogGroup",
+                retention=logs.RetentionDays.ONE_MONTH,
+                removal_policy=RemovalPolicy.DESTROY,
+            )
+            feedback_digest_fn = lambda_.Function(
+                self, "FeedbackDigestFunction",
+                runtime=lambda_.Runtime.PYTHON_3_12,
+                handler="handler.feedback_digest_handler",
+                code=ingest_code,
+                timeout=Duration.seconds(60),
+                memory_size=256,
+                log_group=feedback_log_group,
+                environment={"DATA_BUCKET": data_bucket.bucket_name, "GAMMA_ORIGIN": f"https://{domain_name}",
+                             "ALERT_TOPIC_ARN": alert_topic.topic_arn},
+            )
+            data_bucket.grant_read(feedback_digest_fn, "feedback/*")
+            alert_topic.grant_publish(feedback_digest_fn)
+            scheduler.Schedule(
+                self, "FeedbackDigestDailySchedule",
+                schedule=scheduler.ScheduleExpression.cron(minute="0", hour="8", time_zone=TimeZone.AMERICA_CHICAGO),
+                target=scheduler_targets.LambdaInvoke(
+                    feedback_digest_fn, input=scheduler.ScheduleTargetInput.from_object({"period": "daily"})),
+                description="Daily gamma feedback email",
+            )
+            scheduler.Schedule(
+                self, "FeedbackDigestWeeklySchedule",
+                schedule=scheduler.ScheduleExpression.cron(
+                    minute="0", hour="8", week_day="MON", time_zone=TimeZone.AMERICA_CHICAGO),
+                target=scheduler_targets.LambdaInvoke(
+                    feedback_digest_fn, input=scheduler.ScheduleTargetInput.from_object({"period": "weekly"})),
+                description="Weekly gamma feedback email",
+            )
+            distribution.add_behavior(
+                "auth/*", origins.HttpOrigin(Fn.select(2, Fn.split("/", auth_url.url))),
+                allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
+                origin_request_policy=cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+            )
+
         # Kill switch: budget breach -> SNS -> small Lambda that sets the ingest,
         # mod and process functions' reserved concurrency to 0, so every further
         # request or upload is throttled before it runs. Budgets only evaluate a few times a day, so
@@ -621,12 +695,12 @@ class SlayMyStatsStack(Stack):
             memory_size=128,
             log_group=kill_switch_log_group,
             environment={"TARGET_FUNCTION_NAMES": ",".join(
-                f.function_name for f in (ingest_fn, mod_fn, process_fn))},
+                f.function_name for f in ((ingest_fn, mod_fn, process_fn, auth_fn) if gamma else (ingest_fn, mod_fn, process_fn)))},
         )
         kill_switch_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["lambda:PutFunctionConcurrency"],
-                resources=[f.function_arn for f in (ingest_fn, mod_fn, process_fn)],
+                resources=[f.function_arn for f in ((ingest_fn, mod_fn, process_fn, auth_fn) if gamma else (ingest_fn, mod_fn, process_fn))],
             )
         )
         kill_switch_fn.add_event_source(lambda_event_sources.SnsEventSource(kill_switch_topic))

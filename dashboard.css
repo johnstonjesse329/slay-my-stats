@@ -52,8 +52,10 @@ html {
   --text-dim:     #d2cdea;
   /* The type scale: font-sizes outside the phone @media blocks should be one
      of these, so text at the same level reads the same size page to page.
-     xs: tags, counts, uppercase labels. sm: secondary text, descriptions.
-     md: names and primary text. lg/xl: headline numbers and titles. */
+     xs is the floor — no text goes below it anywhere in the dashboard (phone
+     blocks included). xs: tags, counts, uppercase labels. sm: secondary text,
+     descriptions. md: names and primary text. lg/xl: headline numbers and
+     titles. */
   --fs-xs: 0.8125rem;
   --fs-sm: 0.875rem;
   --fs-md: 1rem;
@@ -166,6 +168,10 @@ h1 {
    leads with each character's win rate, its tiers as bars, then one short
    figure per cell; counts are on hover. */
 #personal-bests-cards { margin-bottom: 2rem; }
+.filter-presets { flex-wrap: wrap; }
+.filter-presets select, .filter-presets input { min-width: 0; max-width: 100%; padding: 0.4rem 0.6rem; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 4px; font: inherit; font-size: var(--fs-sm); }
+.filter-actions #shared-filters-status { font-size: var(--fs-sm); color: var(--text-dim); margin-left: 0.4rem; }
+.filter-actions #shared-filters-unsaved { align-items: center; justify-content: center; width: 1.15rem; height: 1.15rem; margin-left: 0.4rem; border-radius: 50%; background: var(--gold); color: #13132a; font-size: var(--fs-xs); font-weight: 700; cursor: default; user-select: none; }
 .pb-table {
   width: 100%; border-collapse: collapse; table-layout: fixed;
   font-variant-numeric: tabular-nums; font-size: var(--fs-md);
@@ -179,6 +185,7 @@ h1 {
 .pb-table thead th:first-child { width: 11rem; }
 .pb-table tbody th { text-align: left; color: var(--text-dim); font-weight: 500; }
 .pb-table td { text-align: center; color: var(--text); font-weight: 500; }
+.pb-table thead th.pb-total { font-size: var(--fs-sm); font-weight: 600; }
 .pb-char-icon { width: 22px; height: 22px; vertical-align: middle; margin-right: 0.4rem; }
 .pb-table tr.pb-headline td { font-size: 1.6rem; font-weight: 700; padding: 0.6rem 0.5rem 0.3rem; border-bottom: 0; }
 .pb-table tr.pb-headline th { color: var(--text); font-weight: 700; border-bottom: 0; }
@@ -234,27 +241,43 @@ h1 {
 
 /* Favorites (Cards page): the player's table and all players' side by side,
    on the same rows and columns, so the same slot sits at the same spot. */
-.fav-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 1rem 2rem; }
-.fav-panel h3 { margin: 0 0 0.25rem; }
+.fav-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 1rem 1.5rem; }
+/* The two panels are the same table, so colour says whose figures they are:
+   gold for yours, a cool blue for everybody's. */
+.fav-panel { padding: 0.5rem 0.6rem 0.3rem; border: 1px solid transparent; border-radius: 8px; }
+.fav-panel h3 { margin: 0 0 0.25rem; font-size: var(--fs-md); font-weight: 800; }
+.fav-panel-you { background: rgba(224, 196, 104, 0.05); border-color: rgba(224, 196, 104, 0.3); }
+.fav-panel-you h3 { color: var(--gold); }
+.fav-panel-all { background: rgba(157, 184, 240, 0.07); border-color: rgba(157, 184, 240, 0.3); }
+.fav-panel-all h3 { color: #9db8f0; }
 .pivot.fav-table { width: 100%; min-width: 0; table-layout: fixed; }
 .fav-table th:first-child { width: 5.5rem; }
 .fav-table tbody th { text-align: left; color: var(--text-dim); font-weight: 600; border-bottom: 1px solid var(--hairline); }
 .fav-table td { padding: 0.25rem 0.4rem; border-bottom: 1px solid var(--hairline); }
 .fav-table .fav-item {
-  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 0.4rem;
-  align-items: center; min-height: 36px; font-size: var(--fs-sm); cursor: default;
+  --fav-face-w: 42px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 0.5rem;
+  align-items: center; min-height: 60px; font-size: var(--fs-md); cursor: default;
 }
 .fav-table .fav-empty { color: var(--text-dim); text-align: center; }
 @media (max-width: 700px) {
-  .pivot.fav-table th { white-space: normal; padding: 0.4rem 0.3rem; }
+  .pivot.fav-table th { white-space: normal; padding: 0.4rem 0.3rem; font-size: var(--fs-xs); }
   .pivot.fav-table th:first-child { width: 5.2rem; padding-left: 0; }
-  .fav-table .fav-item { grid-template-columns: 26px minmax(0, 1fr); }
-  .fav-table .fav-name { display: none; }
+  .fav-table .fav-item { --fav-face-w: 34px; grid-template-columns: auto auto; column-gap: 0.4rem; min-height: 48px; }
+  .fav-table .fav-name, .fav-table .fav-won, .fav-table .fav-count { display: none; }
 }
-.fav-pic { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
-.fav-icon { display: flex; align-items: center; justify-content: center; width: 26px; }
-.fav-name { min-width: 0; color: #ccc; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fav-num { text-align: right; color: #e8e6f0; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fav-pic { width: 34px; height: 34px; object-fit: contain; border-radius: 4px; }
+.fav-icon { display: flex; align-items: center; justify-content: center; }
+.fav-item-face img { display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
+.fav-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.fav-name {
+  min-width: 0; color: #ccc; line-height: 1.2; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.fav-detail { min-width: 0; color: var(--text-dim); font-size: var(--fs-sm); white-space: nowrap; }
+.fav-rate { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); }
+.fav-rate.fav-hi { color: #fff; font-weight: 800; }
+.fav-count { min-width: 0; color: var(--text-dim); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fav-item {
   position: relative;
   z-index: 1;
@@ -296,9 +319,24 @@ h1 {
    box-shadow, not a border: a collapsed border stays behind when the cell sticks. */
 #cards-table-main thead, #seeds-table thead { position: sticky; top: 0; z-index: 2; }
 #cards-table-main thead th, #seeds-table thead th { background: var(--panel-2); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--hairline); }
-.cards-thumb-wrap { display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
+.cards-thumb-wrap { --cards-thumb-w: 62px; display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
+.cards-thumb-wrap .cardface { width: var(--cards-thumb-w); display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
 .cards-hi { font-size: var(--fs-md); }
-.cards-thumb { width: 44px; height: 33px; object-fit: contain; border-radius: 4px; vertical-align: middle; }
+.cards-thumb { width: var(--cards-thumb-w); height: calc(var(--cards-thumb-w) * 0.75); object-fit: contain; border-radius: 4px; vertical-align: middle; }
+/* The table's two blocks of four figures carry their own heading and tint, so
+   "whose number is this" is read from the block, not from every column title. */
+#cards-thead .cards-groups th {
+  padding: 0.6rem 0.6rem 0.15rem; font-size: var(--fs-sm); font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
+}
+#cards-thead .cards-group-you { text-align: left; color: var(--gold); }
+#cards-thead .cards-group-all {
+  text-align: center; color: #9db8f0; background: #2e2a4c;
+  border-left: 1px solid rgba(157, 184, 240, 0.35);
+}
+#cards-table-main th.cards-all-col { background: #2e2a4c; }
+#cards-tbody td.cards-all { background: rgba(157, 184, 240, 0.06); }
+#cards-table-main .cards-all-start { border-left: 1px solid rgba(157, 184, 240, 0.35); }
 .fav-item-face {
   flex: 0 0 auto;
 }
@@ -342,7 +380,7 @@ h1 {
   padding: 0.7rem 0.8rem;
   min-width: 0;
 }
-.asc-name { font-size: var(--fs-md); font-weight: 600; color: var(--text); overflow-wrap: anywhere; min-width: 0; }
+.asc-name { overflow-wrap: anywhere; min-width: 0; }
 .asc-char { display: flex; align-items: flex-end; gap: 0.6rem; }
 .asc-portrait { height: 5.5rem; width: auto; flex: none; }
 .asc-mode { margin-top: 0.5rem; }
@@ -394,10 +432,16 @@ h1 {
 .asc-reading-rough { color: #e28b8b; } .asc-reading-mid { color: #e8c278; }
 .asc-reading-hype { color: #81c99a; } .asc-reading-op { color: #87ceeb; }
 .asc-reading-unrated { color: var(--text-dim); }
-.asc-readings-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.75rem 0; font-size: var(--fs-sm); }
+.asc-readings-legend { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) 5rem; gap: 0.75rem; margin: 0.75rem 0; font-size: var(--fs-sm); }
+.asc-readings-legend-items { grid-column: 2; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 1rem; }
+.asc-readings-legend-items > span { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text); }
+.asc-readings-legend-items > span::before { content: ""; width: 0.75rem; height: 0.75rem; border-radius: 2px; background: var(--swatch); }
+.asc-readings-legend-items .asc-reading-rough { --swatch: #c45d68; } .asc-readings-legend-items .asc-reading-mid { --swatch: #c79c4b; }
+.asc-readings-legend-items .asc-reading-hype { --swatch: #5cba7d; } .asc-readings-legend-items .asc-reading-op { --swatch: #69b9d4; }
+.asc-readings-legend-items .asc-reading-unrated { --swatch: #747382; }
 .asc-readings-chart-rows { display: grid; gap: 0.6rem; }
-.asc-readings-row { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; font-size: var(--fs-sm); }
-.asc-readings-char { font-weight: 600; overflow-wrap: anywhere; }
+.asc-readings-row { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) 5rem; gap: 0.75rem; align-items: center; font-size: var(--fs-sm); }
+.asc-readings-char { overflow-wrap: anywhere; }
 .asc-readings-bar { display: flex; height: 1.2rem; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.06); }
 .asc-readings-bar > span { min-width: 2px; }
 .asc-reading-bar-rough { background: #c45d68; } .asc-reading-bar-mid { background: #c79c4b; }
@@ -458,7 +502,7 @@ h1 {
   .re-rows > div:not(.fl-section):not(.fl-lane) { grid-column: 1 / -1; margin-top: 0.3rem; }
   .re-rows .fl-lane { margin-right: 5.2rem; }
   /* The key drops under its lane title: beside it, it wraps mid-key. */
-  .re-rows .fl-section .fl-legend { display: block; margin: 0.15rem 0 0; font-size: 0.68rem; white-space: nowrap; }
+  .re-rows .fl-section .fl-legend { display: block; margin: 0.15rem 0 0; font-size: var(--fs-xs); white-space: nowrap; }
 }
 
 /* ---- Chart layout grids ---- */
@@ -501,6 +545,23 @@ h1 {
 
 /* 300px: room for a plot after the --fs-sm axis labels and legend. */
 .chart-wrap { position: relative; height: 300px; }
+/* A chart a span can be dragged on says so with its pointer; the first hover on one explains it. */
+.range-ready canvas { cursor: crosshair; }
+.drag-hint {
+  position: absolute;
+  right: 14px;
+  top: 40px;
+  z-index: 5;
+  pointer-events: none;
+  background: #16142af2;
+  border: 1px solid #e0c46880;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  box-shadow: 0 4px 16px #0007;
+}
 /* Touch: a finger dragged along a chart scrubs its floors, so it must not start a text selection or
    the callout, and a sideways drag stays with the chart while an up-down one still scrolls the page. */
 @media (pointer: coarse) {
@@ -651,6 +712,13 @@ h1 {
 }
 .filter-bar-2row .filter-summary-caret { color: var(--text-dim); transition: transform 0.15s; }
 .filter-bar-2row:not(.expanded) .filter-row { display: none; }
+.filter-bar-2row.filters-active { border-color: var(--gold); box-shadow: inset 3px 0 var(--gold); }
+.filter-bar-2row.filters-active .filter-summary > .filter-label { color: var(--gold); font-weight: 700; }
+.filter-bar-2row.filters-active .filter-summary-text { color: var(--gold); }
+.filter-lock-note { display: none; margin: 0; font-size: var(--fs-sm); color: var(--text-dim); }
+.filters-locked.expanded .filter-lock-note { display: block; }
+.filters-locked .filter-row { opacity: 0.55; }
+.filters-locked .filter-row :disabled { cursor: not-allowed; }
 .filter-bar-2row.expanded .filter-summary {
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--hairline);
@@ -786,6 +854,10 @@ h1 {
 .char-btn:disabled { color: var(--text-faint); border-color: var(--hairline); cursor: not-allowed; }
 
 /* A character's head, before its name wherever the name is shown. */
+/* A character's name, wherever the site shows one: one size, one weight, the character's color.
+   Only a character's own pane or heading is larger. Build it with charLabelHtml (js/tooltip.js). */
+.char-label { font-size: var(--fs-sm); font-weight: 600; color: var(--char-color, inherit); }
+.char-label-lg { font-size: var(--fs-md); }
 .char-icon { width: 1.15em; height: 1.15em; vertical-align: -0.22em; margin-right: 0.3em; }
 /* On the selected button the head sits on its own colour (the Fool's is nearly the
    same yellow), so give it a thin dark edge to stay readable. */
@@ -1046,11 +1118,11 @@ h1 {
   /* minmax(0, ...): a bare 1fr never shrinks below its content, and a drawn
      chart canvas is content, so narrowing the window (or zooming in) left
      the timeline as wide as before, clipped off the right edge. */
-  grid-template-columns: var(--run-list-width, 340px) minmax(0, 1fr);
+  grid-template-columns: var(--run-list-width, 398px) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
-/* 340px fits the widest columns (Necrobinder, A10, F48, an OP tag, a two-digit
+/* 398px fits the widest columns (Necrobinder, A10, four party heads, F48, an OP tag, a two-digit
    month and day) beside a scrollbar. A variable, so the phone layout's single
    column still wins. */
 
@@ -1141,13 +1213,13 @@ h1 {
   box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
   /* One set of columns for every row (each row is a subgrid of it), so each
      column is as wide as its widest entry and they line up down the list:
-     char, asc, W/L, floor, reading, date. Spacing is each cell's left padding,
+     char, asc, party, W/L, floor, reading, date. Spacing is each cell's left padding,
      not a column gap. */
   display: grid;
   /* Char takes what it needs; the five columns after it share whatever room
      is left equally, so the spacing is even across the row instead of all of
      it piling up before the date. */
-  grid-template-columns: auto repeat(5, minmax(min-content, 1fr));
+  grid-template-columns: auto repeat(6, minmax(min-content, 1fr));
   align-content: start;
 }
 #detail-run-list > * { grid-column: 1 / -1; }
@@ -1195,10 +1267,16 @@ h1 {
 .detail-run-char.detail-run-sort > span::after { right: auto; left: 100%; padding: 0 0 0 1px; }
 .detail-run-item > :not(:first-child, :empty),
 .detail-run-header-row > :not(:first-child, :empty) { padding-left: 0.5rem; }
-.detail-run-char { font-weight: 600; }
 .detail-run-asc  { font-size: var(--fs-sm); text-align: center; }
 .asc-filter-dread { height: 1.5em; width: auto; vertical-align: middle; margin: -0.3em 0.2em -0.3em 0; }
 .detail-run-dread { height: 1.6em; width: auto; vertical-align: middle; margin: -0.3em 0; }
+/* A party reads as a stack of heads, the way an avatar row does; the ring keeps
+   overlapping ones apart. Four is the most a run can carry. */
+.detail-run-players { display: flex; justify-content: center; align-items: center; white-space: nowrap; }
+/* The heads are a desktop nicety: a phone's narrow list keeps the plain word. */
+.detail-run-party-text { display: none; }
+.detail-run-players .char-icon { width: 16px; height: 16px; margin-right: 0; border-radius: 50%; object-fit: cover; background: #1b1a26; box-shadow: 0 0 0 1px #191c20; }
+.detail-run-players .char-icon + .char-icon { margin-left: -3px; }
 .detail-run-won  { font-weight: 700; font-size: var(--fs-sm); text-align: center; }
 .detail-run-floor { font-size: var(--fs-sm); text-align: center; }
 .detail-run-read  { text-align: center; }
@@ -1581,6 +1659,73 @@ h1 {
 .fl-swatch { width: 14px; height: 10px; border-radius: 2px; box-sizing: border-box; }
 .fl-ring { border: 2px solid; border-radius: 50%; box-sizing: border-box; display: inline-block; }
 
+/* A note under Keeping Up by Floor saying the charts take a drag, until it is dismissed. It is
+   in the page's HTML and hidden by default, shown only where a pointer can drag: a finger scrubs
+   the hover box instead, so the line would be telling a phone about a gesture it doesn't have. */
+.range-tip {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--gold, #e0c468);
+  border-radius: 10px;
+  background: var(--panel, #1b1a26);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  box-shadow: 0 4px 16px #0006;
+}
+@media (any-pointer: fine) { .range-tip:not([hidden]) { display: flex; } }
+.range-tip b { color: var(--gold, #e0c468); font-weight: 700; }
+.range-tip-close {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.range-tip-close:hover, .range-tip-close:focus-visible { color: var(--text); background: #ffffff14; }
+
+/* A span of floors picked by dragging a chart: what the run changed in it. It sits under the
+   chart the drag started on, so the band and the list are read together. */
+.range-panel {
+  margin-top: 0.75rem;
+  border: 1px solid #e0c46859;
+  border-left: 3px solid var(--gold, #e0c468);
+  border-radius: 10px;
+  background: #16142acc;
+  padding: 10px 12px;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.range-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.range-title { font-weight: 700; color: var(--gold, #e0c468); white-space: nowrap; }
+.range-meta { color: var(--text-dim); }
+.range-clear {
+  margin-left: auto; border: 0; background: none; color: var(--text-dim);
+  font: inherit; font-size: 1rem; line-height: 1; padding: 2px 6px; cursor: pointer; border-radius: 6px;
+}
+.range-clear:hover, .range-clear:focus-visible { color: var(--text); background: #ffffff14; }
+.range-groups { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.range-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.range-head { color: var(--text-dim); font-weight: 600; white-space: nowrap; min-width: 68px; }
+.range-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--hairline); border-radius: 999px;
+  padding: 2px 8px 2px 3px; background: #ffffff08; white-space: nowrap;
+}
+.range-chip img { width: 20px; height: 20px; border-radius: 5px; object-fit: cover; }
+/* An upgrade keeps the card and changes what it does, so it wears an arrow rather than a count. */
+.range-chip.up::after { content: "↑"; color: var(--gold, #e0c468); font-weight: 700; }
+.range-empty { color: var(--text-dim); }
+.range-hint { color: var(--text-dim); font-size: var(--fs-xs); margin-top: 8px; }
+
 .floor-tip {
   position: fixed;
   z-index: 50;
@@ -1627,7 +1772,7 @@ h1 {
 .floor-tip thead tr:first-child th[colspan] { border-bottom: 1px solid var(--hairline); }
 .floor-tip .ft-win { color: var(--text-dim); border-left: 1px solid var(--hairline); }
 .floor-tip .ft-win + .ft-win { border-left: 0; }
-.floor-tip td small { color: var(--text-dim); font-size: 0.75rem; margin-left: 3px; }
+.floor-tip td small { color: var(--text-dim); font-size: var(--fs-xs); margin-left: 3px; }
 .floor-tip td .keep-ico { margin-right: 5px; vertical-align: -2px; }
 .floor-tip tr.ft-through td { font-weight: 700; }
 /* What arrived in a turn, as one bar: blocked, healed, got through, a 2px gap between. */
@@ -1886,8 +2031,62 @@ h1 {
   font-weight: 700;
   margin-bottom: 6px;
 }
-.deck-links { margin: 6px 0 16px; padding-left: 18px; font-size: 13px; line-height: 1.6; }
-.deck-links b { color: var(--text, inherit); }
+.synergy-explorer { margin: 8px 0 20px; }
+.synergy-explorer > .deck-group-label { font-size: var(--fs-md); margin-bottom: 10px; }
+.synergy-groups { display: flex; flex-direction: column; gap: 10px; }
+.synergy-archetype { border: 1px solid var(--panel-border); border-radius: 8px; background: var(--bg-deep); }
+.synergy-archetype > summary { display: flex; align-items: center; gap: 10px; padding: 9px 10px; cursor: pointer; list-style: none; }
+.synergy-archetype > summary::-webkit-details-marker { display: none; }
+.synergy-archetype > summary::after { content: "+"; margin-left: auto; font-size: 20px; color: var(--text-dim); }
+.synergy-archetype[open] > summary::after { content: "−"; }
+.synergy-preview { display: flex; padding-left: 0; flex-shrink: 0; }
+.synergy-preview img, .synergy-preview > span { width: 32px; height: 36px; object-fit: cover; border-radius: 5px; border: 1px solid var(--panel-border); background: #222432; }
+.synergy-preview img + img { margin-left: -12px; }
+.synergy-group-title { font-family: var(--font-head); font-weight: 700; font-size: var(--fs-lg); line-height: 1.2; }
+.synergy-group-title small { display: block; margin-top: 4px; font-family: "Segoe UI", system-ui, sans-serif; font-weight: 400; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-dim); }
+.synergy-group-body { padding: 0 10px; }
+.synergy-connection { border-top: 1px solid var(--panel-border); padding: 8px 0; }
+.synergy-connection-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 10px; margin-bottom: 10px; font-size: var(--fs-md); line-height: 1.5; }
+.synergy-reason { font-size: var(--fs-md); line-height: 1.5; color: var(--text-dim); }
+.synergy-flow { display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); gap: 8px; align-items: start; }
+.synergy-flow > div { min-width: 0; }
+.synergy-flow > div:last-child { padding-left: 10px; border-left: 1px solid var(--hairline); }
+.synergy-flow-arrow { padding-top: 42px; color: var(--text-dim); font-size: 18px; text-align: center; }
+.synergy-lane-label { color: #b9def5; font-size: var(--fs-md); font-weight: 700; line-height: 1.5; margin-bottom: 10px; }
+.synergy-flow > div:last-child .synergy-lane-label { color: #efd6a0; }
+.synergy-items { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.synergy-relic { width: min(100%, 240px); }
+.synergy-relic > .relic-tooltip { display: block; position: static; width: 100%; }
+.synergy-relic .rt-art { height: 100px; }
+.synergy-items > .synergy-relic { grid-column: 1 / -1; }
+.synergy-item { display: flex; align-items: center; gap: 5px; text-align: left; max-width: 100%; border: 1px solid var(--panel-border); border-radius: 5px; background: rgba(255,255,255,.04); color: var(--text); padding: 3px 6px 3px 3px; cursor: pointer; font: inherit; font-size: var(--fs-sm); line-height: 1.4; }
+.synergy-item-portrait { display: flex; flex-shrink: 0; }
+.synergy-item-face { display: block; }
+.synergy-item img { width: 28px; height: 30px; object-fit: cover; border-radius: 3px; }
+.synergy-item:hover { background: rgba(255,255,255,.1); }
+.synergy-item:focus-visible, .synergy-explorer summary:focus-visible { outline: 2px solid #e4c279; outline-offset: 2px; }
+.synergy-inspect-close { position: absolute; top: 18px; right: 18px; padding: 10px 14px; border: 1px solid #777; border-radius: 6px; color: white; background: #222432; cursor: pointer; }
+.synergy-relic-lightbox .relic-tooltip { display: block; position: static; width: min(80vw, 340px); }
+.synergy-items .synergy-item { flex-shrink: 0; }
+.synergy-item-with-face { padding: 0; border: 0; background: transparent; }
+.synergy-item-with-face .synergy-item-portrait, .synergy-item-with-face .synergy-item-name { display: none; }
+.synergy-item-face img { height: auto; max-width: 100%; aspect-ratio: 332 / 454; object-fit: contain; }
+@media (max-width: 899px) {
+  .synergy-flow { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .synergy-flow-arrow { display: none; }
+  .synergy-flow > div:last-child { padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--hairline); }
+  .synergy-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .synergy-item-with-face, .synergy-item-face { width: 100%; }
+  .synergy-item-face .cardface { width: 100% !important; height: auto; }
+  .synergy-item-relic { flex-direction: column; justify-content: center; text-align: center; padding: 6px; }
+  .synergy-item-relic img { width: 48px; height: 48px; object-fit: contain; }
+}
+@media (min-width: 900px) {
+  .synergy-flow { grid-template-columns: minmax(0, 1fr) 24px minmax(0, calc(var(--synergy-card-width) * 3 + 26px)); }
+  .synergy-flow > div:last-child .synergy-items { display: grid; grid-template-columns: repeat(3, minmax(0, var(--synergy-card-width))); }
+  .synergy-item-relic { flex-direction: column; width: 110px; text-align: center; padding: 8px; }
+  .synergy-item-relic img { width: 64px; height: 64px; object-fit: contain; }
+}
 .deck-group-count {
   color: var(--text-dim);
   font-weight: 400;
@@ -2662,7 +2861,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   /* Run header: date and seed share a line of their own. */
   .detail-run-header-bar { gap: 0.3rem 0.6rem; }
   .rh-meta { display: flex; align-items: center; gap: 0.3rem 0.6rem; flex: 1 0 100%; }
-  .rh-date, .rh-seed { font-size: 0.72rem; white-space: nowrap; }
+  .rh-date, .rh-seed { font-size: var(--fs-xs); white-space: nowrap; }
   .rh-seed-label { display: none; }
   .detail-run-header-bar .run-copy-link { display: none; }
   /* Phone: Copy link becomes an icon button at the top right of the header's
@@ -2692,12 +2891,12 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 
   /* Win % and Final Boss Win %: tighter cells, headers may wrap.
      (Show granular adds a column per ascension and still scrolls.) */
-  #pivot-table th, #final-boss-win-table th { padding: 0.4rem 0.2rem; font-size: 0.62rem; letter-spacing: 0; white-space: normal; }
+  #pivot-table th, #final-boss-win-table th { padding: 0.4rem 0.2rem; font-size: var(--fs-xs); letter-spacing: 0; white-space: normal; }
   #pivot-table td.cell, #final-boss-win-table td.cell { min-width: 0; padding: 0.3rem 0.15rem; }
-  #pivot-table td.char-name, #final-boss-win-table td.char-name { padding: 0 0.3rem 0 0; font-size: 0.74rem; }
+  #pivot-table td.char-name, #final-boss-win-table td.char-name { padding: 0 0.3rem 0 0; font-size: var(--fs-xs); }
   #pivot-table td.char-name .dot, #final-boss-win-table td.char-name .dot { margin-right: 5px; }
-  #pivot-table td.cell .pct, #final-boss-win-table td.cell .pct { font-size: 0.85rem; }
-  #pivot-table td.cell .meta, #final-boss-win-table td.cell .meta { font-size: 0.66rem; }
+  #pivot-table td.cell .pct, #final-boss-win-table td.cell .pct { font-size: var(--fs-sm); }
+  #pivot-table td.cell .meta, #final-boss-win-table td.cell .meta { font-size: var(--fs-xs); }
 
   /* Card Stats: Pool, Type and Rarity are dropped (the filters above cover
      them); the numbers stay. The table sets its widths inline, hence
@@ -2710,16 +2909,18 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #cards-table-main.show-all th:nth-child(n+5):nth-child(-n+8), #cards-table-main.show-all td:nth-child(n+5):nth-child(-n+8) { display: none; }
   #cards-table-main th:nth-child(n+2):nth-child(-n+4),
   #cards-table-main td:nth-child(n+2):nth-child(-n+4) { display: none; }
-  #cards-table-main th { white-space: normal !important; padding: 0.3rem 0.15rem !important; font-size: 0.6rem !important; letter-spacing: 0 !important; vertical-align: bottom; }
+  #cards-table-main th { white-space: normal !important; padding: 0.3rem 0.15rem !important; font-size: var(--fs-xs) !important; letter-spacing: 0 !important; vertical-align: bottom; }
   #cards-table-main th:first-child { width: auto !important; }
   #cards-table-main th:nth-child(5), #cards-table-main th:nth-child(9)  { width: 46px !important; }
   #cards-table-main th:nth-child(6), #cards-table-main th:nth-child(10) { width: 50px !important; }
   #cards-table-main th:nth-child(7), #cards-table-main th:nth-child(11) { width: 50px !important; }
   #cards-table-main th:nth-child(8), #cards-table-main th:nth-child(12) { width: 52px !important; }
-  #cards-table-main td { padding: 0.18rem 0.15rem !important; font-size: 0.83rem !important; }
-  .cards-thumb { width: 22px; height: 22px; }
-  .cards-thumb-wrap { margin-right: 6px; }
-  .cards-hi { font-size: 0.88rem; }
+  #cards-table-main td { padding: 0.18rem 0.15rem !important; font-size: var(--fs-xs) !important; }
+  /* The You / All players switch already says which set is showing. */
+  #cards-thead .cards-groups { display: none; }
+  .cards-thumb-wrap { --cards-thumb-w: 34px; margin-right: 6px; }
+  .cards-thumb { width: var(--cards-thumb-w); height: calc(var(--cards-thumb-w) * 0.75); }
+  .cards-hi { font-size: var(--fs-sm); }
   #cards-table-main td:first-child { white-space: normal !important; }
 
   /* Seed Data: four tight columns; what a search matched goes on its own
@@ -2729,10 +2930,10 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #seeds-table, #seeds-table thead, #seeds-table tbody { display: block; }
   #seeds-table tr { display: block; }
   #seeds-table #seeds-thead-row, #seeds-table tr.seed-row { display: grid; grid-template-columns: 7.4rem minmax(0, 1fr) 2.4rem 4.9rem; align-items: center; }
-  #seeds-table tr.seed-row > td, #seeds-table tr.seed-row > td * { font-size: 0.72rem !important; }
+  #seeds-table tr.seed-row > td, #seeds-table tr.seed-row > td * { font-size: var(--fs-xs) !important; }
   #seeds-table .seed-expand-arrow { margin-right: 0.2rem !important; }
   #seeds-table th, #seeds-table tr.seed-row > td { padding: 0.4rem 0.25rem !important; }
-  #seeds-table th { font-size: 0.62rem; letter-spacing: 0; }
+  #seeds-table th { font-size: var(--fs-xs); letter-spacing: 0; }
   #seeds-table th:last-child, #seeds-table th.seed-player { display: none; }
   /* The player (All players) goes on its own line under the row's figures. */
   #seeds-table tr.seed-row > td.seed-player { grid-column: 1 / -1; padding-top: 0 !important; }
@@ -2809,4 +3010,10 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 @media (max-width: 700px) {
   .run-boon-stat { flex: 1 0 100%; flex-direction: column-reverse; align-items: flex-start; gap: 0.35rem; margin-left: 0; padding: 0.5rem 0 0; border-left: 0; border-top: 1px solid var(--hairline); }
   .run-boon-icons { flex-wrap: wrap; gap: 6px 14px; }
+}
+
+/* A phone's run list is narrower than four stacked heads, so it keeps the plain word. */
+@media (max-width: 560px) {
+  .detail-run-party-heads { display: none; }
+  .detail-run-party-text { display: inline; font-size: var(--fs-sm); }
 }

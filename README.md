@@ -11,20 +11,44 @@ find it by searching on the home page.
 
 ![Overview tab of a player profile](images/site-overview.png)
 
-**Runs:** every run in a list; pick one to see its path, fights, its deck and relics floor by floor, and
-its final deck, including any enchantment a card is carrying. Each deck is tagged with what it's built
-around (Exhaust, Poison, Souls...) and the list filters on those tags. Each run has its own link (`/u/<name>#detail/<run timestamp>`, the address
+**Runs:** every run in a list, with its character, ascension, the party's character heads (one head when solo, and on a phone the word Solo or Multi, since four heads don't fit there), result, floor, reading and date; pick one to see its path, fights, its deck and relics floor by floor, and
+its final deck, including any enchantment a card is carrying. The run's floor charts all share the
+same floors, and dragging across any of them picks a span: a panel under that chart adds up what
+changed in it — cards in, out and upgraded, relics gained and lost, the fights and damage, and where
+the HP ended up — so a stretch that went wrong can be read as a whole instead of floor by floor. Esc
+or a click clears it. Each deck is tagged with what it's built
+around (Exhaust, Poison, Souls...) and the list filters on those tags. The final deck's **Explore
+synergies** section groups its connections by archetype (Strength, Exhaust, Orbs, Osty, Shots...), each
+group showing what feeds a payoff and what it pays off and the reason they connect. Cards open on tap;
+relics show their art and rules text in place, since there is room beside the cards. Each run has its own
+link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 
-![Runs tab showing a run's final deck](images/site-run-detail.png)
+![Runs tab showing a run's rating and Keeping Up by Floor](images/site-run-detail.png)
 
-**Cards:** your favorite cards and relics beside every player's, and pick and win rates for every card, yours and every player's side by side (on a phone, a You / All players switch swaps which set the table shows).
+**Cards:** your most-picked, best win rate and most-bought cards and relics beside every player's — each one showing its win rate — with pick and win rates for every card, yours and every player's side by side (on a phone, a You / All players switch swaps which set the table shows).
 
 ![Cards tab with card pick rates](images/site-card-stats.png)
 
 The dashboard has four pages: Overview, Runs, Cards and Seeds. They cover win
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup, among your own runs or everyone's.
+
+Overview always shows the full history, ignoring saved filters and filter links. Its
+statistics and charts cover Standard and Dread runs across all characters, builds, dates,
+mods and party sizes; a mode breakdown separately counts Daily, Custom and Blitz runs.
+The filter bar stays visible and locked on Overview. Filters can be changed on Runs,
+Cards and Seeds, and survive a visit to Overview. The normal bar says Default filters
+applied. Selections that differ from the built-in defaults highlight the bar and say
+Filters applied, with the matching run count and selections.
+Reset filters also clears the saved default in
+that browser. Saving All builds includes future patches; a saved build selection with
+no builds in common with another profile falls back to all of that profile's builds.
+The filter bar's Filter set dropdown pins Default above saved presets.
+It selects a matching preset as controls change, otherwise prompting to choose a preset.
+Named presets are stored in this browser; Save as default remembers the current
+selection for future visits. Copy filter link includes the selections and takes precedence
+over the recipient's saved default; opening a link does not overwrite that default.
 
 **Contents:** [Repository layout](#repository-layout) ·
 [How it fits together](#how-it-fits-together) ·
@@ -64,13 +88,15 @@ slay-my-stats/
 │   ├── fonts/               Kreon (headings), with its licence
 │   ├── players.css          site bar, finder, site stats, pages
 │   ├── upload.js            Steam sign-in and the upload panel
-│   └── upload.css
+│   ├── upload.css
+│   └── feedback.js          gamma-only feedback panel (inert elsewhere; talks to /auth/feedback)
 ├── infra/                   CDK app
 │   ├── app.py
 │   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
-│   ├── lambda/ingest/handler.py               the upload Lambdas (ingest, process, failure)
+│   ├── lambda/ingest/handler.py               the upload Lambdas (ingest, process, failure), the gamma Steam login and the feedback router
 │   ├── lambda/ingest/measured.py              per-floor energy and card numbers, read from a run's event log at upload
-│   ├── tests/test_ingest.py, test_measured.py
+│   ├── lambda/ingest/feedback.py              the gamma feedback inbox (session check, notes, resolve)
+│   ├── tests/test_ingest.py, test_measured.py, test_feedback.py, test_gamma_auth.py
 │   └── requirements.txt     CDK, boto3
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
@@ -92,6 +118,7 @@ slay-my-stats/
 │   ├── extract_card_data.py, downscale_*.py, bake_*.py   its steps
 │   ├── diff_game_data.py    what changed in the cards, relics and potions between two game versions
 │   ├── extract_power_data.py  power_data.json, from the game DLL
+│   ├── synergy_precision.py   trims the broad card-text synergy matches to the ones a deck's play justifies
 │   ├── power_curve/         offline deck-strength tools: the sim, the formula and its fit (see its README)
 │   └── requirements.txt     pipeline requirements
 ├── githooks/pre-push        runs tools/deploy.py when main or gamma is pushed
@@ -183,7 +210,7 @@ the CLI's default account and region (us-west-2 today).
 | Resource | Configuration | Why |
 |----------|---------------|-----|
 | **Site bucket** `slay-my-stats-site` | Private (CloudFront OAC only). Destroyed with the stack. | The built `dist/` plus game art. Rebuildable from the repo at any time. |
-| **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` only). **Retained** if the stack is deleted. CORS for `https://slay-my-stats.com` POSTs, since uploads go straight here. Upload results expire after 7 days. | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
+| **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` only). **Retained** if the stack is deleted (gamma too, and gamma's is versioned; old versions outside `feedback/` expire after 30 days). CORS for `https://slay-my-stats.com` POSTs, since uploads go straight here. Upload results expire after 7 days. | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
 | **CloudFront distribution** | `slay-my-stats.com`, HTTP redirects to HTTPS, default root `index.html`. Behaviors below. | One domain for the site and the profile data, so the browser needs no CORS for reads. |
 | **CloudFront Function** (`ProfileUrlRewriteFunction`) | Viewer request, JS 2.0. Sets the URI to `/index.html`. | Page URLs like `/u/<slug>` have no S3 object. Rewriting at the edge keeps the shareable URL in the address bar. Attached only to page behaviors, so asset requests never pay for it. |
 | **Route 53 A record** | Alias to the distribution, in an existing hosted zone. | The domain. The hosted zone is created outside CDK. |
@@ -193,6 +220,7 @@ the CLI's default account and region (us-west-2 today).
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
 | **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*` and publish to the alert SNS topic. | A daily summary of uploads, reported for trends. |
+| **Feedback digest Lambda** + two schedules | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Gamma only. EventBridge Scheduler crons at 8 AM America/Chicago, daily and Mondays; it can read `feedback/*` and publish to the gamma alert SNS topic. | Emails the owner the day's new feedback notes, and weekly the open, incoming and resolved counts. |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
 | **Metric filters + alarms** `ModRequests`, `ModRefusals` | Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
 | **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
@@ -545,10 +573,26 @@ certificate (for `gamma.slay-my-stats.com`, in us-east-1) and the hosted zone th
 as `"gammaCertificateArn"` and `"gammaHostedZoneId"` in `infra/cdk.context.json`. Without those two the gamma
 stack isn't built at all.
 
-Gamma isn't public. It answers only the addresses listed as `"gammaAllowedIps"` in `infra/cdk.context.json`
-(e.g. `["203.0.113.7"]`) and returns 403 to everyone else, pages and uploads both (for the site, a short
-"403 Forbidden" page). If your address changes,
-update the list and deploy gamma again.
+Gamma requires Steam sign-in. Only SteamID64 strings listed in `"gammaAllowedSteamIds"` in
+`infra/cdk.context.json` can enter, for example `["76561198000000001"]`. Set `"gammaSessionSecret"`
+to a cryptographically random secret (at least 64 characters; `python -c "import secrets; print(secrets.token_hex(32))"`).
+Keep this ignored configuration and generated CDK templates private: the signing key is deployed in the
+CloudFront function and login Lambda. Rotating it invalidates existing sessions.
+
+Visitors are redirected through Steam; a verified, allowed account receives a Secure, HttpOnly,
+host-only cookie valid for 12 hours. CloudFront checks its signature, expiry and current allowlist
+before serving pages, assets or profile data, including cached files. Upload endpoints independently
+check the Steam account after verifying OpenID or the mod's ticket, including direct Function URL calls.
+Removing an account and redeploying revokes its access. Production stays public.
+Gamma deploy smoke checks use a short-lived signed session from the same private configuration.
+
+Signed-in reviewers get a gold **Feedback** button in the lower right, carrying the number of notes open on
+the page. It opens one panel with a **New note** view — pin an element or region, or comment on the page,
+with the exact page URL and the earlier notes for that target in front of you — and an **Inbox** view that
+switches between This page and Whole site, groups notes into one bucket per page and per pinned element or
+region, loads them 25 at a time, and offers resolve, reopen and a copy-ready report. Notes are JSON objects
+under `feedback/` in the gamma data bucket, reached through `/auth/feedback`; production never shows the
+button. See [docs/gamma-feedback.md](docs/gamma-feedback.md).
 
 ### Publishing gamma to production
 
@@ -652,7 +696,7 @@ From a change to gamma, with the commands to type. Production comes after, once 
    checked out. If the stack changed it shows the `cdk diff` and asks y/N (any change to `run.py` or the
    handler counts, as new Lambda code). It ends with `Deployed.`
 
-4. Look at https://gamma.slay-my-stats.com from an address in `gammaAllowedIps`. `app.js` and `index.html` are
+4. Look at https://gamma.slay-my-stats.com after signing in with an account in `gammaAllowedSteamIds`. `app.js` and `index.html` are
    invalidated by the deploy; the stylesheets can be up to 5 minutes old, so hard-refresh if a style looks
    wrong.
 
@@ -707,10 +751,14 @@ Each refresh keeps a copy of the card, relic and potion data in `local_data/game
 
 The Runs page's Keeping Up charts need one more file, made after the refresh:
 `python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in
-`tools/power_curve/gamma_raw/`. Without it the charts are hidden. Their energy and cards chart also needs
+`tools/power_curve/gamma_raw/`. Without it the charts are hidden. It also records how many enemies each
+encounter fields, from the opening line-up the run files list, which the charts fan into that many icons on a
+fight's floor and the hover box names ("3 enemies"). Their energy and cards chart also needs
 `python tools/power_curve/export_measured.py` (writes `measured_runs.json`) for logs on this machine. Runs uploaded
 through the site carry the same numbers as `measured`, worked out when they were uploaded. It shows only on runs
-with an event log. The offline deck-strength tools need `python tools/extract_power_data.py`, then
+with an event log. The "Keeping up, fight by fight" chart uses the same `fight_demand.json` and needs nothing else:
+it reads each fight's damage taken and turns against the average win on that fight, and ticks the floors that
+changed the deck. The offline deck-strength tools need `python tools/extract_power_data.py`, then
 `python tools/power_curve/export_strength.py` (writes `deck_strength.json`); nothing on the site reads those.
 
 Text and images are not re-derived, though — that was measurably wrong. Earlier versions re-implemented the

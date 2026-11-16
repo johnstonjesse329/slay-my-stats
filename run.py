@@ -687,7 +687,7 @@ def parse_run(path: Path) -> dict:
 # when each card and relic entered and left, for Run Detail's deck-by-floor charts.
 # v6: timeline nodes name the `fight` behind an event, and `turns` is that fight's,
 # so a fight an event started reads against the winners of the same fight.
-PARSER_VERSION = 6
+PARSER_VERSION = 7
 
 
 def _card_props(card: dict) -> dict:
@@ -994,6 +994,10 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         "defends":       defends,
         "ts":            ts,
         "mp":            len(players) > 1,
+        # Who played, in the save's slot order, so the run list can show their
+        # character heads instead of just "Multi". Characters only: never Steam IDs.
+        **({"party": [strip_prefix(p.get("character", ""), "CHARACTER.") for p in players if p.get("character")]}
+           if len(players) > 1 else {}),
         "mode":          data.get("game_mode", "standard"),
         "build":         data.get("build_id", "UNKNOWN"),
         "seed":          data.get("seed", ""),
@@ -1370,6 +1374,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <span class="filter-summary-text"></span>
     <span class="filter-summary-caret" aria-hidden="true">▾</span>
   </button>
+  <p class="filter-lock-note">Overview always shows the full history. These saved selections are preserved for Runs, Cards and Seeds.</p>
+
   <div class="filter-row">
     <div class="filter-group">
       <span class="filter-label">Character</span>
@@ -1426,11 +1432,22 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <button class="toggle-btn" id="shared-date-today">Today</button>
       <button class="toggle-btn" id="shared-date-alltime">All time</button>
     </div>
-    <div class="filter-group">
-      <button class="toggle-btn" id="shared-filters-save" title="Remember the current filters and use them as the default next time you open this dashboard">Save as default</button>
-      <button class="toggle-btn" id="shared-filters-reset" title="Revert to the built-in filters. Your saved default is kept unless you click Save as default">Reset filters</button>
-      <span id="shared-filters-unsaved" title="You've changed filters since your last save — click Save as default to keep them" style="display:none;align-items:center;justify-content:center;width:1.15rem;height:1.15rem;margin-left:0.4rem;border-radius:50%;background:#e0c468;color:#13132a;font-size:0.75rem;font-weight:700;cursor:default;user-select:none">!</span>
-      <span id="shared-filters-status" style="color:var(--text-dim);font-size:0.8rem;margin-left:0.4rem"></span>
+
+  </div>
+  <div class="filter-row filter-preset-toolbar">
+    <div class="filter-group filter-presets">
+      <label for="shared-filter-presets">Filter set</label>
+      <select id="shared-filter-presets" aria-label="Current filter set"></select>
+      <button type="button" class="toggle-btn" id="shared-filter-preset-delete" disabled>Delete preset</button>
+      <input type="text" id="shared-filter-preset-name" maxlength="60" aria-label="Filter preset name" placeholder="Name this filter set">
+      <button type="button" class="toggle-btn" id="shared-filter-preset-save">Save preset</button>
+    </div>
+    <div class="filter-group filter-actions">
+      <button class="toggle-btn" id="shared-filters-save" title="Remember the current filters as your default in this browser">Save as default</button>
+      <button type="button" class="toggle-btn" id="shared-filter-copy-link">Copy filter link</button>
+      <button class="toggle-btn" id="shared-filters-reset" title="Restore built-in filters and clear your saved default in this browser">Reset filters</button>
+      <span id="shared-filters-unsaved" title="You've changed filters since your last save — click Save as default to keep them" hidden>!</span>
+      <span id="shared-filters-status" role="status"></span>
     </div>
   </div>
 </nav>
@@ -1438,6 +1455,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <main id="main-content">
 <div id="page-overview">
+<p id="overview-history-summary"></p>
+<p class="chart-caption">Full history across all characters, builds, dates, mods and party sizes. Statistics and charts cover Standard and Dread runs; Daily, Custom and Blitz runs are counted separately above. Filters apply only to Runs, Cards and Seeds.</p>
 <div class="cards" id="summary-cards"></div>
 <div class="grid-1">
   <div class="chart-box">
@@ -1573,6 +1592,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="chart-box">
   <h2>Favorites</h2>
+  <p class="chart-caption">Your most-picked, best win rate and most-bought card of each rarity and relic, beside the same for all players. Every card shows its win rate, with the count behind it underneath.</p>
   <div class="fav-panels" id="cards-favorites"></div>
 </div>
 
@@ -1686,6 +1706,11 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         </dl>
         <div class="keep-acts" id="detail-keep-acts"></div>
         <div class="keep-actpick" id="detail-keep-actpick"></div>
+        <p class="range-tip" id="detail-range-tip"><b>Drag across any floor chart</b> to add up what changed over those floors — cards in and out, relics, fights and damage. <button type="button" class="range-tip-close" aria-label="Dismiss this tip">&#10005;</button></p>
+        <h3 class="strength-label">Keeping up, fight by fight</h3>
+        <p class="chart-caption">Damage taken and turns on each fight as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">Ticks mark recent deck changes to line up against the fights that followed; hover for the change, and a fight with more than one enemy wears one icon for each.</span> Breadcrumbs for troubleshooting, not proof.</p>
+        <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
+        <div class="floor-legend" id="detail-keep-share-legend"></div>
         <div id="detail-hp-box">
           <h3 class="strength-label">HP by floor</h3>
           <p class="chart-caption">Your HP after each floor, against your max HP.</p>

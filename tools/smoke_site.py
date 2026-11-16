@@ -24,13 +24,16 @@ What it checks, and why each one exists:
     matters: it catches any third-party thing that can stop the page painting, not just the
     pattern above. Without Playwright it is skipped with a note (--browser makes that an error).
 
-It only reads: no uploads, no logins.
+Set SMS_SMOKE_COOKIE to a signed gamma session for authenticated checks; this also checks that
+unauthenticated pages, scripts and profile data redirect to sign-in.
+It only reads: no uploads, no Steam logins.
 """
 from __future__ import annotations
 
 import argparse
 import gzip
 import json
+import os
 import re
 import sys
 import time
@@ -42,14 +45,26 @@ from html.parser import HTMLParser
 TYPES = {".js": "javascript", ".css": "text/css", ".json": "json", ".html": "text/html"}
 
 
+SESSION_COOKIE = os.environ.get("SMS_SMOKE_COOKIE", "")
+
+
 class SmokeError(Exception):
     pass
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def get(url: str, timeout: int = 30) -> tuple[int, dict, bytes]:
-    req = urllib.request.Request(url, headers={"Accept-Encoding": "gzip", "User-Agent": "slay-my-stats-smoke/1"})
+    headers = {"Accept-Encoding": "gzip", "User-Agent": "slay-my-stats-smoke/1"}
+    if SESSION_COOKIE and urllib.parse.urlsplit(url).hostname == "gamma.slay-my-stats.com":
+        headers["Cookie"] = "__Host-gamma=" + SESSION_COOKIE
+    req = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        opener = urllib.request.build_opener(NoRedirect()) if SESSION_COOKIE else urllib.request.build_opener()
+        with opener.open(req, timeout=timeout) as r:
             status, headers, body = r.status, dict(r.headers), r.read()
     except urllib.error.HTTPError as e:
         status, headers, body = e.code, dict(e.headers), b""
@@ -151,7 +166,11 @@ def check_browser(host: str, player: str | None, required: bool) -> list[str]:
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         for path in ["/"] + ([f"/u/{player}"] if player else []):
-            page = browser.new_context().new_page()
+            context = browser.new_context()
+            if SESSION_COOKIE:
+                context.add_cookies([{"name": "__Host-gamma", "value": SESSION_COOKIE,
+                                      "url": f"https://{host}", "secure": True, "httpOnly": True, "sameSite": "Lax"}])
+            page = context.new_page()
             page.route(lambda u: urllib.parse.urlparse(u).netloc != host, lambda route: None)  # never answered
             t0 = time.time()
             page.goto(f"https://{host}{path}", wait_until="commit", timeout=30000)
@@ -165,9 +184,27 @@ def check_browser(host: str, player: str | None, required: bool) -> list[str]:
     return problems
 
 
+def check_gamma_gate(host: str) -> list[str]:
+    """Check the unauthenticated boundary without following redirects to Steam."""
+    opener = urllib.request.build_opener(NoRedirect())
+    problems = []
+    for path in ["/", "/u/smoke", "/app.js", "/users/_index.json.gz"]:
+        try:
+            response = opener.open(f"https://{host}{path}", timeout=30)
+        except urllib.error.HTTPError as e:
+            response = e
+        with response:
+            if response.code != 302 or response.headers.get("Location") != "/auth/login":
+                problems.append(f"{path}: gamma did not require sign-in")
+            if response.headers.get("Cache-Control") != "no-store":
+                problems.append(f"{path}: gamma login redirect can be cached")
+    return problems
+
+
 def run_once(host: str, player: str | None, browser: bool = False) -> list[str]:
     base = f"https://{host}"
-    problems = check_page(base, "/") + (check_page(base, f"/u/{player}") if player else [])
+    problems = check_gamma_gate(host) if SESSION_COOKIE else []
+    problems += check_page(base, "/") + (check_page(base, f"/u/{player}") if player else [])
     problems += check_data(base, player)
     return problems if problems else check_browser(host, player, browser)
 

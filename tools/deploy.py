@@ -451,8 +451,19 @@ def smoke_test_site() -> None:
     A failure here is a deployed site that is broken for visitors, so it fails the deploy.
     """
     print(f"Check: {DOMAIN_NAME} loads for a visitor...", flush=True)
+    smoke_env = os.environ.copy()
+    smoke_env.pop("SMS_SMOKE_COOKIE", None)
+    if STACK_NAME == STAGES["gamma"][2]:
+        # Use the same private configuration as CDK, never a credential in argv/logs.
+        import hmac
+        import hashlib
+        import time
+        config = json.loads((_HERE / "infra" / "cdk.context.json").read_text())
+        payload = config["gammaAllowedSteamIds"][0] + "." + str(int(time.time()) + 600)
+        signature = hmac.new(config["gammaSessionSecret"].encode(), payload.encode(), hashlib.sha256).hexdigest()
+        smoke_env["SMS_SMOKE_COOKIE"] = payload + "." + signature
     r = subprocess.run([sys.executable, str(_HERE / "tools" / "smoke_site.py"), DOMAIN_NAME],
-                       stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace")
+                       env=smoke_env, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode:
         raise DeployError("the deployed site fails its visitor check:\n" + (r.stderr or r.stdout))
     print((r.stdout or "").strip())

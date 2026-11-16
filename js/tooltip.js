@@ -319,3 +319,11 @@ function charIconHtml(char) {
   return url ? `<img class="char-icon" src="${url}" alt="">` : "";
 }
 
+// A character's name as the site shows it everywhere: the head, then the name in the character's
+// color (see .char-label in dashboard.css, the one place its size and weight are set). Pass large
+// for a character's own pane or heading, the only place it is bigger.
+function charLabelHtml(char, large = false) {
+  const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
+  return `<span class="char-label${large ? " char-label-lg" : ""}" style="--char-color:${color}">${charIconHtml(char)}${fmtCharName(char)}</span>`;
+}
+

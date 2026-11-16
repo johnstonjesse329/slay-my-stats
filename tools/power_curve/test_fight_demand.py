@@ -238,6 +238,34 @@ class ManyTargets(unittest.TestCase):
         self.assertTrue(fd.run_fights({"x": raw})[0][0]["build"] >= fd.SPAWNS_LISTED)
 
 
+class EnemyCount(unittest.TestCase):
+    OLD = (0, 103, 2)
+
+    def test_one_enemy_is_one(self):
+        self.assertEqual(fd.enemy_count([fight()]), 1)
+
+    def test_an_opening_line_up_counts_its_repeats(self):
+        self.assertEqual(fd.enemy_count([fight(ids=("MONSTER.A", "MONSTER.A"))]), 2)
+
+    def test_a_joined_spawn_is_the_exception_not_the_line_up(self):
+        self.assertEqual(fd.enemy_count([fight(), fight(), fight(), fight(ids=("MONSTER.A", "MONSTER.B"))]), 1)
+
+    def test_a_summon_every_run_saw_is_the_line_up(self):
+        self.assertEqual(fd.enemy_count([fight(ids=("MONSTER.A", "MONSTER.B"))] * 3), 2)
+
+    def test_a_tie_goes_to_the_longer_list(self):
+        self.assertEqual(fd.enemy_count([fight(), fight(ids=("MONSTER.A", "MONSTER.A"))]), 2)
+
+    def test_an_older_version_does_not_speak_for_a_newer_one(self):
+        self.assertEqual(fd.enemy_count([fight(ids=("MONSTER.A", "MONSTER.A"), build=self.OLD), fight()]), 1)
+
+    def test_an_older_version_speaks_when_nothing_newer_fought_it(self):
+        self.assertEqual(fd.enemy_count([fight(ids=("MONSTER.A", "MONSTER.A"), build=self.OLD)]), 2)
+
+    def test_the_table_carries_it(self):
+        self.assertEqual(demand_of([[fight(ids=("MONSTER.A", "MONSTER.A"))]])["ENCOUNTER.X"]["count"], 2)
+
+
 class Tiers(unittest.TestCase):
     def wins(self, asc, t, n=fd.WON_MIN):
         return [[fight(asc=asc, t=t)] for _ in range(n)]

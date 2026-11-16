@@ -13,7 +13,7 @@ Exit status is 1 and the offending lines are printed when something matches.
 What it looks for:
 
     blocked paths     secrets files that must never be committed (CDK context,
-                      which holds the real alert email, allowlisted IPs and the
+                      which holds the real alert email, allowed Steam IDs, session signing key and the
                       AWS account's hosted-zone ids)
     Steam IDs         17-digit ids starting 7656119. This project keeps them out
                       of the repo on purpose (ids/<steamid>.json.gz exists so

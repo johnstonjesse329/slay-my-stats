@@ -297,10 +297,12 @@ function renderDetailDeckRelics(run) {
   const relicHtml  = renderRelicTiles(relics);
 
   document.getElementById("detail-deck-relics").innerHTML = `
-    <div class="detail-section-heading">Final deck ${tagChipsHtml(runTags(run))}</div>${renderDeckLinksHtml(deck, relics)}
+    <div class="detail-section-heading">Final deck ${tagChipsHtml(runTags(run))}</div>${renderDeckLinksHtml(deck, relics, run.char)}
     ${groupsHtml}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
+  // The explorer's relic panels carry their art as deferred data-src.
+  loadDeferredImages(document.getElementById("detail-deck-relics"));
 }
 
 // What the final deck is built around: every archetype of the character's
@@ -336,7 +338,8 @@ function deckLinks(deck, relics) {
   const makers = {}, users = {};
   const add = (map, key, who) => { (map[key] = map[key] || new Map()).set(who.id, who); };
   const seen = [
-    ...deck.map(c => ({ id: c.id, name: cardInfo(c.id)?.title || fmtCardLabel(c.id), row: table.cards[c.id] })),
+    ...deck.map(c => ({ id: c.id, card: c, name: cardInfo(c.id)?.title || fmtCardLabel(c.id),
+      row: table.cardVariants?.[c.id]?.[c.upgrade > 0 ? 1 : 0] || table.cards[c.id] })),
     ...relics.map(r => ({ id: r.id, name: relicInfo(r.id)?.title || fmtRelicLabel(r.id), row: table.relics[r.id] })),
   ];
   seen.forEach(s => {
@@ -359,14 +362,170 @@ function deckLinks(deck, relics) {
 
 const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-function renderDeckLinksHtml(deck, relics) {
+function renderDeckLinksHtml(deck, relics, character) {
   const links = deckLinks(deck, relics);
   if (!links.length) return "";
-  const names = list => [...new Set(list.map(x => x.name))].map(escapeHtml).join(", ");
-  const rows = links.map(l => `<li><b>${escapeHtml(l.key.replace(/^power:/, "").replace(/^./, c => c.toUpperCase()))}</b>: ${names(l.feeders)} → ${names(l.users)}</li>`).join("");
-  return `<div class="deck-group-label">Synergies <span class="deck-group-count">${links.length}</span></div>
-    <ul class="deck-links">${rows}</ul>`;
+  const explanations = {
+    "aim": "Aim boosts the next Shot; Heavy Shot multiplies it.",
+    "shots": "Shots trigger rewards and enable shooting support.",
+    "impale": "Shots Impale enemies for these bonuses and retrievals.",
+    "dislodge": "Dislodging triggers energy and Block rewards.",
+    "arrows": "Extra or returned Arrows enable more Shots.",
+    "melodies": "Wah, Cho, and Ki fuel Melody rewards.",
+    "wah melody": "Wah cards enable these Melody bonuses.",
+    "cho melody": "Cho cards enable these Melody bonuses.",
+    "ki melody": "Ki cards enable these Melody bonuses.",
+    "wah cards": "Wah cards supply repeat targets and card-count bonuses.",
+    "cho cards": "Cho cards supply repeat targets and card-count bonuses.",
+    "ki cards": "Ki cards supply repeat targets and card-count bonuses.",
+    "sadness": "Sadness fuels scaling, triggers, and transformation into Joy.",
+    "stretch": "Stretch boosts the next card's Block; Cho Ki preserves it.",
+    "zero-cost": "These effects retrieve cards costing 0 energy.",
+    "zero-cost attacks": "Free Attacks enable damage bonuses and return effects.",
+    "creation": "Created cards trigger rewards and scale damage.",
+    "block scaling": "Block feeds damage, doubling, retention, and triggered rewards.",
+    "HP loss": "Losing your HP triggers rewards and scales damage.",
+    "power:Strength": "Strength boosts each hit and Strength-scaling damage.",
+    "power:Vulnerable": "Vulnerable enables these bonuses and scaling effects.",
+    "power:Weak": "Weak enables these conditional bonuses.",
+    "shiv": "Shivs enable damage bonuses and triggered rewards.",
+    "discard": "Discarding triggers rewards and enables Sly plays.",
+    "lightning": "Lightning Orbs enable these bonuses and triggers.",
+    "frost": "Frost Orbs enable these bonuses and triggers.",
+    "dark": "Dark Orbs enable growth and passive triggers.",
+    "status": "Status creation fuels these rewards and conversions.",
+    "souls": "Souls fuel triggered rewards and damage scaling.",
+    "Osty health": "Summon raises Osty's HP for health scaling and alive checks.",
+    "Osty attacks": "Osty attacks enable hit rewards, discounts, and attack-card bonuses.",
+    "Osty damage": "Calcify increases the damage of Osty's attacks.",
+    "forge": "Forge strengthens Sovereign Blade and triggers rewards.",
+    "colorless": "Colorless cards enable these specific bonuses.",
+    "minion": "Minion cards enable these specific bonuses.",
+    "top of Draw Pile": "Stacking the draw pile prepares draws and automatic plays.",
+    "star-cost cards": "Cards with star costs increase Crescent Spear's damage.",
+    "stars": "Star generation funds these cards' star costs.",
+    "star spending": "Playing star-cost cards triggers spending rewards.",
+    "star gain": "Gaining stars triggers these rewards and damage scaling.",
+    "blade upgrades": "These upgrades add damage, repeats, or Block to Sovereign Blade.",
+    "card Block": "These cards supply Block for multipliers that require card-based Block.",
+    "exhaust skills": "Exhausting a Skill activates its specific Exhaust rewards.",
+    "Skill Exhaust": "Exhausting a Skill, including itself, triggers this reward.",
+    "exhaust attacks": "Exhausting this Attack enables it to play from the Exhaust Pile.",
+    "exhaust": "Exhausting cards triggers rewards and fuels Exhaust Pile effects.",
+    "ethereal": "Ethereal cards enable rewards, replays, and discounts.",
+    "power:Doom": "Doom application enables scaling and Doom-based damage.",
+    "Doom application": "Applying Doom triggers these rewards, including when applied to yourself.",
+    "power:Poison": "Poison enables scaling and additional Poison triggers."
+};
+  const families = {
+    IRONCLAD: { Strength: ["power:Strength"], Exhaust: ["exhaust", "exhaust skills", "exhaust attacks", "Skill Exhaust"], Block: ["block scaling", "card Block"], "Self-damage": ["HP loss"], Vulnerable: ["power:Vulnerable"] },
+    SILENT: { Shiv: ["shiv"], Poison: ["power:Poison"], Discard: ["discard"] },
+    DEFECT: { Lightning: ["lightning", "lightning focus", "lightning slots", "lightning evoke", "lightning passive"], Frost: ["frost", "frost focus", "frost slots", "frost evoke", "frost passive"], Dark: ["dark", "dark focus", "dark slots", "dark evoke", "dark passive"], Plasma: ["plasma slots", "plasma evoke", "plasma passive"], "Zero-cost": ["zero-cost", "zero-cost attacks"], Status: ["status"] },
+    NECROBINDER: { Doom: ["power:Doom", "Doom application"], Osty: ["Osty health", "Osty attacks", "Osty damage"], Souls: ["souls"], Ethereal: ["ethereal"] },
+    REGENT: { Stars: ["stars", "star spending", "star gain", "star-cost cards"], Forge: ["forge", "blade upgrades"], Creation: ["creation", "colorless", "minion"] },
+    FOOL: { Shots: ["aim", "shots", "arrows"], Impale: ["impale", "dislodge"], Melodies: ["melodies", "wah melody", "cho melody", "ki melody", "wah cards", "cho cards", "ki cards"], Sadness: ["sadness"], Stretch: ["stretch"] },
+  };
+  const label = key => key.replace(/^power:/, "").replace(/^./, c => c.toUpperCase());
+  const image = item => {
+    const src = item.id.startsWith("RELIC.") ? relicImgSrc(item.id) : cardImgSrc(item.id);
+    return src ? `<img loading="lazy" src="${escapeHtml(src)}" alt="">` : `<span aria-hidden="true">?</span>`;
+  };
+  const tile = item => {
+    const card = item.card || deck.find(c => c.id === item.id);
+    if (!card && item.id.startsWith("RELIC.")) {
+      // No card face, and the lane has the room: show the relic's art and text whole.
+      const relic = buildRelicTooltip(item.id);
+      if (relic) return `<div class="synergy-relic">${relic}</div>`;
+    }
+    const data = encodeURIComponent(JSON.stringify(card || { id: item.id }));
+    const face = card ? renderCardFace(card.id, card.upgrade || 0, "var(--synergy-card-width)", { props: card.props }) : "";
+    return `<button type="button" class="synergy-item${face ? " synergy-item-with-face" : ""}${item.id.startsWith("RELIC.") ? " synergy-item-relic" : ""}" data-synergy-item="${data}" aria-label="Inspect ${escapeHtml(item.name)}"><span class="synergy-item-portrait">${image(item)}</span>${face ? `<span class="synergy-item-face">${face}</span>` : ""}<span class="synergy-item-name">${escapeHtml(item.name)}${card?.upgrade > 0 ? " +" : ""}</span></button>`;
+  };
+  for (const orb of ["lightning", "frost", "dark", "plasma"]) {
+    const name = orb[0].toUpperCase() + orb.slice(1);
+    explanations[orb + " focus"] = orb === "frost" ? "Focus increases Frost's Block." : `Focus increases ${name}'s damage.`;
+    explanations[orb + " slots"] = `Extra slots let you keep more ${name} Orbs before channeling forces an Evoke.`;
+    explanations[orb + " evoke"] = `These cards Evoke ${name} Orbs for their immediate effect.`;
+    explanations[orb + " passive"] = `These effects trigger ${name}'s passive again.`;
+  }
+  const connection = link => `<div class="synergy-connection"><div class="synergy-connection-heading"><b>${escapeHtml(label(link.key))}</b>
+    ${explanations[link.key] ? `<span class="synergy-reason">${escapeHtml(explanations[link.key])}</span>` : ""}</div>
+    <div class="synergy-flow" style="--synergy-payoff-columns:${Math.min(3, link.users.length)}"><div><div class="synergy-lane-label">Sources · ${link.feeders.length}</div><div class="synergy-items">${link.feeders.map(tile).join("")}</div></div><span class="synergy-flow-arrow" aria-hidden="true">→</span><div><div class="synergy-lane-label">Payoffs · ${link.users.length}</div><div class="synergy-items">${link.users.map(tile).join("")}</div></div></div></div>`;
+  const assigned = new Set();
+  const groups = Object.entries(families[character] || {}).map(([name, keys]) => {
+    const matches = links.filter(l => keys.includes(l.key));
+    matches.forEach(l => assigned.add(l.key));
+    return [name, matches];
+  }).filter(([, matches]) => matches.length);
+  const other = links.filter(l => !assigned.has(l.key));
+  if (other.length) groups.push(["More connections", other]);
+  const groupHtml = groups.map(([name, matches]) => {
+    const items = [...new Map(matches.flatMap(l => [...l.feeders, ...l.users]).map(i => [i.id, i])).values()];
+    return `<details class="synergy-archetype"><summary><span class="synergy-preview" aria-hidden="true">${items.slice(0, 3).map(image).join("")}</span><span class="synergy-group-title">${escapeHtml(name)}<small>${matches.length} connection${matches.length === 1 ? "" : "s"} · ${items.length} cards & relics</small></span></summary><div class="synergy-group-body">${matches.map(connection).join("")}</div></details>`;
+  }).join("");
+  return `<section class="synergy-explorer" style="--synergy-card-width:${TILE_FACE_W}" aria-label="Explore deck synergies"><div class="deck-group-label">Explore synergies <span class="deck-group-count">${links.length} connections</span></div><div class="synergy-groups">${groupHtml}</div></section>`;
 }
+
+let synergyInspectTrigger = null;
+function showSynergyItemTooltip(button) {
+  if (!window.matchMedia("(hover: hover)").matches || document.querySelector(".card-lightbox")) return;
+  const item = JSON.parse(decodeURIComponent(button.dataset.synergyItem));
+  const html = item.id.startsWith("RELIC.") ? buildRelicTooltip(item.id)
+    : buildCardTooltip(item.id, item.upgrade || 0, item.props, item.enchantment);
+  showFloatingHtmlTooltip(button, html);
+}
+document.addEventListener("pointerover", e => {
+  const button = e.target.closest("[data-synergy-item]");
+  if (e.pointerType === "mouse" && button && !button.contains(e.relatedTarget)) showSynergyItemTooltip(button);
+});
+document.addEventListener("pointerout", e => {
+  const button = e.target.closest("[data-synergy-item]");
+  if (button && !button.contains(e.relatedTarget)) hideFloatingHtmlTooltip();
+});
+document.addEventListener("focusin", e => {
+  const button = e.target.closest("[data-synergy-item]");
+  if (button) showSynergyItemTooltip(button);
+});
+document.addEventListener("focusout", e => {
+  if (e.target.closest("[data-synergy-item]")) hideFloatingHtmlTooltip();
+});
+document.addEventListener("click", e => {
+  const button = e.target.closest("[data-synergy-item]");
+  if (!button) return;
+  hideSharedTooltip();
+  const item = JSON.parse(decodeURIComponent(button.dataset.synergyItem));
+  if (!item.id.startsWith("RELIC.")) {
+    openCardLightbox(item);
+  } else {
+    closeCardLightbox();
+    const box = document.createElement("div");
+    box.className = "card-lightbox synergy-relic-lightbox";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    box.setAttribute("aria-label", relicInfo(item.id)?.title || item.id);
+    box.innerHTML = `<div class="card-lightbox-body">${buildRelicTooltip(item.id)}</div>`;
+    box.addEventListener("click", closeCardLightbox);
+    document.body.appendChild(box);
+    loadDeferredImages(box);
+  }
+  const box = document.querySelector(".card-lightbox");
+  if (box) {
+    synergyInspectTrigger = button;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "synergy-inspect-close";
+    close.textContent = "Close preview";
+    box.prepend(close);
+    close.focus();
+  }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Tab" && synergyInspectTrigger && document.querySelector(".card-lightbox")) {
+    e.preventDefault();
+    document.querySelector(".synergy-inspect-close")?.focus();
+  }
+});
 
 // A phone can't hover a card, and its three-per-row tiles are small for the
 // card's text, so a tap opens the card large, with its enchantment's rule under
@@ -376,6 +535,10 @@ const PHONE_DECK_MQ = window.matchMedia("(max-width: 560px)");
 
 function closeCardLightbox() {
   document.querySelector(".card-lightbox")?.remove();
+  if (synergyInspectTrigger) {
+    synergyInspectTrigger.focus();
+    synergyInspectTrigger = null;
+  }
 }
 
 function openCardLightbox(card) {

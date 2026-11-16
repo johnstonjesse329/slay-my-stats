@@ -78,6 +78,7 @@ let detailSortAsc = false;
 const DETAIL_SORT_FNS = {
   char:  (a, b) => fmtCharName(a.char).localeCompare(fmtCharName(b.char)),
   asc:   (a, b) => a.asc - b.asc,
+  players: (a, b) => (a.mp ? (a.party?.length || 2) : 1) - (b.mp ? (b.party?.length || 2) : 1),
   won:   (a, b) => a.won - b.won,
   floor: (a, b) => a.floor - b.floor,
   read:  (a, b) => runReadingRank(a) - runReadingRank(b),
@@ -204,17 +205,22 @@ function renderDetailRunList() {
   container.innerHTML = `<div class="detail-run-header-row">
     ${sortHead("char", "Char")}
     ${sortHead("asc", "Asc")}
+    ${sortHead("players", "Party", "Who was in the run: solo, or a party of two to four. Sorting puts solo first.")}
     ${sortHead("won", "W/L")}
     ${sortHead("floor", "Floor")}
     ${sortHead("read", "+/–", `Hype, Mid or Rough against the average win on this run's fights.\nOP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
     ${sortHead("date", "Date")}
   </div>` + runs.map((run, i) => {
     const won    = run.won;
-    const label  = fmtCharName(run.char);
     const active = run.ts === detailSelectedTs;
+    // A multiplayer run names its party's characters, so show their heads; a solo run is one head.
+    const party = run.mp ? (run.party || []) : [run.char];
+    const partyLabel = run.mp ? (party.length ? `Party: ${party.map(fmtCharName).join(", ")}` : "Multiplayer") : `Solo: ${fmtCharName(run.char)}`;
+    const partyHtml = party.length ? party.slice(0, 4).map(c => charIconHtml(c)).join("") : (run.mp ? "Multi" : "Solo");
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
-      <span class="detail-run-char" style="color:${CHAR_COLOR_MAP[run.char] || "#a0a0b8"}">${charIconHtml(run.char)}${label}</span>
+      <span class="detail-run-char">${charLabelHtml(run.char)}</span>
       <span class="detail-run-asc" style="color:var(--text-dim)">${run.mode === "dread" ? `<img class="detail-run-dread" src="/ui_icons/dread.png" alt="Dread" data-tip="Dread">` : `A${run.asc}`}</span>
+      <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}"><span class="detail-run-party-heads">${partyHtml}</span><span class="detail-run-party-text" aria-hidden="true">${run.mp ? "Multi" : "Solo"}</span></span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
@@ -263,9 +269,7 @@ function renderDetailRun(run) {
   document.getElementById("detail-placeholder").style.display = "none";
   document.getElementById("detail-content").style.display = "";
 
-  const color  = CHAR_COLOR_MAP[run.char] || "#a0a0b8";
   const won    = run.won;
-  const label  = fmtCharName(run.char);
   const fmtDate = ts => new Date(ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
   const tl = run.timeline || [];
@@ -419,7 +423,7 @@ function renderDetailRun(run) {
   document.getElementById("detail-run-header").innerHTML = `
     <div class="detail-run-header-bar">
       ${navigator.clipboard ? `<button type="button" class="run-copy-link-icon" aria-label="Copy link to this run" title="Copy link"><svg class="rci-share" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg><svg class="rci-done" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button>` : ""}
-      <span style="font-weight:700;font-size:1.1rem;color:${color}">${charIconHtml(run.char)}${label}</span>
+      ${charLabelHtml(run.char, true)}
       ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
       <span style="color:${won ? "#5cba7d" : "#e05c5c"};font-weight:600">${won ? "Victory" : "Defeat"}</span>
       ${runReadingHtml(run)}${runActMarksHtml(run)}
@@ -461,6 +465,22 @@ function renderDetailRun(run) {
   document.querySelectorAll("#detail-run-header .run-copy-link, #detail-run-header .run-copy-link-icon").forEach(copyBtn =>
     copyBtn.addEventListener("click", () => copyRunLink(run.ts, copyBtn)));
 
+  // The span a drag picks is per run: a new run starts with none, and its own floor-by-floor
+  // changes are what the panel adds up. A run whose history doesn't fit the shape leaves the
+  // charts alone and only loses the span.
+  clearRange();
+  rangeNodes = run.timeline || [];
+  try {
+    rangeChanges = run.deckAdded || run.relicsAdded
+      ? floorChanges(rangeNodes,
+        heldItems(run.finalDeck || [], run.deckAdded || [], run.cardsLost || []),
+        heldItems(run.finalRelics || [], run.relicsAdded || [], run.relicsLost || []))
+      : null;
+  } catch (err) {
+    console.warn("range select: no floor changes for this run", err);
+    rangeChanges = null;
+  }
+
   renderDetailTimeline(run);
   renderDetailMaps(run);
   renderDetailHpChart(run);
@@ -469,6 +489,7 @@ function renderDetailRun(run) {
   renderDetailRelicChart(run);
   renderDetailKeepCharts(run);
   renderDetailDeckRelics(run);
+  renderRangeTip();
 }
 
 // ---- Timeline ----
@@ -1129,7 +1150,7 @@ const GOLD_ICON_KEYS = new Set(["shop", "unknown_shop", "event"]);
 const nodePointImages = new Map();  // "size src" -> Image
 // The clip for a chart's floor icons: none, or the plot's sides alone where one act is on show.
 const iconClip = () => narrowScreen.matches ? { left: 0, right: 0, top: false, bottom: false } : false;
-function nodePoints(nodes, getChart, highlight, size = NODE_POINT, keyOf = nodeIconKey) {
+function nodePoints(nodes, getChart, highlight, size = nodePointSize(), keyOf = nodeIconKey) {
   const srcs = nodes.map((n, i) => {
     const key = keyOf(n);
     return highlight(n, key, i) && DATA.nodeIcons ? DATA.nodeIcons[key] : null;
@@ -1155,6 +1176,10 @@ function nodePoints(nodes, getChart, highlight, size = NODE_POINT, keyOf = nodeI
   };
 }
 const NODE_POINT = 30;
+// A phone shows one act at a time, so the floors are close together: the desktop's icons would
+// overlap into a smear over the line. Sized to sit just inside the floor spacing instead.
+const NODE_POINT_PHONE = 17;
+const nodePointSize = () => narrowScreen.matches ? NODE_POINT_PHONE : NODE_POINT;
 
 // The y axis for a chart with floor icons: stretched past the data by an
 // icon's height, so one on a peak or down at zero isn't cut off by the top or
@@ -1170,7 +1195,7 @@ function iconAxis(extra = {}) {
     afterDataLimits(scale) {
       // The plot's height isn't laid out yet: the canvas less the act band,
       // floor axis and legend is close enough.
-      const pad = (NODE_POINT / 2 + 3) / Math.max(100, scale.chart.height - ACT_BAND - 80);
+      const pad = (nodePointSize() / 2 + 3) / Math.max(100, scale.chart.height - ACT_BAND - 80);
       const range = (scale.max - scale.min) || 1, grow = range * pad / (1 - pad);
       const icons = scale.chart.data.datasets.flatMap(ds =>
         Array.isArray(ds.pointRadius) ? ds.data.filter((_, i) => ds.pointRadius[i] > 0) : []);
@@ -1394,6 +1419,44 @@ function makeWinRangePlugin(marks, { width = 0.12 } = {}) {
   };
 }
 
+// A floor's deck change as one tick under it: a card added in its type's colour, an upgrade in the
+// same colour left hollow, a card removed grey and pointing down, a relic off-white. It puts each
+// floor choice under the fights that followed it, so a run's slide can be read against what it had
+// just added, removed or upgraded -- not just Powers, and without claiming the next fight is the
+// choice's doing (deck order and the fight drawn both move it).
+const KEEP_TICK = 9;
+function choiceTick(s) {
+  const cards = s.cards || [];
+  const added = cards.find(([, , dir]) => dir > 0);
+  if (added) return { color: DECK_GROUPS.type.color[cardInfo(added[0])?.type] || DECK_GROUPS.type.color.Other };
+  const upgraded = cards.find(([, up, dir]) => up && !dir);
+  if (upgraded) return { color: DECK_GROUPS.type.color[cardInfo(upgraded[0])?.type] || DECK_GROUPS.type.color.Other, hollow: true };
+  if (cards.some(([, , dir]) => dir < 0)) return { color: "#9a9aae", dir: -1 };
+  if (s.relics.length) return { color: "#cfcbe0" };
+  return null;
+}
+function makeChoiceTickPlugin(ticks) {
+  return {
+    id: "choiceTicks",
+    beforeDatasetsDraw(chart) {
+      const { ctx, chartArea: { bottom }, scales: { x } } = chart;
+      ctx.save();
+      ticks.forEach((t, i) => {
+        if (!t || i < x.min || i > x.max) return;
+        const px = x.getPixelForValue(i), y = bottom - 2, up = t.dir !== -1;
+        ctx.beginPath();
+        ctx.moveTo(px, up ? y - KEEP_TICK : y);
+        ctx.lineTo(px - 4, up ? y : y - KEEP_TICK);
+        ctx.lineTo(px + 4, up ? y : y - KEEP_TICK);
+        ctx.closePath();
+        if (t.hollow) { ctx.lineWidth = 1.5; ctx.strokeStyle = t.color; ctx.stroke(); }
+        else { ctx.fillStyle = t.color; ctx.fill(); }
+      });
+      ctx.restore();
+    },
+  };
+}
+
 // The HP chart's hover box. Every floor: the HP left after it. A fight this player has won: first
 // what it cost this run beside what their wins lose, a lane each for HP lost and HP left to see
 // where this run falls, and a key to their marks; then the HP this run entered it with, beside the
@@ -1470,7 +1533,7 @@ function renderDetailHpChart(run) {
   const ctx = document.getElementById("detail-hp-chart").getContext("2d");
   detailHpChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes)],
+    plugins: [makeRangeBandPlugin(), makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin()],
     data: {
       labels,
       datasets: [
@@ -1516,6 +1579,7 @@ function renderDetailHpChart(run) {
       },
     },
   });
+  bindRangeSelect(detailHpChart, nodes);
 }
 
 // ---- Gold chart ----
@@ -1538,7 +1602,7 @@ function renderDetailGoldChart(run) {
   const ctx = document.getElementById("detail-gold-chart").getContext("2d");
   detailGoldChart = new Chart(ctx, {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes)],
+    plugins: [makeRangeBandPlugin(), makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin()],
     data: {
       labels,
       datasets: [{
@@ -1581,6 +1645,7 @@ function renderDetailGoldChart(run) {
       },
     },
   });
+  bindRangeSelect(detailGoldChart, nodes);
 }
 
 // ---- Deck and relics by floor ----
@@ -1755,7 +1820,8 @@ function makeMarkPlugin(marks, totals, colors) {
               img.naturalWidth * s, img.naturalHeight * s);
             ctx.restore();
           } else if (img) {
-            img.addEventListener("load", () => chart.draw(), { once: true });
+            // Switching filters can destroy this chart before its art loads.
+            img.addEventListener("load", () => { if (chart.ctx) chart.draw(); }, { once: true });
           }
           ctx.beginPath();
           ctx.arc(cx, cy, r - 1.25, 0, Math.PI * 2);
@@ -1905,6 +1971,8 @@ function createFloorTip() {
   }, { passive: true });
 }
 function showFloorTip(context, html) {
+  // Picking a span of floors: the box would sit over the band being dragged.
+  if (rangeDrag) return;
   if (!floorTip) createFloorTip();
   // Pointer is on the box: the chart can't see it any more, and its updates mean nothing.
   if (floorTipOver) return;
@@ -1941,19 +2009,33 @@ function showFloorTip(context, html) {
   const px = r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
   const w = floorTip.offsetWidth, h = floorTip.offsetHeight;
   const gap = 12;
-  let below = py + gap + h <= vh - 8 || py - gap - h < 8;
-  let top = below ? py + gap : py - gap - h;
-  // A box with nothing to hover (no pickup chips) lets the pointer through, so it can't block
-  // scrubbing along the chart. One with chips has to be reachable, so it sits clear of the
-  // chart instead, under it or over it, and the pointer is never stopped on the way along.
   const live = !!floorTip.querySelector("[data-pick]");
   floorTip.classList.toggle("passive", !live);
-  if (live) {
-    if (r.bottom + 8 + h <= vh - 8) { top = r.bottom + 8; below = true; }
-    else if (r.top - 8 - h >= 8) { top = r.top - 8 - h; below = false; }
+  // Never over the chart: the box sits under it, else above it, else beside it, and the floor it
+  // belongs to is read from the column it is centred on. Only a box that fits nowhere (a phone's
+  // landscape, a very tall table) falls back to the pointer, where at least it can be read.
+  const room = {
+    below: r.bottom + gap + h <= vh - 8,
+    above: r.top - gap - h >= 8,
+    right: r.right + gap + w <= vw - 8,
+    left: r.left - gap - w >= 8,
+  };
+  let below, left, top;
+  if (room.below || room.above) {
+    below = room.below;
+    top = below ? r.bottom + gap : r.top - gap - h;
+    left = Math.max(8, Math.min(px - w / 2, vw - 8 - w));
+  } else if (room.right || room.left) {
+    below = py < r.top + r.height / 2;
+    left = room.right ? r.right + gap : r.left - gap - w;
+    top = Math.max(8, Math.min(py - h / 2, vh - 8 - h));
+  } else {
+    below = py + gap + h <= vh - 8 || py - gap - h < 8;
+    top = below ? py + gap : py - gap - h;
+    left = Math.max(8, Math.min(px - w / 2, vw - 8 - w));
   }
   floorTip.classList.toggle("above", !below);
-  floorTip.style.left = Math.max(8, Math.min(px - w / 2, vw - 8 - w)) + "px";
+  floorTip.style.left = left + "px";
   floorTip.style.top = Math.max(8, top) + "px";
   Object.assign(floorTipAnchor, { x: floorTipPointer.x || px, y: py, below });
 }
@@ -1992,10 +2074,342 @@ function markHeadroom(marks, totals, step) {
   };
 }
 
+// How many enemies the fight can have on the screen at once: fight_demand.py's `count`, the
+// opening line-up the run files list. Encounters read before that field existed only say whether
+// there was more than one, and those keep the cluster of three rather than invent a number.
+const nodeEnemyCount = n => {
+  const enc = n && n.turns ? n.fight || n.enc : "";
+  const d = enc && DATA.fightDemand && DATA.fightDemand.encounters && DATA.fightDemand.encounters[enc];
+  return d ? d.count || (d.many ? 3 : 1) : 1;
+};
+
+// A multi-enemy fight gets a count badge on its marker icon ("2", "3"...) on every floor chart
+// that draws fight icons (HP, damage done, damage taken, keeping up). Copies of the icon fanned
+// behind the marker were lost where floors sit close together (a pair beside a neighbour read as
+// three); a number is exact and takes no room of its own. Bosses get it too when their data says
+// so (Kaiser Crab's claws). Drawn after the markers so it sits on top, right under the icon.
+function makeManyIconPlugin(nodes) {
+  return {
+    id: "manyIcons",
+    afterDatasetsDraw(chart) {
+      const { ctx, scales: { x, y } } = chart;
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      chart.data.datasets.forEach(ds => {
+        if (!Array.isArray(ds.pointRadius)) return;
+        ds.pointRadius.forEach((radius, i) => {
+          const img = ds.pointStyle && ds.pointStyle[i];
+          if (!(radius > 0) || !(img instanceof HTMLImageElement)) return;
+          const count = nodeEnemyCount(nodes[i]);
+          if (count < 2 || i < x.min || i > x.max) return;
+          // "×N" right under the icon, outlined so it reads over the line and the range bar.
+          const label = `×${count}`;
+          const cx = x.getPixelForValue(i), cy = y.getPixelForValue(ds.data[i]) + radius + 9;
+          ctx.font = `700 ${Math.max(10, Math.round(radius * 0.8))}px sans-serif`;
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "#14141f";
+          ctx.strokeText(label, cx, cy);
+          ctx.fillStyle = "#fff";
+          ctx.fillText(label, cx, cy);
+        });
+      });
+      ctx.restore();
+    },
+  };
+}
+
+// A floor chart draws its points as icons, not as dots, so a hovered floor would otherwise show
+// nothing for itself but the hover box beside it. This puts a dot on the point the pointer is
+// on: the line's own colour, ringed in the panel's, so it reads over an icon, an area fill or a
+// bare line. Datasets that hide their points on hover (the average-win lines) are skipped, so
+// the dot always lands on the series the floor is read from; the stacked bands (the deck and
+// relic charts) have no points, so there the dot goes on top of the stack instead.
+function makeHoverDotPlugin() {
+  const points = ds => {
+    const r = ds.pointHoverRadius;
+    return Array.isArray(r) ? r.some(v => v > 0) : r === undefined || r > 0;
+  };
+  return {
+    id: "hoverDot",
+    afterDatasetsDraw(chart) {
+      const active = (chart.tooltip?.getActiveElements?.() || [])
+        .filter(a => a.element && chart.data.datasets[a.datasetIndex].data[a.index] != null);
+      if (!active.length) return;
+      const line = active.find(a => points(chart.data.datasets[a.datasetIndex]));
+      const hit = line || active.reduce((best, a) => a.element.y < best.element.y ? a : best);
+      const ds = chart.data.datasets[hit.datasetIndex];
+      const own = Array.isArray(ds.borderColor) ? ds.borderColor[0] : ds.borderColor;
+      const color = line ? own : "#e6e6ee";
+      if (!color) return;
+      const { ctx } = chart;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(hit.element.x, hit.element.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#16142a";
+      ctx.stroke();
+      ctx.restore();
+    },
+  };
+}
+
+// ---- A span of floors ----
+// Dragging across any floor chart picks the floors under the pointer, and the page adds up what
+// the run changed inside them: cards in, out and upgraded, relics gained and lost, beside what
+// the span cost in fights, damage and gold. A stretch that went wrong can then be read as a
+// whole instead of floor by floor. One span is live at a time and every floor chart draws it, so
+// the HP chart's dip and the deck's growth line up under the same band. A finger already scrubs
+// the hover box, so a span is a pointer (mouse or pen) gesture; Esc or a click clears it.
+let rangeSel = null;      // {from, to}: floor numbers, as the axis numbers them (1-based)
+let rangeChanges = null;  // the run's floorChanges(), or null when it has no deck history
+let rangeNodes = [];      // its timeline
+let rangeDrag = null;     // {chart, nodes, host, from, moved} while a pointer is down on a chart
+let rangePanels = [];     // one under every floor chart while a span is live
+const RANGE_HINT_KEY = "slay-my-stats:range-used:v2";          // the gesture has been used
+const RANGE_TIP_KEY = "slay-my-stats:range-tip-dismissed:v2";  // the line above the charts was closed
+const rangeTipSeen = () => { try { return !!localStorage.getItem(RANGE_TIP_KEY); } catch { return false; } };
+const rangeUsed = () => { try { return !!localStorage.getItem(RANGE_HINT_KEY); } catch { return false; } };
+// A drag needs a pointer, not a finger, but a laptop with a touchscreen usually has both, and the
+// mouse still drags: the line shows wherever any precise pointer exists.
+const hasFinePointer = () => window.matchMedia("(any-pointer: fine)").matches;
+
+// The line above the charts is in the page's own HTML, so it is there even before this script
+// runs; this only decides whether it shows and wires its x. A hint that only appears on hover is
+// no good to someone who never thinks to hover, and a hint drawn only by script is no good when
+// the script has a bad day.
+function renderRangeTip() {
+  const tip = document.getElementById("detail-range-tip");
+  if (!tip) return;
+  // The gesture does not retire the line: someone who drags once may still be the one showing a
+  // friend, and the line is quiet enough to live with. Only its own x puts it away.
+  tip.hidden = !hasFinePointer() || rangeTipSeen();
+  if (tip.dataset.wired) return;
+  tip.dataset.wired = "1";
+  tip.querySelector(".range-tip-close")?.addEventListener("click", () => {
+    try { localStorage.setItem(RANGE_TIP_KEY, "1"); } catch { /* private mode */ }
+    tip.hidden = true;
+  });
+}
+const floorOf = n => n.floor + 1;
+
+function makeRangeBandPlugin() {
+  const paint = (chart, ctx) => {
+    const { chartArea, scales: { x } } = chart;
+    const hits = [];
+    chart.data.labels.forEach((label, i) => {
+      const f = Number(label);
+      if (f >= rangeSel.from && f <= rangeSel.to) hits.push(i);
+    });
+    if (!hits.length) return;
+    // A category axis puts each point in the middle of its band, so the band is half a step out
+    // either side of the first and last floor in the span.
+    const step = Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) || 24;
+    const left = Math.max(chartArea.left, x.getPixelForValue(hits[0]) - step / 2);
+    const right = Math.min(chartArea.right, x.getPixelForValue(hits[hits.length - 1]) + step / 2);
+    ctx.save();
+    ctx.fillStyle = "rgba(224, 196, 104, 0.13)";
+    ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+    ctx.strokeStyle = "rgba(224, 196, 104, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left + 0.5, chartArea.top);
+    ctx.lineTo(left + 0.5, chartArea.bottom);
+    ctx.moveTo(right - 0.5, chartArea.top);
+    ctx.lineTo(right - 0.5, chartArea.bottom);
+    ctx.stroke();
+    ctx.restore();
+  };
+  return {
+    id: "rangeBand",
+    // First, so the band sits under the lines, the icons and the markers.
+    beforeDatasetsDraw(chart) { if (rangeSel) paint(chart, chart.ctx); },
+  };
+}
+
+// The floor under a pointer: the chart's own axis decides, so a span lands on the right floor
+// whatever that chart has filtered out of its own points.
+function floorAtPointer(chart, nodes, clientX) {
+  const idx = Math.round(chart.scales.x.getValueForPixel(clientX - chart.canvas.getBoundingClientRect().left));
+  const node = nodes[Math.max(0, Math.min(nodes.length - 1, idx))];
+  return node ? floorOf(node) : null;
+}
+
+function floorCharts() {
+  return [detailHpChart, detailGoldChart, detailDeckChart, detailRelicChart, ...detailKeepCharts].filter(Boolean);
+}
+
+function drawFloorCharts() {
+  floorCharts().forEach(c => c.draw("none"));
+}
+
+function bindRangeSelect(chart, nodes) {
+  const canvas = chart.canvas;
+  const host = canvas.closest(".chart-wrap") || canvas.parentElement;
+  host.classList.add("range-ready");
+  // The same advice as the note under Keeping Up, put where the eye is: a pill over the plot
+  // while the pointer is on the chart. It lives exactly as long as the pointer does -- no timer,
+  // so it can't vanish while someone is reading it -- and it is not remembered away, because a
+  // hint nobody can call back is no use to whoever is looking next.
+  const dropPill = () => host.querySelector(".drag-hint")?.remove();
+  const showPill = () => {
+    if (!hasFinePointer() || host.querySelector(".drag-hint")) return;
+    const hint = document.createElement("span");
+    hint.className = "drag-hint";
+    hint.textContent = "Drag across the chart to add up what changed over these floors";
+    host.appendChild(hint);
+  };
+  host.addEventListener("pointerenter", showPill);
+  host.addEventListener("pointerleave", dropPill);
+  canvas.addEventListener("pointerdown", e => {
+    if (e.button !== 0 || e.pointerType === "touch" || !rangeChanges) return;
+    const from = floorAtPointer(chart, nodes, e.clientX);
+    if (from == null) return;
+    rangeDrag = { chart, nodes, host, from, moved: false };
+    canvas.setPointerCapture(e.pointerId);
+    closeFloorTip();
+    dropPill();
+    try { localStorage.setItem(RANGE_HINT_KEY, "1"); } catch { /* private mode */ }
+  });
+  canvas.addEventListener("pointermove", e => {
+    if (!rangeDrag || rangeDrag.chart !== chart) return;
+    const to = floorAtPointer(chart, nodes, e.clientX);
+    if (to == null) return;
+    if (to !== rangeDrag.from) rangeDrag.moved = true;
+    showRange(Math.min(rangeDrag.from, to), Math.max(rangeDrag.from, to));
+  });
+  const end = e => {
+    if (!rangeDrag || rangeDrag.chart !== chart) return;
+    const wasClick = !rangeDrag.moved;
+    rangeDrag = null;
+    if (canvas.hasPointerCapture?.(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    if (wasClick) clearRange();
+  };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+}
+
+function showRange(from, to) {
+  rangeSel = { from, to };
+  drawFloorCharts();
+  // The same list under every floor chart, not only the one dragged: the span is drawn on all of
+  // them, so what it changed is read beside whichever one is being looked at.
+  const html = rangeSummaryHtml();
+  const hosts = floorCharts().map(c => c.canvas.closest(".chart-wrap")).filter(Boolean);
+  hosts.forEach((wrap, i) => {
+    const panel = rangePanels[i] || makeRangePanel();
+    rangePanels[i] = panel;
+    // After the chart's key, so the panel reads as that chart's without splitting the key from it.
+    let anchor = wrap;
+    while (anchor.nextElementSibling?.classList.contains("floor-legend")) anchor = anchor.nextElementSibling;
+    if (anchor.nextElementSibling !== panel) anchor.after(panel);
+    panel.innerHTML = html;
+  });
+  rangePanels.slice(hosts.length).forEach(p => p.remove());
+  rangePanels.length = hosts.length;
+}
+
+function makeRangePanel() {
+  const panel = document.createElement("div");
+  panel.id = rangePanels.length ? "" : "detail-range-panel";
+  panel.className = "range-panel";
+  panel.addEventListener("click", e => { if (e.target.closest("[data-range-clear]")) clearRange(); });
+  // A chip is small; hovering or focusing it opens the full card face or relic, as elsewhere.
+  const openTip = e => {
+    const chip = e.target.closest?.("[data-range-tip]");
+    if (!chip) return;
+    const [kind, id, up] = chip.dataset.rangeTip.split(":");
+    showFloatingHtmlTooltip(chip, kind === "relic" ? buildRelicTooltip(id) : buildCardTooltip(id, up === "1"));
+  };
+  const closeTip = e => { if (e.target.closest?.("[data-range-tip]") && e.pointerType !== "touch") hideFloatingHtmlTooltip(); };
+  panel.addEventListener("pointerover", openTip);
+  panel.addEventListener("pointerout", closeTip);
+  panel.addEventListener("focusin", openTip);
+  panel.addEventListener("focusout", closeTip);
+  return panel;
+}
+
+function clearRange() {
+  rangeSel = null;
+  rangeDrag = null;
+  rangePanels.forEach(p => p.remove());
+  rangePanels = [];
+  drawFloorCharts();
+}
+
+document.addEventListener("keydown", e => { if (e.key === "Escape" && rangeSel) clearRange(); });
+// A click anywhere off the panels clears the span; a click on a chart is that chart's own
+// business (it clears there, or starts another drag).
+document.addEventListener("pointerdown", e => {
+  if (!rangeSel || rangeDrag) return;
+  if (e.target.closest?.(".range-panel") || e.target.tagName === "CANVAS") return;
+  clearRange();
+});
+
+// The span added up: what went into the deck and what came out, the relics, and what the floors
+// cost. Every list is one entry per card or relic, merged into a count when the same one came in
+// twice, and a card that was upgraded wears an arrow instead of counting as one out and one in.
+function rangeSummaryHtml() {
+  const { from, to } = rangeSel;
+  const floors = rangeNodes.filter(n => floorOf(n) >= from && floorOf(n) <= to);
+  const fights = floors.filter(n => n.turns).length;
+  const dmg = floors.reduce((s, n) => s + (n.dmg || 0), 0);
+  const gold = floors.reduce((s, n) => s + (n.goldGained || 0), 0);
+  // Where the span left the HP: the first floor's starting HP to the last one's, so a dip is
+  // read at a glance without counting the line.
+  const hp = floors.length && floors[0].hpBefore != null && floors[floors.length - 1].hpAfter != null
+    ? [floors[0].hpBefore, floors[floors.length - 1].hpAfter] : null;
+  const inPlay = { added: [], removed: [], upgraded: [], relicsIn: [], relicsOut: [] };
+  (rangeChanges || []).forEach((change, i) => {
+    const f = floorOf(rangeNodes[i]);
+    if (f < from || f > to) return;
+    change.cards.forEach(([id, up, dir]) =>
+      inPlay[dir > 0 ? "added" : dir < 0 ? "removed" : "upgraded"].push({ id, up }));
+    change.relics.forEach(([id, , dir]) => inPlay[dir > 0 ? "relicsIn" : "relicsOut"].push({ id }));
+  });
+  const tally = list => {
+    const counts = new Map();
+    const ups = new Map();
+    list.forEach(({ id, up }) => { counts.set(id, (counts.get(id) || 0) + 1); if (!ups.has(id)) ups.set(id, up); });
+    return [...counts].map(([id, n]) => ({ id, n, up: ups.get(id) }));
+  };
+  const chip = (src, label, n, cls = "", id = "", tip = "") =>
+    `<span class="range-chip${cls}"${id ? ` data-id="${escapeHtml(id)}"` : ""}${tip ? ` data-range-tip="${escapeHtml(tip)}" tabindex="0"` : ""}>${src ? `<img src="${src}" alt="">` : ""}${escapeHtml(label)}${n > 1 ? ` ×${n}` : ""}</span>`;
+  const cardName = id => cardInfo(id)?.title || fmtCardLabel(id);
+  const relicName = id => relicInfo(id)?.title || fmtRelicLabel(id);
+  const group = (head, list, kind, name, cls = "") => {
+    if (!list.length) return "";
+    const src = kind === "card" ? cardImgSrc : relicImgSrc;
+    return `<div class="range-group"><span class="range-head">${head}</span>` +
+      tally(list).map(({ id, n, up }) => chip(src(id), name(id), n, cls, id, `${kind}:${id}:${up > 0 || cls ? 1 : 0}`)).join("") + `</div>`;
+  };
+  const groups = group("Cards in", inPlay.added, "card", cardName) +
+    group("Upgraded", inPlay.upgraded, "card", cardName, " up") +
+    group("Cards out", inPlay.removed, "card", cardName) +
+    group("Relics in", inPlay.relicsIn, "relic", relicName) +
+    group("Relics out", inPlay.relicsOut, "relic", relicName);
+  const meta = [
+    `${floors.length} ${floors.length === 1 ? "floor" : "floors"}`,
+    fights ? `${fights} ${fights === 1 ? "fight" : "fights"}` : "",
+    dmg ? `${dmg} damage taken` : "",
+    gold ? `${gold} gold gained` : "",
+    hp ? `HP ${hp[0]} → ${hp[1]}` : "",
+  ].filter(Boolean).join(" · ");
+  const empty = rangeChanges ? "Nothing changed in these floors." : "This run has no deck history to add up.";
+  return `<div class="range-top"><span class="range-title">${from === to ? `Floor ${from}` : `Floors ${from}–${to}`}</span>` +
+    `<span class="range-meta">${meta}</span>` +
+    `<button type="button" class="range-clear" data-range-clear aria-label="Clear the selected floors">✕</button></div>` +
+    `<div class="range-groups">${groups || `<span class="range-empty">${empty}</span>`}</div>` +
+    `<div class="range-hint">Drag across any floor chart to pick another span; Esc or a click clears it.</div>`;
+}
+
 function floorChartConfig(nodes, plugins, tip, y, datasets, view = {}) {
   return {
     type: "line",
-    plugins: [makeActBoundaryPlugin(nodes), ...plugins],
+    plugins: [makeRangeBandPlugin(), makeActBoundaryPlugin(nodes), makeManyIconPlugin(nodes), makeHoverDotPlugin(), ...plugins],
     data: { labels: floorLabels(nodes), datasets },
     options: {
       responsive: true,
@@ -2108,6 +2522,7 @@ function renderDetailDeckChart(run) {
       ...tKeys.map(k => ({ key: k, data: byT[k], color: T.color[k], stack: "type" })),
       ...rKeys.map(k => ({ key: k, data: byR[k].map(v => -v), color: R.color[k], stack: "rarity" })),
     ])));
+  bindRangeSelect(detailDeckChart, nodes);
 
   document.getElementById("detail-deck-legend").innerHTML =
     floorLegendRow("▲ Type", tKeys, T.color) +
@@ -2147,6 +2562,7 @@ function renderDetailRelicChart(run) {
     floorChartConfig(nodes, [makeMarkPlugin(marks, totals, G.color)], tip,
       { min: 0, max: Math.ceil(peak * 1.3 / 2) * 2, afterDataLimits: markHeadroom(marks, totals, 2) },
       floorBands(keys.map(k => ({ key: k, data: counts[k], color: G.color[k], stack: "relics" })))));
+  bindRangeSelect(detailRelicChart, nodes);
 
   document.getElementById("detail-relic-legend").innerHTML =
     floorLegendRow("Rarity", keys, G.color) +
@@ -2175,6 +2591,8 @@ const KEEP_LINES = {
 // Your run is the same solid gold line (YOUR_LINE) on the HP, damage done and damage taken charts.
 // In the tip's split bar the incoming damage is red, next to blocked in blue and healed in green.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
+// The share chart's turns line, dashed so the two measures never differ by colour alone.
+const KEEP_TURN_COLOR = "#54c6d4";
 // What arrived on a turn, split: blocked, healed off, and what got through (red). Each has an icon and a label as well, so colour is never the only cue.
 const KEEP_SPLIT = { blocked: "#5aa0e6", healed: "#5cba7d", through: "#e05252" };
 // How a reading is named on the page. The keys ("ahead", "meeting", "behind") are
@@ -2203,6 +2621,12 @@ const KEEP_SIGNS = { ahead: "▲", meeting: `<i class="bullseye"></i>`, behind: 
 // Fight icons on a chart, in px: up to the HP and gold charts' size, and a floor and a
 // half wide when a run has many floors; still readable on a phone.
 const KEEP_ICON = { min: 16, max: NODE_POINT };
+// How big a fight icon is on those charts. A desktop has room for a floor and a half; a phone
+// fits one act into its width, so the icon goes just under the floor spacing there instead of
+// piling up on its neighbours.
+const keepIconSize = (width, floors) => narrowScreen.matches
+  ? Math.round(Math.min(NODE_POINT_PHONE, Math.max(12, width / floors)))
+  : Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * width / floors)));
 // The kinds of fight, in the order an act card lists them.
 const KEEP_KINDS = { monster: "Normal", elite: "Elites", boss: "Boss" };
 // How each tier is named on the page: fight_demand.py's TIER_NAMES, for a reader.
@@ -2269,7 +2693,7 @@ function fightReadings(run, nodes, measured) {
     const how = d && keepWinners(run, d);
     const m = !run.mp && measured && measured[i];
     const pool = !m ? table : lost ? Math.max(table, m.removed) : m.removed;
-    const row = { pool, lost, turns: n.turns, many: d?.many };
+    const row = { pool, lost, turns: n.turns, many: d?.many, count: d?.count };
     if (how) { row.winTurns = how.turns; row.winN = how.n; if (pool) row.ask = pool / how.turns; }
     if (m || !lost) row.doing = (m ? m.removed : pool) / n.turns;
     // Enemies act after you, so a fight you won gives them a turn less. One won in a turn
@@ -2567,7 +2991,7 @@ function renderKeepActs(run, nodes, measured) {
   const kindOf = key => key in KEEP_KINDS ? key : "boss";
   const order = Object.keys(KEEP_KINDS);
   const kinds = a => Object.entries(a.kinds).sort(([x], [y]) => order.indexOf(kindOf(x)) - order.indexOf(kindOf(y))).map(([key, n]) =>
-    `<span class="keep-kind" title="${KEEP_KINDS[kindOf(key)]}: ${n}">${nodeIconHtml(key, 20, kindOf(key))}${n}</span>`).join("");
+    `<span class="keep-kind" title="${KEEP_KINDS[kindOf(key)]}: ${n}">${nodeIconHtml(key, 27, kindOf(key))}${n}</span>`).join("");
   // The run's rating first, across the grid: its totals on the same two meters, and how it is read.
   const whole = runReadingOf(run);
   const wholeMeters = whole ? keepReadingMeters(whole) : null;
@@ -2662,7 +3086,18 @@ document.addEventListener("click", e => {
   const b = e.target.closest("#detail-keep-actpick button[data-act]");
   if (b) { keepAct = Number(b.dataset.act); applyKeepAct(); }
 });
-narrowScreen.addEventListener("change", () => { if (keepActNodes.length) applyKeepAct(); });
+narrowScreen.addEventListener("change", () => {
+  // The floor charts size their icons to the screen, so crossing the breakpoint redraws them:
+  // full-size faces on a desktop, small ones that fit the floors on a phone.
+  const run = DATA.runsData?.find(r => r.ts === detailSelectedTs);
+  if (run && document.getElementById("detail-content").style.display !== "none") {
+    renderDetailHpChart(run);
+    renderDetailGoldChart(run);
+    renderDetailDeckChart(run);
+    renderDetailRelicChart(run);
+    renderDetailKeepCharts(run);
+  } else if (keepActNodes.length) applyKeepAct();
+});
 
 function renderDetailKeepCharts(run) {
   const nodes = run.timeline || [];
@@ -2712,7 +3147,14 @@ function renderDetailKeepCharts(run) {
   const swatch = color => `<span class="strength-key" style="background:${color}"></span>`;
   const one = v => v === undefined ? undefined : v.toFixed(1);
   // What sort of fight it was, so a bad one can be read as a lack of damage to many targets.
-  const fightKind = (n, r) => r && r.many !== undefined ? `<div class="ft-cap">${[keepRank(n), r.many ? "Multi-enemy" : "Single enemy"].filter(Boolean).join(" · ")}</div>` : "";
+  // The icons already show the group on the chart, so only a fight with more than one enemy is
+  // named, and with the number the encounter really fields: "Single enemy" was noise.
+  const fightKind = (n, r) => {
+    const count = r?.count;
+    const ofMany = count > 1 ? `${count} enemies` : r?.many ? "Multi-enemy" : "";
+    const text = r && r.many !== undefined ? [keepRank(n), ofMany].filter(Boolean).join(" · ") : "";
+    return text ? `<div class="ft-cap">${text}</div>` : "";
+  };
   // Each chart's hover box: the floor, that chart's own numbers, what the floor changed.
   // `body` gets the floor's reading and returns HTML (a table, and whatever goes with it).
   const tip = body => context => showFloorTip(context, i => {
@@ -2763,7 +3205,7 @@ function renderDetailKeepCharts(run) {
 
   const view = actView(nodes);
   const floorsShown = view ? view.to - view.from + 1 : nodes.length;
-  const iconSize = Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * box.clientWidth / floorsShown)));
+  const iconSize = keepIconSize(box.clientWidth, floorsShown);
   // `icons` is the chart's id when its floors carry the fight icons: always on your own line,
   // as on the HP chart, so the icon never moves to somewhere else on the chart.
   const line = ({ label, color, dash }, pick, icons) => ({
@@ -2782,7 +3224,7 @@ function renderDetailKeepCharts(run) {
     cubicInterpolationMode: "monotone",
   });
   const ranges = keepRanges(run, nodes, rows);
-  const chart = (id, series, tipFor, marks, up) => {
+  const chart = (id, series, tipFor, marks, up, plugins = [], floorAtZero = false) => {
     // Only the lines.
     // The ring, where the chart has any, is the HP chart's: the best quarter of the wins.
     const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 25% of wins", false) : "";
@@ -2797,9 +3239,12 @@ function renderDetailKeepCharts(run) {
       const v = actView(nodes);   // only the bars in view, on a phone showing one act
       (marks || []).forEach((m, i) => { if (m && (!v || (i >= v.from && i <= v.to))) scale.max = Math.max(scale.max, m.bad, m.good); });
       stretch(scale);
+      // A ratio axis has no below-zero: the icon stretch must not put one there.
+      if (floorAtZero) scale.min = Math.max(0, scale.min);
     };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
-      floorChartConfig(nodes, marks ? [makeWinRangePlugin(marks)] : [], tipFor, yAxis, series, actWindow(nodes))));
+      floorChartConfig(nodes, [...(marks ? [makeWinRangePlugin(marks)] : []), ...plugins], tipFor, yAxis, series, actWindow(nodes))));
+    bindRangeSelect(detailKeepCharts[detailKeepCharts.length - 1], nodes);
   };
 
   // Cards in the deck after each floor: a line per type (the total is in the hover box, not drawn: it dwarfed the types), so what
@@ -2826,6 +3271,33 @@ function renderDetailKeepCharts(run) {
 
   chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0, "damage"), winners(r => r.ask)], damageTip, ranges.done);
   chart("in", [line(KEEP_LINES.taken, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken, true);
+
+  // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:
+  // turns (time) and damage taken (HP). Below 1 is ahead of the average win, so a slide is the
+  // run falling behind. The ticks under the floor mark the deck changes between fights, so the
+  // slide can be read against what the run had just added, removed or upgraded. The hover names
+  // the fight's shape (single or multi-enemy) and every change, so the choice sits beside its
+  // next fights without those fights being read as the choice's doing.
+  const ticks = changes ? changes.map((s, i) => i ? choiceTick(s) : null) : null;
+  document.getElementById("detail-keep-share-picks").style.display = ticks && ticks.some(Boolean) ? "" : "none";
+  const shareTip = tip(r => {
+    if (r.winTurns === undefined) return "";
+    const mult = v => `${v.toFixed(2)}×`;
+    return `<table><tr><th></th><th>This run</th><th>× avg win</th><th class="ft-win">Avg win</th></tr>` +
+      `<tr><td>${swatch(KEEP_LINES.taken.color)}Damage taken</td><td><b>${Math.round(r.total)}</b></td>` +
+      `<td>${mult((r.total + 1) / (r.winTotal + 1))}</td><td class="ft-win">${Math.round(r.winTotal)}</td></tr>` +
+      `<tr><td>${swatch(KEEP_TURN_COLOR)}Fight turns</td><td><b>${r.turns}</b></td>` +
+      `<td>${mult(r.turns / r.winTurns)}</td><td class="ft-win">${+r.winTurns.toFixed(1)}</td></tr></table>` +
+      (r.lost ? `<div class="ft-cap">The fight that ended the run.</div>` : "");
+  });
+  const average = { label: "Average win", data: nodes.map(() => 1), borderColor: "#b9b9c4",
+    pointHoverBackgroundColor: "#b9b9c4", borderWidth: 1.5, borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 0 };
+  chart("share", [
+    average,
+    line(KEEP_LINES.taken, r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1), "share"),
+    line({ label: "Fight turns", color: KEEP_TURN_COLOR, dash: [6, 3] },
+      r => r.winTurns === undefined ? undefined : r.turns / r.winTurns),
+  ], shareTip, null, false, ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : [], true);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";

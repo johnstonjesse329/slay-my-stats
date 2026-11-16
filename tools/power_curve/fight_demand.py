@@ -64,7 +64,7 @@ import math
 import re
 import statistics
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import power_curve as pc
 import telemetry_report as tr
@@ -257,6 +257,17 @@ def lines(fights):
     return out
 
 
+def enemy_count(fights):
+    """How many enemies an encounter puts on the screen at once, from what the run files list:
+    the opening line-up slot by slot with repeats, then (on versions that list spawns) an enemy
+    that joined, once each. The most common length is the line-up: a run that saw a summon is
+    longer and one that killed the summoner first is shorter, and both are the exception. Ties
+    go to the longer list, so a fight that can have two on the screen never reads as one."""
+    listed = [f for f in fights if f["build"] >= SPAWNS_LISTED]
+    lengths = Counter(len(f["ids"]) for f in listed or fights)
+    return max(lengths, key=lambda n: (lengths[n], n))
+
+
 def many_targets(fights):
     """Whether an encounter can have more than one target alive at a time. The game lists
     the opening line-up, repeats and all, then each kind of enemy that joins, once. So an
@@ -268,10 +279,10 @@ def many_targets(fights):
 
 
 def table(runs, logged=None):
-    """{encounter: {pool, many, tiers}}. pool is [base, Tough Enemies]: the solo HP to
-    chew through, from every fight there, won or lost. many is many_targets. tiers holds
-    what wins did on it, one entry per tier: turns, taken, rate and n from solo wins, and
-    coop for a party, once enough parties have won it."""
+    """{encounter: {pool, many, count, tiers}}. pool is [base, Tough Enemies]: the solo HP to
+    chew through, from every fight there, won or lost. many is many_targets, count is
+    enemy_count. tiers holds what wins did on it, one entry per tier: turns, taken, rate and n
+    from solo wins, and coop for a party, once enough parties have won it."""
     logged = logged or {}
     rooms, wins = defaultdict(list), defaultdict(list)
     for fights in runs:
@@ -291,6 +302,7 @@ def table(runs, logged=None):
         elif got and got > pool[0] * OVER_POOL:
             pool = [p * got / pool[0] for p in pool]
         out[enc] = {"pool": [round(p) for p in pool], "many": many_targets(fights),
+                    "count": enemy_count(fights),
                     "tiers": [lines([f for f in wins[enc] if tier(f["asc"]) == t]) for t in range(TIERS)]}
     return out
 

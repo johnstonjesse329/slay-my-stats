@@ -84,7 +84,7 @@
   padding: 0.55rem 0.75rem;
 }
 .finder-input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-.finder-count { color: var(--text-dim); font-size: 0.8rem; margin: 0.15rem 0 0.1rem; }
+.finder-count { color: var(--text-dim); font-size: var(--fs-xs); margin: 0.15rem 0 0.1rem; }
 .finder-list { list-style: none; margin: 0; padding: 0; }
 .finder-list li + li { border-top: 1px solid var(--hairline); }
 .finder-list a {
@@ -100,7 +100,7 @@
 .finder-list a:hover, .finder-list a:focus-visible { background: rgba(224,196,104,0.08); color: var(--gold); }
 .finder-list a:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 .finder-name { font-weight: 600; overflow-wrap: anywhere; }
-.finder-runs { color: var(--text-dim); font-size: 0.8rem; white-space: nowrap; }
+.finder-runs { color: var(--text-dim); font-size: var(--fs-xs); white-space: nowrap; }
 
 /* The site nav (run.py's home_links): the site's name and its pages, full
    width across the top, above whatever page this is. The negative margins
@@ -197,7 +197,7 @@
   padding: 1rem 1.25rem;
 }
 .site-list h3 { color: var(--gold); font-size: 1rem; margin-bottom: 0.25rem; }
-.site-note { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 0.6rem; line-height: 1.4; }
+.site-note { color: var(--text-dim); font-size: var(--fs-xs); margin-bottom: 0.6rem; line-height: 1.4; }
 .site-list ul, .site-list ol { list-style: none; margin: 0; padding: 0; }
 .site-list li {
   display: flex; align-items: center; gap: 0.75rem;

@@ -979,7 +979,14 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.assertEqual([n["cardPicked"] for n in run_doc["timeline"]], ["CARD.SNAKEBITE"])
         self.assertEqual(run_doc["timeline"][0]["hpAfter"], 70)
         self.assertEqual(run_doc["timeline"][0]["goldGained"], 100)
+        # The party's characters, in the save's slot order, never their Steam IDs.
+        self.assertEqual(run_doc["party"], ["IRONCLAD", "SILENT"])
 
+    def test_party_is_kept_for_multiplayer_runs_only(self):
+        self.ingest(body_of(minimal_run(1700000001)))
+        self.assertNotIn("party", self.store.runs()[0])
+        self.ingest(body_of(multiplayer_run(1700000002)), now=NOW + 120, nonce_suffix="second")
+        self.assertEqual([r["party"] for r in self.store.runs() if "party" in r], [["IRONCLAD", "SILENT"]])
     def test_shop_card_buys_come_from_cards_gained(self):
         # The shelf (card_choices) is all was_picked false; the bought card is
         # in cards_gained -- both cardsOffered (Most bought) and the Run Detail
@@ -1342,20 +1349,6 @@ class LambdaHandlerTests(unittest.TestCase):
 
         event["requestContext"]["http"]["method"] = "GET"
         self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
-
-        # A stage with ALLOWED_IPS (gamma) refuses every other address.
-        os.environ["ALLOWED_IPS"] = "203.0.113.7,2001:db8:1:2:"
-        try:
-            event["requestContext"]["http"]["sourceIp"] = "198.51.100.1"
-            self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 403)
-            event["requestContext"]["http"]["sourceIp"] = "203.0.113.70"
-            self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 403)
-            event["requestContext"]["http"]["sourceIp"] = "203.0.113.7"
-            self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
-            event["requestContext"]["http"]["sourceIp"] = "2001:db8:1:2::9"
-            self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
-        finally:
-            del os.environ["ALLOWED_IPS"]
 
     def test_mod_event_plumbing(self):
         saved = handler.verify_ticket

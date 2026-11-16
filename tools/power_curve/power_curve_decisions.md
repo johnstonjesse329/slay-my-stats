@@ -1472,8 +1472,8 @@ pace with damage a turn while the mark compares pace with .8.
 
 **Multi-enemy.** The user's rule: more than one target is possible at a time, whenever in the fight,
 and not an enemy that replaces one that died. The hover box names the kind of fight, Elite or Boss
-plus Multi-enemy or Single enemy, so a bad fight can be read as a lack of damage to many targets or
-unlucky draws for them.
+plus how many enemies the encounter fields, so a bad fight can be read as a lack of damage to many
+targets or unlucky draws for them.
 
 `monster_ids` on a room holds it, with a catch. The game lists every slot of the opening line-up,
 repeats and all (`CombatRoom.cs`), then adds an enemy that joins only if its id isn't listed yet
@@ -1489,6 +1489,15 @@ Against the logs, all 50 logged fights agree with what the mod saw alive: 21 mul
 more alive at a snapshot and 29 single fights never did. One known miss: the Axebots encounter opened
 with two on v0.103 and earlier, and those 71 fights read single, because the encounter now opens with
 one and the newer versions speak for it.
+
+**How many enemies.** `enemy_count` reads the same `monster_ids` and takes the most common list
+length on versions that list spawns (all fights if none does), because that length is the opening
+line-up: a run that saw a summon is longer, one that killed the summoner first is shorter, and both
+are the exception. Ties go to the longer list, so a fight that can have two never reads as one. 46
+of 90 encounters read one, 24 two, 14 three and 6 four, and `many` agrees with `count > 1` on every
+one of them. The page fans that many icons behind the floor's fight icon and the hover box names the
+number ("3 enemies"), so a fight with two enemies no longer wears the three-icon cluster; a single
+enemy is named by its rank alone.
 
 **A death is a death.** The user's call, once the last damage point of a lost run looked like missing
 data: "we can at least project what was done in the fight before dying but a death is a death (just
@@ -1866,3 +1875,29 @@ The box now runs HP by floor, Damage taken per turn, Damage done per turn, Deck 
 
 The hover box is the Keeping Up one (showFloorTip): a table of this run's HP entering and left with, each against the median and lowest tenth of their wins, a lane showing where the HP left falls (this run's marker is gold, since green reads as good and a fight's result isn't always), and the win rate on that fight at the run's tuning tier. Floors with no fight just show the HP left after.
 Damage done and Damage taken per turn draw the same ring-and-zone marks on elite and boss floors, in the same white: the ring is the median of the best tenth of the wins the average-win icon averages (fight_demand.py's `fast`, turns, and `light`, damage taken a turn), the zone runs from the ring to the icon. They come from winners everywhere, not the player's own runs, so they sit on the same population as the icon. Done reads the HP over the quickest wins' turns, so a fast boss kill stretches that chart's axis. No ring under 10 wins or when it would fall on the worse side of the icon. The hover boxes stay as they were: a lane there only said again what the table's bars say.
+
+## Run page: Keeping up, fight by fight (2026-11-15)
+
+The act cards grade a run's acts; between them the floors were only raw per-turn lines, which
+carry each encounter's own difficulty into the trend. The Keeping Up box now has a chart that
+puts every fight's two costs on one scale, as a multiple of the average win on that same fight
+(`fight_demand.py`): damage taken after healing, smoothed by 1 HP the way the act rating is,
+and fight turns. 1x is the average win and below it is ahead, so a run falling behind shows as
+both lines rising together. It is the act cards' own two measures, fight by fight. It includes
+the fight that ended the run, which the act cards leave out, so the last floor can show the
+drop; a logged death's damage taken follows the Damage taken per turn chart's rule.
+
+Ticks under a floor mark the deck change between fights: a card added in its type's colour
+(Attack, Skill, Power, Curse), an upgrade of the same colour left hollow, a removal grey and
+pointing down, a relic off-white. The hover names every change and says whether the fight had
+more than one enemy, and how many the encounter fields. A multi-enemy fight's own icon is fanned
+into one icon per enemy on every floor chart that shows fight icons (HP, damage done, damage
+taken, this one), so a group reads at a glance and the count is the fight's own (`enemy_count`,
+below). Bosses get it too where their data says so. This is descriptive, not causal: deck order, the
+encounter drawn next and multi-enemy fights all move a single floor, and a tick is not a claim
+that the next fight is the choice's doing. Establishing which choices tend to cost turns or HP needs the
+same windows aggregated across runs, held out by run, with those confounders stratified -- one
+run's chart cannot say it.
+
+Checked by `tools/test_keep_share_chart.py`, which recomputes both series from the run file and
+`fight_demand.json` and holds the page to them on desktop and both iPhone 16 layouts.
