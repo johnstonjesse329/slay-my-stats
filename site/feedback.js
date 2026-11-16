@@ -85,6 +85,13 @@
     .close-form div{display:flex;gap:8px}
     .close-form select{background:#101316;color:#fff;border:1px solid #82735b;padding:7px 9px;border-radius:6px;font:inherit}
     #filters{display:flex;gap:8px;margin:0 0 8px}
+    #find{display:flex;gap:8px;margin:0 0 8px}
+    #find input,#find select{min-width:0;background:#101316;color:#fff;border:1px solid #82735b;padding:6px 8px;border-radius:6px;font:inherit}
+    #find input{flex:2}#find select{flex:1}
+    .plus{flex:none;display:inline-flex;gap:4px;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid #4a4666;background:transparent;color:#e8e4f4;font:inherit;font-size:11px;font-weight:700;cursor:pointer;text-decoration:none!important}
+    .plus[aria-pressed="true"]{background:#d4af37;border-color:#d4af37;color:#16141f}
+    .plus:disabled{opacity:.6;cursor:default}
+    .note-head .head-right{display:flex;gap:8px;align-items:center;flex:none}
     #filters select{flex:1;background:#101316;color:#fff;border:1px solid #82735b;padding:6px 8px;border-radius:6px;font:inherit}
     #load-more{width:100%;margin:4px 0 0;background:#101316}
     #inbox-foot{display:flex;justify-content:space-between;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid #2a2740}
@@ -113,6 +120,7 @@
       <p id="summary"></p>
       <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-page" type="button" aria-pressed="false">This page</button><button id="scope-site" type="button" aria-pressed="false">Whole site</button></div>
       <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option></select></div>
+      <div id="find"><input id="search" type="search" placeholder="Search notes" aria-label="Search notes"><select id="filter-author" aria-label="Author"><option value="">Anyone</option></select></div>
       <div id="notes"></div>
       <button id="load-more" type="button" hidden>Load the next 25</button>
       <p id="inbox-status" role="status"></p>
@@ -255,7 +263,9 @@
     const query=body?'':'?'+new URLSearchParams(params||{}).toString();
     const response=await fetch('/auth/feedback'+query,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
     if(!response.ok) throw new Error(response.status===401?'Sign in to gamma again.':`Could not ${body?'save':'load'} feedback. Please retry.`);
-    return response.json();
+    const data=await response.json();
+    if(data.me) me=data.me;
+    return data;
   }
   const report = note => `Feedback ${note.id}\n${note.category?(KINDS[note.category]||note.category)+' · ':''}${note.resolved?'Resolved':'Open'} · ${new Date(note.created*1000).toISOString()}\n${note.url || ORIGIN + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
   function updateCount() {
@@ -307,7 +317,22 @@
     pill.className='pill '+(note.resolved?'resolved':'open');pill.textContent=note.resolved?(OUTCOMES[note.outcome]||'Resolved'):'Open';
     time.textContent=when(note.created);
     who.textContent=author(note);who.className='note-who'+(nameOf(note)?'':' bare');who.title=String(note.author);
-    head.className='note-head';head.append(who,time);
+    head.className='note-head';
+    // +1: one per person, tapped again to take back. The count is everyone who has agreed.
+    const plus=document.createElement('button'),mine=(note.plus||[]).includes(me),right=document.createElement('span');
+    plus.type='button';plus.className='plus';plus.setAttribute('aria-pressed',String(mine));
+    plus.textContent='+1'+((note.plus||[]).length?' · '+note.plus.length:'');
+    plus.title=mine?'Take back your +1':'Add your +1';
+    plus.onclick=async()=>{
+      plus.disabled=true;
+      try {
+        const {note:updated}=await api({action:'plus',id:note.id,on:!mine});
+        const swap=list=>list.map(item=>item.id===updated.id?updated:item);
+        notes=swap(notes);pageCache=swap(pageCache);renderInbox();
+      } catch(e){ say(e.message,'inbox'); plus.disabled=false; }
+    };
+    right.className='head-right';right.append(plus,time);
+    head.append(who,right);
     const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
     place.href=openUrl.href;place.textContent='Open location';
     meta.className='note-meta';
@@ -370,8 +395,19 @@
     return article;
   }
   const collapsed=new Set();
+  // Search and author narrow the notes already loaded; Load more brings in older ones.
+  let me='',query='',filterAuthor='';
+  const searchable=note=>[note.comment,note.close_note,note.target?.text,note.path,author(note),author(note,'resolved_by')].filter(Boolean).join(' ').toLowerCase();
+  const shown=()=>notes.filter(note=>(!filterAuthor||String(note.author)===filterAuthor)&&(!query||searchable(note).includes(query)));
   function renderInbox() {
-    const groups=buckets(notes);
+    const authors=new Map();
+    for(const note of notes) authors.set(String(note.author),author(note));
+    const select=$('filter-author');
+    select.replaceChildren(new Option('Anyone',''),...[...authors].sort((a,b)=>a[1].localeCompare(b[1])).map(([id,name])=>new Option(name,id)));
+    if(filterAuthor&&!authors.has(filterAuthor)) filterAuthor='';
+    select.value=filterAuthor;
+    const visible=shown();
+    const groups=buckets(visible);
     $('notes').replaceChildren();
     for(const bucket of groups) {
       const details=document.createElement('details'),summary=document.createElement('summary'),
@@ -387,15 +423,15 @@
       details.addEventListener('toggle',()=>{if(details.open) collapsed.delete(bucket.key); else collapsed.add(bucket.key);});
       $('notes').append(details);
     }
-    const open=notes.filter(note=>!note.resolved).length;
+    const open=visible.filter(note=>!note.resolved).length;
     $('filter-status').value=status;$('filter-kind').value=filterKind;
-    $('summary').innerHTML=`<b>${notes.length}</b> note${notes.length===1?'':'s'}${nextCursor?'+':''} · ${open} open · ${groups.length} ${groups.length===1?'place':'places'}`;
+    $('summary').innerHTML=`<b>${visible.length}</b> note${visible.length===1?'':'s'}${nextCursor?'+':''}${visible.length<notes.length?` of ${notes.length} loaded`:''} · ${open} open · ${groups.length} ${groups.length===1?'place':'places'}`;
     $('scope-page').setAttribute('aria-pressed',String(scope==='page'));
     $('scope-site').setAttribute('aria-pressed',String(scope==='site'));
     $('load-more').hidden=!nextCursor;
-    $('copy').textContent=notes.length?`Copy all notes (${notes.length}${nextCursor?' loaded':''})`:'Copy all notes';
-    $('copy').disabled=!notes.length;
-    say(groups.length?'':(status==='all'&&!filterKind?(scope==='page'?'No notes on this page yet.':'No notes yet.'):'No notes match.'),'inbox');
+    $('copy').textContent=visible.length?`Copy all notes (${visible.length}${nextCursor?' loaded':''})`:'Copy all notes';
+    $('copy').disabled=!visible.length;
+    say(groups.length?'':(status==='all'&&!filterKind&&!query&&!filterAuthor?(scope==='page'?'No notes on this page yet.':'No notes yet.'):'No notes match.'),'inbox');
   }
   // pageCache feeds the launcher badge and the composer's earlier notes; the
   // inbox owns its own paged list in `notes`.
@@ -436,6 +472,8 @@
   $('scope-site').onclick=()=>{if(scope!=='site'){scope='site';load(true);}};
   $('filter-status').onchange=e=>{status=e.target.value;load(true);};
   $('filter-kind').onchange=e=>{filterKind=e.target.value;load(true);};
+  $('search').oninput=e=>{query=e.target.value.trim().toLowerCase();renderInbox();};
+  $('filter-author').onchange=e=>{filterAuthor=e.target.value;renderInbox();};
   $('kinds').onclick=e=>{const b=e.target.closest('button');if(b)setKind(b.dataset.kind);};
   $('save').onclick=async()=>{
     if(!kind){say('Pick a type first: bug, feature request or improvement idea.');return;}
@@ -458,7 +496,7 @@
     catch{say('Clipboard unavailable. Select and copy below.','inbox');const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=text;$('notes').replaceChildren(pre);}
   }
   // Every note in the list, resolved or not, in a collapsed group or not.
-  $('copy').onclick=()=>copyText(notes.map(report).join('\n\n---\n\n'),`Copied all ${notes.length} note${notes.length===1?'':'s'}${nextCursor?' loaded so far (Load more for the rest)':''}.`);
+  $('copy').onclick=()=>copyText(shown().map(report).join('\n\n---\n\n'),`Copied all ${notes.length} note${notes.length===1?'':'s'}${nextCursor?' loaded so far (Load more for the rest)':''}.`);
   const requested=new URLSearchParams(location.search).get('feedback');
   if(requested) {
     openPanel();

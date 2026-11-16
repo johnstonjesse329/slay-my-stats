@@ -624,7 +624,8 @@ class SlayMyStatsStack(Stack):
             )
 
             # The owner's feedback emails, to the same alert address: new notes each morning
-            # (nothing on a quiet day), and on Mondays the open, incoming and resolved counts.
+            # Tuesday to Sunday (nothing on a quiet day), and on Mondays one weekly email with the open,
+            # incoming and resolved counts, so Monday is never two emails.
             feedback_log_group = logs.LogGroup(
                 self, "FeedbackDigestLogGroup",
                 retention=logs.RetentionDays.ONE_MONTH,
@@ -645,7 +646,8 @@ class SlayMyStatsStack(Stack):
             alert_topic.grant_publish(feedback_digest_fn)
             scheduler.Schedule(
                 self, "FeedbackDigestDailySchedule",
-                schedule=scheduler.ScheduleExpression.cron(minute="0", hour="8", time_zone=TimeZone.AMERICA_CHICAGO),
+                schedule=scheduler.ScheduleExpression.cron(
+                    minute="0", hour="8", week_day="TUE-SUN", time_zone=TimeZone.AMERICA_CHICAGO),
                 target=scheduler_targets.LambdaInvoke(
                     feedback_digest_fn, input=scheduler.ScheduleTargetInput.from_object({"period": "daily"})),
                 description="Daily gamma feedback email",

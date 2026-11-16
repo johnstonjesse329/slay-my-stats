@@ -174,7 +174,7 @@ def handle(event):
         if cursor and not CURSOR.fullmatch(cursor):
             return reply(400, {"message": "Invalid page cursor."})
         notes, following = _read_notes(store, bucket, scope, params.get("path", ""), cursor, status, category)
-        return reply(200, {"notes": [_named(n) for n in notes], "next": following, "scope": scope})
+        return reply(200, {"notes": [_named(n) for n in notes], "next": following, "scope": scope, "me": steam})
     try:
         raw = event.get("body") or ""
         if len(raw) > 40000:
@@ -188,6 +188,18 @@ def handle(event):
             note = json.loads(store.get_object(Bucket=bucket, Key=key)["Body"].read())
             resolved = bool(data.get("resolved"))
             _resolve(note, steam, resolved, _outcome(data) if resolved else {})
+        elif action == "plus":
+            # One +1 per signed-in person, set or taken back. Repeating the same request changes
+            # nothing and writes nothing, so a double click or a script cannot pile up writes.
+            key = data.get("id", "")
+            if not NOTE_ID.fullmatch(key):
+                raise ValueError()
+            note = json.loads(store.get_object(Bucket=bucket, Key=key)["Body"].read())
+            plus = [p for p in note.get("plus", []) if isinstance(p, str)]
+            if bool(data.get("on")) == (steam in plus):
+                return reply(200, {"note": _named(note), "me": steam})
+            plus = [p for p in plus if p != steam] + ([steam] if data.get("on") else [])
+            note["plus"] = plus[:50]
         elif action == "create":
             comment = data.get("comment", "")
             category = data.get("category")  # notes from before categories have none
@@ -215,7 +227,7 @@ def handle(event):
     except (ValueError, TypeError, AttributeError):
         return reply(400, {"message": "Invalid feedback. Use a comment of 1–4000 characters."})
     store.put_object(Bucket=bucket, Key=key, Body=json.dumps(note).encode(), ContentType="application/json")
-    return reply(200, {"note": _named(note)})
+    return reply(200, {"note": _named(note), "me": steam})
 
 
 def _all_notes(store, bucket):
@@ -238,7 +250,8 @@ def _line(note, origin):
     text = text if len(text) <= 100 else text[:99] + "…"
     kind = CATEGORIES.get(note.get("category"))
     text = f"[{kind}] {text}" if kind else text
-    return f"…{str(note.get('author', '?'))[-4:]}: {text}\n  {note.get('url') or origin + note.get('path', '')}"
+    who = _named(note).get("author_name") or "…" + str(note.get("author", "?"))[-4:]
+    return f"{who}: {text}\n  {note.get('url') or origin + note.get('path', '')}"
 
 
 def build_report(notes, now, period, origin):

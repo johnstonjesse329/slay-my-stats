@@ -62,6 +62,30 @@ def check_note_layout(page, notes, name):
     page.screenshot(path=str(out))
 
 
+def check_find_and_plus(page, name):
+    """Search and the author filter narrow the loaded notes; +1 is one per person and can be taken back."""
+    page.get_by_label('Status').select_option('all')
+    wait_summary(page, '3 notes · 2 open · 1 place')
+    page.get_by_label('Search notes').fill('stranger')
+    wait_summary(page, '1 note of 3 loaded · 0 open · 1 place')
+    page.get_by_label('Search notes').fill('')
+    page.get_by_label('Author').select_option('player-7252')
+    wait_summary(page, '1 note of 3 loaded · 0 open · 1 place')
+    page.get_by_label('Author').select_option('')
+    wait_summary(page, '3 notes · 2 open · 1 place')
+    plus = page.locator('.plus').first
+    assert plus.inner_text() == '+1' and plus.get_attribute('aria-pressed') == 'false'
+    plus.click()
+    page.wait_for_function("document.getElementById('gamma-feedback').shadowRoot"
+                           ".querySelector('.plus').textContent === '+1 · 1'")
+    assert page.locator('.plus').first.get_attribute('aria-pressed') == 'true'
+    out = ROOT / 'local_data' / 'feedback' / 'evidence' / f'23-search-author-plus-{name}.png'
+    page.screenshot(path=str(out))
+    page.locator('.plus').first.click()
+    page.wait_for_function("document.getElementById('gamma-feedback').shadowRoot"
+                           ".querySelector('.plus').textContent === '+1'")
+
+
 def main():
     with sync_playwright() as pw:
         for name, engine, options in [('desktop', pw.chromium, {'viewport': {'width': 1920, 'height': 1080}}),
@@ -79,7 +103,10 @@ def main():
                 if url.path == '/auth/feedback':
                     if request.request.method == 'POST':
                         body = request.request.post_data_json
-                        if body.get('action') == 'resolve':
+                        if body.get('action') == 'plus':
+                            note = next(item for item in notes if item['id'] == body['id'])
+                            note['plus'] = ([p for p in note.get('plus', []) if p != 'test'] + (['test'] if body['on'] else []))
+                        elif body.get('action') == 'resolve':
                             note = next(item for item in notes if item['id'] == body['id'])
                             note['resolved'] = body['resolved']
                             if body['resolved']:
@@ -90,14 +117,14 @@ def main():
                             note = {**body, 'id': 'feedback/' + str(1800000000 + len(notes)) + '-' + 'a' * 32 + '.json',
                                     'created': 1800000000 + len(notes), 'author': 'test', 'resolved': False}
                             notes.append(note)
-                        request.fulfill(json={'note': note})
+                        request.fulfill(json={'note': note, 'me': 'test'})
                     else:
                         params = dict(parse_qsl(url.query))
                         shown = [item for item in notes
                                  if (params.get('scope') != 'page' or item['path'] == params.get('path'))
                                  and params.get('status', 'all') in ('all', 'resolved' if item['resolved'] else 'open')
                                  and params.get('category', item.get('category')) == item.get('category')]
-                        request.fulfill(json={'notes': shown, 'next': None, 'scope': params.get('scope', 'site')})
+                        request.fulfill(json={'notes': shown, 'next': None, 'scope': params.get('scope', 'site'), 'me': 'test'})
                     return
                 file = DIST / ('index.html' if url.path == '/' else url.path.lstrip('/'))
                 if file.is_file():
@@ -226,6 +253,7 @@ def main():
             assert bounds['x'] + bounds['width'] <= page.evaluate('innerWidth')
             assert bounds['y'] + bounds['height'] <= page.evaluate('innerHeight')
             check_note_layout(page, notes, name)
+            check_find_and_plus(page, name)
             output = ROOT / '.playwright-mcp' / f'feedback-{name}.png'
             output.parent.mkdir(exist_ok=True)
             page.screenshot(path=str(output))

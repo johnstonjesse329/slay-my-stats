@@ -130,6 +130,21 @@ class FeedbackTest(unittest.TestCase):
         result = feedback.handle(self.event({'action': 'resolve', 'id': key, 'resolved': True, 'outcome': 'declined', 'close_note': 'Not planned.'}))
         self.assertTrue(json.loads(result['body'])['note']['resolved'])
 
+    def test_plus_one_is_one_per_person_and_repeats_write_nothing(self):
+        key = 'feedback/1234567890-' + 'a'*32 + '.json'
+        def plus(stored, on):
+            self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps(stored).encode())}
+            self.store.put_object.reset_mock()
+            result = feedback.handle(self.event({'action': 'plus', 'id': key, 'on': on}))
+            return json.loads(result['body']), self.store.put_object.called
+        body, wrote = plus({'id': key}, True)
+        self.assertEqual((len(body['note']['plus']), wrote), (1, True))
+        again, wrote = plus(body['note'], True)
+        self.assertEqual((again['note']['plus'], wrote), (body['note']['plus'], False))
+        gone, wrote = plus(body['note'], False)
+        self.assertEqual((gone['note']['plus'], wrote), ([], True))
+        self.assertEqual(gone['me'], body['me'])
+
     def resolve(self, key, stored, **fields):
         self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps(stored).encode())}
         result = feedback.handle(self.event({'action': 'resolve', 'id': key, **fields}))
