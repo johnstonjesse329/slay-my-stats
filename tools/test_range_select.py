@@ -117,7 +117,7 @@ def main():
 
         drag(page, "detail-keep-damage-chart", FROM, TO)
         assert page.locator(".drag-hint").count() == 0, "the hint goes once the chart is dragged"
-        assert page.locator("#detail-range-tip").count() == 0, "and the line above the charts goes"
+        assert page.locator("#detail-range-tip").is_visible() is False, "and the line above the charts goes"
 
         panel = page.locator("#detail-range-panel")
         assert panel.count() == 1, "the drag should open the panel"

@@ -2169,28 +2169,25 @@ const rangeUsed = () => { try { return !!localStorage.getItem(RANGE_HINT_KEY); }
 // mouse still drags: the line shows wherever any precise pointer exists.
 const hasFinePointer = () => window.matchMedia("(any-pointer: fine)").matches;
 
-// A line above the charts saying what they can do, until it is dismissed or the gesture is used.
-// A hint that only appears on hover is no good to someone who never thinks to hover; this one is
-// there when the run opens.
+// The line above the charts is in the page's own HTML, so it is there even before this script
+// runs; this only decides whether it shows and wires its x. A hint that only appears on hover is
+// no good to someone who never thinks to hover, and a hint drawn only by script is no good when
+// the script has a bad day.
 function renderRangeTip() {
-  if (!hasFinePointer() || rangeTipSeen() || rangeUsed()) return;
-  if (document.getElementById("detail-range-tip")) return;
-  const box = document.getElementById("detail-hp-box");
-  if (!box) return;
-  const tip = document.createElement("p");
-  tip.id = "detail-range-tip";
-  tip.className = "range-tip";
-  tip.innerHTML = `<b>Drag across any floor chart</b> to add up what changed over those floors — cards in and out, ` +
-    `relics, fights and damage. <button type="button" class="range-tip-close" aria-label="Dismiss this tip">✕</button>`;
-  tip.querySelector(".range-tip-close").addEventListener("click", () => {
+  const tip = document.getElementById("detail-range-tip");
+  if (!tip) return;
+  tip.hidden = !hasFinePointer() || rangeTipSeen() || rangeUsed();
+  if (tip.dataset.wired) return;
+  tip.dataset.wired = "1";
+  tip.querySelector(".range-tip-close")?.addEventListener("click", () => {
     try { localStorage.setItem(RANGE_TIP_KEY, "1"); } catch { /* private mode */ }
-    tip.remove();
+    tip.hidden = true;
   });
-  box.before(tip);
 }
 
 function hideRangeTip() {
-  document.getElementById("detail-range-tip")?.remove();
+  const tip = document.getElementById("detail-range-tip");
+  if (tip) tip.hidden = true;
 }
 let rangeHintShown = false;  // the pill explains the gesture once a visit, not on every chart
 

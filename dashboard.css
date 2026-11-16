@@ -1654,9 +1654,11 @@ h1 {
 /* Wording that only applies where a pointer can drag a chart: hidden on a finger. */
 @media (pointer: coarse) { .drag-only { display: none; } }
 
-/* A line above the run's charts saying they take a drag, until it is dismissed or used. */
+/* A line above the run's charts saying they take a drag, until it is dismissed or used. It is in
+   the page's HTML and hidden by default, shown only where a pointer can drag: a finger scrubs the
+   hover box instead, so the line would be telling a phone about a gesture it doesn't have. */
 .range-tip {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 8px;
   margin: 0 0 10px;
@@ -1669,6 +1671,7 @@ h1 {
   font-size: var(--fs-sm);
   line-height: 1.35;
 }
+@media (any-pointer: fine) { .range-tip:not([hidden]) { display: flex; } }
 .range-tip b { color: var(--gold, #e0c468); font-weight: 700; }
 .range-tip-close {
   margin-left: auto;
