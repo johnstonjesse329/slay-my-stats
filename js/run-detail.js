@@ -2110,10 +2110,17 @@ function makeManyIconPlugin(nodes) {
           if (count < 2 || i < x.min || i > x.max) return;
           const cx = x.getPixelForValue(i), cy = y.getPixelForValue(ds.data[i]);
           const w0 = img.width || radius * 2, h0 = img.height || radius * 2;
-          for (let k = Math.min(count, 4) - 1; k >= 1; k--) {
+          // The copies stay inside their own floor: the farthest one's right edge stops at the
+          // midpoint to the next floor, so a stack never spills onto a neighbour's icon. Depth
+          // comes more from going up than going sideways.
+          const n = Math.min(count, 4) - 1;
+          const spacing = Math.abs(x.getPixelForValue(i + 1) - cx);
+          const lastW = w0 * (1 - 0.2 * n);
+          const dx = Math.max(radius * 0.15, Math.min(radius * 0.6, (spacing / 2 - lastW / 2) / n));
+          for (let k = n; k >= 1; k--) {
             const sc = 1 - 0.2 * k, w = w0 * sc, h = h0 * sc;
             ctx.globalAlpha = 1 - 0.25 * k;
-            ctx.drawImage(img, cx + k * radius * 1.0 - w / 2, cy - k * radius * 0.5 - h / 2, w, h);
+            ctx.drawImage(img, cx + k * dx - w / 2, cy - k * radius * 0.7 - h / 2, w, h);
           }
         });
       });
