@@ -1,9 +1,10 @@
 """Check the Run page's floor-range selection: drag a chart, add up what changed.
 
 Dragging across a floor chart picks the floors under the pointer and the page adds up what the
-run changed in them. This test drags the Keeping Up damage chart over floors it knows changed
-the deck, holds the panel to the run file (the floors, fights and damage, the cards that came in
-and the relics), checks the band is drawn on every floor chart, and that a click clears it.
+run changed in them. This test holds the first-hover hint and the drag pointer to the gesture,
+drags the Keeping Up damage chart over floors it knows changed the deck, holds the panel to the
+run file (the floors, fights and damage, the cards that came in and the relics), checks the band
+is drawn on every floor chart, and that a click clears it.
 
 Run with infra/.venv/Scripts/python tools/test_range_select.py
 Needs tools/serve_site.py on 8000 (or SMS_SITE) and splitswigs' local profile.
@@ -99,7 +100,20 @@ def main():
         page.wait_for_selector("#detail-keep-damage-chart", state="attached", timeout=20000)
         page.wait_for_function("() => typeof detailKeepCharts !== 'undefined' && detailKeepCharts.length > 0")
 
+        # The gesture is invisible, so the first hover on a chart says what it is, and the
+        # pointer says the plot takes a drag. (One jump, not a sweep: crossing a chart on the
+        # way trips its own first hover, and the pill is shown once a visit.)
+        el = page.locator("#detail-keep-damage-chart")
+        el.scroll_into_view_if_needed()
+        box = el.bounding_box()
+        page.mouse.move(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.5)
+        page.wait_for_timeout(400)
+        assert page.locator(".drag-hint").count() == 1, "the first hover should explain the drag"
+        assert "drag" in page.locator(".drag-hint").inner_text().lower()
+        assert el.evaluate("el => getComputedStyle(el).cursor") == "crosshair"
+
         drag(page, "detail-keep-damage-chart", FROM, TO)
+        assert page.locator(".drag-hint").count() == 0, "the hint goes once the chart is dragged"
 
         panel = page.locator("#detail-range-panel")
         assert panel.count() == 1, "the drag should open the panel"

@@ -538,6 +538,25 @@ h1 {
 
 /* 300px: room for a plot after the --fs-sm axis labels and legend. */
 .chart-wrap { position: relative; height: 300px; }
+/* A chart a span can be dragged on says so with its pointer; the first hover on one explains it. */
+.range-ready canvas { cursor: crosshair; }
+.drag-hint {
+  position: absolute;
+  right: 14px;
+  top: 40px;
+  z-index: 5;
+  pointer-events: none;
+  background: #16142af2;
+  border: 1px solid #e0c46880;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  box-shadow: 0 4px 16px #0007;
+  transition: opacity 0.35s ease;
+}
+.drag-hint.gone { opacity: 0; }
 /* Touch: a finger dragged along a chart scrubs its floors, so it must not start a text selection or
    the callout, and a sideways drag stays with the chart while an up-down one still scrolls the page. */
 @media (pointer: coarse) {

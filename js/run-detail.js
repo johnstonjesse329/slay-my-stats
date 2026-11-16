@@ -2154,6 +2154,8 @@ let rangeChanges = null;  // the run's floorChanges(), or null when it has no de
 let rangeNodes = [];      // its timeline
 let rangeDrag = null;     // {chart, nodes, host, from, moved} while a pointer is down on a chart
 let rangePanel = null;    // the panel, moved under whichever chart the span was dragged on
+const RANGE_HINT_KEY = "slay-my-stats:range-hint";  // set once the gesture has been used or shown
+let rangeHintShown = false;  // the pill explains the gesture once a visit, not on every chart
 
 const floorOf = n => n.floor + 1;
 
@@ -2210,6 +2212,24 @@ function drawFloorCharts() {
 function bindRangeSelect(chart, nodes) {
   const canvas = chart.canvas;
   const host = canvas.closest(".chart-wrap") || canvas.parentElement;
+  host.classList.add("range-ready");
+  // The gesture is invisible until someone does it, so the first hover on a chart says what it
+  // is: a pill over the plot, once per browser, and only where a mouse can drag (a finger
+  // scrubs the hover box instead).
+  const firstTime = () => {
+    if (rangeHintShown || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    try { if (localStorage.getItem(RANGE_HINT_KEY)) return; } catch { /* private mode */ }
+    if (host.querySelector(".drag-hint")) return;
+    rangeHintShown = true;
+    const hint = document.createElement("span");
+    hint.className = "drag-hint";
+    hint.textContent = "Drag across the chart to add up what changed over these floors";
+    host.appendChild(hint);
+    const clear = () => { hint.classList.add("gone"); setTimeout(() => hint.remove(), 400); };
+    host.addEventListener("pointerleave", clear, { once: true });
+    setTimeout(clear, 6000);
+  };
+  host.addEventListener("pointerenter", firstTime);
   canvas.addEventListener("pointerdown", e => {
     if (e.button !== 0 || e.pointerType === "touch" || !rangeChanges) return;
     const from = floorAtPointer(chart, nodes, e.clientX);
@@ -2217,6 +2237,8 @@ function bindRangeSelect(chart, nodes) {
     rangeDrag = { chart, nodes, host, from, moved: false };
     canvas.setPointerCapture(e.pointerId);
     closeFloorTip();
+    host.querySelector(".drag-hint")?.remove();
+    try { localStorage.setItem(RANGE_HINT_KEY, "1"); } catch { /* private mode */ }
   });
   canvas.addEventListener("pointermove", e => {
     if (!rangeDrag || rangeDrag.chart !== chart) return;
