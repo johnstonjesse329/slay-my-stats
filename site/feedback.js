@@ -72,8 +72,8 @@
   <div id="hint" hidden>Choose an element on the page. For a region, drag across it. Press Escape to cancel. <button id="cancel" type="button">Cancel</button></div>
   <section id="panel" role="dialog" aria-label="Feedback" hidden>
     <header><h2>Feedback</h2><button id="close" type="button" aria-label="Close feedback" title="Close">✕</button></header>
-    <div id="tabs" role="tablist"><button id="tab-compose" type="button" role="tab" aria-selected="true" aria-controls="view-compose">New note</button><button id="tab-inbox" type="button" role="tab" aria-selected="false" aria-controls="view-inbox">Inbox</button></div>
-    <div id="view-compose" role="tabpanel">
+    <div id="tabs" role="tablist"><button id="tab-compose" type="button" role="tab" aria-selected="false" aria-controls="view-compose">New note</button><button id="tab-inbox" type="button" role="tab" aria-selected="true" aria-controls="view-inbox">Inbox</button></div>
+    <div id="view-compose" role="tabpanel" hidden>
       <small id="page-url"></small>
       <div id="modes"><button id="pick" type="button">Pin to an element or region</button><button id="page" type="button">Comment on the page</button></div>
       <p id="target">This page</p>
@@ -83,7 +83,7 @@
       <button id="save" type="button">Send</button>
       <p id="status" role="status"></p>
     </div>
-    <div id="view-inbox" role="tabpanel" hidden>
+    <div id="view-inbox" role="tabpanel">
       <p id="summary"></p>
       <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-page" type="button" aria-pressed="false">This page</button><button id="scope-site" type="button" aria-pressed="false">Whole site</button></div>
       <div id="notes"></div>
@@ -95,7 +95,7 @@
   <button id="launcher" type="button"><span aria-hidden="true">✎</span> Feedback<span id="launcher-count" aria-hidden="true" hidden></span></button>`;
   const $ = id => root.getElementById(id);
   const ORIGIN = location.origin;
-  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'page', nextCursor = null, view = 'compose', picking = false, start, previousFocus, oldTouchAction;
+  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'page', nextCursor = null, view = 'inbox', picking = false, start, previousFocus, oldTouchAction;
   const mark = document.createElement('div');
   Object.assign(mark.style, {position:'fixed',pointerEvents:'none',zIndex:'2147483645',border:'2px solid #f6c66d',background:'#f6c66d22',display:'none'});
   document.body.append(mark);
@@ -119,7 +119,7 @@
   function closePanel() { $('panel').hidden = true; previousFocus?.focus(); }
   function pageUrl() { const url=new URL(location.href); url.searchParams.delete('feedback'); return url.href; }
   function currentPath() { const url=new URL(pageUrl()); return url.pathname+url.search+url.hash; }
-  function composer() { say(''); $('page-url').textContent=pageUrl(); renderPrior(); }
+  function composer() { say(''); showView('compose'); }
   // Notes already recorded for the same page and the same pick, so a reviewer
   // sees the history where they are about to write instead of repeating it.
   function sameTarget(note) {
@@ -298,6 +298,8 @@
   const requested=new URLSearchParams(location.search).get('feedback');
   if(requested) {
     openPanel();
+    // Opening a note to review it is a compose errand, whatever the panel opens on.
+    showView('compose');
     api(null,{scope:'site'}).then(data=>{
       const note=data.notes.find(n=>n.id===requested);if(!note){say('This note is outside the latest notes.');return;}
       $('comment').value=note.comment;$('target').textContent=`Reviewing ${note.target.kind}: ${note.target.text || note.path}`;

@@ -62,6 +62,11 @@ def main():
             page.on('pageerror', lambda e: errors.append(str(e)))
             page.goto('https://gamma.slay-my-stats.com/')
             page.get_by_role('button', name='Feedback', exact=True).click()
+            # It opens on the inbox: the first question is whether what you are about to report
+            # is already there.
+            assert page.get_by_role('tab', name='Inbox', exact=True).get_attribute('aria-selected') == 'true'
+            assert page.get_by_role('tab', name='New note', exact=True).get_attribute('aria-selected') == 'false'
+            page.get_by_role('tab', name='New note', exact=True).click()
             page.get_by_role('button', name='Comment on the page', exact=True).click()
             assert page.locator('#page-url').inner_text() == 'https://gamma.slay-my-stats.com/'
             page.get_by_label('What should change?').fill('Make this clearer')
