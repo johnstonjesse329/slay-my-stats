@@ -129,13 +129,13 @@ function renderCardFace(id, upgrade = 0, width = 200, opts = {}) {
 function fmtCardLabel(id) {
   if (!id) return id;
   if (DATA.cardLabels && DATA.cardLabels[id]) return DATA.cardLabels[id];
-  return id.replace(/^CARD\./, "").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return titleCaseId(id.replace(/^CARD\./, ""));
 }
 
 function fmtRelicLabel(id) {
   if (!id) return id;
   if (DATA.relicLabels && DATA.relicLabels[id]) return DATA.relicLabels[id];
-  return id.replace(/^RELIC\./, "").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return titleCaseId(id.replace(/^RELIC\./, ""));
 }
 
 function cardInfo(id) {

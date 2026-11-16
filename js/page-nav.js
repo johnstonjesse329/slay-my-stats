@@ -207,16 +207,16 @@ const sharedCharSel = document.getElementById("shared-char-selector");
 const sharedAllBtn = document.createElement("button");
 sharedAllBtn.className = "char-btn active";
 sharedAllBtn.textContent = "All";
-sharedAllBtn.style.setProperty("--char-color", "#e0c468");
+sharedAllBtn.style.setProperty("--char-color", COLORS.gold);
 sharedAllBtn.addEventListener("click", () => {
   setSharedActiveChar("ALL");
 });
 sharedCharSel.appendChild(sharedAllBtn);
 
-DATA.characters.forEach((char, i) => {
+DATA.characters.forEach(char => {
   const btn = document.createElement("button");
   btn.className = "char-btn";
-  btn.style.setProperty("--char-color", DATA.charColors[i]);
+  btn.style.setProperty("--char-color", charColor(char));
   btn.innerHTML = charIconHtml(char) + fmtCharName(char);
   btn.dataset.char = char;
   // currentPage defaults to "overview" and showPage() doesn't run on a bare
@@ -287,7 +287,7 @@ function setSharedAscs(ascs) {
 
 DATA.ascensions.forEach(asc => {
   const label = document.createElement("label");
-  label.innerHTML = `<input type="checkbox" value="${asc}"> ${asc === DREAD_ASC ? `<img class="asc-filter-dread" src="/ui_icons/dread.png" alt="">Dread` : `A${asc}`}`;
+  label.innerHTML = `<input type="checkbox" value="${asc}"> ${ascHtml(asc)}`;
   label.querySelector("input").addEventListener("change", e => {
     const next = new Set(sharedActiveAscs);
     if (e.target.checked) next.add(asc); else next.delete(asc);

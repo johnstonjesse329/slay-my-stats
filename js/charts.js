@@ -57,7 +57,7 @@ const fmtHrsMinSec = m => {
 // a "Label: value" line per stat, then a "Runs: N" line (collapsed with the
 // win/loss record when available) last.
 const runsRecord = (n, wins, losses) =>
-  wins != null && losses != null ? `Runs: ${n} (${wins}W / ${losses}L)` : `Runs: ${n}`;
+  wins != null && losses != null ? `Runs: ${n} (${fmtRecord(wins, losses)})` : `Runs: ${n}`;
 
 // Bars side by side: each character's own win % at each ascension. A character
 // with no runs at an ascension gets no bar there (null), not a 0% one.
@@ -77,7 +77,7 @@ const ascWinChart = new Chart(document.getElementById("ascWinChart"), {
           label: ctx => {
             const n = ctx.dataset.runCounts?.[ctx.dataIndex] ?? 0;
             const w = ctx.dataset.winCounts?.[ctx.dataIndex] ?? 0;
-            return ` ${ctx.dataset.label} — ${ctx.parsed.y}% (${w}W / ${n - w}L)`;
+            return ` ${ctx.dataset.label} — ${ctx.parsed.y}% (${fmtRecord(w, n - w)})`;
           },
         },
       },
@@ -107,13 +107,13 @@ function aggregateAscBarDatasets(filteredRuns) {
     if (run.won) b.wins += 1;
   });
 
-  return DATA.characters.map((char, i) => {
-    const color = DATA.charColors[i];
+  return DATA.characters.map(char => {
+    const color = charColor(char);
     const bucket = byCharAsc[char] || {};
     const cells = DATA.ascensions.map(asc => bucket[asc] || { wins: 0, runs: 0 });
     return {
       label: fmtCharName(char),
-      data:      cells.map(b => b.runs ? +(b.wins / b.runs * 100).toFixed(1) : null),
+      data:      cells.map(b => winPctNum(b.wins, b.runs)),
       runCounts: cells.map(b => b.runs),
       winCounts: cells.map(b => b.wins),
       backgroundColor: color,
@@ -199,7 +199,7 @@ function buildChangeVlinePlugin(buildChangeMonths) {
       ctx.save();
       ctx.setLineDash([3, 4]);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = "#e0c46899";
+      ctx.strokeStyle = COLORS.gold + "99";
       buildChangeMonths.forEach(({ index }) => {
         const px = x.getPixelForValue(index);
         ctx.beginPath();
@@ -213,7 +213,7 @@ function buildChangeVlinePlugin(buildChangeMonths) {
       // Stack upward if a month introduced more than one build.
       ctx.save();
       ctx.font = "13px sans-serif";
-      ctx.fillStyle = "#e0c468";
+      ctx.fillStyle = COLORS.gold;
       ctx.textBaseline = "bottom";
       ctx.textAlign = "center";
       const rightEdge = [];
@@ -242,11 +242,10 @@ function buildChangeVlinePlugin(buildChangeMonths) {
 // six characters is unreadable across all of them); a button reveals the rest.
 const PHONE_MONTHS = 6;
 let monthlyShowAll = false;
-const isPhoneWidth = () => window.matchMedia("(max-width: 700px)").matches;
 
 function updateMonthlyWinChart(filteredRuns) {
   const full = aggregateMonthlyWinPct(filteredRuns);
-  const phone = isPhoneWidth();
+  const phone = isPhone();
   const clipped = phone && !monthlyShowAll && full.months.length > PHONE_MONTHS;
   const first = clipped ? full.months.length - PHONE_MONTHS : 0;
   const months = full.months.slice(first);
@@ -276,11 +275,11 @@ function updateMonthlyWinChart(filteredRuns) {
   // tallest stack rather than a fixed 16px that only fits one or two labels.
   const maxBuildStack = buildChangeMonths.reduce((m, g) => Math.max(m, g.builds.length), 0);
 
-  const datasets = DATA.characters.map((char, i) => {
-    const color = DATA.charColors[i];
+  const datasets = DATA.characters.map(char => {
+    const color = charColor(char);
     const data = months.map(m => {
       const b = (byMonth[m] || {})[char];
-      return b && b.total > 0 ? +(b.wins / b.total * 100).toFixed(1) : null;
+      return b ? winPctNum(b.wins, b.total) : null;
     });
     const counts = months.map(m => (byMonth[m] || {})[char]?.total ?? 0);
     const wins   = months.map(m => (byMonth[m] || {})[char]?.wins ?? 0);
@@ -321,7 +320,7 @@ function updateMonthlyWinChart(filteredRuns) {
               if (ctx.raw == null) return null;
               const n = ctx.dataset.counts?.[ctx.dataIndex] ?? 0;
               const w = ctx.dataset.wins?.[ctx.dataIndex] ?? 0;
-              return ` ${ctx.dataset.label} — ${ctx.formattedValue}% (${w}W / ${n - w}L)`;
+              return ` ${ctx.dataset.label} — ${ctx.formattedValue}% (${fmtRecord(w, n - w)})`;
             },
           },
         },
@@ -389,7 +388,7 @@ function makeRestActChart(id) {
               if (ctx.parsed.y == null) return null;
               const n = ctx.dataset.counts[ctx.dataIndex];
               const w = ctx.dataset.beat[ctx.dataIndex];
-              return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)}% defeated the boss (${w}W / ${n - w}L)`;
+              return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)}% defeated the boss (${fmtRecord(w, n - w)})`;
             },
           },
         },
@@ -526,7 +525,7 @@ const eliteCheckpointChart = new Chart(document.getElementById("eliteCheckpointC
             if (ctx.parsed.y == null) return null;
             const n = ctx.dataset.counts[ctx.dataIndex];
             const w = ctx.dataset.wins[ctx.dataIndex];
-            return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)}% won the run (${w}W / ${n - w}L)`;
+            return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)}% won the run (${fmtRecord(w, n - w)})`;
           },
         },
       },
@@ -578,7 +577,7 @@ function updateEliteActCharts(filteredRuns) {
   REST_ACTS.forEach((act, i) => {
     const ds = eliteCheckpointChart.data.datasets[i];
     const cells = ELITE_CHECKPOINT_X.map(n => checkpoints[act][n] || { runs: 0, wins: 0 });
-    ds.data   = cells.map(b => b.runs >= ELITE_CHECKPOINT_MIN_RUNS ? +(b.wins / b.runs * 100).toFixed(1) : null);
+    ds.data   = cells.map(b => b.runs >= ELITE_CHECKPOINT_MIN_RUNS ? winPctNum(b.wins, b.runs) : null);
     ds.counts = cells.map(b => b.runs);
     ds.wins   = cells.map(b => b.wins);
   });

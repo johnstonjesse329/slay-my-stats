@@ -26,10 +26,8 @@ function nodeTypeLabel(type) {
 function encLabel(l) {
   if (!l.enc) return nodeTypeLabel(l.type);
   if (DATA.encLabels[l.enc]) return DATA.encLabels[l.enc];
-  return l.enc.replace(/^(ENCOUNTER|EVENT)\./, "")
-              .replace(/_(WEAK|NORMAL|ELITE|BOSS)$/, "")
-              .replace(/_/g, " ")
-              .replace(/\b\w/g, c => c.toUpperCase());
+  return titleCaseId(l.enc.replace(/^(ENCOUNTER|EVENT)\./, "")
+                          .replace(/_(WEAK|NORMAL|ELITE|BOSS)$/, ""));
 }
 
 function locBadge(l) {
@@ -37,7 +35,7 @@ function locBadge(l) {
   const tip     = (l.picked ? "✓ Picked — " : "Not picked — ") + encLabel(l).replace(/"/g, "&quot;");
   const label   = nodeTypeLabel(l.type);
   const flColor = l.picked ? "#e0e0e0" : "#555";
-  const picked  = l.picked ? `<span style="color:#5cba7d;font-size:var(--fs-xs);margin-left:1px">✓</span>` : "";
+  const picked  = l.picked ? `<span style="color:${COLORS.win};font-size:var(--fs-xs);margin-left:1px">✓</span>` : "";
   return `<span class="seed-loc-badge" style="border-color:${color};opacity:${l.picked ? 1 : 0.5}" data-tip="${tip}"><span style="color:${color};font-size:var(--fs-sm)">${label}</span><span style="color:${flColor}">${l.floor}</span>${picked}</span>`;
 }
 
@@ -316,7 +314,7 @@ function renderSeeds() {
 
   // Render sortable headers
   const arrow = col => col === seedSortCol ? (seedSortAsc ? " ▲" : " ▼") : "";
-  const thStyle = col => `cursor:pointer;user-select:none;white-space:nowrap${col === seedSortCol ? ";color:#e0c468" : ""}`;
+  const thStyle = col => `cursor:pointer;user-select:none;white-space:nowrap${col === seedSortCol ? `;color:${COLORS.gold}` : ""}`;
   document.getElementById("seeds-thead-row").innerHTML = `
     <th style="text-align:left;${thStyle("seed")}"    data-col="seed" tabindex="0">Seed${arrow("seed")}</th>
     <th style="text-align:left;${thStyle("char")}"    data-col="char" tabindex="0">Character${arrow("char")}</th>
@@ -340,7 +338,7 @@ function renderSeeds() {
     return;
   }
 
-  const charColor = run => CHAR_COLOR_MAP[run.char] || "#a0a0b8";
+  const charColor = run => charColor(run.char);
   const fmt = ts => new Date(ts * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
   _seedDetailRuns = filtered;
@@ -392,7 +390,7 @@ function renderSeeds() {
 
     return `<tr class="seed-row" data-idx="${i}" style="cursor:pointer" tabindex="0">
       <td style="padding:0.4rem 0.75rem;font-family:monospace;white-space:nowrap">
-        <span class="seed-expand-arrow" style="color:var(--text-dim);font-size:var(--fs-xs);margin-right:0.4rem">▶</span><span class="seed-id" role="button" tabindex="0" aria-label="Copy seed ${run.seed}" style="cursor:pointer;color:#e0c468" data-tip="Click to copy" data-seed="${run.seed}">${run.seed}</span>
+        <span class="seed-expand-arrow" style="color:var(--text-dim);font-size:var(--fs-xs);margin-right:0.4rem">▶</span><span class="seed-id" role="button" tabindex="0" aria-label="Copy seed ${run.seed}" style="cursor:pointer;color:${COLORS.gold}" data-tip="Click to copy" data-seed="${run.seed}">${run.seed}</span>
       </td>
       <td style="padding:0.4rem 0.75rem;white-space:nowrap">
         ${charLabelHtml(run.char)}
@@ -494,8 +492,8 @@ function copySeed(seed, el) {
   navigator.clipboard.writeText(seed).then(() => {
     const orig = el.textContent;
     el.textContent = "Copied!";
-    el.style.color = "#5cba7d";
-    setTimeout(() => { el.textContent = orig; el.style.color = "#e0c468"; }, 1200);
+    el.style.color = COLORS.win;
+    setTimeout(() => { el.textContent = orig; el.style.color = COLORS.gold; }, 1200);
   });
 }
 

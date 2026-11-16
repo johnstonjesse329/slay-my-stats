@@ -41,34 +41,14 @@
     return value.startsWith(prefix) ? value.slice(prefix.length) : value;
   }
 
-  // Python's str.title(): uppercase the first letter of each run of
-  // consecutive letters, lowercase the rest of that run. Anything that
-  // isn't an ASCII letter (digits, underscores-turned-spaces, punctuation)
-  // passes through untouched and ends the current run. Restricted to
-  // A-Z/a-z is fine here — every id this runs on is ASCII.
-  function pythonTitle(s) {
-    let out = "";
-    let prevWasLetter = false;
-    for (const ch of s) {
-      if (/[A-Za-z]/.test(ch)) {
-        out += prevWasLetter ? ch.toLowerCase() : ch.toUpperCase();
-        prevWasLetter = true;
-      } else {
-        out += ch;
-        prevWasLetter = false;
-      }
-    }
-    return out;
-  }
-
   function fmtCard(cardId) {
-    return pythonTitle(stripPrefix(cardId, "CARD.").replace(/_/g, " "));
+    return titleCaseId(stripPrefix(cardId, "CARD."));
   }
   function fmtRelic(relicId) {
-    return pythonTitle(stripPrefix(relicId, "RELIC.").replace(/_/g, " "));
+    return titleCaseId(stripPrefix(relicId, "RELIC."));
   }
   function fmtEncounter(encId) {
-    return pythonTitle(stripPrefix(encId, "ENCOUNTER.").replace(/_/g, " "));
+    return titleCaseId(stripPrefix(encId, "ENCOUNTER."));
   }
 
   // ---- Porting run.py's build_sort_key ------------------------------------
@@ -190,7 +170,7 @@
     const characters = deriveCharacters(catalog, runs);
     const ascensions = deriveAscensions(runs);
     const builds = deriveBuilds(runs);
-    const charColors = characters.map(c => catalog.charColorMap[c] || "#888");
+    const charColors = characters.map(c => catalog.charColorMap[c] || CHAR_FALLBACK_COLOR);
     const { encLabels, cardLabels, relicLabels } =
       deriveLabels(runs, catalog.cardData, catalog.relicData);
 
@@ -487,7 +467,7 @@
 
     const num = n => (n || 0).toLocaleString();
     const pct = (w, n) => n ? (100 * w / n).toFixed(1) + "%" : "—";
-    const charName = c => pythonTitle(stripPrefix(c || "", "CHARACTER.").replace(/_/g, " "));
+    const charName = c => titleCaseId(stripPrefix(c || "", "CHARACTER."));
     const cardMeta = id => catalog.cardData[id] || {};
     const cardName = id => cardMeta(id).title || fmtCard(id);
     const relicName = id => (catalog.relicData[id] && catalog.relicData[id].title) || fmtRelic(id);
@@ -515,7 +495,7 @@
     // The lanes the player pages use (dashboard.css .fl-*): a row per item, a bar
     // out to its win rate, the number after it. The colour of a win rate is the
     // fight win tiers' (js/render-helpers.js winPctStyle).
-    const tierColor = p => p >= 40 ? "#5cba7d" : p >= 20 ? "#e8a930" : "#e05c5c";
+    const tierColor = p => p >= 40 ? "var(--win)" : p >= 20 ? "#e8a930" : "var(--loss)";
     const axis = (max, spare) => el("div", { className: "fl-lane fl-axis" },
       [0, 25, 50, 75, 100].map(f => el("span", { style: `left:${f}%`, textContent: `${+(max * f / 100).toFixed(1)}%` })));
     // value is a share of max (0..max); text follows the bar. The fill's colour
@@ -544,7 +524,7 @@
     })));
     const charMax = Math.min(100, Math.max(10, Math.ceil(bestRate / 10) * 10));
     const charRows = chars.flatMap((c, i) => {
-      const color = catalog.charColorMap[c] || "var(--gold)";
+      const color = catalog.charColorMap[c] || CHAR_FALLBACK_COLOR;
       return [
         ...(i ? [el("div", { className: "site-chars-gap" })] : []),
         el("div", { className: "fl-name", style: `color:${color};font-weight:600`, textContent: charName(c) }),
@@ -633,7 +613,7 @@
         list("Deadliest fights", "The fight that ended the run, as a share of that mode's losses, ranked by the two together.",
           killers.map(([enc]) => [fightIcon(enc), fmtEncounter(enc).replace(/ (Boss|Elite)$/, ""),
             modes.map(([label, m, cls]) => [label,
-              lane(killShare(m, enc), killMax, "#e05c5c", pct((m.killers || {})[enc] || 0, lossesOf(m)), cls)])]), killMax),
+              lane(killShare(m, enc), killMax, "var(--loss)", pct((m.killers || {})[enc] || 0, lossesOf(m)), cls)])]), killMax),
         list("Cards in winning decks",
           `Highest win rate when in the final deck, solo and multiplayer apart. Uncommon and rarer cards in at least ${MIN_RUNS} runs, ranked by the two modes together.`,
           modeRows(ranked(pooled(solo.cards, multi.cards), id => !DULL_RARITIES.has(cardMeta(id).rarity)),

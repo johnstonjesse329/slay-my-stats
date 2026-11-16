@@ -2,10 +2,6 @@
 // Rendering helpers
 // -------------------------------------------------------------------------
 
-const CHAR_COLOR_MAP = Object.fromEntries(
-  DATA.characters.map((char, index) => [char, DATA.charColors[index]])
-);
-
 // Keyboard parity for mouse-only controls: several interactive elements in
 // this dashboard are divs/spans/ths/rows bound with click handlers only.
 // Native buttons already fire on Enter/Space, so route those keys to click
@@ -146,7 +142,7 @@ function renderPersonalBests() {
   const shown = chars.filter(char => bests[char].gamesPlayed);
   // A column per character, then the total when there's more than one. The
   // header is the character's head and name; a phone keeps the head.
-  const cols = shown.map(char => ({ name: fmtCharName(char), color: CHAR_COLOR_MAP[char] || "#a0a0b8", b: bests[char], icon: charIconUrl(char) }));
+  const cols = shown.map(char => ({ name: fmtCharName(char), color: charColor(char), b: bests[char], icon: charIconUrl(char) }));
   if (shown.length > 1) cols.push({ name: "Total", color: "var(--text)", bar: "#c8c4dc", b: total, total: true });
 
   // A value that links to the specific run that produced it (best is
@@ -164,7 +160,7 @@ function renderPersonalBests() {
     : `<span class="pb-rng">${range(lo, hi)}</span><button type="button" class="pb-med" aria-haspopup="dialog">${Math.round(median(vals))}</button>`;
   // One figure per cell: a share of runs, the counts behind it on hover.
   const pct = (n, d) => !d ? "—"
-    : `<span data-tip="${n} of ${d} run${d !== 1 ? "s" : ""}">${Math.round(n / d * 100)}%</span>`;
+    : `<span data-tip="${n} of ${d} run${d !== 1 ? "s" : ""}">${fmtWinPct(n, d)}</span>`;
   // A tier's win rate over a thin bar in the character's colour. When the filters take in both
   // solo and multiplayer runs (All), every tier draws both bars, Multi striped as on the home
   // page, so the two read apart without a second set of figures, and a tier with no runs of
@@ -172,10 +168,10 @@ function renderPersonalBests() {
   const tierList = Object.values(total.tiers);
   const bothKinds = tierList.some(t => t.solo.runs) && tierList.some(t => t.multi.runs);
   const bar = (t, c, cls = "") => `<span class="pb-bar${cls}"><i style="width:${t.runs ? Math.round(t.wins / t.runs * 100) : 0}%;background-color:${c.bar || c.color}"></i></span>`;
-  const runsOf = t => !t.runs ? "no runs" : `${t.wins} of ${t.runs} run${t.runs !== 1 ? "s" : ""} (${Math.round(t.wins / t.runs * 100)}%)`;
+  const runsOf = t => !t.runs ? "no runs" : `${t.wins} of ${t.runs} run${t.runs !== 1 ? "s" : ""} (${fmtWinPct(t.wins, t.runs)})`;
   const tierBar = (t, c) => !t ? "—"
     : !bothKinds ? `${pct(t.wins, t.runs)}${bar(t, c)}`
-    : `<span data-tip="Solo: ${runsOf(t.solo)}\nMulti: ${runsOf(t.multi)}">${Math.round(t.wins / t.runs * 100)}%</span>`
+    : `<span data-tip="Solo: ${runsOf(t.solo)}\nMulti: ${runsOf(t.multi)}">${fmtWinPct(t.wins, t.runs)}</span>`
       + bar(t.solo, c) + bar(t.multi, c, " pb-bar-multi");
 
   // [label, cell, row class]
@@ -325,7 +321,7 @@ function renderAscTracker() {
     const dreadRuns = dread.filter(run => run.char === char && mode.test(run));
     const d = winStreaks(dreadRuns);
     const gemTip = !d.runs ? "Dread · no runs yet"
-      : `Dread · ${d.wins}W / ${d.runs - d.wins}L\nBest win streak ${d.best} · current ${d.current}`;
+      : `Dread · ${fmtRecord(d.wins, d.runs - d.wins)}\nBest win streak ${d.best} · current ${d.current}`;
     const gem = `<span class="asc-dread${d.wins ? " asc-dread-won" : ""}" data-tip="${gemTip}">${d.best ? `<b>${d.best}</b>` : ""}</span>`;
     const recordHtml = (wins, losses) => `<span class="asc-record-win">${wins}W</span><span class="asc-record-separator"> / </span><span class="asc-record-loss">${losses}L</span>`;
     const dreadStatus = d.runs ? recordHtml(d.wins, d.runs - d.wins)
@@ -397,7 +393,7 @@ function renderAscTracker() {
 
   const el = document.getElementById("asc-tracker-cards");
   el.innerHTML = DATA.characters.map(char => {
-    const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
+    const color = charColor(char);
     // Headed by the character-select portrait; the small head if there's none.
     const portrait = (DATA.charIcons || {})[char]?.select;
     return `<div class="asc-card" style="border-top-color:${color}">
@@ -413,7 +409,7 @@ function renderAscTracker() {
     const char = DATA.characters[+button.dataset.charIndex];
     const dialog = document.createElement("dialog");
     dialog.className = "asc-milestone-dialog";
-    dialog.style.setProperty("--milestone-color", CHAR_COLOR_MAP[char] || "#a0a0b8");
+    dialog.style.setProperty("--milestone-color", charColor(char));
     dialog.setAttribute("aria-labelledby", "asc-milestone-title");
     dialog.innerHTML = `<div class="asc-dialog-head"><h2 id="asc-milestone-title"></h2><button type="button" class="toggle-btn asc-dialog-close">Close</button></div>${milestones(char, mode)}`;
     dialog.querySelector("h2").textContent = `${fmtCharName(char)} · ${mode.label} milestones`;
@@ -479,9 +475,9 @@ function winPctStyle(pct, tiers = [50, 30, 15]) {
            : mid  ? "rgba(92,186,125,0.14)"
            : low  ? "rgba(232,169,48,0.22)"
            :        "rgba(224,92,92,0.22)";
-  const color = (high || mid) ? "#5cba7d"
+  const color = (high || mid) ? COLORS.win
               : low           ? "#e8a930"
-              :                 "#e05c5c";
+              :                 COLORS.loss;
   return { bg, color };
 }
 
@@ -493,7 +489,7 @@ function finalBossWinCell(bucket, isAll) {
   const cls = "cell" + (isAll ? " all-col" : "");
   if (!bucket || !bucket.reached) return `<td class="${cls} empty">—</td>`;
 
-  const pct = +(bucket.won / bucket.reached * 100).toFixed(1);
+  const pct = winPctNum(bucket.won, bucket.reached);
   const { bg, color } = winPctStyle(pct);
 
   // Both numbers behind the percentage (wins and the "reached" denominator)
@@ -598,7 +594,7 @@ function renderFinalBossWinPivot(filteredRuns) {
   });
 
   html += `<tr class="total-row">
-    <td class="char-name" style="color:#e0c468">All characters</td>`;
+    <td class="char-name" style="color:${COLORS.gold}">All characters</td>`;
   cols.forEach(c => { html += finalBossWinCell(pivotData["ALL"]?.[c.key], false); });
   html += finalBossWinCell(pivotData["ALL"]?.["ALL"], true);
   html += `</tr></tbody>`;
@@ -654,7 +650,7 @@ function renderCharLanes(elId, pivotData, headers, lanes, axes, legend = "") {
   const stats = DATA.characters.map(char => [char, pivotData[char]?.["ALL"]]).filter(([, s]) => s && s.runs);
   let html = `${legend}<div class="re-rows"><span></span>${headers.map(h => `<div class="fl-section">${h}</div>`).join("")}`;
   stats.forEach(([char, s]) => {
-    const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
+    const color = charColor(char);
     html += `<div>${charLabelHtml(char)}</div>${lanes(s, color).join("")}`;
   });
   document.getElementById(elId).innerHTML = html + `<span></span>${axes.join("")}</div>`;
@@ -674,7 +670,7 @@ function renderTimeLanes(pivotData) {
     const hrs = s.total_hrs ?? 0;
     const share = totalHrs > 0 ? (hrs / totalHrs * 100).toFixed(1) : "0.0";
     const width = +(hrs / hrsMax * 100).toFixed(1);
-    return `<div class="fl-lane" data-tip="${hrs}h, ${share}% of time played\n${runCount(s.runs)} (${s.wins}W / ${s.losses}L)">` +
+    return `<div class="fl-lane" data-tip="${hrs}h, ${share}% of time played\n${runCount(s.runs)} (${fmtRecord(s.wins, s.losses)})">` +
       `<span class="fl-fill" style="width:${width}%;background:${color}"></span>` +
       `<span class="fl-value" style="left:calc(${width}% + 8px)">${hrs}h · ${Math.round(share)}%</span></div>`;
   };

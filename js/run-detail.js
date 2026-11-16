@@ -108,8 +108,7 @@ function moddedTagHtml(run, focusable = false) {
 // the site-wide stats, since the changes make them unlike a normal run.
 function customTagHtml(run, focusable = false) {
   if (run.mode !== "custom") return "";
-  const names = (run.modifiers || []).map(id => id.replace(/^MODIFIER\./, "").toLowerCase()
-    .replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
+  const names = (run.modifiers || []).map(id => titleCaseId(id.replace(/^MODIFIER\./, "")));
   const tip = names.length ? ["Custom run:", ...names].join("\n") : "Custom run, no modifiers";
   return `<span class="run-custom-tag" data-tip="${tip}"${focusable ? ` tabindex="0"` : ""}>Custom</span>`;
 }
@@ -219,9 +218,9 @@ function renderDetailRunList() {
     const partyHtml = party.length ? party.slice(0, 4).map(c => charIconHtml(c)).join("") : (run.mp ? "Multi" : "Solo");
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
       <span class="detail-run-char">${charLabelHtml(run.char)}</span>
-      <span class="detail-run-asc" style="color:var(--text-dim)">${run.mode === "dread" ? `<img class="detail-run-dread" src="/ui_icons/dread.png" alt="Dread" data-tip="Dread">` : `A${run.asc}`}</span>
+      <span class="detail-run-asc" style="color:var(--text-dim)">${ascHtml(runAsc(run), "detail-run-dread", true)}</span>
       <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}"><span class="detail-run-party-heads">${partyHtml}</span><span class="detail-run-party-text" aria-hidden="true">${run.mp ? "Multi" : "Solo"}</span></span>
-      <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
+      <span class="detail-run-won" style="color:${won ? COLORS.win : COLORS.loss}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
       <span class="detail-run-date" style="color:var(--text-dim)">${fmtDate(run.ts).replace(/\/\d+$/, `<span class="detail-run-year">$&</span>`)}</span>
@@ -426,7 +425,7 @@ function renderDetailRun(run) {
       ${navigator.clipboard ? `<button type="button" class="run-copy-link-icon" aria-label="Copy link to this run" title="Copy link"><svg class="rci-share" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg><svg class="rci-done" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button>` : ""}
       ${charLabelHtml(run.char, true)}
       ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
-      <span style="color:${won ? "#5cba7d" : "#e05c5c"};font-weight:600">${won ? "Victory" : "Defeat"}</span>
+      <span style="color:${won ? COLORS.win : COLORS.loss};font-weight:600">${won ? "Victory" : "Defeat"}</span>
       ${runReadingHtml(run)}${runActMarksHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
       <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
@@ -453,8 +452,9 @@ function renderDetailRun(run) {
     if (!tipEl) return;
     const fit = () => {
       tipEl.style.transform = "";
-      const over = tipEl.getBoundingClientRect().right - (document.documentElement.clientWidth - 8);
-      if (over > 0) tipEl.style.transform = `translateX(${-over}px)`;
+      const r = tipEl.getBoundingClientRect();
+      const shift = clampAxis(r.left, r.width, viewportSize().vw) - r.left;
+      if (shift) tipEl.style.transform = `translateX(${shift}px)`;
     };
     // The popup is display:none until :hover/:focus-within applies, which may land
     // after this handler runs, so measure again a frame later.
@@ -520,7 +520,7 @@ const _encAvgDmg = (() => {
 function fmtNodeLabel(id) {
   if (!id) return "";
   if (DATA.encLabels && DATA.encLabels[id]) return DATA.encLabels[id];
-  return id.replace(/^[A-Z]+\./, "").replace(/_EVENT(_V\d)?_ENCOUNTER$/, "").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return titleCaseId(id.replace(/^[A-Z]+\./, "").replace(/_EVENT(_V\d)?_ENCOUNTER$/, ""));
 }
 
 function cardImgSrc(id) {
@@ -572,15 +572,15 @@ function fitNodeTooltip(tip) {
     tip.style.marginLeft = "";
     tip.style.top = tip.style.bottom = "";
     tip.classList.add("nt-measuring");
-    const r = tip.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+    const r = tip.getBoundingClientRect(), { vw, vh } = viewportSize();
     tip.classList.remove("nt-measuring");
     // Tile near the bottom of the screen: hang above it instead, when there is room.
     const nr = tip.closest(".node-card").getBoundingClientRect();
-    if (r.bottom > window.innerHeight - NT_EDGE && nr.top - r.height - 4 >= NT_EDGE) {
+    if (r.bottom > vh - NT_EDGE && nr.top - r.height - 4 >= NT_EDGE) {
       tip.style.top = "auto";
       tip.style.bottom = "calc(100% + 4px)";
     }
-    const dx = r.left < NT_EDGE ? NT_EDGE - r.left : r.right > vw - NT_EDGE ? vw - NT_EDGE - r.right : 0;
+    const dx = clampAxis(r.left, r.width, vw, NT_EDGE) - r.left;
     if (dx) tip.style.marginLeft = `${Math.round(dx)}px`;
     return;
   }
@@ -637,9 +637,9 @@ function fitNodeTooltip(tip) {
   tip.classList.add("nt-measuring");
   const w = tip.offsetWidth, h = tip.offsetHeight;
   tip.classList.remove("nt-measuring");
-  const vw = document.documentElement.clientWidth;
+  const { vw, vh } = viewportSize();
   const left = vw - nr.right - NT_EDGE >= w ? nr.right - 1 : nr.left - w + 1;
-  const top = Math.min(Math.max(NT_EDGE, nr.top + nr.height / 2 - h / 2), window.innerHeight - h - NT_EDGE);
+  const top = clampAxis(nr.top + nr.height / 2 - h / 2, h, vh, NT_EDGE);
   tip.style.left = `${left}px`;
   tip.style.top = `${top}px`;
 }
@@ -689,10 +689,9 @@ function ntZoomShow(face) {
   const w = _ntZoom.offsetWidth, h = _ntZoom.offsetHeight, gap = 8;
   // Nothing to gain when the tooltip's card is already about this size.
   if (r.width >= w * 0.9) { ntZoomHide(); return; }
-  let left = r.right + gap;
-  if (left + w > window.innerWidth - gap) left = r.left - gap - w;
-  left = Math.max(gap, left);
-  const top = Math.min(Math.max(gap, r.top + r.height / 2 - h / 2), window.innerHeight - h - gap);
+  const { vw, vh } = viewportSize();
+  const left = clampAxis(r.right + gap + w > vw - gap ? r.left - gap - w : r.right + gap, w, vw, gap);
+  const top = clampAxis(r.top + r.height / 2 - h / 2, h, vh, gap);
   _ntZoom.style.left = `${left}px`;
   _ntZoom.style.top = `${top}px`;
   _ntZoom.style.visibility = "";
@@ -1138,7 +1137,7 @@ const ACT_BAND = 34;
 // Your run, as a line, on the HP, damage done and damage taken charts, whatever the character:
 // the site's gold (the "This run" colour in the hover boxes), so one colour and one style always
 // means you. Not red: that is the Attack cards' and a rough act's.
-const YOUR_LINE = "#e0c468";
+const YOUR_LINE = COLORS.gold;
 const HP_LINE = YOUR_LINE;
 
 // The floors behind each chart's big swings get the floor map's own icon as
@@ -1150,7 +1149,7 @@ const HP_ICON_KEYS   = new Set(["monster", "elite", "unknown_elite", "rest_site"
 const GOLD_ICON_KEYS = new Set(["shop", "unknown_shop", "event"]);
 const nodePointImages = new Map();  // "size src" -> Image
 // The clip for a chart's floor icons: none, or the plot's sides alone where one act is on show.
-const iconClip = () => narrowScreen.matches ? { left: 0, right: 0, top: false, bottom: false } : false;
+const iconClip = () => isPhone() ? { left: 0, right: 0, top: false, bottom: false } : false;
 function nodePoints(nodes, getChart, highlight, size = nodePointSize(), keyOf = nodeIconKey) {
   const srcs = nodes.map((n, i) => {
     const key = keyOf(n);
@@ -1180,7 +1179,7 @@ const NODE_POINT = 30;
 // A phone shows one act at a time, so the floors are close together: the desktop's icons would
 // overlap into a smear over the line. Sized to sit just inside the floor spacing instead.
 const NODE_POINT_PHONE = 17;
-const nodePointSize = () => narrowScreen.matches ? NODE_POINT_PHONE : NODE_POINT;
+const nodePointSize = () => isPhone() ? NODE_POINT_PHONE : NODE_POINT;
 
 // The y axis for a chart with floor icons: stretched past the data by an
 // icon's height, so one on a peak or down at zero isn't cut off by the top or
@@ -1294,9 +1293,8 @@ function actSpans(nodes) {
 // phone's width are too cramped to read. `keepAct` is the act on show; a run without it shows its
 // first. Returns the x axis's window, or nothing where the whole run fits.
 let keepAct = 1, keepActNodes = [];
-const narrowScreen = window.matchMedia("(max-width: 700px)");
 function keepActSpan(nodes) {
-  if (!narrowScreen.matches) return null;
+  if (!isPhone()) return null;
   const spans = actSpans(nodes);
   return spans.find(s => s.act === keepAct) || spans[0] || null;
 }
@@ -1609,10 +1607,10 @@ function renderDetailGoldChart(run) {
       datasets: [{
         label: "Gold",
         data: goldData,
-        borderColor: "#e0c468",
-        backgroundColor: "#e0c46833",
+        borderColor: COLORS.gold,
+        backgroundColor: COLORS.gold + "33",
         borderWidth: 2,
-        pointBackgroundColor: "#e0c468",
+        pointBackgroundColor: COLORS.gold,
         ...nodePoints(nodes, () => detailGoldChart, (n, key) => GOLD_ICON_KEYS.has(key)),
         fill: true,
         cubicInterpolationMode: "monotone",
@@ -1633,7 +1631,7 @@ function renderDetailGoldChart(run) {
             title: items => {
               const idx = items[0].dataIndex;
               const node = nodes[idx];
-              const enc = node.enc ? fmtNodeLabel(node.enc) : (node.type || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+              const enc = node.enc ? fmtNodeLabel(node.enc) : titleCaseId(node.type || "");
               return `Floor ${node.floor + 1} — ${enc}`;
             },
             label: item => `Gold: ${item.raw}`,
@@ -1991,7 +1989,7 @@ function showFloorTip(context, html) {
   floorTip.innerHTML = html(t.dataPoints[0].dataIndex);
   floorTip.dataset.key = key;
   floorTip.style.display = "block";
-  const { clientWidth: vw, clientHeight: vh } = document.documentElement;
+  const { vw, vh } = viewportSize();
   const r = context.chart.canvas.getBoundingClientRect();
   // A finger covers what it points at, so on touch the box sits beside the touched point: above
   // it (below when the point is near the top of the screen), centred on the floor's column and
@@ -2004,11 +2002,11 @@ function showFloorTip(context, html) {
     const px = r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
     const lift = 44;   // clears the fingertip
     const above = py - lift - h >= 8;
-    const top = above ? py - lift - h : Math.min(py + lift, vh - 8 - h);
+    const top = above ? py - lift - h : clampAxis(py + lift, h, vh);
     floorTip.classList.toggle("above", above);
     floorTip.classList.toggle("passive", !floorTip.querySelector("[data-pick]"));
-    floorTip.style.left = Math.max(8, Math.min(px - w / 2, vw - 8 - w)) + "px";
-    floorTip.style.top = Math.max(8, top) + "px";
+    floorTip.style.left = clampAxis(px - w / 2, w, vw) + "px";
+    floorTip.style.top = clampAxis(top, h, vh) + "px";
     return;
   }
   // Measured at the origin, so the last position near an edge can't squeeze it narrower.
@@ -2033,24 +2031,24 @@ function showFloorTip(context, html) {
   if (room.below || room.above) {
     below = room.below;
     top = below ? r.bottom + gap : r.top - gap - h;
-    left = Math.max(8, Math.min(px - w / 2, vw - 8 - w));
+    left = clampAxis(px - w / 2, w, vw);
   } else if (room.right || room.left) {
     below = py < r.top + r.height / 2;
     left = room.right ? r.right + gap : r.left - gap - w;
-    top = Math.max(8, Math.min(py - h / 2, vh - 8 - h));
+    top = clampAxis(py - h / 2, h, vh);
   } else {
     below = py + gap + h <= vh - 8 || py - gap - h < 8;
     top = below ? py + gap : py - gap - h;
-    left = Math.max(8, Math.min(px - w / 2, vw - 8 - w));
+    left = clampAxis(px - w / 2, w, vw);
   }
   floorTip.classList.toggle("above", !below);
   floorTip.style.left = left + "px";
-  floorTip.style.top = Math.max(8, top) + "px";
+  floorTip.style.top = clampAxis(top, h, vh) + "px";
   Object.assign(floorTipAnchor, { x: floorTipPointer.x || px, y: py, below });
 }
 
 const floorTipHead = (node, total, unit) => {
-  const enc = node.enc ? fmtNodeLabel(node.enc) : (node.type || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const enc = node.enc ? fmtNodeLabel(node.enc) : titleCaseId(node.type || "");
   return `<div class="ft-head"><b>Floor ${node.floor + 1}</b> — ${enc}${total == null ? "" : ` · ${total} ${unit}`}</div>`;
 };
 const floorTipCaption = (m, colors) =>
@@ -2641,7 +2639,7 @@ const KEEP_DEMAND_COLOR = "#c4c4d4";
 // The share chart's turns line, dashed so the two measures never differ by colour alone.
 const KEEP_TURN_COLOR = "#54c6d4";
 // What arrived on a turn, split: blocked, healed off, and what got through (red). Each has an icon and a label as well, so colour is never the only cue.
-const KEEP_SPLIT = { blocked: "#5aa0e6", healed: "#5cba7d", through: "#e05252" };
+const KEEP_SPLIT = { blocked: "#5aa0e6", healed: COLORS.win, through: COLORS.loss };
 // How a reading is named on the page. The keys ("ahead", "meeting", "behind") are
 // fight_demand.py's and the CSS classes'; OP, above Hype, is a run's alone.
 const KEEP_WORDS = { ahead: "Hype", meeting: "Mid", behind: "Rough" };
@@ -2671,7 +2669,7 @@ const KEEP_ICON = { min: 16, max: NODE_POINT };
 // How big a fight icon is on those charts. A desktop has room for a floor and a half; a phone
 // fits one act into its width, so the icon goes just under the floor spacing there instead of
 // piling up on its neighbours.
-const keepIconSize = (width, floors) => narrowScreen.matches
+const keepIconSize = (width, floors) => isPhone()
   ? Math.round(Math.min(NODE_POINT_PHONE, Math.max(12, width / floors)))
   : Math.round(Math.min(KEEP_ICON.max, Math.max(KEEP_ICON.min, 1.7 * width / floors)));
 // The kinds of fight, in the order an act card lists them.
@@ -3133,7 +3131,7 @@ document.addEventListener("click", e => {
   const b = e.target.closest("#detail-keep-actpick button[data-act]");
   if (b) { keepAct = Number(b.dataset.act); applyKeepAct(); }
 });
-narrowScreen.addEventListener("change", () => {
+PHONE_MQ.addEventListener("change", () => {
   // The floor charts size their icons to the screen, so crossing the breakpoint redraws them:
   // full-size faces on a desktop, small ones that fit the floors on a phone.
   const run = DATA.runsData?.find(r => r.ts === detailSelectedTs);
@@ -3384,7 +3382,7 @@ function fmtPotionLabel(id) {
   if (!id) return id;
   const info = potionInfo(id);
   if (info && info.title) return info.title;
-  return id.replace(/^POTION\./, "").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return titleCaseId(id.replace(/^POTION\./, ""));
 }
 
 function buildPotionTooltip(id) {
