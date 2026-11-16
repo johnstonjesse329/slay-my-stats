@@ -11,7 +11,7 @@ find it by searching on the home page.
 
 ![Overview tab of a player profile](images/site-overview.png)
 
-**Runs:** every run in a list, with its character, ascension, the party's character heads (one head when solo), result, floor, reading and date; pick one to see its path, fights, its deck and relics floor by floor, and
+**Runs:** every run in a list, with its character, ascension, the party's character heads (one head when solo, and on a phone the word Solo or Multi, since four heads don't fit there), result, floor, reading and date; pick one to see its path, fights, its deck and relics floor by floor, and
 its final deck, including any enchantment a card is carrying. Each deck is tagged with what it's built
 around (Exhaust, Poison, Souls...) and the list filters on those tags. The final deck's **Explore
 synergies** section groups its connections by archetype (Strength, Exhaust, Orbs, Osty, Shots...), each
@@ -746,7 +746,9 @@ Each refresh keeps a copy of the card, relic and potion data in `local_data/game
 
 The Runs page's Keeping Up charts need one more file, made after the refresh:
 `python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in
-`tools/power_curve/gamma_raw/`. Without it the charts are hidden. Their energy and cards chart also needs
+`tools/power_curve/gamma_raw/`. Without it the charts are hidden. It also records how many enemies each
+encounter fields, from the opening line-up the run files list, which the charts fan into that many icons on a
+fight's floor and the hover box names ("3 enemies"). Their energy and cards chart also needs
 `python tools/power_curve/export_measured.py` (writes `measured_runs.json`) for logs on this machine. Runs uploaded
 through the site carry the same numbers as `measured`, worked out when they were uploaded. It shows only on runs
 with an event log. The "Keeping up, fight by fight" chart uses the same `fight_demand.json` and needs nothing else:
