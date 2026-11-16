@@ -599,11 +599,21 @@ window.addEventListener("mousemove", () => document.body.classList.remove("suppr
 // Marks pageDirty.cards clean afterward so showPage("cards") skips its
 // own render entirely instead of immediately redoing this same work.
 if (currentPage === "overview") {
-  setTimeout(() => {
+  // Six seconds after load, in idle time, or sooner when the pointer or focus reaches
+  // the Cards tab. Building ~10k nodes right after first paint delayed
+  // everything else on load.
+  let cardsPrefetched = false;
+  const prefetchCards = () => {
+    if (cardsPrefetched) return;
+    cardsPrefetched = true;
     if (currentPage === "overview" && pageDirty.cards) {
       renderCardsPage();
       pageDirty.cards = false;
     }
-  }, 0);
+  };
+  const tab = document.getElementById("tab-cards");
+  if (tab) ["pointerenter", "focus", "touchstart"].forEach(ev =>
+    tab.addEventListener(ev, prefetchCards, { once: true, passive: true }));
+  setTimeout(() => (window.requestIdleCallback || setTimeout)(prefetchCards), 6000);
 }
 
