@@ -153,15 +153,30 @@ function copyRunLink(ts, btn) {
 // A picked tag stays listed even when no run left has it, so it can be unpicked.
 function renderDetailTagFilter(runs) {
   const box = document.getElementById("detail-tag-filter");
+  // Archetypes belong to a character, so the chips are grouped under their character (the
+  // roster's order), each group's chips most used first. counts[char][tag] counts that
+  // character's runs; a picked tag stays listed under every character that has it.
   const counts = {};
-  runs.forEach(r => runTags(r).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
-  detailTags.forEach(t => { counts[t] = counts[t] || 0; });
-  const tags = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
-  box.style.display = tags.length ? "" : "none";
+  runs.forEach(r => runTags(r).forEach(t => {
+    const byTag = counts[r.char] = counts[r.char] || {};
+    byTag[t] = (byTag[t] || 0) + 1;
+  }));
+  const roster = [...DATA.characters, ...Object.keys(counts).filter(c => !DATA.characters.includes(c))];
+  const groups = roster.map(char => {
+    const known = Object.keys((DATA.archetypes && DATA.archetypes[char]) || {});
+    const byTag = counts[char] || {};
+    const tags = [...new Set([...Object.keys(byTag), ...known.filter(t => detailTags.has(t))])]
+      .sort((a, b) => (byTag[b] || 0) - (byTag[a] || 0) || a.localeCompare(b));
+    return { char, byTag, tags };
+  }).filter(g => g.tags.length);
+  box.style.display = groups.length ? "" : "none";
   box.querySelector(".tag-filter-text").textContent = detailTags.size ? [...detailTags].join(" + ") : "All";
   box.querySelector(".tag-filter-clear").hidden = detailTags.size === 0;
   const chips = box.querySelector(".tag-filter-chips");
-  chips.innerHTML = tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="run-tag-n">${counts[t]}</span></button>`).join("");
+  chips.innerHTML = groups.map(g => `<div class="tag-filter-group"><span class="tag-filter-char">${charIconHtml(g.char)} ${escapeHtml(fmtCharName(g.char))}</span>`
+    + `<div class="tag-filter-tags">`
+    + g.tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="run-tag-n">${g.byTag[t] || 0}</span></button>`).join("")
+    + `</div></div>`).join("");
   chips.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
     const t = btn.dataset.tag;
     if (detailTags.has(t)) detailTags.delete(t); else detailTags.add(t);
