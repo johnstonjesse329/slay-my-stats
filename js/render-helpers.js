@@ -447,7 +447,7 @@ function renderAscTracker() {
       return `<div class="asc-readings-row"><div class="asc-readings-char"></div><div class="asc-readings-bar" role="img" aria-label="${desc}">${bars}</div><span>${runs.length} runs</span></div>`;
     }).filter(Boolean).join("");
     const names = DATA.characters.filter(char => filtered.some(run => run.char === char));
-    chart.querySelectorAll(".asc-readings-char").forEach((node, i) => { node.textContent = fmtCharName(names[i]); node.style.color = CHAR_COLOR_MAP[names[i]] || ""; });
+    chart.querySelectorAll(".asc-readings-char").forEach((node, i) => { node.innerHTML = charIconHtml(names[i]); node.append(fmtCharName(names[i])); node.style.color = CHAR_COLOR_MAP[names[i]] || ""; });
   }, 0);
 
   el.parentElement.querySelectorAll(".pb-stat-link").forEach(link => {
