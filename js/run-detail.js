@@ -2100,15 +2100,21 @@ function makeManyIconPlugin(nodes) {
     beforeDatasetsDraw(chart) {
       const { ctx, scales: { x, y } } = chart;
       ctx.save();
-      chart.data.datasets.forEach(ds => {
+      chart.data.datasets.forEach((ds, di) => {
         if (!Array.isArray(ds.pointRadius)) return;
+        const meta = chart.getDatasetMeta(di);
         ds.pointRadius.forEach((radius, i) => {
           const img = ds.pointStyle && ds.pointStyle[i];
           if (!(radius > 0) || !(img instanceof HTMLImageElement)) return;
           const node = nodes[i];
           const count = node && node.type !== "boss" ? nodeEnemyCount(node) : 1;
           if (count < 2 || i < x.min || i > x.max) return;
-          const cx = x.getPixelForValue(i), cy = y.getPixelForValue(ds.data[i]);
+          // The point's own animated position, not its final one: the chart eases the front icon
+          // into place on load, and a copy drawn at the final spot would sit still while the
+          // icon glides into it.
+          const pt = meta.data[i];
+          if (!pt || pt.skip) return;
+          const cx = pt.x, cy = pt.y;
           const w0 = img.width || radius * 2, h0 = img.height || radius * 2;
           // The copies stay inside their own floor: the farthest one's right edge stops at the
           // midpoint to the next floor, so a stack never spills onto a neighbour's icon. Depth
