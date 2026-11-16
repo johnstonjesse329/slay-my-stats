@@ -122,7 +122,7 @@ def main():
         panel = page.locator("#detail-range-panel")
         assert panel.count() == 1, "the drag should open the panel"
         # ...under every floor chart, so the list is read beside whichever chart is in view.
-        assert page.locator(".range-panel").count() == 8, page.locator(".range-panel").count()
+        assert page.locator(".range-panel").count() == 9, page.locator(".range-panel").count()
         text = panel.inner_text()
         assert f"Floors {FROM}–{TO}" in text, text
         assert f"{want['floors']} floors" in text, text
