@@ -217,13 +217,17 @@ class SlayMyStatsStack(Stack):
         # rebuilt after a parser fix.
         # RETAIN: players' uploads live only here, so tearing the stack down
         # leaves the bucket behind. Standing the stack up again then needs it
-        # imported or emptied and deleted by hand first.
+        # imported or emptied and deleted by hand first. Gamma is retained too,
+        # for its feedback notes, and is versioned so an overwritten or deleted
+        # note can be recovered. Versioning is per bucket, so the rules below
+        # expire old versions of everything but feedback/, which keeps them.
+        # Prod can take the same by setting `versioned` for both stacks.
         data_bucket = s3.Bucket(
             self, "DataBucket",
             bucket_name=f"{name_prefix}-data",
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY if gamma else RemovalPolicy.RETAIN,
-            auto_delete_objects=gamma,
+            removal_policy=RemovalPolicy.RETAIN,
+            versioned=gamma,
             # The upload page POSTs each upload straight here, with a
             # presigned form the ingest function hands out.
             cors=[s3.CorsRule(
@@ -235,7 +239,15 @@ class SlayMyStatsStack(Stack):
             # Nothing else here expires: raw/ and analytics/ are kept for good.
             lifecycle_rules=[
                 s3.LifecycleRule(prefix="users/_uploads/", expiration=Duration.days(7)),
-            ],
+            ] + ([
+                # Gamma is versioned: a month of history for everything that is
+                # rewritten often, none expired under feedback/.
+                s3.LifecycleRule(
+                    prefix=prefix,
+                    noncurrent_version_expiration=Duration.days(30),
+                    expired_object_delete_marker=True,
+                ) for prefix in ("users/", "ids/", "limits/", "analytics/", "raw/")
+            ] if gamma else []),
         )
 
         # Built static site (index.html, js/*.js, dashboard.css, game art).
