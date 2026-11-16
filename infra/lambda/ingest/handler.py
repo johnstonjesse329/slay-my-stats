@@ -1640,6 +1640,10 @@ class S3Store:
         # we read it (or created it, when we saw none), S3 refuses with 412
         # instead of one upload silently discarding the other's runs.
         cond = {"IfMatch": if_match} if if_match else {"IfNoneMatch": "*"}
+        # Month files are fetched at a URL keyed by their run list (site/boot.js), so
+        # a browser may keep one for a year; a changed month is a different URL.
+        if re.search(r"/\d{4}-\d{2}\.json\.gz$", key):
+            cond["CacheControl"] = "public, max-age=31536000"
         try:
             self._s3.put_object(
                 Bucket=self._bucket, Key=key, Body=data,

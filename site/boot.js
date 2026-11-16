@@ -810,7 +810,12 @@
     if (!userDoc.months) return userDoc.runs || [];
     const months = Object.keys(userDoc.months).sort();
     const parts = await Promise.all(months.map(async m => {
-      const resp = await fetch(`/users/${slug}/${m}.json.gz`, { cache: "no-cache" });
+      // The URL carries a key built from the month's run list (how many runs and
+      // the newest start time), so the browser reuses its copy until a run is
+      // added to or removed from that month, instead of revalidating every visit.
+      const runsInMonth = userDoc.months[m] || [];
+      const key = `${runsInMonth.length}-${runsInMonth[runsInMonth.length - 1] || 0}-${userDoc.v || 0}`;
+      const resp = await fetch(`/users/${slug}/${m}.json.gz?v=${key}`);
       if (resp.status === 403 || resp.status === 404) return [];
       if (!resp.ok) throw new Error(`${m}: ${resp.status}`);
       return (await resp.json()).runs || [];

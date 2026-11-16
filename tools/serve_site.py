@@ -277,7 +277,10 @@ class Handler(BaseHTTPRequestHandler):
         # change only when the art is re-baked, and re-fetching 200 thumbnails on
         # every navigation is the one thing that would make this server
         # noticeably slow to use.
-        if content_type.startswith("text/") or "json" in content_type:
+        if "?v=" in self.path and "/users/" in self.path:
+            # A month file at its versioned URL: the real bucket lets browsers keep it.
+            self.send_header("Cache-Control", "public, max-age=31536000")
+        elif content_type.startswith("text/") or "json" in content_type:
             self.send_header("Cache-Control", "no-store")
         if content_encoding:
             self.send_header("Content-Encoding", content_encoding)

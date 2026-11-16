@@ -472,6 +472,7 @@ def build_index_html() -> str:
   <meta property="og:image" content="{SITE_URL}/og-preview.png">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/png" href="/node_icons/elite.png">
+  <link rel="preload" href="/app.js" as="script">
   <script src="/chart.js"></script>
   <link rel="stylesheet" href="/dashboard.css">
   <link rel="stylesheet" href="/upload.css">
