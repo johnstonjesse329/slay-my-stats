@@ -1588,6 +1588,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="chart-box">
   <h2>Favorites</h2>
+  <p class="chart-caption">Your most-picked, best win rate and most-bought card of each rarity and relic, beside the same for all players. Every card shows its win rate, with the count behind it underneath.</p>
   <div class="fav-panels" id="cards-favorites"></div>
 </div>
 

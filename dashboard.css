@@ -52,8 +52,10 @@ html {
   --text-dim:     #d2cdea;
   /* The type scale: font-sizes outside the phone @media blocks should be one
      of these, so text at the same level reads the same size page to page.
-     xs: tags, counts, uppercase labels. sm: secondary text, descriptions.
-     md: names and primary text. lg/xl: headline numbers and titles. */
+     xs is the floor — no text goes below it anywhere in the dashboard (phone
+     blocks included). xs: tags, counts, uppercase labels. sm: secondary text,
+     descriptions. md: names and primary text. lg/xl: headline numbers and
+     titles. */
   --fs-xs: 0.8125rem;
   --fs-sm: 0.875rem;
   --fs-md: 1rem;
@@ -169,7 +171,7 @@ h1 {
 .filter-presets { flex-wrap: wrap; }
 .filter-presets select, .filter-presets input { min-width: 0; max-width: 100%; padding: 0.4rem 0.6rem; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 4px; font: inherit; font-size: var(--fs-sm); }
 .filter-actions #shared-filters-status { font-size: var(--fs-sm); color: var(--text-dim); margin-left: 0.4rem; }
-.filter-actions #shared-filters-unsaved { align-items: center; justify-content: center; width: 1.15rem; height: 1.15rem; margin-left: 0.4rem; border-radius: 50%; background: var(--gold); color: #13132a; font-size: 0.75rem; font-weight: 700; cursor: default; user-select: none; }
+.filter-actions #shared-filters-unsaved { align-items: center; justify-content: center; width: 1.15rem; height: 1.15rem; margin-left: 0.4rem; border-radius: 50%; background: var(--gold); color: #13132a; font-size: var(--fs-xs); font-weight: 700; cursor: default; user-select: none; }
 .pb-table {
   width: 100%; border-collapse: collapse; table-layout: fixed;
   font-variant-numeric: tabular-nums; font-size: var(--fs-md);
@@ -238,27 +240,43 @@ h1 {
 
 /* Favorites (Cards page): the player's table and all players' side by side,
    on the same rows and columns, so the same slot sits at the same spot. */
-.fav-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 1rem 2rem; }
-.fav-panel h3 { margin: 0 0 0.25rem; }
+.fav-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 1rem 1.5rem; }
+/* The two panels are the same table, so colour says whose figures they are:
+   gold for yours, a cool blue for everybody's. */
+.fav-panel { padding: 0.5rem 0.6rem 0.3rem; border: 1px solid transparent; border-radius: 8px; }
+.fav-panel h3 { margin: 0 0 0.25rem; font-size: var(--fs-md); font-weight: 800; }
+.fav-panel-you { background: rgba(224, 196, 104, 0.05); border-color: rgba(224, 196, 104, 0.3); }
+.fav-panel-you h3 { color: var(--gold); }
+.fav-panel-all { background: rgba(157, 184, 240, 0.07); border-color: rgba(157, 184, 240, 0.3); }
+.fav-panel-all h3 { color: #9db8f0; }
 .pivot.fav-table { width: 100%; min-width: 0; table-layout: fixed; }
 .fav-table th:first-child { width: 5.5rem; }
 .fav-table tbody th { text-align: left; color: var(--text-dim); font-weight: 600; border-bottom: 1px solid var(--hairline); }
 .fav-table td { padding: 0.25rem 0.4rem; border-bottom: 1px solid var(--hairline); }
 .fav-table .fav-item {
-  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 0.4rem;
-  align-items: center; min-height: 36px; font-size: var(--fs-sm); cursor: default;
+  --fav-face-w: 42px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 0.5rem;
+  align-items: center; min-height: 60px; font-size: var(--fs-md); cursor: default;
 }
 .fav-table .fav-empty { color: var(--text-dim); text-align: center; }
 @media (max-width: 700px) {
-  .pivot.fav-table th { white-space: normal; padding: 0.4rem 0.3rem; }
+  .pivot.fav-table th { white-space: normal; padding: 0.4rem 0.3rem; font-size: var(--fs-xs); }
   .pivot.fav-table th:first-child { width: 5.2rem; padding-left: 0; }
-  .fav-table .fav-item { grid-template-columns: 26px minmax(0, 1fr); }
-  .fav-table .fav-name { display: none; }
+  .fav-table .fav-item { --fav-face-w: 34px; grid-template-columns: auto auto; column-gap: 0.4rem; min-height: 48px; }
+  .fav-table .fav-name, .fav-table .fav-won, .fav-table .fav-count { display: none; }
 }
-.fav-pic { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
-.fav-icon { display: flex; align-items: center; justify-content: center; width: 26px; }
-.fav-name { min-width: 0; color: #ccc; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fav-num { text-align: right; color: #e8e6f0; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fav-pic { width: 34px; height: 34px; object-fit: contain; border-radius: 4px; }
+.fav-icon { display: flex; align-items: center; justify-content: center; }
+.fav-item-face img { display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
+.fav-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.fav-name {
+  min-width: 0; color: #ccc; line-height: 1.2; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.fav-detail { min-width: 0; color: var(--text-dim); font-size: var(--fs-sm); white-space: nowrap; }
+.fav-rate { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); }
+.fav-rate.fav-hi { color: #fff; font-weight: 800; }
+.fav-count { min-width: 0; color: var(--text-dim); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fav-item {
   position: relative;
   z-index: 1;
@@ -300,9 +318,24 @@ h1 {
    box-shadow, not a border: a collapsed border stays behind when the cell sticks. */
 #cards-table-main thead, #seeds-table thead { position: sticky; top: 0; z-index: 2; }
 #cards-table-main thead th, #seeds-table thead th { background: var(--panel-2); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--hairline); }
-.cards-thumb-wrap { display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
+.cards-thumb-wrap { --cards-thumb-w: 62px; display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
+.cards-thumb-wrap .cardface { width: var(--cards-thumb-w); display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
 .cards-hi { font-size: var(--fs-md); }
-.cards-thumb { width: 44px; height: 33px; object-fit: contain; border-radius: 4px; vertical-align: middle; }
+.cards-thumb { width: var(--cards-thumb-w); height: calc(var(--cards-thumb-w) * 0.75); object-fit: contain; border-radius: 4px; vertical-align: middle; }
+/* The table's two blocks of four figures carry their own heading and tint, so
+   "whose number is this" is read from the block, not from every column title. */
+#cards-thead .cards-groups th {
+  padding: 0.6rem 0.6rem 0.15rem; font-size: var(--fs-sm); font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
+}
+#cards-thead .cards-group-you { text-align: left; color: var(--gold); }
+#cards-thead .cards-group-all {
+  text-align: center; color: #9db8f0; background: #2e2a4c;
+  border-left: 1px solid rgba(157, 184, 240, 0.35);
+}
+#cards-table-main th.cards-all-col { background: #2e2a4c; }
+#cards-tbody td.cards-all { background: rgba(157, 184, 240, 0.06); }
+#cards-table-main .cards-all-start { border-left: 1px solid rgba(157, 184, 240, 0.35); }
 .fav-item-face {
   flex: 0 0 auto;
 }
@@ -462,7 +495,7 @@ h1 {
   .re-rows > div:not(.fl-section):not(.fl-lane) { grid-column: 1 / -1; margin-top: 0.3rem; }
   .re-rows .fl-lane { margin-right: 5.2rem; }
   /* The key drops under its lane title: beside it, it wraps mid-key. */
-  .re-rows .fl-section .fl-legend { display: block; margin: 0.15rem 0 0; font-size: 0.68rem; white-space: nowrap; }
+  .re-rows .fl-section .fl-legend { display: block; margin: 0.15rem 0 0; font-size: var(--fs-xs); white-space: nowrap; }
 }
 
 /* ---- Chart layout grids ---- */
@@ -1639,7 +1672,7 @@ h1 {
 .floor-tip thead tr:first-child th[colspan] { border-bottom: 1px solid var(--hairline); }
 .floor-tip .ft-win { color: var(--text-dim); border-left: 1px solid var(--hairline); }
 .floor-tip .ft-win + .ft-win { border-left: 0; }
-.floor-tip td small { color: var(--text-dim); font-size: 0.75rem; margin-left: 3px; }
+.floor-tip td small { color: var(--text-dim); font-size: var(--fs-xs); margin-left: 3px; }
 .floor-tip td .keep-ico { margin-right: 5px; vertical-align: -2px; }
 .floor-tip tr.ft-through td { font-weight: 700; }
 /* What arrived in a turn, as one bar: blocked, healed, got through, a 2px gap between. */
@@ -2728,7 +2761,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   /* Run header: date and seed share a line of their own. */
   .detail-run-header-bar { gap: 0.3rem 0.6rem; }
   .rh-meta { display: flex; align-items: center; gap: 0.3rem 0.6rem; flex: 1 0 100%; }
-  .rh-date, .rh-seed { font-size: 0.72rem; white-space: nowrap; }
+  .rh-date, .rh-seed { font-size: var(--fs-xs); white-space: nowrap; }
   .rh-seed-label { display: none; }
   .detail-run-header-bar .run-copy-link { display: none; }
   /* Phone: Copy link becomes an icon button at the top right of the header's
@@ -2758,12 +2791,12 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 
   /* Win % and Final Boss Win %: tighter cells, headers may wrap.
      (Show granular adds a column per ascension and still scrolls.) */
-  #pivot-table th, #final-boss-win-table th { padding: 0.4rem 0.2rem; font-size: 0.62rem; letter-spacing: 0; white-space: normal; }
+  #pivot-table th, #final-boss-win-table th { padding: 0.4rem 0.2rem; font-size: var(--fs-xs); letter-spacing: 0; white-space: normal; }
   #pivot-table td.cell, #final-boss-win-table td.cell { min-width: 0; padding: 0.3rem 0.15rem; }
-  #pivot-table td.char-name, #final-boss-win-table td.char-name { padding: 0 0.3rem 0 0; font-size: 0.74rem; }
+  #pivot-table td.char-name, #final-boss-win-table td.char-name { padding: 0 0.3rem 0 0; font-size: var(--fs-xs); }
   #pivot-table td.char-name .dot, #final-boss-win-table td.char-name .dot { margin-right: 5px; }
-  #pivot-table td.cell .pct, #final-boss-win-table td.cell .pct { font-size: 0.85rem; }
-  #pivot-table td.cell .meta, #final-boss-win-table td.cell .meta { font-size: 0.66rem; }
+  #pivot-table td.cell .pct, #final-boss-win-table td.cell .pct { font-size: var(--fs-sm); }
+  #pivot-table td.cell .meta, #final-boss-win-table td.cell .meta { font-size: var(--fs-xs); }
 
   /* Card Stats: Pool, Type and Rarity are dropped (the filters above cover
      them); the numbers stay. The table sets its widths inline, hence
@@ -2776,16 +2809,18 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #cards-table-main.show-all th:nth-child(n+5):nth-child(-n+8), #cards-table-main.show-all td:nth-child(n+5):nth-child(-n+8) { display: none; }
   #cards-table-main th:nth-child(n+2):nth-child(-n+4),
   #cards-table-main td:nth-child(n+2):nth-child(-n+4) { display: none; }
-  #cards-table-main th { white-space: normal !important; padding: 0.3rem 0.15rem !important; font-size: 0.6rem !important; letter-spacing: 0 !important; vertical-align: bottom; }
+  #cards-table-main th { white-space: normal !important; padding: 0.3rem 0.15rem !important; font-size: var(--fs-xs) !important; letter-spacing: 0 !important; vertical-align: bottom; }
   #cards-table-main th:first-child { width: auto !important; }
   #cards-table-main th:nth-child(5), #cards-table-main th:nth-child(9)  { width: 46px !important; }
   #cards-table-main th:nth-child(6), #cards-table-main th:nth-child(10) { width: 50px !important; }
   #cards-table-main th:nth-child(7), #cards-table-main th:nth-child(11) { width: 50px !important; }
   #cards-table-main th:nth-child(8), #cards-table-main th:nth-child(12) { width: 52px !important; }
-  #cards-table-main td { padding: 0.18rem 0.15rem !important; font-size: 0.83rem !important; }
-  .cards-thumb { width: 22px; height: 22px; }
-  .cards-thumb-wrap { margin-right: 6px; }
-  .cards-hi { font-size: 0.88rem; }
+  #cards-table-main td { padding: 0.18rem 0.15rem !important; font-size: var(--fs-xs) !important; }
+  /* The You / All players switch already says which set is showing. */
+  #cards-thead .cards-groups { display: none; }
+  .cards-thumb-wrap { --cards-thumb-w: 34px; margin-right: 6px; }
+  .cards-thumb { width: var(--cards-thumb-w); height: calc(var(--cards-thumb-w) * 0.75); }
+  .cards-hi { font-size: var(--fs-sm); }
   #cards-table-main td:first-child { white-space: normal !important; }
 
   /* Seed Data: four tight columns; what a search matched goes on its own
@@ -2795,10 +2830,10 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #seeds-table, #seeds-table thead, #seeds-table tbody { display: block; }
   #seeds-table tr { display: block; }
   #seeds-table #seeds-thead-row, #seeds-table tr.seed-row { display: grid; grid-template-columns: 7.4rem minmax(0, 1fr) 2.4rem 4.9rem; align-items: center; }
-  #seeds-table tr.seed-row > td, #seeds-table tr.seed-row > td * { font-size: 0.72rem !important; }
+  #seeds-table tr.seed-row > td, #seeds-table tr.seed-row > td * { font-size: var(--fs-xs) !important; }
   #seeds-table .seed-expand-arrow { margin-right: 0.2rem !important; }
   #seeds-table th, #seeds-table tr.seed-row > td { padding: 0.4rem 0.25rem !important; }
-  #seeds-table th { font-size: 0.62rem; letter-spacing: 0; }
+  #seeds-table th { font-size: var(--fs-xs); letter-spacing: 0; }
   #seeds-table th:last-child, #seeds-table th.seed-player { display: none; }
   /* The player (All players) goes on its own line under the row's figures. */
   #seeds-table tr.seed-row > td.seed-player { grid-column: 1 / -1; padding-top: 0 !important; }

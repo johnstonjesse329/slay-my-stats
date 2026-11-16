@@ -186,26 +186,54 @@ function renderCardsPage() {
 
   // Header
   const cols = [
-    { key: "title",      label: "Card",            align: "left",   width: "240px" },
-    { key: "owner",      label: "Pool",            align: "left",   width: "120px" },
-    { key: "type",       label: "Type",            align: "left",   width: "80px"  },
-    { key: "rarity",     label: "Rarity",          align: "left",   width: "110px"  },
-    { key: "offered",    label: "Offered",         align: "center", width: "90px"  },
-    { key: "pickRate",   label: "Pick rate",       align: "center", width: "100px"  },
-    { key: "winPicked",  label: "Win % if picked", align: "center", width: "130px" },
-    { key: "winSkipped", label: "Win % if skipped",align: "center", width: "140px" },
-    // Everybody's, when the site totals have them: the same four, to compare against.
+    { key: "title",      label: "Card",            align: "left",   width: "205px" },
+    { key: "owner",      label: "Pool",            align: "left",   width: "95px"  },
+    { key: "type",       label: "Type",            align: "left",   width: "72px"  },
+    { key: "rarity",     label: "Rarity",          align: "left",   width: "86px"  },
+    { key: "offered",    label: "Offered",         align: "center", width: "74px"  },
+    { key: "pickRate",   label: "Pick rate",       align: "center", width: "82px"  },
+    { key: "winPicked",  label: "Win % picked",    align: "center", width: "108px" },
+    { key: "winSkipped", label: "Win % skipped",   align: "center", width: "108px" },
+    // Everybody's, when the site totals have them: the same four figures, under
+    // their own heading, to compare against.
     ...(global ? [
-      { key: "gOffered",    label: "All offered",      align: "center", width: "90px"  },
-      { key: "gPickRate",   label: "All pick rate",    align: "center", width: "90px"  },
-      { key: "gWinPicked",  label: "All win % picked", align: "center", width: "120px" },
-      { key: "gWinSkipped", label: "All win % skipped",align: "center", width: "130px" },
+      { key: "gOffered",    label: "Offered",        align: "center", width: "74px",  all: true, groupStart: true },
+      { key: "gPickRate",   label: "Pick rate",      align: "center", width: "82px",  all: true },
+      { key: "gWinPicked",  label: "Win % picked",   align: "center", width: "108px", all: true },
+      { key: "gWinSkipped", label: "Win % skipped",  align: "center", width: "108px", all: true },
     ] : []),
   ];
 
-  const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.3rem 0.5rem;font-size:var(--fs-sm);width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "var(--text-dim)"}"`;
-  document.getElementById("cards-thead").innerHTML = `<tr>
-    ${cols.map(c => `<th ${thStyle(c)} data-sort="${c.key}" tabindex="0">${c.label}${cardsSortKey === c.key ? (cardsSortDir < 0 ? " ▾" : " ▴") : ""}</th>`).join("")}
+  const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.45rem 0.6rem;font-size:var(--fs-sm);width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "var(--text-dim)"}"`;
+  // A fixed-layout table takes its column widths from the first row, which is
+  // now the colspan group heading, so pin them in a colgroup. Phones hide the
+  // group row and set their own column widths in dashboard.css, so they drop
+  // the pin and let those widths apply.
+  const table = document.getElementById("cards-table-main");
+  let colgroup = table.querySelector("colgroup");
+  if (CARDS_PHONE_MQ.matches) {
+    if (colgroup) colgroup.remove();
+  } else {
+    if (!colgroup) {
+      colgroup = document.createElement("colgroup");
+      table.insertBefore(colgroup, table.firstChild);
+    }
+    colgroup.innerHTML = cols.map(c => `<col style="width:${c.width}">`).join("");
+  }
+  const thClass = (col) => [col.all && "cards-all-col", col.groupStart && "cards-all-start"]
+    .filter(Boolean).join(" ");
+  // One heading over each block of four: the columns below share their names,
+  // so which set is yours is told by the block, not by an "All " prefix that
+  // read as part of the figure's name.
+  const groupRow = global ? `<tr class="cards-groups">
+    <th class="cards-group-you" colspan="8">Your runs</th>
+    <th class="cards-group-all" colspan="4">All players</th>
+  </tr>` : "";
+  document.getElementById("cards-thead").innerHTML = groupRow + `<tr>
+    ${cols.map(c => {
+      const cls = thClass(c);
+      return `<th ${thStyle(c)}${cls ? ` class="${cls}"` : ""} data-sort="${c.key}" tabindex="0">${c.label}${cardsSortKey === c.key ? (cardsSortDir < 0 ? " ▾" : " ▴") : ""}</th>`;
+    }).join("")}
   </tr>`;
 
   // Attach sort listeners
@@ -236,26 +264,28 @@ function renderCardsPage() {
     // markup, since this table lives inside a scrolling .pivot-wrap
     // (overflow-y:auto) that would clip an absolutely-positioned popup.
     const src = cardImgSrc(r.id);
+    // Prefer the baked card face at thumbnail size: the portrait alone was too
+    // small to tell two similar cards apart, and the face carries the name,
+    // type and cost. A checkout without the bake falls back to the portrait.
+    const art = (cardFaceAvailable()
+      ? renderCardFace(r.id, 0, "var(--cards-thumb-w)", { thumb: true })
+      : "") || (src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="cards-thumb">` : "");
     // The thumbnail and the name are one trigger, so hovering, tapping or
     // tabbing to either opens the card.
-    const icon = src
-      ? `<span class="cards-thumb-wrap">
-          <img loading="lazy" src="${thumbSrc(src)}" alt="" class="cards-thumb">
-        </span>`
-      : "";
+    const icon = art ? `<span class="cards-thumb-wrap">${art}</span>` : "";
     return `<tr>
-    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
-    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "var(--text-dim)"}">${charIconHtml(r.pool)}${r.owner}</td>
-    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
-    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}</td>
-    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.offered}</td>
-    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.pickRate, "#ccc")}</td>
-    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.winPicked,  "#ccc")}</td>
-    <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.winSkipped, "#ccc")}</td>${global ? `
-    <td class="cards-all" style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.gOffered ?? "—"}</td>
-    <td class="cards-all" style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.gPickRate, "#aaa")}</td>
-    <td class="cards-all" style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.gWinPicked, "#aaa")}</td>
-    <td class="cards-all" style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md)">${pct(r.gWinSkipped, "#aaa")}</td>` : ""}
+    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
+    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "var(--text-dim)"}">${charIconHtml(r.pool)}${r.owner}</td>
+    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
+    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}</td>
+    <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.offered}</td>
+    <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.pickRate, "#ccc")}</td>
+    <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.winPicked,  "#ccc")}</td>
+    <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.winSkipped, "#ccc")}</td>${global ? `
+    <td class="cards-all cards-all-start" style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.gOffered ?? "—"}</td>
+    <td class="cards-all" style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.gPickRate, "#aaa")}</td>
+    <td class="cards-all" style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.gWinPicked, "#aaa")}</td>
+    <td class="cards-all" style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.gWinSkipped, "#aaa")}</td>` : ""}
   </tr>`;
   }).join("");
 
@@ -282,6 +312,12 @@ function renderCardsPage() {
 // (the same width as .cards-preview in dashboard.css). Returns false when the
 // pane is not showing, so the caller falls back to the floating tooltip.
 const CARDS_PREVIEW_MQ = "(min-width: 1420px)";
+// Phones show four figure columns at widths of their own (dashboard.css), so
+// the table's pinned column widths follow the breakpoint.
+const CARDS_PHONE_MQ = window.matchMedia("(max-width: 700px)");
+CARDS_PHONE_MQ.addEventListener("change", () => {
+  if (currentPage === "cards") renderCardsPage();
+});
 function previewCard(tr) {
   if (!tr || !window.matchMedia(CARDS_PREVIEW_MQ).matches) return false;
   const id = tr.querySelector(".fav-item[data-card-id]").dataset.cardId;
@@ -310,7 +346,12 @@ function loadSiteStatsForFavs() {
     .then(stats => {
       if (!stats) return;
       siteStatsForFavs = stats;
-      if (currentPage === "cards") renderCardsPage(); else renderCardFavorites();
+      // Cards can already have been rendered once while the totals were still
+      // loading (the idle pre-render of the page does exactly that), so keep it
+      // dirty when it is not on screen: the next visit then draws the "All"
+      // columns instead of the stale table without them.
+      if (currentPage === "cards") renderCardsPage();
+      else pageDirty.cards = true;
     })
     .catch(() => {});
 }
@@ -397,36 +438,45 @@ function favPicksFor(tallies, slot, chars) {
   };
 }
 
-// One item: picture, name, and the figure it was chosen for. The card or
-// relic opens on hover or tap as a floating tooltip (bound in
-// renderCardFavorites), like the card table below: one hidden inside the cell
-// would still widen a phone's page.
-function favCellHtml(kind, item, figure, tip) {
+// One item: picture, name, and the card's win rate. The count behind the pick
+// is the small print, so all three columns read the same way: the rate is
+// what you compare, whichever way the slot chose its card. The card or relic
+// opens on hover or tap as a floating tooltip (bound in renderCardFavorites),
+// like the card table below: one hidden inside the cell would still widen a
+// phone's page.
+function favCellHtml(kind, item, winPct, detail) {
   if (!item) return `<td class="fav-cell fav-empty">—</td>`;
   const isCard = kind === "cards";
   const label = isCard ? fmtCardLabel(item.id) : fmtRelicLabel(item.id);
   const src = isCard ? cardImgSrc(item.id) : relicImgSrc(item.id);
-  const pic = isCard && cardFaceAvailable()
-    ? `<span class="fav-item-face">${renderCardFace(item.id, 0, 26, { thumb: true })}</span>`
+  const face = isCard && cardFaceAvailable()
+    ? renderCardFace(item.id, 0, "var(--fav-face-w)", { thumb: true }) : "";
+  const pic = face
+    ? `<span class="fav-item-face">${face}</span>`
     : src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="fav-pic">` : "";
-  return `<td class="fav-cell"><span class="fav-item" tabindex="0" data-fav-kind="${kind}" data-fav-id="${item.id}" aria-label="${label}, ${tip}">
-    <span class="fav-icon">${pic}</span><span class="fav-name">${label}</span>
-    <span class="fav-num" data-tip="${tip}">${figure}</span>
+  const rate = winPct == null ? "—" : `${Math.round(winPct)}%`;
+  return `<td class="fav-cell"><span class="fav-item" tabindex="0" data-fav-kind="${kind}" data-fav-id="${item.id}" aria-label="${label}, ${detail}, ${rate} won">
+    <span class="fav-icon">${pic}</span>
+    <span class="fav-text">
+      <span class="fav-name">${label}</span>
+      <span class="fav-detail"><span class="fav-rate${winPct >= 50 ? " fav-hi" : ""}">${rate}</span><span class="fav-won"> won</span></span>
+      <span class="fav-count">${detail}</span>
+    </span>
   </span></td>`;
 }
 
 function favPanelHtml(title, tallies, chars) {
-  const pct = n => `${Math.round(n)}%`;
+  const picks = n => `${n} pick${n !== 1 ? "s" : ""}`;
   const rows = FAV_SLOTS.map(slot => {
     const f = favPicksFor(tallies, slot, chars);
     const p = f.picked, w = f.win, b = f.bought;
     return `<tr><th>${slot.label}</th>
-      ${favCellHtml(slot.kind, p, p && p.picks, p && `${p.picks} picks · ${pct(p.wins / p.picks * 100)} won`)}
-      ${favCellHtml(slot.kind, w, w && pct(w.winPct), w && `${w.wins} of ${w.picks} picks won`)}
-      ${favCellHtml(slot.kind, b, b && b.buys, b && `${b.buys} bought · ${pct(b.buyWins / b.buys * 100)} won`)}
+      ${favCellHtml(slot.kind, p, p && p.wins / p.picks * 100, p && picks(p.picks))}
+      ${favCellHtml(slot.kind, w, w && w.winPct, w && `${w.wins} of ${w.picks}`)}
+      ${favCellHtml(slot.kind, b, b && b.buyWins / b.buys * 100, b && `${b.buys} bought`)}
     </tr>`;
   }).join("");
-  return `<div class="fav-panel">
+  return `<div class="fav-panel ${title === "You" ? "fav-panel-you" : "fav-panel-all"}">
     <h3>${title}</h3>
     <table class="pivot fav-table">
       <thead><tr><th></th><th>Most picked</th><th>Best win %</th><th>Most bought</th></tr></thead>
