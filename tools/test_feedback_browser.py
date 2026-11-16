@@ -7,6 +7,19 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def summary(page):
+    return page.evaluate(r"""() => {
+        const root = document.getElementById('gamma-feedback').shadowRoot;
+        return root.getElementById('summary').textContent.replace(/\s+/g, ' ').trim();
+    }""")
+
+
+def wait_summary(page, text):
+    page.wait_for_function("expected => document.getElementById('gamma-feedback').shadowRoot"
+                           ".getElementById('summary').textContent.replace(/\\s+/g, ' ').trim() === expected",
+                           arg=text)
+
+
 def main():
     with sync_playwright() as pw:
         for name, engine, options in [('desktop', pw.chromium, {'viewport': {'width': 1920, 'height': 1080}}),
@@ -56,24 +69,22 @@ def main():
             page.get_by_text('Sent. Everyone on gamma can see it.').wait_for()
             created = next(item for item in notes if item['path'] == '/')
             assert created['url'] == 'https://gamma.slay-my-stats.com/', created
-            assert page.locator('#inbox-count').text_content() == '1'
-            # The inbox is its own panel: "This page" is the default scope, and the
-            # note seeded on another page only appears under "Whole site".
-            page.get_by_role('button', name='Inbox', exact=True).click()
-            page.get_by_text('1 note · 1 open · 1 place', exact=True).wait_for()
+            assert page.locator('#launcher-count').text_content() == '1'
+            # The inbox is a tab of the same panel, not a second button.
+            page.get_by_role('tab', name='Inbox', exact=True).click()
+            wait_summary(page, '1 note · 1 open · 1 place')
             assert page.locator('.bucket').count() == 1
             assert 'Whole page' in page.locator('.bucket summary').first.inner_text()
             assert page.locator('.note-url').first.inner_text() == 'https://gamma.slay-my-stats.com/'
             page.get_by_role('button', name='Whole site', exact=True).click()
-            page.get_by_text('2 notes · 2 open · 2 places', exact=True).wait_for()
+            wait_summary(page, '2 notes · 2 open · 2 places')
             assert page.locator('.bucket').count() == 2
             page.get_by_role('button', name='This page', exact=True).click()
-            page.get_by_text('1 note · 1 open · 1 place', exact=True).wait_for()
+            wait_summary(page, '1 note · 1 open · 1 place')
             page.get_by_role('button', name='Resolve', exact=True).click()
             page.get_by_role('button', name='Reopen', exact=True).click()
             page.get_by_role('button', name='Resolve', exact=True).wait_for()
-            page.locator('#inbox-close').click()
-            page.get_by_role('button', name='Feedback', exact=True).click()
+            page.get_by_role('tab', name='New note', exact=True).click()
             page.get_by_role('button', name='Pin to an element or region', exact=True).click()
             heading = page.locator('h1:visible, h2:visible').first
             heading.click()
@@ -82,25 +93,23 @@ def main():
             page.get_by_role('button', name='Send', exact=True).click()
             page.get_by_text('1 earlier note here', exact=False).wait_for()
             assert 'Pinned comment' in page.locator('#prior').inner_text()
-            assert page.locator('#inbox-count').text_content() == '2'
-            page.get_by_role('button', name='Inbox', exact=True).click()
-            page.get_by_text('2 notes · 2 open · 2 places', exact=True).wait_for()
+            assert page.locator('#launcher-count').text_content() == '2'
+            page.get_by_role('tab', name='Inbox', exact=True).click()
+            wait_summary(page, '2 notes · 2 open · 2 places')
             assert page.locator('.bucket').count() == 2, page.locator('.bucket summary').all_inner_texts()
             assert any('Whole page' in text for text in page.locator('.bucket summary').all_inner_texts())
-            panel = page.get_by_role('dialog', name='Feedback inbox')
+            panel = page.get_by_role('dialog', name='Feedback', exact=True)
             bounds = panel.bounding_box()
             assert bounds['x'] >= 0 and bounds['y'] >= 0
             assert bounds['x'] + bounds['width'] <= page.evaluate('innerWidth')
             assert bounds['y'] + bounds['height'] <= page.evaluate('innerHeight')
-            page.locator('#inbox-close').click()
-            page.get_by_role('button', name='Feedback', exact=True).click()
+            page.get_by_role('tab', name='New note', exact=True).click()
             page.get_by_role('button', name='Pin to an element or region', exact=True).click()
             page.mouse.move(80, 320)
             page.mouse.down()
             page.mouse.move(300, 410, steps=5)
             page.mouse.up()
             page.get_by_text('Region:', exact=False).first.wait_for()
-            panel = page.get_by_role('dialog', name='Gamma feedback')
             bounds = panel.bounding_box()
             assert bounds['x'] >= 0 and bounds['y'] >= 0
             assert bounds['x'] + bounds['width'] <= page.evaluate('innerWidth')

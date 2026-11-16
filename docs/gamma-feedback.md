@@ -1,20 +1,22 @@
 # Gamma feedback
 
-After deploying the site and gamma CDK stack, signed-in gamma reviewers see two
-controls in the lower right on every page. Production shows neither. The inbox
-control carries the number of open notes on the page you are looking at.
+After deploying the site and gamma CDK stack, signed-in gamma reviewers get a
+gold **Feedback** button in the lower right on every page, carrying the number of
+open notes on the page they are looking at. Production shows neither. It opens
+one panel with two views, **New note** and **Inbox**; either is closed with the
+panel's X or Escape.
 
-**Feedback** (gold) writes a note:
+**New note** writes one:
 
-- Choose **Pin to element / region**, then click an element or drag a rectangle.
-- Choose **Whole page** for a general comment, enter the comment, and send it.
+- Choose **Pin to an element or region**, then click an element or drag a rectangle.
+- Choose **Comment on the page** for a general comment, enter it, and send it.
   The composer shows the exact page URL that goes with the note, including its
   hash and query, so a report can be reopened without guessing the host.
 - The composer lists earlier notes for that same element, region or whole page,
   with who wrote them and whether they are resolved, so the same point is not
   raised twice.
 
-**Inbox** reviews them, separately from writing:
+**Inbox** reviews them:
 
 - **This page** (the default) and **Whole site** switch what the inbox shows.
 - Notes are grouped into one bucket per whole page and per pinned element or
@@ -27,7 +29,6 @@ control carries the number of open notes on the page you are looking at.
 - **Copy open notes** copies the loaded unresolved notes, with page URLs, target
   details, author Steam IDs, and timestamps, ready to paste into Codex.
 - Notes load 25 at a time; **Load more** fetches the next page.
-- Either panel closes with its **X** or with Escape.
 
 Notes are private JSON objects under `feedback/` in the gamma data bucket. Each
 note stores the page's exact `url` (gamma origin, path, query and hash) next to

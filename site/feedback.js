@@ -1,6 +1,5 @@
-// Gamma-only feedback. Compose and the inbox are separate panels: the gold
-// pill writes a note, the inbox reviews them and badges the open ones on the
-// page being viewed.
+// Gamma-only feedback. One panel with two views: write a note, or review the
+// inbox. The launcher carries how many notes are open on the page you are on.
 (() => {
   if (location.hostname !== 'gamma.slay-my-stats.com' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
   const host = document.createElement('div');
@@ -12,19 +11,19 @@
     *{box-sizing:border-box}button,textarea,a{font:inherit;touch-action:manipulation}
     button{background:#302d27;color:#fff;border:1px solid #82735b;border-radius:6px;padding:9px 12px;cursor:pointer}
     button:hover{background:#514635}button:disabled{opacity:.5}a{color:#edc782}
-    #launchers{display:flex;align-items:center;gap:8px;order:3}
-    #panel,#inbox-panel{order:2}
-    #hint{order:1}
-    #launcher{display:flex;align-items:center;gap:8px;padding:12px 20px;border:1px solid #f6e3b0;border-radius:999px;background:linear-gradient(#f4dda6,#e0c468);color:#191c20;font-size:15px;font-weight:700;box-shadow:0 6px 20px #000a}
+    #launcher{display:flex;align-items:center;gap:8px;padding:12px 20px;border:1px solid #f6e3b0;border-radius:999px;background:linear-gradient(#f4dda6,#e0c468);color:#191c20;font-size:15px;font-weight:700;box-shadow:0 6px 20px #000a;order:2}
     #launcher:hover{background:linear-gradient(#f9e7ba,#e8cf7c)}
-    #inbox-launcher{display:flex;align-items:center;gap:6px;padding:12px 16px;border:1px solid #82735b;border-radius:999px;background:#191c20;color:#f4f0e7;font-weight:600;box-shadow:0 6px 20px #000a}
-    #inbox-count{min-width:20px;padding:1px 6px;border-radius:999px;background:#f4dda6;color:#191c20;font-size:12px;font-weight:700;text-align:center}
-    #launcher:focus-visible,#inbox-launcher:focus-visible,button:focus-visible{outline:3px solid #f6c66d;outline-offset:2px}
-    #panel,#inbox-panel{background:#191c20;border:1px solid #82735b;border-radius:12px;padding:16px;width:420px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 100px);overflow:auto;box-shadow:0 8px 40px #0009}
+    #launcher-count{min-width:20px;padding:1px 6px;border-radius:999px;background:#191c20;color:#f4dda6;font-size:12px;font-weight:700;text-align:center}
+    #launcher:focus-visible,button:focus-visible{outline:3px solid #f6c66d;outline-offset:2px}
+    #panel{order:1;background:#191c20;border:1px solid #82735b;border-radius:12px;padding:16px;width:420px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 100px);overflow:auto;box-shadow:0 8px 40px #0009}
     h2{font-size:18px;margin:0;letter-spacing:.01em}
     header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
-    #close,#inbox-close{display:flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border-radius:50%;font-size:18px;line-height:1;color:#e0d0f8}
-    #close:hover,#inbox-close:hover{background:#514635;border-color:#edc782}
+    #close{display:flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border-radius:50%;font-size:18px;line-height:1;color:#e0d0f8}
+    #close:hover{background:#514635;border-color:#edc782}
+    #tabs{display:inline-flex;border:1px solid #82735b;border-radius:999px;overflow:hidden;margin:0 0 12px}
+    #tabs button{border:0;border-radius:0;padding:6px 14px;background:#101316;color:#bcb8b0;font-size:13px}
+    #tabs button + button{border-left:1px solid #82735b}
+    #tabs button[aria-selected="true"]{background:#e0c468;color:#191c20;font-weight:700}
     #page-url{display:block;margin:0 0 10px;padding:6px 8px;border-radius:5px;background:#101316;color:#a9a4b8;font-size:12px;overflow-wrap:anywhere}
     #modes{display:flex;gap:6px;margin:0 0 12px}
     #pick{flex:1;background:#514635;border-color:#edc782;font-weight:600}
@@ -39,8 +38,7 @@
     #save{width:100%;margin-top:8px;background:#514635;border-color:#edc782;font-weight:700}
     #status,#inbox-status{margin:10px 0 0;font-size:12px;color:#bcb8b0;white-space:pre-wrap}
     #status:empty,#inbox-status:empty{display:none}
-    /* Inbox: a summary line, a segmented scope, then one card per place. */
-    #summary{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;margin:0 0 10px;font-size:12px;color:#bcb8b0}
+    #summary{margin:0 0 10px;font-size:12px;color:#bcb8b0}
     #summary b{color:#f4f0e7;font-size:14px}
     #scope{display:inline-flex;border:1px solid #82735b;border-radius:999px;overflow:hidden;margin:0 0 12px}
     #scope button{border:0;border-radius:0;padding:6px 12px;background:#101316;color:#bcb8b0;font-size:13px}
@@ -68,46 +66,57 @@
     #inbox-foot button{background:none;border:0;padding:0;color:#edc782;text-decoration:underline;font-size:12px}
     #inbox-foot button:hover{background:none;color:#f4f0e7}
     [hidden]{display:none!important}
-    #hint{background:#191c20;padding:12px;max-width:320px;border:1px solid #edc782;border-radius:8px}
-    @media(max-height:520px){:host{bottom:8px;right:8px}#panel,#inbox-panel{max-height:calc(100dvh - 78px);width:460px}textarea{min-height:64px}#launcher,#inbox-launcher{padding:9px 14px;font-size:14px}}
+    #hint{background:#191c20;padding:12px;max-width:320px;border:1px solid #edc782;border-radius:8px;order:0}
+    @media(max-height:520px){:host{bottom:8px;right:8px}#panel{max-height:calc(100dvh - 78px);width:460px}textarea{min-height:64px}#launcher{padding:9px 14px;font-size:14px}}
   </style>
-  <div id="launchers"><button id="inbox-launcher" type="button">Inbox<span id="inbox-count" aria-hidden="true" hidden></span></button><button id="launcher" type="button"><span aria-hidden="true">✎</span> Feedback</button></div>
   <div id="hint" hidden>Choose an element on the page. For a region, drag across it. Press Escape to cancel. <button id="cancel" type="button">Cancel</button></div>
-  <section id="panel" role="dialog" aria-label="Gamma feedback" hidden>
+  <section id="panel" role="dialog" aria-label="Feedback" hidden>
     <header><h2>Feedback</h2><button id="close" type="button" aria-label="Close feedback" title="Close">✕</button></header>
-    <small id="page-url"></small>
-    <div id="modes"><button id="pick" type="button">Pin to an element or region</button><button id="page" type="button">Comment on the page</button></div>
-    <p id="target">This page</p>
-    <div id="prior" hidden></div>
-    <label for="comment">What should change?</label>
-    <textarea id="comment" maxlength="4000" placeholder="Describe the issue or suggestion…"></textarea>
-    <button id="save" type="button">Send</button>
-    <p id="status" role="status"></p>
+    <div id="tabs" role="tablist"><button id="tab-compose" type="button" role="tab" aria-selected="true" aria-controls="view-compose">New note</button><button id="tab-inbox" type="button" role="tab" aria-selected="false" aria-controls="view-inbox">Inbox</button></div>
+    <div id="view-compose" role="tabpanel">
+      <small id="page-url"></small>
+      <div id="modes"><button id="pick" type="button">Pin to an element or region</button><button id="page" type="button">Comment on the page</button></div>
+      <p id="target">This page</p>
+      <div id="prior" hidden></div>
+      <label for="comment">What should change?</label>
+      <textarea id="comment" maxlength="4000" placeholder="Describe the issue or suggestion…"></textarea>
+      <button id="save" type="button">Send</button>
+      <p id="status" role="status"></p>
+    </div>
+    <div id="view-inbox" role="tabpanel" hidden>
+      <p id="summary"></p>
+      <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-page" type="button" aria-pressed="false">This page</button><button id="scope-site" type="button" aria-pressed="false">Whole site</button></div>
+      <div id="notes"></div>
+      <button id="load-more" type="button" hidden>Load the next 25</button>
+      <p id="inbox-status" role="status"></p>
+      <div id="inbox-foot"><button id="copy" type="button">Copy open notes</button><button id="refresh" type="button">Refresh</button></div>
+    </div>
   </section>
-  <section id="inbox-panel" role="dialog" aria-label="Feedback inbox" hidden>
-    <header><h2>Feedback inbox</h2><button id="inbox-close" type="button" aria-label="Close inbox" title="Close">✕</button></header>
-    <p id="summary"></p>
-    <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-page" type="button" aria-pressed="false">This page</button><button id="scope-site" type="button" aria-pressed="false">Whole site</button></div>
-    <div id="notes"></div>
-    <button id="load-more" type="button" hidden>Load the next 25</button>
-    <p id="inbox-status" role="status"></p>
-    <div id="inbox-foot"><button id="copy" type="button">Copy open notes</button><button id="refresh" type="button">Refresh</button></div>
-  </section>`;
+  <button id="launcher" type="button"><span aria-hidden="true">✎</span> Feedback<span id="launcher-count" aria-hidden="true" hidden></span></button>`;
   const $ = id => root.getElementById(id);
-  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'page', nextCursor = null, picking = false, start, previousFocus, oldTouchAction;
+  const ORIGIN = location.origin;
+  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'page', nextCursor = null, view = 'compose', picking = false, start, previousFocus, oldTouchAction;
   const mark = document.createElement('div');
   Object.assign(mark.style, {position:'fixed',pointerEvents:'none',zIndex:'2147483645',border:'2px solid #f6c66d',background:'#f6c66d22',display:'none'});
   document.body.append(mark);
   function rect(box) { Object.assign(mark.style,{display:'block',left:box.x+'px',top:box.y+'px',width:box.width+'px',height:box.height+'px'}); }
   const say = (text, which) => $(which === 'inbox' ? 'inbox-status' : 'status').textContent = text;
-  function openPanel(which) {
-    if ($('panel').hidden && $('inbox-panel').hidden) previousFocus = document.activeElement;
-    $('panel').hidden = which !== 'compose';
-    $('inbox-panel').hidden = which !== 'inbox';
-    $('launchers').hidden = false;
-    $(which === 'inbox' ? 'inbox-close' : 'close').focus();
+  function showView(which) {
+    view = which;
+    $('view-compose').hidden = which !== 'compose';
+    $('view-inbox').hidden = which !== 'inbox';
+    $('tab-compose').setAttribute('aria-selected', String(which === 'compose'));
+    $('tab-inbox').setAttribute('aria-selected', String(which === 'inbox'));
+    if (which === 'compose') { $('page-url').textContent = pageUrl(); renderPrior(); }
+    else load(true);
   }
-  function closePanels() { $('panel').hidden = true; $('inbox-panel').hidden = true; $('launchers').hidden = false; previousFocus?.focus(); }
+  function openPanel() {
+    if ($('panel').hidden) previousFocus = document.activeElement;
+    $('panel').hidden = false;
+    showView(view);
+    $('close').focus();
+  }
+  function closePanel() { $('panel').hidden = true; previousFocus?.focus(); }
   function pageUrl() { const url=new URL(location.href); url.searchParams.delete('feedback'); return url.href; }
   function currentPath() { const url=new URL(pageUrl()); return url.pathname+url.search+url.hash; }
   function composer() { say(''); $('page-url').textContent=pageUrl(); renderPrior(); }
@@ -131,7 +140,7 @@
     }
     box.append(title,list);box.hidden=false;
   }
-  function stop() { picking=false; document.documentElement.style.touchAction=oldTouchAction; start=null; mark.style.display='none'; $('hint').hidden=true; $('launchers').hidden=false; openPanel('compose'); }
+  function stop() { picking=false; document.documentElement.style.touchAction=oldTouchAction; start=null; mark.style.display='none'; $('hint').hidden=true; $('launcher').hidden=false; openPanel(); }
   function selector(el) {
     const parts=[];
     for(let node=el;node && node!==document.body;node=node.parentElement) {
@@ -166,19 +175,19 @@
   // Consume the synthetic click following selection, including links and buttons.
   let suppressClick=false;
   document.addEventListener('click',e=>{if(suppressClick && !e.composedPath().includes(host)){e.preventDefault();e.stopImmediatePropagation();suppressClick=false;}},true);
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(picking)stop();else if(!$('panel').hidden || !$('inbox-panel').hidden)closePanels();}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(picking)stop();else if(!$('panel').hidden)closePanel();}});
   async function api(body, params) {
     const query=body?'':'?'+new URLSearchParams(params||{}).toString();
     const response=await fetch('/auth/feedback'+query,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
     if(!response.ok) throw new Error(response.status===401?'Sign in to gamma again.':`Could not ${body?'save':'load'} feedback. Please retry.`);
     return response.json();
   }
-  const report = note => `Feedback ${note.id}\n${note.resolved?'Resolved':'Open'} · ${new Date(note.created*1000).toISOString()}\n${note.url || location.origin + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
-  function updateInboxCount() {
+  const report = note => `Feedback ${note.id}\n${note.resolved?'Resolved':'Open'} · ${new Date(note.created*1000).toISOString()}\n${note.url || ORIGIN + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
+  function updateCount() {
     const open=pageCache.filter(note=>!note.resolved).length;
-    $('inbox-count').textContent=open?String(open):'';
-    $('inbox-count').hidden=!open;
-    $('inbox-launcher').title=open?`${open} open note${open===1?'':'s'} on this page`:'Feedback inbox';
+    $('launcher-count').textContent=open?String(open):'';
+    $('launcher-count').hidden=!open;
+    $('launcher').title=open?`${open} open note${open===1?'':'s'} on this page`:'Send feedback on this page';
   }
   // One bucket per whole-page note set and per pinned element or region, so the
   // inbox reads as categories instead of a single stream.
@@ -213,10 +222,10 @@
     pill.className='pill '+(note.resolved?'resolved':'open');pill.textContent=note.resolved?'Resolved':'Open';
     time.textContent=when(note.created);
     who.textContent='…'+author(note.author);who.title='Steam ID '+note.author;
-    place.href=note.path;place.textContent='Open location';
-    const link=new URL(note.path,window.location.origin);link.searchParams.set('feedback',note.id);place.href=link.href;
+    const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
+    place.href=openUrl.href;place.textContent='Open location';
     meta.className='note-meta';meta.append(pill,time,who,place);
-    url.className='note-url';url.textContent=note.url || window.location.origin + note.path;
+    url.className='note-url';url.textContent=note.url || ORIGIN + note.path;
     resolve.textContent=note.resolved?'Reopen':'Resolve';
     resolve.onclick=async()=>{
       resolve.disabled=true;
@@ -224,7 +233,7 @@
         const {note:updated}=await api({action:'resolve',id:note.id,resolved:!note.resolved});
         const swap=list=>list.map(item=>item.id===updated.id?updated:item);
         notes=swap(notes);pageCache=swap(pageCache);
-        renderInbox();renderPrior();updateInboxCount();
+        renderInbox();renderPrior();updateCount();
       } catch(e){ say(e.message,'inbox'); resolve.disabled=false; }
     };
     actions.className='note-actions';actions.append(resolve);
@@ -256,9 +265,9 @@
     $('load-more').hidden=!nextCursor;
     say(groups.length?'':(scope==='page'?'No notes on this page yet.':'No notes yet.'),'inbox');
   }
-  // pageCache feeds the inbox badge and the composer's earlier notes; the inbox
-  // owns its own paged list in `notes`.
-  async function refreshPageNotes() { pageCache=(await api(null,{scope:'page',path:currentPath()})).notes; updateInboxCount(); return pageCache; }
+  // pageCache feeds the launcher badge and the composer's earlier notes; the
+  // inbox owns its own paged list in `notes`.
+  async function refreshPageNotes() { pageCache=(await api(null,{scope:'page',path:currentPath()})).notes; updateCount(); return pageCache; }
   async function load(reset=true) {
     if(reset){notes=[];nextCursor=null;$('summary').textContent='Loading…';say('','inbox');}
     try {
@@ -269,10 +278,11 @@
       notes=notes.concat(data.notes);nextCursor=data.next||null;renderInbox();
     } catch(e){ $('summary').textContent='';say(e.message,'inbox'); }
   }
-  $('launcher').onclick=()=>{openPanel('compose');$('page-url').textContent=pageUrl();renderPrior();};
-  $('inbox-launcher').onclick=()=>{openPanel('inbox');load(true);};
-  $('close').onclick=closePanels;$('inbox-close').onclick=closePanels;$('cancel').onclick=stop;
-  $('pick').onclick=()=>{picking=true;oldTouchAction=document.documentElement.style.touchAction;document.documentElement.style.touchAction='none';$('panel').hidden=true;$('launchers').hidden=true;$('hint').hidden=false;};
+  $('launcher').onclick=openPanel;
+  $('close').onclick=closePanel;$('cancel').onclick=stop;
+  $('tab-compose').onclick=()=>showView('compose');
+  $('tab-inbox').onclick=()=>showView('inbox');
+  $('pick').onclick=()=>{picking=true;oldTouchAction=document.documentElement.style.touchAction;document.documentElement.style.touchAction='none';$('panel').hidden=true;$('launcher').hidden=true;$('hint').hidden=false;};
   $('page').onclick=()=>{target={kind:'page',viewport:{width:innerWidth,height:innerHeight}};composer();$('target').textContent='This page';$('comment').focus();};
   $('refresh').onclick=()=>load(true);
   $('load-more').onclick=()=>load(false);
@@ -287,8 +297,7 @@
   $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(notes.filter(n=>!n.resolved).map(report).join('\n\n---\n\n'));say('Copied. Paste them into your conversation.','inbox');}catch{say('Clipboard unavailable. Select and copy below.','inbox');const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=notes.filter(n=>!n.resolved).map(report).join('\n\n');$('notes').replaceChildren(pre);}};
   const requested=new URLSearchParams(location.search).get('feedback');
   if(requested) {
-    openPanel('compose');
-    $('page-url').textContent=pageUrl();
+    openPanel();
     api(null,{scope:'site'}).then(data=>{
       const note=data.notes.find(n=>n.id===requested);if(!note){say('This note is outside the latest notes.');return;}
       $('comment').value=note.comment;$('target').textContent=`Reviewing ${note.target.kind}: ${note.target.text || note.path}`;
