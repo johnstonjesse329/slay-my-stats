@@ -2116,13 +2116,17 @@ function makeManyIconPlugin(nodes) {
           // At most two icons, front plus one copy, even for three or more enemies: it always fits
           // its floor, and "more than one enemy" is what the stack says.
           const n = 1;
+          // The copy always stays attached to the front icon (its centre within about half a radius
+          // of it, so most of it is hidden behind): a copy floating free of its icon reads as a
+          // stray enemy, and one stepped far sideways lands on the next floor's icon.
           const spacing = Math.abs(x.getPixelForValue(i + 1) - cx);
           const lastW = w0 * (1 - 0.2 * n);
-          const dx = Math.max(radius * 0.15, Math.min(radius * 0.6, (spacing / 2 - lastW / 2) / n));
+          const dx = Math.max(radius * 0.1, Math.min(radius * 0.35, (spacing / 2 - lastW / 2) / n));
+          const dy = radius * 0.45;
           for (let k = n; k >= 1; k--) {
             const sc = 1 - 0.2 * k, w = w0 * sc, h = h0 * sc;
             ctx.globalAlpha = 1 - 0.25 * k;
-            ctx.drawImage(img, cx + k * dx - w / 2, cy - k * radius * 0.7 - h / 2, w, h);
+            ctx.drawImage(img, cx + k * dx - w / 2, cy - k * dy - h / 2, w, h);
           }
         });
       });
