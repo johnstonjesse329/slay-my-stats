@@ -1695,7 +1695,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="detail-deck-relics"></div>
       <div id="detail-timeline"></div>
       <div id="detail-maps"></div>
-      <p class="range-tip" id="detail-range-tip"><b>Drag across any floor chart</b> to add up what changed over those floors — cards in and out, relics, fights and damage. <button type="button" class="range-tip-close" aria-label="Dismiss this tip">&#10005;</button></p>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
         <p class="chart-caption">This data highlights how your deck is performing per act against broad buckets of effectiveness: how much damage you put out and how much you mitigate. Slower decks with more turns per fight aren't penalized if damage taken is low.</p>
@@ -1707,9 +1706,14 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         </dl>
         <div class="keep-acts" id="detail-keep-acts"></div>
         <div class="keep-actpick" id="detail-keep-actpick"></div>
+        <p class="range-tip" id="detail-range-tip"><b>Drag across any floor chart</b> to add up what changed over those floors — cards in and out, relics, fights and damage. <button type="button" class="range-tip-close" aria-label="Dismiss this tip">&#10005;</button></p>
+        <h3 class="strength-label">Keeping up, fight by fight</h3>
+        <p class="chart-caption">Damage taken and turns on each fight as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">Ticks mark recent deck changes to line up against the fights that followed; hover for the change, and a fight with more than one enemy wears one icon for each.</span> Breadcrumbs for troubleshooting, not proof.</p>
+        <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
+        <div class="floor-legend" id="detail-keep-share-legend"></div>
         <div id="detail-hp-box">
           <h3 class="strength-label">HP by floor</h3>
-          <p class="chart-caption">Your HP after each floor, against your max HP. <span class="drag-only">Drag across the chart to add up what changed over a span of floors.</span></p>
+          <p class="chart-caption">Your HP after each floor, against your max HP.</p>
           <div class="chart-wrap"><canvas id="detail-hp-chart"></canvas></div>
           <div class="floor-legend" id="detail-hp-legend"></div>
         </div>
@@ -1721,10 +1725,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <p class="chart-caption">Enemy HP taken off each turn. The dotted line is the average win.</p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
-        <h3 class="strength-label">Keeping up, fight by fight</h3>
-        <p class="chart-caption">Damage taken and turns on each fight as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">Ticks mark recent deck changes to line up against the fights that followed; hover for the change, and a fight with more than one enemy wears one icon for each. <span class="drag-only">Drag across a chart to add up what changed over a span of floors.</span></span> Breadcrumbs for troubleshooting, not proof.</p>
-        <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
-        <div class="floor-legend" id="detail-keep-share-legend"></div>
         <div id="detail-keep-deck">
           <h3 class="strength-label">Deck Composition by floor</h3>
           <p class="chart-caption">Cards in your deck after each floor, by type.</p>

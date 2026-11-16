@@ -1659,9 +1659,6 @@ h1 {
 .fl-swatch { width: 14px; height: 10px; border-radius: 2px; box-sizing: border-box; }
 .fl-ring { border: 2px solid; border-radius: 50%; box-sizing: border-box; display: inline-block; }
 
-/* Wording that only applies where a pointer can drag a chart: hidden on a finger. */
-@media (pointer: coarse) { .drag-only { display: none; } }
-
 /* A note under Keeping Up by Floor saying the charts take a drag, until it is dismissed. It is
    in the page's HTML and hidden by default, shown only where a pointer can drag: a finger scrubs
    the hover box instead, so the line would be telling a phone about a gesture it doesn't have. */
