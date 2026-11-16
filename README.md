@@ -24,7 +24,7 @@ relics show their art and rules text in place, since there is room beside the ca
 link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 
-![Runs tab showing a run's final deck](images/site-run-detail.png)
+![Runs tab showing a run's rating and Keeping Up by Floor](images/site-run-detail.png)
 
 **Cards:** your most-picked, best win rate and most-bought cards and relics beside every player's — each one showing its win rate — with pick and win rates for every card, yours and every player's side by side (on a phone, a You / All players switch swaps which set the table shows).
 
