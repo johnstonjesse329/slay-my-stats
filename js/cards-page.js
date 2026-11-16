@@ -245,7 +245,7 @@ function renderCardsPage() {
       : "";
     return `<tr>
     <td style="padding:0.3rem 0.5rem;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
-    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "var(--text-dim)"}">${charIconHtml(r.pool)}${r.owner}</td>
+    <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);font-weight:600;color:${CHAR_COLOR_MAP[r.owner.toUpperCase()] || "var(--text-dim)"}">${charIconHtml(r.pool)}${r.owner}</td>
     <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
     <td style="padding:0.3rem 0.5rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}</td>
     <td style="padding:0.3rem 0.5rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.offered}</td>

@@ -179,6 +179,7 @@ h1 {
 .pb-table thead th:first-child { width: 11rem; }
 .pb-table tbody th { text-align: left; color: var(--text-dim); font-weight: 500; }
 .pb-table td { text-align: center; color: var(--text); font-weight: 500; }
+.pb-char-name, .pb-table thead th.pb-total { font-size: var(--fs-sm); font-weight: 600; }
 .pb-char-icon { width: 22px; height: 22px; vertical-align: middle; margin-right: 0.4rem; }
 .pb-table tr.pb-headline td { font-size: 1.6rem; font-weight: 700; padding: 0.6rem 0.5rem 0.3rem; border-bottom: 0; }
 .pb-table tr.pb-headline th { color: var(--text); font-weight: 700; border-bottom: 0; }
