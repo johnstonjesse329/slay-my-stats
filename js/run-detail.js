@@ -2092,8 +2092,8 @@ const nodeEnemyCount = n => {
 
 // A multi-enemy normal or elite fight wears its icon as a depth stack on every floor chart that
 // draws fight icons: the marker in front, full size and opaque, and behind it one copy per extra
-// enemy (up to three), each smaller and fainter and stepped up and to the right, like enemies
-// receding into the distance. Drawn under the line. Bosses keep the single icon.
+// enemy (capped at one copy, so two icons in all), smaller and fainter and stepped up and to the
+// right, like an enemy receding into the distance. Drawn under the line. Bosses keep the single icon.
 function makeManyIconPlugin(nodes) {
   return {
     id: "manyIcons",
@@ -2113,7 +2113,9 @@ function makeManyIconPlugin(nodes) {
           // The copies stay inside their own floor: the farthest one's right edge stops at the
           // midpoint to the next floor, so a stack never spills onto a neighbour's icon. Depth
           // comes more from going up than going sideways.
-          const n = Math.min(count, 4) - 1;
+          // At most two icons, front plus one copy, even for three or more enemies: it always fits
+          // its floor, and "more than one enemy" is what the stack says.
+          const n = 1;
           const spacing = Math.abs(x.getPixelForValue(i + 1) - cx);
           const lastW = w0 * (1 - 0.2 * n);
           const dx = Math.max(radius * 0.15, Math.min(radius * 0.6, (spacing / 2 - lastW / 2) / n));
