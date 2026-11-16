@@ -20,7 +20,7 @@ Object.keys(DATA.charIcons || {}).forEach(char => {
   CHAR_LEGEND_ICONS[char.toLowerCase()] = img;
 });
 const CHAR_LEGEND_LABELS = {
-  color: "#ccc", usePointStyle: true,
+  color: "#ccc", usePointStyle: true, font: { weight: 600 },
   generateLabels: chart => Chart.defaults.plugins.legend.labels.generateLabels(chart).map(item => {
     const img = CHAR_LEGEND_ICONS[String(item.text).toLowerCase()];
     const named = { ...item, fontColor: item.fillStyle };
