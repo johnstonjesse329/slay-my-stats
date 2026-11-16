@@ -8,8 +8,8 @@ panel's X or Escape.
 
 **New note** writes one:
 
-- Choose **Pin to an element or region**, then click an element or drag a rectangle.
-- Choose **Comment on the page** for a general comment, enter it, and send it.
+- Choose **Pick on page**, then click near what you mean (or drag across it).
+- Choose **Whole page** for a general comment, enter it, and send it.
   The composer shows the exact page URL that goes with the note, including its
   hash and query, so a report can be reopened without guessing the host.
 - The composer lists earlier notes for that same element, region or whole page,
@@ -26,9 +26,22 @@ panel's X or Escape.
   region. Layout changes can invalidate a selector; saved target text and viewport
   dimensions remain available in the copied report.
 - **Resolve / Reopen** tracks review. All allowed gamma reviewers can do this.
+  Resolving asks for an optional close note and commit; the note records who resolved
+  it, when, the close note and the commit. Reopening keeps that resolution in the
+  note's `history`, so a note closed, reopened and closed again shows every step.
 - **Copy open notes** copies the loaded unresolved notes, with page URLs, target
   details, author Steam IDs, and timestamps, ready to paste into Codex.
 - Notes load 25 at a time; **Load more** fetches the next page.
+
+The panel can be dragged by its header and resized from its bottom-right corner; it
+keeps its place between openings. **Clear** on the New note tab drops a pinned
+element and the typed text.
+
+**Emails.** The gamma stack also emails the alert address: each morning (8 AM
+Central) the notes that came in over the last day with the number open, and nothing
+on a quiet day; on Mondays the open total, the notes that came in and the ones
+resolved that week, and the open notes. Notes resolved before resolutions were
+timestamped have no date and are not counted as resolved in a week.
 
 Notes are private JSON objects under `feedback/` in the gamma data bucket. Each
 note stores the page's exact `url` (gamma origin, path, query and hash) next to

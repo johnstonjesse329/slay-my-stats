@@ -40,6 +40,9 @@ def main():
                         if body.get('action') == 'resolve':
                             note = next(item for item in notes if item['id'] == body['id'])
                             note['resolved'] = body['resolved']
+                            if body['resolved']:
+                                note.update(resolved_by='76561198000000001', resolved_at=1800000100,
+                                            close_note=body.get('close_note'), resolved_in=body.get('resolved_in'))
                         else:
                             note = {**body, 'id': 'feedback/' + str(1800000000 + len(notes)) + '-' + 'a' * 32 + '.json',
                                     'created': 1800000000 + len(notes), 'author': 'test', 'resolved': False}
@@ -67,7 +70,7 @@ def main():
             assert page.get_by_role('tab', name='Inbox', exact=True).get_attribute('aria-selected') == 'true'
             assert page.get_by_role('tab', name='New note', exact=True).get_attribute('aria-selected') == 'false'
             page.get_by_role('tab', name='New note', exact=True).click()
-            page.get_by_role('button', name='Comment on the page', exact=True).click()
+            page.get_by_role('button', name='Whole page', exact=True).click()
             assert page.locator('#page-url').inner_text() == 'https://gamma.slay-my-stats.com/'
             page.get_by_label('What should change?').fill('Make this clearer')
             page.get_by_role('button', name='Send', exact=True).click()
@@ -87,13 +90,17 @@ def main():
             page.get_by_role('button', name='This page', exact=True).click()
             wait_summary(page, '1 note · 1 open · 1 place')
             page.get_by_role('button', name='Resolve', exact=True).click()
+            page.get_by_label('Close note').fill('Fixed in the tip')
+            page.get_by_label('Commit').fill('abc1234')
+            page.get_by_role('button', name='Mark resolved', exact=True).click()
+            page.get_by_text('Fixed in the tip · commit abc1234').wait_for()
             page.get_by_role('button', name='Reopen', exact=True).click()
             page.get_by_role('button', name='Resolve', exact=True).wait_for()
             page.get_by_role('tab', name='New note', exact=True).click()
-            page.get_by_role('button', name='Pin to an element or region', exact=True).click()
+            page.get_by_role('button', name='Pick on page', exact=True).click()
             heading = page.locator('h1:visible, h2:visible').first
             heading.click()
-            page.get_by_text('Element:', exact=False).first.wait_for()
+            page.get_by_text('Pinned:', exact=False).first.wait_for()
             page.get_by_label('What should change?').fill('Pinned comment')
             page.get_by_role('button', name='Send', exact=True).click()
             page.get_by_text('1 earlier note here', exact=False).wait_for()
@@ -109,12 +116,12 @@ def main():
             assert bounds['x'] + bounds['width'] <= page.evaluate('innerWidth')
             assert bounds['y'] + bounds['height'] <= page.evaluate('innerHeight')
             page.get_by_role('tab', name='New note', exact=True).click()
-            page.get_by_role('button', name='Pin to an element or region', exact=True).click()
+            page.get_by_role('button', name='Pick on page', exact=True).click()
             page.mouse.move(80, 320)
             page.mouse.down()
             page.mouse.move(300, 410, steps=5)
             page.mouse.up()
-            page.get_by_text('Region:', exact=False).first.wait_for()
+            page.get_by_text('Pinned:', exact=False).first.wait_for()
             bounds = panel.bounding_box()
             assert bounds['x'] >= 0 and bounds['y'] >= 0
             assert bounds['x'] + bounds['width'] <= page.evaluate('innerWidth')

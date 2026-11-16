@@ -13,6 +13,28 @@ from http.cookies import CookieError, SimpleCookie
 PAGE_SIZE = 25
 SCAN_LIMIT = 400  # objects read in one request; a page-scoped view may skip most
 CURSOR = re.compile(r"feedback/\d{10}-[a-f0-9]{32}\.json")
+COMMIT = re.compile(r"[0-9a-f]{7,40}")
+RESOLUTION = ("resolved_by", "resolved_at", "close_note", "resolved_in")
+
+
+def _resolve(note, steam, resolved, close_note, commit):
+    """Resolve or reopen a note in place, keeping who did it, when, why and in which commit.
+
+    Reopening moves the resolution into the note's history rather than erasing it, so a note
+    that was closed, reopened and closed again still shows every step. Resolving a note that is
+    already resolved changes nothing, so a second click cannot overwrite the first resolution.
+    """
+    now = int(time.time())
+    if resolved:
+        if note.get("resolved"):
+            return
+        note.update(resolved=True, resolved_by=steam, resolved_at=now,
+                    close_note=close_note, resolved_in=commit)
+    elif note.get("resolved"):
+        entry = {k: note.pop(k, None) for k in RESOLUTION}
+        entry.update(reopened_by=steam, reopened_at=now)
+        note.setdefault("history", []).append(entry)
+        note["resolved"] = False
 
 
 def _valid_path(path) -> bool:
@@ -96,7 +118,10 @@ def handle(event):
             if not re.fullmatch(r"feedback/\d{10}-[a-f0-9]{32}\.json", key):
                 raise ValueError()
             note = json.loads(store.get_object(Bucket=bucket, Key=key)["Body"].read())
-            note["resolved"] = bool(data.get("resolved"))
+            close_note, commit = data.get("close_note", ""), str(data.get("resolved_in", "")).strip().lower()
+            if not isinstance(close_note, str) or len(close_note.strip()) > 2000 or (commit and not COMMIT.fullmatch(commit)):
+                raise ValueError()
+            _resolve(note, steam, bool(data.get("resolved")), close_note.strip(), commit)
         elif action == "create":
             comment = data.get("comment", "")
             path = data.get("path", "")
@@ -120,3 +145,51 @@ def handle(event):
         return reply(400, {"message": "Invalid feedback. Use a comment of 1–4000 characters."})
     store.put_object(Bucket=bucket, Key=key, Body=json.dumps(note).encode(), ContentType="application/json")
     return reply(200, {"note": note})
+
+
+def _all_notes(store, bucket):
+    """Every note, for the digests. Gamma's inbox is small, so this reads them all."""
+    notes, token = [], None
+    while True:
+        args = {"Bucket": bucket, "Prefix": "feedback/"}
+        if token:
+            args["ContinuationToken"] = token
+        listing = store.list_objects_v2(**args)
+        for obj in listing.get("Contents", []):
+            notes.append(json.loads(store.get_object(Bucket=bucket, Key=obj["Key"])["Body"].read()))
+        if not listing.get("IsTruncated"):
+            return notes
+        token = listing.get("NextContinuationToken")
+
+
+def _line(note, origin):
+    text = " ".join(note.get("comment", "").split())
+    text = text if len(text) <= 100 else text[:99] + "…"
+    return f"…{str(note.get('author', '?'))[-4:]}: {text}\n  {note.get('url') or origin + note.get('path', '')}"
+
+
+def build_report(notes, now, period, origin):
+    """The owner's feedback email, or None when there is nothing worth sending.
+
+    "daily" lists what came in over the last day and sends nothing on a quiet day. "weekly"
+    always sends: how many notes are open, how many came in and how many were resolved over
+    the week, and the open ones. Notes resolved before resolutions were timestamped have no
+    date, so they are not counted as resolved this week.
+    """
+    window = 86400 if period == "daily" else 7 * 86400
+    since = now - window
+    opened = [n for n in notes if not n.get("resolved")]
+    new = sorted((n for n in notes if n.get("created", 0) >= since), key=lambda n: n["created"])
+    closed = [n for n in notes if n.get("resolved") and n.get("resolved_at", 0) >= since]
+    if period == "daily":
+        if not new:
+            return None
+        head = f"New feedback in the last day: {len(new)}. Open in total: {len(opened)}.\n\n"
+        return (f"Gamma feedback: {len(new)} new, {len(opened)} open",
+                head + "\n".join(_line(n, origin) for n in new))
+    body = (f"Open in total: {len(opened)}\nCame in this week: {len(new)}\n"
+            f"Resolved this week: {len(closed)}\n")
+    if opened:
+        oldest_first = sorted(opened, key=lambda n: n.get("created", 0))
+        body += "\nStill open:\n" + "\n".join(_line(n, origin) for n in oldest_first)
+    return f"Gamma feedback, this week: {len(opened)} open, {len(new)} in, {len(closed)} resolved", body

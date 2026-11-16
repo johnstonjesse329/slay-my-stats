@@ -15,7 +15,13 @@
     #launcher:hover{background:linear-gradient(#f9e7ba,#e8cf7c)}
     #launcher-count{min-width:20px;padding:1px 6px;border-radius:999px;background:#191c20;color:#f4dda6;font-size:12px;font-weight:700;text-align:center}
     #launcher:focus-visible,button:focus-visible{outline:3px solid #f6c66d;outline-offset:2px}
-    #panel{order:1;background:#191c20;border:1px solid #82735b;border-radius:12px;padding:16px;width:420px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 100px);overflow:auto;box-shadow:0 8px 40px #0009}
+    #panel{order:1;background:#191c20;border:1px solid #82735b;border-radius:12px;padding:16px;width:420px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 100px);min-width:300px;min-height:180px;overflow:auto;resize:both;box-shadow:0 8px 40px #0009}
+    #panel.placed{position:fixed;max-height:calc(100dvh - 16px)}
+    header{cursor:grab;touch-action:none;user-select:none}header.dragging{cursor:grabbing}header button{cursor:pointer}
+    h2{display:flex;align-items:center;gap:10px}
+    h2::before{content:'';width:10px;height:16px;flex:none;opacity:.7;background:radial-gradient(circle,#edc782 1.3px,transparent 1.6px) 0 0/5px 5.5px}
+    header:hover h2::before{opacity:1}
+    #panel::-webkit-resizer{background:linear-gradient(135deg,transparent 52%,#edc782 52% 60%,transparent 60% 72%,#edc782 72% 80%,transparent 80%);border-bottom-right-radius:10px}
     h2{font-size:18px;margin:0;letter-spacing:.01em}
     header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
     #close{display:flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border-radius:50%;font-size:18px;line-height:1;color:#e0d0f8}
@@ -29,7 +35,9 @@
     #pick{flex:1;background:#514635;border-color:#edc782;font-weight:600}
     #page{background:none;border:0;color:#bcb8b0;text-decoration:underline;padding:4px 2px}
     #page:hover{background:none;color:#f4f0e7}
-    #target{margin:0 0 8px;font-weight:700;font-size:15px}
+    #target-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 8px}
+    #target{margin:0;font-weight:700;font-size:15px;min-width:0;overflow-wrap:anywhere}
+    #clear{flex:none;padding:3px 10px;font-size:12px;border-radius:999px}
     #prior{margin:0 0 12px;padding:10px 12px;border:1px solid #635948;border-radius:8px;background:#101316}
     #prior b{display:block;margin-bottom:6px}#prior ul{margin:0;padding-left:16px;max-height:140px;overflow:auto}
     #prior li{margin:4px 0}#prior .resolved{color:#8f8a80;text-decoration:line-through}
@@ -61,6 +69,10 @@
     .note-actions{display:flex;gap:10px;align-items:center}
     .note-actions button{background:none;border:0;padding:0;color:#edc782;text-decoration:underline;font-size:12px}
     .note-actions button:hover{background:none;color:#f4f0e7}
+    .note-resolution,.note-history{margin:4px 0 0;font-size:12px;color:#bcb8b0;overflow-wrap:anywhere}.note-history{color:#8f8a80}
+    .close-form{display:grid;gap:6px;margin:8px 0 0}.close-form textarea{min-height:56px}
+    .close-form input{background:#101316;color:#fff;border:1px solid #82735b;padding:7px 9px;border-radius:6px;font:inherit}
+    .close-form div{display:flex;gap:8px}
     #load-more{width:100%;margin:4px 0 0;background:#101316}
     #inbox-foot{display:flex;justify-content:space-between;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid #2a2740}
     #inbox-foot button{background:none;border:0;padding:0;color:#edc782;text-decoration:underline;font-size:12px}
@@ -69,14 +81,14 @@
     #hint{background:#191c20;padding:12px;max-width:320px;border:1px solid #edc782;border-radius:8px;order:0}
     @media(max-height:520px){:host{bottom:8px;right:8px}#panel{max-height:calc(100dvh - 78px);width:460px}textarea{min-height:64px}#launcher{padding:9px 14px;font-size:14px}}
   </style>
-  <div id="hint" hidden>Choose an element on the page. For a region, drag across it. Press Escape to cancel. <button id="cancel" type="button">Cancel</button></div>
+  <div id="hint" hidden>Click near what you mean, or drag across it. Press Escape to cancel. <button id="cancel" type="button">Cancel</button></div>
   <section id="panel" role="dialog" aria-label="Feedback" hidden>
     <header><h2>Feedback</h2><button id="close" type="button" aria-label="Close feedback" title="Close">✕</button></header>
-    <div id="tabs" role="tablist"><button id="tab-compose" type="button" role="tab" aria-selected="false" aria-controls="view-compose">New note</button><button id="tab-inbox" type="button" role="tab" aria-selected="true" aria-controls="view-inbox">Inbox</button></div>
+    <div id="tabs" role="tablist"><button id="tab-inbox" type="button" role="tab" aria-selected="true" aria-controls="view-inbox">Inbox</button><button id="tab-compose" type="button" role="tab" aria-selected="false" aria-controls="view-compose">New note</button></div>
     <div id="view-compose" role="tabpanel" hidden>
       <small id="page-url"></small>
-      <div id="modes"><button id="pick" type="button">Pin to an element or region</button><button id="page" type="button">Comment on the page</button></div>
-      <p id="target">This page</p>
+      <div id="modes"><button id="pick" type="button">Pick on page</button><button id="page" type="button">Whole page</button></div>
+      <div id="target-row"><p id="target">Whole page</p><button id="clear" type="button" hidden>Clear</button></div>
       <div id="prior" hidden></div>
       <label for="comment">What should change?</label>
       <textarea id="comment" maxlength="4000" placeholder="Describe the issue or suggestion…"></textarea>
@@ -109,17 +121,58 @@
     $('tab-inbox').setAttribute('aria-selected', String(which === 'inbox'));
     if (which === 'compose') { $('page-url').textContent = pageUrl(); renderPrior(); }
     else load(true);
+    keepOnScreen();
   }
   function openPanel() {
     if ($('panel').hidden) previousFocus = document.activeElement;
     $('panel').hidden = false;
+    placePanel();
     showView(view);
     $('close').focus();
   }
+  // The panel starts bottom-right above the launcher, then is pinned to the viewport so it can be
+  // dragged by its header and resized from its corner; it keeps its place between openings.
+  function placePanel() {
+    const panel = $('panel');
+    if (!panel.classList.contains('placed')) {
+      const r = panel.getBoundingClientRect();
+      Object.assign(panel.style, {left: r.left + 'px', top: r.top + 'px', width: r.width + 'px'});
+      panel.classList.add('placed');
+    }
+    keepOnScreen();
+  }
+  function keepOnScreen() {
+    const panel = $('panel');
+    if (panel.hidden || !panel.classList.contains('placed')) return;
+    const r = panel.getBoundingClientRect();
+    panel.style.left = Math.max(8, Math.min(r.left, innerWidth - r.width - 8)) + 'px';
+    panel.style.top = Math.max(8, Math.min(r.top, innerHeight - r.height - 8)) + 'px';
+  }
+  addEventListener('resize', keepOnScreen);
+  // A view that fills in later (the inbox loads its notes) makes the panel taller; keep its bottom in view.
+  new ResizeObserver(keepOnScreen).observe($('panel'));
+  $('panel').querySelector('header').addEventListener('pointerdown', e => {
+    if (e.button || e.target.closest('button')) return;
+    const head = e.currentTarget, panel = $('panel'), r = panel.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    const move = ev => {
+      panel.style.left = Math.max(8 - r.width + 80, Math.min(ev.clientX - dx, innerWidth - 80)) + 'px';
+      panel.style.top = Math.max(0, Math.min(ev.clientY - dy, innerHeight - 40)) + 'px';
+    };
+    head.classList.add('dragging');
+    const done = () => { head.classList.remove('dragging'); removeEventListener('pointermove', move); removeEventListener('pointerup', done); removeEventListener('pointercancel', done); };
+    addEventListener('pointermove', move); addEventListener('pointerup', done); addEventListener('pointercancel', done);
+    e.preventDefault();
+  });
   function closePanel() { $('panel').hidden = true; previousFocus?.focus(); }
   function pageUrl() { const url=new URL(location.href); url.searchParams.delete('feedback'); return url.href; }
   function currentPath() { const url=new URL(pageUrl()); return url.pathname+url.search+url.hash; }
   function composer() { say(''); showView('compose'); }
+  // Clear shows whenever there is something to take back: a pinned element or region, or text typed.
+  function syncClear() { $('clear').hidden = target.kind === 'page' && !$('comment').value; }
+  function resetNote() {
+    target = {kind: 'page', viewport: {width: innerWidth, height: innerHeight}};
+    $('target').textContent = 'Whole page'; $('comment').value = ''; say(''); syncClear(); $('comment').focus();
+  }
   // Notes already recorded for the same page and the same pick, so a reviewer
   // sees the history where they are about to write instead of repeating it.
   function sameTarget(note) {
@@ -170,7 +223,7 @@
     target={kind:area.width>12 || area.height>12?'region':'element',selector:selector(el),text:(el.innerText || el.getAttribute('aria-label') || '').slice(0,1000),
       viewport:{width:innerWidth,height:innerHeight,scale:devicePixelRatio},scroll:{x:scrollX,y:scrollY},
       rect:area.width>12 || area.height>12?area:Object.fromEntries(['x','y','width','height'].map(k=>[k,el.getBoundingClientRect()[k]]))};
-    stop();composer();$('target').textContent=`${target.kind==='region'?'Region':'Element'}: ${target.text.slice(0,100) || el.localName}`; $('comment').focus();
+    stop();composer();$('target').textContent=`Pinned: ${target.text.slice(0,100) || el.localName}`; syncClear(); $('comment').focus();
   },true);
   // Consume the synthetic click following selection, including links and buttons.
   let suppressClick=false;
@@ -227,17 +280,45 @@
     meta.className='note-meta';meta.append(pill,time,who,place);
     url.className='note-url';url.textContent=note.url || ORIGIN + note.path;
     resolve.textContent=note.resolved?'Reopen':'Resolve';
-    resolve.onclick=async()=>{
-      resolve.disabled=true;
+    const send=async(fields,button)=>{
+      button.disabled=true;
       try {
-        const {note:updated}=await api({action:'resolve',id:note.id,resolved:!note.resolved});
+        const {note:updated}=await api({action:'resolve',id:note.id,...fields});
         const swap=list=>list.map(item=>item.id===updated.id?updated:item);
         notes=swap(notes);pageCache=swap(pageCache);
         renderInbox();renderPrior();updateCount();
-      } catch(e){ say(e.message,'inbox'); resolve.disabled=false; }
+      } catch(e){ say(e.message,'inbox'); button.disabled=false; }
+    };
+    // Resolving asks for an optional close note and commit; reopening is one click, and the
+    // resolution it undoes stays in the note's history.
+    resolve.onclick=()=>{
+      if(note.resolved) return send({resolved:false},resolve);
+      const form=document.createElement('div'),text=document.createElement('textarea'),commit=document.createElement('input'),
+        row=document.createElement('div'),done=document.createElement('button'),cancel=document.createElement('button');
+      form.className='close-form';
+      text.maxLength=2000;text.placeholder='Close note (optional)';text.setAttribute('aria-label','Close note');
+      commit.maxLength=40;commit.placeholder='Commit (optional)';commit.setAttribute('aria-label','Commit');
+      done.type=cancel.type='button';done.textContent='Mark resolved';cancel.textContent='Cancel';
+      done.onclick=()=>send({resolved:true,close_note:text.value,resolved_in:commit.value},done);
+      cancel.onclick=()=>{form.remove();resolve.hidden=false;};
+      row.append(done,cancel);form.append(text,commit,row);
+      resolve.hidden=true;actions.after(form);text.focus();
     };
     actions.className='note-actions';actions.append(resolve);
-    article.append(comment,meta,url,actions);
+    article.append(comment,meta,url);
+    if(note.resolved){
+      const line=document.createElement('p');line.className='note-resolution';
+      line.textContent=['Resolved'+(note.resolved_by?' by …'+author(note.resolved_by):'')+(note.resolved_at?' · '+when(note.resolved_at):''),
+        note.close_note,note.resolved_in&&'commit '+note.resolved_in].filter(Boolean).join(' · ');
+      article.append(line);
+    }
+    for(const old of note.history||[]){
+      const line=document.createElement('p');line.className='note-history';
+      line.textContent='Earlier: resolved'+(old.resolved_at?' '+when(old.resolved_at):'')+(old.close_note?' ("'+old.close_note+'")':'')+
+        (old.reopened_at?', reopened '+when(old.reopened_at):'');
+      article.append(line);
+    }
+    article.append(actions);
     return article;
   }
   const collapsed=new Set();
@@ -283,7 +364,9 @@
   $('tab-compose').onclick=()=>showView('compose');
   $('tab-inbox').onclick=()=>showView('inbox');
   $('pick').onclick=()=>{picking=true;oldTouchAction=document.documentElement.style.touchAction;document.documentElement.style.touchAction='none';$('panel').hidden=true;$('launcher').hidden=true;$('hint').hidden=false;};
-  $('page').onclick=()=>{target={kind:'page',viewport:{width:innerWidth,height:innerHeight}};composer();$('target').textContent='This page';$('comment').focus();};
+  $('page').onclick=()=>{target={kind:'page',viewport:{width:innerWidth,height:innerHeight}};composer();$('target').textContent='Whole page';syncClear();$('comment').focus();};
+  $('clear').onclick=resetNote;
+  $('comment').addEventListener('input',syncClear);
   $('refresh').onclick=()=>load(true);
   $('load-more').onclick=()=>load(false);
   $('scope-page').onclick=()=>{if(scope!=='page'){scope='page';load(true);}};
@@ -291,7 +374,7 @@
   $('save').onclick=async()=>{
     if(!$('comment').value.trim()){say('Add a comment first.');$('comment').focus();return;}
     $('save').disabled=true;
-    try{const url=new URL(pageUrl());await api({comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';say('Sent. Everyone on gamma can see it.');await refreshPageNotes();renderPrior();}
+    try{const url=new URL(pageUrl());await api({comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';syncClear();say('Sent. Everyone on gamma can see it.');await refreshPageNotes();renderPrior();}
     catch(e){say(e.message);}finally{$('save').disabled=false;}
   };
   $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(notes.filter(n=>!n.resolved).map(report).join('\n\n---\n\n'));say('Copied. Paste them into your conversation.','inbox');}catch{say('Clipboard unavailable. Select and copy below.','inbox');const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=notes.filter(n=>!n.resolved).map(report).join('\n\n');$('notes').replaceChildren(pre);}};
@@ -302,7 +385,7 @@
     showView('compose');
     api(null,{scope:'site'}).then(data=>{
       const note=data.notes.find(n=>n.id===requested);if(!note){say('This note is outside the latest notes.');return;}
-      $('comment').value=note.comment;$('target').textContent=`Reviewing ${note.target.kind}: ${note.target.text || note.path}`;
+      $('comment').value=note.comment;$('target').textContent=`Reviewing: ${note.target.text || note.path}`;syncClear();
       let attempts=0;
       const timer=setInterval(()=>{
         let el;try{el=note.target.selector && document.querySelector(note.target.selector);}catch{}

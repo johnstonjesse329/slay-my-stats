@@ -16,6 +16,8 @@ import feedback
 
 
 class FeedbackTest(unittest.TestCase):
+    steam = '76561198000000001'
+
     def setUp(self):
         self.env = patch.dict(os.environ, {'GAMMA_SESSION_SECRET': 'test-secret',
             'ALLOWED_STEAM_IDS': '76561198000000001', 'GAMMA_ORIGIN': 'https://gamma.test', 'DATA_BUCKET': 'test'})
@@ -105,6 +107,59 @@ class FeedbackTest(unittest.TestCase):
         self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps({'id': key}).encode())}
         result = feedback.handle(self.event({'action': 'resolve', 'id': key, 'resolved': True}))
         self.assertTrue(json.loads(result['body'])['note']['resolved'])
+
+    def resolve(self, key, stored, **fields):
+        self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps(stored).encode())}
+        result = feedback.handle(self.event({'action': 'resolve', 'id': key, **fields}))
+        return result['statusCode'], json.loads(result['body']).get('note')
+
+    def test_resolution_is_recorded(self):
+        key = 'feedback/1234567890-' + 'a'*32 + '.json'
+        status, note = self.resolve(key, {'id': key}, resolved=True, close_note=' Fixed the tip. ', resolved_in='ABC1234')
+        self.assertEqual(status, 200)
+        self.assertEqual((note['resolved_by'], note['close_note'], note['resolved_in']), (self.steam, 'Fixed the tip.', 'abc1234'))
+        self.assertIsInstance(note['resolved_at'], int)
+
+    def test_reopen_keeps_the_resolution_in_history(self):
+        key = 'feedback/1234567890-' + 'a'*32 + '.json'
+        _, closed = self.resolve(key, {'id': key}, resolved=True, close_note='done', resolved_in='abc1234')
+        _, reopened = self.resolve(key, closed, resolved=False)
+        self.assertFalse(reopened['resolved'])
+        self.assertNotIn('close_note', reopened)
+        self.assertEqual(len(reopened['history']), 1)
+        self.assertEqual(reopened['history'][0]['close_note'], 'done')
+        self.assertEqual(reopened['history'][0]['reopened_by'], self.steam)
+        _, again = self.resolve(key, reopened, resolved=True, close_note='really done')
+        _, again = self.resolve(key, again, resolved=False)
+        self.assertEqual([h['close_note'] for h in again['history']], ['done', 'really done'])
+
+    def test_second_resolve_does_not_overwrite_the_first(self):
+        key = 'feedback/1234567890-' + 'a'*32 + '.json'
+        _, closed = self.resolve(key, {'id': key}, resolved=True, close_note='first')
+        _, twice = self.resolve(key, closed, resolved=True, close_note='second')
+        self.assertEqual(twice['close_note'], 'first')
+
+    def test_bad_resolution_fields_are_refused(self):
+        key = 'feedback/1234567890-' + 'a'*32 + '.json'
+        for fields in ({'resolved_in': 'not a commit'}, {'close_note': 'x' * 2001}, {'close_note': 5}):
+            self.assertEqual(self.resolve(key, {'id': key}, resolved=True, **fields)[0], 400)
+
+    def test_feedback_emails(self):
+        now, day = 1_800_000_000, 86400
+        def note(created, **extra):
+            return {'created': created, 'author': '76561198000000001', 'comment': 'c', 'path': '/p', 'resolved': False, **extra}
+        notes = [note(now - 100), note(now - 3 * day), note(now - 20 * day),
+                 note(now - 10 * day, resolved=True, resolved_at=now - 2 * day),
+                 note(now - 10 * day, resolved=True, resolved_at=now - 9 * day)]
+        subject, body = feedback.build_report(notes, now, 'daily', 'https://gamma.test')
+        self.assertEqual(subject, 'Gamma feedback: 1 new, 3 open')
+        self.assertIn('https://gamma.test/p', body)
+        self.assertIsNone(feedback.build_report(notes[2:], now, 'daily', 'https://gamma.test'))
+        subject, body = feedback.build_report(notes, now, 'weekly', 'https://gamma.test')
+        self.assertEqual(subject, 'Gamma feedback, this week: 3 open, 2 in, 1 resolved')
+        self.assertIn('Still open:', body)
+        self.assertEqual(feedback.build_report([], now, 'weekly', 'https://gamma.test')[0],
+                         'Gamma feedback, this week: 0 open, 0 in, 0 resolved')
 
 
 if __name__ == '__main__':
