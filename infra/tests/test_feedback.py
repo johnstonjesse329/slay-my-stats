@@ -27,6 +27,9 @@ class FeedbackTest(unittest.TestCase):
         self.client = patch('boto3.client', return_value=self.store)
         self.client.start()
         self.addCleanup(self.client.stop)
+        names = patch.object(feedback, '_steam_name', return_value=None)
+        names.start()
+        self.addCleanup(names.stop)
 
     def event(self, body=None, expiry=None, query=''):
         payload = f'76561198000000001.{expiry or int(time.time())+1000}'
@@ -54,6 +57,14 @@ class FeedbackTest(unittest.TestCase):
         self.store.list_objects_v2.return_value = {'Contents': [{'Key': note['id']}]}
         self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps(note).encode())}
         self.assertEqual(json.loads(feedback.handle(self.event())['body'])['notes'], [note])
+
+    def test_notes_carry_steam_names_not_stored(self):
+        with patch.object(feedback, '_steam_name', return_value='Jess'):
+            response = feedback.handle(self.event({'comment': 'Hi', 'path': '/', 'url': 'https://gamma.test/', 'target': {}}))
+        note = json.loads(response['body'])['note']
+        self.assertEqual(note['author_name'], 'Jess')
+        stored = json.loads(self.store.put_object.call_args.kwargs['Body'])
+        self.assertNotIn('author_name', stored)
 
     def test_category_is_kept_and_checked(self):
         body = {'comment': 'x', 'path': '/'}

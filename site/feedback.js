@@ -110,7 +110,7 @@
       <div id="notes"></div>
       <button id="load-more" type="button" hidden>Load the next 25</button>
       <p id="inbox-status" role="status"></p>
-      <div id="inbox-foot"><button id="copy" type="button">Copy open notes</button><button id="refresh" type="button">Refresh</button></div>
+      <div id="inbox-foot"><button id="copy" type="button">Copy all notes</button><button id="refresh" type="button">Refresh</button></div>
     </div>
   </section>
   <button id="launcher" type="button"><span aria-hidden="true">✎</span> Feedback<span id="launcher-count" aria-hidden="true" hidden></span></button>`;
@@ -282,7 +282,7 @@
   }
   const when = ts => new Date(ts*1000).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
   const matchesFilter = note => (status==='all'||!!note.resolved===(status==='resolved'))&&(!filterKind||note.category===filterKind);
-  const author = id => String(id).slice(-4);
+  const author = (note, field = 'author') => note[field + '_name'] || '…' + String(note[field]).slice(-4);
   const OUTCOMES = {done:'Done',declined:'Declined',duplicate:'Duplicate'};
   function noteArticle(note) {
     const article=document.createElement('article'),comment=document.createElement('p'),meta=document.createElement('p'),
@@ -292,7 +292,7 @@
     comment.className='note-comment';comment.textContent=note.comment;
     pill.className='pill '+(note.resolved?'resolved':'open');pill.textContent=note.resolved?(OUTCOMES[note.outcome]||'Resolved'):'Open';
     time.textContent=when(note.created);
-    who.textContent='…'+author(note.author);who.title='Steam ID '+note.author;
+    who.textContent=author(note);
     const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
     place.href=openUrl.href;place.textContent='Open location';
     meta.className='note-meta';
@@ -333,11 +333,14 @@
       row.append(done,cancel);form.append(outcome,text,commit,twin,row);
       resolve.hidden=true;actions.after(form);text.focus();
     };
-    actions.className='note-actions';actions.append(resolve);
+    const copyOne=document.createElement('button');copyOne.type='button';copyOne.textContent='Copy';
+    copyOne.title='Copy just this note';
+    copyOne.onclick=()=>copyText(report(note),'Copied this note.');
+    actions.className='note-actions';actions.append(resolve,copyOne);
     article.append(comment,meta,url);
     if(note.resolved){
       const line=document.createElement('p');line.className='note-resolution';
-      line.textContent=[(OUTCOMES[note.outcome]||'Resolved')+(note.resolved_by?' by …'+author(note.resolved_by):'')+(note.resolved_at?' · '+when(note.resolved_at):''),
+      line.textContent=[(OUTCOMES[note.outcome]||'Resolved')+(note.resolved_by?' by '+author(note,'resolved_by'):'')+(note.resolved_at?' · '+when(note.resolved_at):''),
         note.close_note,note.resolved_in&&'commit '+note.resolved_in,note.duplicate_of&&'duplicate of '+note.duplicate_of].filter(Boolean).join(' · ');
       article.append(line);
     }
@@ -374,6 +377,8 @@
     $('scope-page').setAttribute('aria-pressed',String(scope==='page'));
     $('scope-site').setAttribute('aria-pressed',String(scope==='site'));
     $('load-more').hidden=!nextCursor;
+    $('copy').textContent=notes.length?`Copy all ${notes.length} note${notes.length===1?'':'s'}${nextCursor?' loaded':''}`:'Copy all notes';
+    $('copy').disabled=!notes.length;
     say(groups.length?'':(status==='all'&&!filterKind?(scope==='page'?'No notes on this page yet.':'No notes yet.'):'No notes match.'),'inbox');
   }
   // pageCache feeds the launcher badge and the composer's earlier notes; the
@@ -412,7 +417,13 @@
     try{const url=new URL(pageUrl());await api({category:kind,comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';setKind('');syncClear();say('Sent. Everyone on gamma can see it.');await refreshPageNotes();renderPrior();}
     catch(e){say(e.message);}finally{$('save').disabled=false;}
   };
-  $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(notes.filter(n=>!n.resolved).map(report).join('\n\n---\n\n'));say('Copied. Paste them into your conversation.','inbox');}catch{say('Clipboard unavailable. Select and copy below.','inbox');const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=notes.filter(n=>!n.resolved).map(report).join('\n\n');$('notes').replaceChildren(pre);}};
+  // Clipboard with a visible fallback: the text is shown in the list to select by hand.
+  async function copyText(text,done) {
+    try{await navigator.clipboard.writeText(text);say(done,'inbox');}
+    catch{say('Clipboard unavailable. Select and copy below.','inbox');const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=text;$('notes').replaceChildren(pre);}
+  }
+  // Every note in the list, resolved or not, in a collapsed group or not.
+  $('copy').onclick=()=>copyText(notes.map(report).join('\n\n---\n\n'),`Copied all ${notes.length} note${notes.length===1?'':'s'}${nextCursor?' loaded so far (Load more for the rest)':''}.`);
   const requested=new URLSearchParams(location.search).get('feedback');
   if(requested) {
     openPanel();
@@ -420,12 +431,13 @@
     showView('compose');
     api(null,{scope:'site'}).then(data=>{
       const note=data.notes.find(n=>n.id===requested);if(!note){say('This note is outside the latest notes.');return;}
-      setKind(note.category||'');$('comment').value=note.comment;$('target').textContent=`Reviewing: ${note.target.text || note.path}`;syncClear();
+      // The note already exists: show where it points, and leave the entry empty so it can't be sent twice.
+      $('target').textContent=`Reviewing: ${note.target.text || note.path}`;syncClear();
       let attempts=0;
       const timer=setInterval(()=>{
         let el;try{el=note.target.selector && document.querySelector(note.target.selector);}catch{}
         if(el){clearInterval(timer);if(note.target.kind==='region' && note.target.scroll && note.target.rect){window.scrollTo(note.target.scroll.x,note.target.scroll.y);rect(note.target.rect);}else{el.scrollIntoView({block:'center'});rect(el.getBoundingClientRect());}setTimeout(()=>mark.style.display='none',6000);}
-        else if(++attempts>=30){clearInterval(timer);say('Original element unavailable. Use the saved text and viewport in Copy open notes.');}
+        else if(++attempts>=30){clearInterval(timer);say('Original element unavailable. Use the saved text and viewport in Copy.');}
       },300);
     }).catch(e=>say(e.message));
   } else {
