@@ -749,7 +749,9 @@ The Runs page's Keeping Up charts need one more file, made after the refresh:
 `tools/power_curve/gamma_raw/`. Without it the charts are hidden. Their energy and cards chart also needs
 `python tools/power_curve/export_measured.py` (writes `measured_runs.json`) for logs on this machine. Runs uploaded
 through the site carry the same numbers as `measured`, worked out when they were uploaded. It shows only on runs
-with an event log. The offline deck-strength tools need `python tools/extract_power_data.py`, then
+with an event log. The "Keeping up, fight by fight" chart uses the same `fight_demand.json` and needs nothing else:
+it reads each fight's damage taken and turns against the average win on that fight, and ticks the floors that
+changed the deck. The offline deck-strength tools need `python tools/extract_power_data.py`, then
 `python tools/power_curve/export_strength.py` (writes `deck_strength.json`); nothing on the site reads those.
 
 Text and images are not re-derived, though — that was measurably wrong. Earlier versions re-implemented the

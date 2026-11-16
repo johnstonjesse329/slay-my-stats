@@ -1716,6 +1716,10 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <p class="chart-caption">Enemy HP taken off each turn. The dotted line is the average win.</p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
+        <h3 class="strength-label">Keeping up, fight by fight</h3>
+        <p class="chart-caption">Each fight's damage taken and turns as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">A tick marks a floor that changed the deck.</span></p>
+        <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
+        <div class="floor-legend" id="detail-keep-share-legend"></div>
         <div id="detail-keep-deck">
           <h3 class="strength-label">Deck Composition by floor</h3>
           <p class="chart-caption">Cards in your deck after each floor, by type.</p>

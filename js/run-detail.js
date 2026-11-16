@@ -1397,6 +1397,44 @@ function makeWinRangePlugin(marks, { width = 0.12 } = {}) {
   };
 }
 
+// A floor's deck change as one tick under it: a card added in its type's colour, an upgrade in the
+// same colour left hollow, a card removed grey and pointing down, a relic off-white. It puts each
+// floor choice under the fights that followed it, so a run's slide can be read against what it had
+// just added, removed or upgraded -- not just Powers, and without claiming the next fight is the
+// choice's doing (deck order and the fight drawn both move it).
+const KEEP_TICK = 9;
+function choiceTick(s) {
+  const cards = s.cards || [];
+  const added = cards.find(([, , dir]) => dir > 0);
+  if (added) return { color: DECK_GROUPS.type.color[cardInfo(added[0])?.type] || DECK_GROUPS.type.color.Other };
+  const upgraded = cards.find(([, up, dir]) => up && !dir);
+  if (upgraded) return { color: DECK_GROUPS.type.color[cardInfo(upgraded[0])?.type] || DECK_GROUPS.type.color.Other, hollow: true };
+  if (cards.some(([, , dir]) => dir < 0)) return { color: "#9a9aae", dir: -1 };
+  if (s.relics.length) return { color: "#cfcbe0" };
+  return null;
+}
+function makeChoiceTickPlugin(ticks) {
+  return {
+    id: "choiceTicks",
+    beforeDatasetsDraw(chart) {
+      const { ctx, chartArea: { bottom }, scales: { x } } = chart;
+      ctx.save();
+      ticks.forEach((t, i) => {
+        if (!t || i < x.min || i > x.max) return;
+        const px = x.getPixelForValue(i), y = bottom - 2, up = t.dir !== -1;
+        ctx.beginPath();
+        ctx.moveTo(px, up ? y - KEEP_TICK : y);
+        ctx.lineTo(px - 4, up ? y : y - KEEP_TICK);
+        ctx.lineTo(px + 4, up ? y : y - KEEP_TICK);
+        ctx.closePath();
+        if (t.hollow) { ctx.lineWidth = 1.5; ctx.strokeStyle = t.color; ctx.stroke(); }
+        else { ctx.fillStyle = t.color; ctx.fill(); }
+      });
+      ctx.restore();
+    },
+  };
+}
+
 // The HP chart's hover box. Every floor: the HP left after it. A fight this player has won: first
 // what it cost this run beside what their wins lose, a lane each for HP lost and HP left to see
 // where this run falls, and a key to their marks; then the HP this run entered it with, beside the
@@ -2179,6 +2217,8 @@ const KEEP_LINES = {
 // Your run is the same solid gold line (YOUR_LINE) on the HP, damage done and damage taken charts.
 // In the tip's split bar the incoming damage is red, next to blocked in blue and healed in green.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
+// The share chart's turns line, dashed so the two measures never differ by colour alone.
+const KEEP_TURN_COLOR = "#54c6d4";
 // What arrived on a turn, split: blocked, healed off, and what got through (red). Each has an icon and a label as well, so colour is never the only cue.
 const KEEP_SPLIT = { blocked: "#5aa0e6", healed: "#5cba7d", through: "#e05252" };
 // How a reading is named on the page. The keys ("ahead", "meeting", "behind") are
@@ -2786,7 +2826,7 @@ function renderDetailKeepCharts(run) {
     cubicInterpolationMode: "monotone",
   });
   const ranges = keepRanges(run, nodes, rows);
-  const chart = (id, series, tipFor, marks, up) => {
+  const chart = (id, series, tipFor, marks, up, plugins = []) => {
     // Only the lines.
     // The ring, where the chart has any, is the HP chart's: the best quarter of the wins.
     const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 25% of wins", false) : "";
@@ -2803,7 +2843,7 @@ function renderDetailKeepCharts(run) {
       stretch(scale);
     };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
-      floorChartConfig(nodes, marks ? [makeWinRangePlugin(marks)] : [], tipFor, yAxis, series, actWindow(nodes))));
+      floorChartConfig(nodes, [...(marks ? [makeWinRangePlugin(marks)] : []), ...plugins], tipFor, yAxis, series, actWindow(nodes))));
   };
 
   // Cards in the deck after each floor: a line per type (the total is in the hover box, not drawn: it dwarfed the types), so what
@@ -2830,6 +2870,33 @@ function renderDetailKeepCharts(run) {
 
   chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0, "damage"), winners(r => r.ask)], damageTip, ranges.done);
   chart("in", [line(KEEP_LINES.taken, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken, true);
+
+  // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:
+  // turns (time) and damage taken (HP). Below 1 is ahead of the average win, so a slide is the
+  // run falling behind. The ticks under the floor mark the deck changes between fights, so the
+  // slide can be read against what the run had just added, removed or upgraded. The hover names
+  // the fight's shape (single or multi-enemy) and every change, so the choice sits beside its
+  // next fights without those fights being read as the choice's doing.
+  const ticks = changes ? changes.map((s, i) => i ? choiceTick(s) : null) : null;
+  document.getElementById("detail-keep-share-picks").style.display = ticks && ticks.some(Boolean) ? "" : "none";
+  const shareTip = tip(r => {
+    if (r.winTurns === undefined) return "";
+    const mult = v => `${v.toFixed(2)}×`;
+    return `<table><tr><th></th><th>This run</th><th>× avg win</th><th class="ft-win">Avg win</th></tr>` +
+      `<tr><td>${swatch(KEEP_LINES.taken.color)}Damage taken</td><td><b>${Math.round(r.total)}</b></td>` +
+      `<td>${mult((r.total + 1) / (r.winTotal + 1))}</td><td class="ft-win">${Math.round(r.winTotal)}</td></tr>` +
+      `<tr><td>${swatch(KEEP_TURN_COLOR)}Fight turns</td><td><b>${r.turns}</b></td>` +
+      `<td>${mult(r.turns / r.winTurns)}</td><td class="ft-win">${+r.winTurns.toFixed(1)}</td></tr></table>` +
+      (r.lost ? `<div class="ft-cap">The fight that ended the run.</div>` : "");
+  });
+  const average = { label: "Average win", data: nodes.map(() => 1), borderColor: "#b9b9c4",
+    pointHoverBackgroundColor: "#b9b9c4", borderWidth: 1.5, borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 0 };
+  chart("share", [
+    average,
+    line(KEEP_LINES.taken, r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1)),
+    line({ label: "Fight turns", color: KEEP_TURN_COLOR, dash: [6, 3] },
+      r => r.winTurns === undefined ? undefined : r.turns / r.winTurns),
+  ], shareTip, null, false, ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : []);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";

@@ -1866,3 +1866,26 @@ The box now runs HP by floor, Damage taken per turn, Damage done per turn, Deck 
 
 The hover box is the Keeping Up one (showFloorTip): a table of this run's HP entering and left with, each against the median and lowest tenth of their wins, a lane showing where the HP left falls (this run's marker is gold, since green reads as good and a fight's result isn't always), and the win rate on that fight at the run's tuning tier. Floors with no fight just show the HP left after.
 Damage done and Damage taken per turn draw the same ring-and-zone marks on elite and boss floors, in the same white: the ring is the median of the best tenth of the wins the average-win icon averages (fight_demand.py's `fast`, turns, and `light`, damage taken a turn), the zone runs from the ring to the icon. They come from winners everywhere, not the player's own runs, so they sit on the same population as the icon. Done reads the HP over the quickest wins' turns, so a fast boss kill stretches that chart's axis. No ring under 10 wins or when it would fall on the worse side of the icon. The hover boxes stay as they were: a lane there only said again what the table's bars say.
+
+## Run page: Keeping up, fight by fight (2026-11-15)
+
+The act cards grade a run's acts; between them the floors were only raw per-turn lines, which
+carry each encounter's own difficulty into the trend. The Keeping Up box now has a chart that
+puts every fight's two costs on one scale, as a multiple of the average win on that same fight
+(`fight_demand.py`): damage taken after healing, smoothed by 1 HP the way the act rating is,
+and fight turns. 1x is the average win and below it is ahead, so a run falling behind shows as
+both lines rising together. It is the act cards' own two measures, fight by fight. It includes
+the fight that ended the run, which the act cards leave out, so the last floor can show the
+drop; a logged death's damage taken follows the Damage taken per turn chart's rule.
+
+Ticks under a floor mark the deck change between fights: a card added in its type's colour
+(Attack, Skill, Power, Curse), an upgrade of the same colour left hollow, a removal grey and
+pointing down, a relic off-white. The hover names every change and says whether the fight had
+more than one enemy. This is descriptive, not causal: deck order, the encounter drawn next and
+multi-enemy fights all move a single floor, and a tick is not a claim that the next fight is the
+choice's doing. Establishing which choices tend to cost turns or HP needs the same windows
+aggregated across runs, held out by run, with those confounders stratified -- one run's chart
+cannot say it.
+
+Checked by `tools/test_keep_share_chart.py`, which recomputes both series from the run file and
+`fight_demand.json` and holds the page to them on desktop and both iPhone 16 layouts.
