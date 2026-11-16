@@ -3,7 +3,8 @@
 The chart plots damage taken and fight turns as a multiple of the average win on the same
 fight (tools/power_curve/fight_demand.py), and marks the floors that changed the deck. This
 test recomputes the two series in Python from the run's profile and fight_demand.json and
-holds the page to them, then checks the ticks, the legend, and the phone layout.
+holds the page to them, then checks the ticks, the stacked multi-enemy icons, the legend, and
+the phone layout.
 
 Run with infra/.venv/Scripts/python tools/test_keep_share_chart.py
 Needs tools/serve_site.py on 8000 (or SMS_SITE) and splitswigs' local profile.
@@ -49,6 +50,25 @@ def expected_series(run, demand):
     return out
 
 
+def expected_many(run, demand):
+    """Node indexes whose fight the chart should fan more than one icon for: fight_demand's
+    `count`, on a floor that has a fight (and so an icon)."""
+    return {i for i, n in enumerate(run["timeline"])
+            if n.get("turns") and ((demand.get(n.get("fight") or n.get("enc") or "") or {}).get("count") or 1) > 1}
+
+
+def stacked_floors(page):
+    return page.evaluate("""() => {
+      const c = detailKeepCharts.find(x => x.canvas.id === 'detail-keep-share-chart');
+      const ds = c.data.datasets.find(d => d.label === 'Damage taken');
+      const out = [];
+      ds.pointRadius.forEach((r, i) => {
+        if (r > 0 && ds.pointStyle && ds.pointStyle[i] instanceof HTMLImageElement && nodeEnemyCount(keepActNodes[i]) > 1) out.push(i);
+      });
+      return out;
+    }""")
+
+
 def series_from_page(page):
     return page.evaluate("""() => {
       const c = detailKeepCharts.find(x => x.canvas.id === 'detail-keep-share-chart');
@@ -83,8 +103,11 @@ def main():
         print("skipped: needs splitswigs' local profile and fight_demand.json")
         return
     demand = json.loads(DEMAND.read_text(encoding="utf-8"))["encounters"]
-    want = expected_series(load_run(), demand)
+    run = load_run()
+    want = expected_series(run, demand)
+    want_many = expected_many(run, demand)
     assert len(want) >= 10, f"only {len(want)} fights to check"
+    assert len(want_many) >= 3, f"only {len(want_many)} multi-enemy fights to check"
 
     with sync_playwright() as p:
         for name, engine, device in [
@@ -105,6 +128,7 @@ def main():
             got = series_from_page(page)
             assert got, "the share chart did not render"
             assert "choiceTicks" in got["plugins"], got["plugins"]
+            assert "manyIcons" in got["plugins"], got["plugins"]
             assert got["yMin"] == 0, got["yMin"]
             labels = [d["label"] for d in got["datasets"]]
             assert labels == ["Average win", "Damage taken", "Fight turns"], labels
@@ -125,6 +149,19 @@ def main():
             assert counts["removed"]["dir"] == -1 and counts["removed"]["color"] == "#9a9aae", counts
             assert counts["upgraded"]["hollow"] and counts["upgraded"]["color"] == "#40a35c", counts
             assert counts["relic"]["color"] == "#cfcbe0", counts
+
+            stacked = stacked_floors(page)
+            assert sorted(stacked) == sorted(want_many), (stacked, sorted(want_many))
+
+            hp = page.evaluate("""() => ({
+              plugins: detailHpChart.config.plugins.map(p => p.id),
+              stacked: (() => {
+                const ds = detailHpChart.data.datasets[0];
+                return ds.pointRadius.map((r, i) => (r > 0 && ds.pointStyle[i] instanceof HTMLImageElement && nodeEnemyCount(keepActNodes[i]) > 1 ? i : null)).filter(v => v !== null);
+              })(),
+            })""")
+            assert "manyIcons" in hp["plugins"], hp["plugins"]
+            assert sorted(hp["stacked"]) == sorted(want_many), (hp["stacked"], sorted(want_many))
 
             assert page.evaluate("document.documentElement.scrollWidth - window.innerWidth <= 20")
             if device.get("has_touch"):

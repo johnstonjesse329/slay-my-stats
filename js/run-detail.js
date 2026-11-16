@@ -2042,20 +2042,30 @@ function markHeadroom(marks, totals, step) {
   };
 }
 
-// More than one enemy in the fight: fight_demand.py's `many`. It only knows "many", not how
-// many, so a chart can show a second icon but never an invented count. Bosses get it too when
-// their data says so (Kaiser Crab's claws).
-const nodeManyEnemies = n => {
+// How many enemies the fight can have on the screen at once: fight_demand.py's `count`, the
+// opening line-up the run files list. Encounters read before that field existed only say whether
+// there was more than one, and those keep the cluster of three rather than invent a number.
+const nodeEnemyCount = n => {
   const enc = n && n.turns ? n.fight || n.enc : "";
-  return !!(enc && DATA.fightDemand && DATA.fightDemand.encounters && DATA.fightDemand.encounters[enc]?.many);
+  const d = enc && DATA.fightDemand && DATA.fightDemand.encounters && DATA.fightDemand.encounters[enc];
+  return d ? d.count || (d.many ? 3 : 1) : 1;
 };
 
-// A multi-enemy fight gets its marker icon fanned into a cluster of three -- two copies behind
-// it, one either side -- so a group reads at a glance on every floor chart that draws fight
-// icons (HP, damage done, damage taken, keeping up). fight_demand.py only knows "many", not how
-// many, so it is a cluster, not a count. Bosses get it too when their data says so (Kaiser
-// Crab's claws). Drawn before the line and the marker, so the marker still pins the exact
-// point.
+// Where the other enemies sit behind the one on the point, as fractions of its radius: a pair
+// reads one behind the other, three as the fan it always was, four and five in a wider arc. Four
+// is the most the game fields at once, and a fifth is drawn for anything longer.
+const ENEMY_OFFSETS = {
+  2: [[0, -0.5]],
+  3: [[-0.55, -0.45], [0.55, -0.45]],
+  4: [[-0.5, -0.35], [0, -0.7], [0.5, -0.35]],
+  5: [[-0.8, -0.28], [-0.32, -0.62], [0.32, -0.62], [0.8, -0.28]],
+};
+
+// A multi-enemy fight gets its marker icon fanned into that many icons -- the enemies behind the
+// one on the point, so the group reads at a glance and the count matches the fight -- on every
+// floor chart that draws fight icons (HP, damage done, damage taken, keeping up). Bosses get it
+// too when their data says so (Kaiser Crab's claws). Drawn before the line and the marker, so the
+// marker still pins the exact point.
 function makeManyIconPlugin(nodes) {
   return {
     id: "manyIcons",
@@ -2066,12 +2076,13 @@ function makeManyIconPlugin(nodes) {
         if (!Array.isArray(ds.pointRadius)) return;
         ds.pointRadius.forEach((radius, i) => {
           const img = ds.pointStyle && ds.pointStyle[i];
-          if (!(radius > 0) || !(img instanceof HTMLImageElement) || !nodeManyEnemies(nodes[i])) return;
-          if (i < x.min || i > x.max) return;
+          if (!(radius > 0) || !(img instanceof HTMLImageElement)) return;
+          const count = nodeEnemyCount(nodes[i]);
+          if (count < 2 || i < x.min || i > x.max) return;
           const size = radius * 2;
           const px = x.getPixelForValue(i), py = y.getPixelForValue(ds.data[i]);
           ctx.globalAlpha = 0.8;
-          [[-0.55, -0.25], [0.55, -0.25]].forEach(([fx, fy]) =>
+          (ENEMY_OFFSETS[Math.min(count, 5)] || ENEMY_OFFSETS[5]).forEach(([fx, fy]) =>
             ctx.drawImage(img, px - radius + fx * radius, py - radius + fy * radius, size, size));
         });
       });
@@ -2402,7 +2413,7 @@ function fightReadings(run, nodes, measured) {
     const how = d && keepWinners(run, d);
     const m = !run.mp && measured && measured[i];
     const pool = !m ? table : lost ? Math.max(table, m.removed) : m.removed;
-    const row = { pool, lost, turns: n.turns, many: d?.many };
+    const row = { pool, lost, turns: n.turns, many: d?.many, count: d?.count };
     if (how) { row.winTurns = how.turns; row.winN = how.n; if (pool) row.ask = pool / how.turns; }
     if (m || !lost) row.doing = (m ? m.removed : pool) / n.turns;
     // Enemies act after you, so a fight you won gives them a turn less. One won in a turn
@@ -2856,7 +2867,14 @@ function renderDetailKeepCharts(run) {
   const swatch = color => `<span class="strength-key" style="background:${color}"></span>`;
   const one = v => v === undefined ? undefined : v.toFixed(1);
   // What sort of fight it was, so a bad one can be read as a lack of damage to many targets.
-  const fightKind = (n, r) => r && r.many !== undefined ? `<div class="ft-cap">${[keepRank(n), r.many ? "Multi-enemy" : "Single enemy"].filter(Boolean).join(" · ")}</div>` : "";
+  // The icons already show the group on the chart, so only a fight with more than one enemy is
+  // named, and with the number the encounter really fields: "Single enemy" was noise.
+  const fightKind = (n, r) => {
+    const count = r?.count;
+    const ofMany = count > 1 ? `${count} enemies` : r?.many ? "Multi-enemy" : "";
+    const text = r && r.many !== undefined ? [keepRank(n), ofMany].filter(Boolean).join(" · ") : "";
+    return text ? `<div class="ft-cap">${text}</div>` : "";
+  };
   // Each chart's hover box: the floor, that chart's own numbers, what the floor changed.
   // `body` gets the floor's reading and returns HTML (a table, and whatever goes with it).
   const tip = body => context => showFloorTip(context, i => {
