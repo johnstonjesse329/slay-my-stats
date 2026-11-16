@@ -221,7 +221,7 @@ function renderDetailRunList() {
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
       <span class="detail-run-char" style="color:${CHAR_COLOR_MAP[run.char] || "#a0a0b8"}">${charIconHtml(run.char)}${label}</span>
       <span class="detail-run-asc" style="color:var(--text-dim)">${run.mode === "dread" ? `<img class="detail-run-dread" src="/ui_icons/dread.png" alt="Dread" data-tip="Dread">` : `A${run.asc}`}</span>
-      <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}">${partyHtml}</span>
+      <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}"><span class="detail-run-party-heads">${partyHtml}</span><span class="detail-run-party-text" aria-hidden="true">${run.mp ? "Multi" : "Solo"}</span></span>
       <span class="detail-run-won" style="color:${won ? "#5cba7d" : "#e05c5c"}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>

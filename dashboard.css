@@ -1246,6 +1246,8 @@ h1 {
 /* A party reads as a stack of heads, the way an avatar row does; the ring keeps
    overlapping ones apart. Four is the most a run can carry. */
 .detail-run-players { display: flex; justify-content: center; align-items: center; white-space: nowrap; }
+/* The heads are a desktop nicety: a phone's narrow list keeps the plain word. */
+.detail-run-party-text { display: none; }
 .detail-run-players .char-icon { width: 16px; height: 16px; margin-right: 0; border-radius: 50%; object-fit: cover; background: #1b1a26; box-shadow: 0 0 0 1px #191c20; }
 .detail-run-players .char-icon + .char-icon { margin-left: -3px; }
 .detail-run-won  { font-weight: 700; font-size: var(--fs-sm); text-align: center; }
@@ -2916,8 +2918,8 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .run-boon-icons { flex-wrap: wrap; gap: 6px 14px; }
 }
 
-/* A phone's run list is narrower than four full-size party heads, so shrink the stack. */
+/* A phone's run list is narrower than four stacked heads, so it keeps the plain word. */
 @media (max-width: 560px) {
-  .detail-run-players .char-icon { width: 14px; height: 14px; }
-  .detail-run-players .char-icon + .char-icon { margin-left: -4px; }
+  .detail-run-party-heads { display: none; }
+  .detail-run-party-text { display: inline; font-size: var(--fs-sm); }
 }
