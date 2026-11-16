@@ -89,7 +89,7 @@ slay-my-stats/
 │   ├── players.css          site bar, finder, site stats, pages
 │   ├── upload.js            Steam sign-in and the upload panel
 │   ├── upload.css
-│   └── feedback.js          gamma-only feedback panel (kept out of the production build)
+│   └── feedback.js          gamma-only feedback panel (inert elsewhere; talks to /auth/feedback)
 ├── infra/                   CDK app
 │   ├── app.py
 │   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
