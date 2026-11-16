@@ -486,6 +486,7 @@ function renderDetailRun(run) {
   renderDetailRelicChart(run);
   renderDetailKeepCharts(run);
   renderDetailDeckRelics(run);
+  renderRangeTip();
 }
 
 // ---- Timeline ----
@@ -2154,7 +2155,37 @@ let rangeChanges = null;  // the run's floorChanges(), or null when it has no de
 let rangeNodes = [];      // its timeline
 let rangeDrag = null;     // {chart, nodes, host, from, moved} while a pointer is down on a chart
 let rangePanel = null;    // the panel, moved under whichever chart the span was dragged on
-const RANGE_HINT_KEY = "slay-my-stats:range-hint";  // set once the gesture has been used or shown
+const RANGE_HINT_KEY = "slay-my-stats:range-hint";  // set once the gesture has been used
+const RANGE_TIP_KEY = "slay-my-stats:range-tip-dismissed";
+const rangeTipSeen = () => { try { return !!localStorage.getItem(RANGE_TIP_KEY); } catch { return false; } };
+const rangeUsed = () => { try { return !!localStorage.getItem(RANGE_HINT_KEY); } catch { return false; } };
+
+// A line above the charts saying what they can do, until it is dismissed or the gesture is used.
+// A hint that only appears on hover is no good to someone who never thinks to hover; this one is
+// there when the run opens.
+function renderRangeTip() {
+  // Only where a drag is possible: a finger scrubs the hover box instead, so the line would be
+  // telling a phone about a gesture it doesn't have.
+  if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+  if (rangeTipSeen() || rangeUsed()) return;
+  if (document.getElementById("detail-range-tip")) return;
+  const box = document.getElementById("detail-hp-box");
+  if (!box) return;
+  const tip = document.createElement("p");
+  tip.id = "detail-range-tip";
+  tip.className = "range-tip";
+  tip.innerHTML = `<b>Drag across any floor chart</b> to add up what changed over those floors — cards in and out, ` +
+    `relics, fights and damage. <button type="button" class="range-tip-close" aria-label="Dismiss this tip">✕</button>`;
+  tip.querySelector(".range-tip-close").addEventListener("click", () => {
+    try { localStorage.setItem(RANGE_TIP_KEY, "1"); } catch { /* private mode */ }
+    tip.remove();
+  });
+  box.before(tip);
+}
+
+function hideRangeTip() {
+  document.getElementById("detail-range-tip")?.remove();
+}
 let rangeHintShown = false;  // the pill explains the gesture once a visit, not on every chart
 
 const floorOf = n => n.floor + 1;
@@ -2217,8 +2248,8 @@ function bindRangeSelect(chart, nodes) {
   // is: a pill over the plot, once per browser, and only where a mouse can drag (a finger
   // scrubs the hover box instead).
   const firstTime = () => {
-    if (rangeHintShown || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
-    try { if (localStorage.getItem(RANGE_HINT_KEY)) return; } catch { /* private mode */ }
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    if (rangeUsed() || rangeTipSeen() || rangeHintShown) return;
     if (host.querySelector(".drag-hint")) return;
     rangeHintShown = true;
     const hint = document.createElement("span");
@@ -2238,6 +2269,7 @@ function bindRangeSelect(chart, nodes) {
     canvas.setPointerCapture(e.pointerId);
     closeFloorTip();
     host.querySelector(".drag-hint")?.remove();
+    hideRangeTip();
     try { localStorage.setItem(RANGE_HINT_KEY, "1"); } catch { /* private mode */ }
   });
   canvas.addEventListener("pointermove", e => {

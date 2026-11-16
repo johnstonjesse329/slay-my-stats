@@ -1651,6 +1651,38 @@ h1 {
 .fl-swatch { width: 14px; height: 10px; border-radius: 2px; box-sizing: border-box; }
 .fl-ring { border: 2px solid; border-radius: 50%; box-sizing: border-box; display: inline-block; }
 
+/* Wording that only applies where a pointer can drag a chart: hidden on a finger. */
+@media (pointer: coarse) { .drag-only { display: none; } }
+
+/* A line above the run's charts saying they take a drag, until it is dismissed or used. */
+.range-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid #e0c46859;
+  border-left: 3px solid var(--gold, #e0c468);
+  border-radius: 8px;
+  background: #e0c46812;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.range-tip b { color: var(--gold, #e0c468); font-weight: 700; }
+.range-tip-close {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.range-tip-close:hover, .range-tip-close:focus-visible { color: var(--text); background: #ffffff14; }
+
 /* A span of floors picked by dragging a chart: what the run changed in it. It sits under the
    chart the drag started on, so the band and the list are read together. */
 .range-panel {

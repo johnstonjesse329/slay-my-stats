@@ -100,9 +100,12 @@ def main():
         page.wait_for_selector("#detail-keep-damage-chart", state="attached", timeout=20000)
         page.wait_for_function("() => typeof detailKeepCharts !== 'undefined' && detailKeepCharts.length > 0")
 
-        # The gesture is invisible, so the first hover on a chart says what it is, and the
-        # pointer says the plot takes a drag. (One jump, not a sweep: crossing a chart on the
-        # way trips its own first hover, and the pill is shown once a visit.)
+        # The gesture is invisible, so the run says it in a line above the charts as soon as it
+        # opens, and the first hover on a chart floats the same advice over the plot. (One jump,
+        # not a sweep: crossing a chart on the way trips its own first hover.)
+        tip = page.locator("#detail-range-tip")
+        assert tip.count() == 1, "the run should say the charts take a drag"
+        assert "drag across any floor chart" in tip.inner_text().lower()
         el = page.locator("#detail-keep-damage-chart")
         el.scroll_into_view_if_needed()
         box = el.bounding_box()
@@ -114,6 +117,7 @@ def main():
 
         drag(page, "detail-keep-damage-chart", FROM, TO)
         assert page.locator(".drag-hint").count() == 0, "the hint goes once the chart is dragged"
+        assert page.locator("#detail-range-tip").count() == 0, "and the line above the charts goes"
 
         panel = page.locator("#detail-range-panel")
         assert panel.count() == 1, "the drag should open the panel"
