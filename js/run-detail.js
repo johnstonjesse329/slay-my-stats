@@ -173,7 +173,7 @@ function renderDetailTagFilter(runs) {
   box.querySelector(".tag-filter-text").textContent = detailTags.size ? [...detailTags].join(" + ") : "All";
   box.querySelector(".tag-filter-clear").hidden = detailTags.size === 0;
   const chips = box.querySelector(".tag-filter-chips");
-  chips.innerHTML = groups.map(g => `<div class="tag-filter-group"><span class="tag-filter-char">${charIconHtml(g.char)} ${escapeHtml(fmtCharName(g.char))}</span>`
+  chips.innerHTML = groups.map(g => `<div class="tag-filter-group"><span class="tag-filter-char">${charLabelHtml(g.char)}</span>`
     + `<div class="tag-filter-tags">`
     + g.tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="run-tag-n">${g.byTag[t] || 0}</span></button>`).join("")
     + `</div></div>`).join("");

@@ -1194,7 +1194,7 @@ h1 {
 #detail-tag-filter:not(.expanded) .tag-filter-chips { display: none; }
 .tag-filter-chips { flex-direction: column; flex-wrap: nowrap; gap: 0.4rem; }
 .tag-filter-group { display: grid; grid-template-columns: 8.5rem 1fr; align-items: start; gap: 0.3rem 0.6rem; }
-.tag-filter-char { display: flex; align-items: center; gap: 0.35rem; color: var(--text-dim); font-size: var(--fs-sm); min-height: 1.7rem; white-space: nowrap; }
+.tag-filter-char { display: flex; align-items: center; min-height: 1.7rem; white-space: nowrap; }
 .tag-filter-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .tag-filter-tags .run-tag-btn { margin: 0; }
 @media (max-width: 600px) { .tag-filter-group { grid-template-columns: 1fr; } .tag-filter-char { min-height: 0; } }
