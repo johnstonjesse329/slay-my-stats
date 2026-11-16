@@ -13,6 +13,7 @@
     button:hover{background:#514635}button:disabled{opacity:.5}a{color:#edc782}
     #launcher{display:flex;align-items:center;gap:8px;padding:12px 20px;border:1px solid #f6e3b0;border-radius:999px;background:linear-gradient(#f4dda6,#e0c468);color:#191c20;font-size:15px;font-weight:700;box-shadow:0 6px 20px #000a;order:2}
     #launcher:hover{background:linear-gradient(#f9e7ba,#e8cf7c)}
+    #launcher.sent{background:linear-gradient(#cfe8b5,#9fcb7a);border-color:#cfe8b5}
     #launcher-count{min-width:20px;padding:1px 6px;border-radius:999px;background:#191c20;color:#f4dda6;font-size:12px;font-weight:700;text-align:center}
     #launcher:focus-visible,button:focus-visible{outline:3px solid #f6c66d;outline-offset:2px}
     #panel{order:1;background:#191c20;border:1px solid #82735b;border-radius:12px;padding:16px;width:420px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 100px);min-width:300px;min-height:180px;overflow:auto;resize:both;box-shadow:0 8px 40px #0009}
@@ -66,7 +67,12 @@
     #kinds button[aria-checked="true"]{background:#d4af37;border-color:#d4af37;color:#16141f;font-weight:700}
     .pill.kind{background:#2a2740;color:#e8e4f4}
     .note-comment{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere}
+    .note-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 4px;font-size:12px;color:#bcb8b0}
+    .note-who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f4f0e7;font-weight:600}
+    .note-who.bare{color:#8f8a80;font-weight:400}
+    .note-head time{flex:none;white-space:nowrap}
     .note-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0;font-size:11px;color:#bcb8b0}
+    .note-meta a{margin-left:auto}
     .pill{padding:1px 7px;border-radius:999px;font-weight:700;font-size:10px;letter-spacing:.03em;text-transform:uppercase}
     .pill.open{background:#e0c468;color:#191c20}.pill.resolved{background:#3a3460;color:#c9c4d8}
     .note-url{display:block;margin:6px 0 8px;color:#8f8a80;font-size:11px;overflow-wrap:anywhere}
@@ -79,6 +85,13 @@
     .close-form div{display:flex;gap:8px}
     .close-form select{background:#101316;color:#fff;border:1px solid #82735b;padding:7px 9px;border-radius:6px;font:inherit}
     #filters{display:flex;gap:8px;margin:0 0 8px}
+    #find{display:flex;gap:8px;margin:0 0 8px}
+    #find input,#find select{min-width:0;background:#101316;color:#fff;border:1px solid #82735b;padding:6px 8px;border-radius:6px;font:inherit}
+    #find input{flex:2}#find select{flex:1}
+    .plus{flex:none;display:inline-flex;gap:4px;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid #4a4666;background:transparent;color:#e8e4f4;font:inherit;font-size:11px;font-weight:700;cursor:pointer;text-decoration:none!important}
+    .plus[aria-pressed="true"]{background:#d4af37;border-color:#d4af37;color:#16141f}
+    .plus:disabled{opacity:.6;cursor:default}
+    .note-head .head-right{display:flex;gap:8px;align-items:center;flex:none}
     #filters select{flex:1;background:#101316;color:#fff;border:1px solid #82735b;padding:6px 8px;border-radius:6px;font:inherit}
     #load-more{width:100%;margin:4px 0 0;background:#101316}
     #inbox-foot{display:flex;justify-content:space-between;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid #2a2740}
@@ -122,13 +135,14 @@
       <p id="summary"></p>
       <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-page" type="button" aria-pressed="false">This page</button><button id="scope-site" type="button" aria-pressed="false">Whole site</button></div>
       <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option></select></div>
+      <div id="find"><input id="search" type="search" placeholder="Search notes" aria-label="Search notes"><select id="filter-author" aria-label="Author"><option value="">Anyone</option></select></div>
       <div id="notes"></div>
       <button id="load-more" type="button" hidden>Load the next 25</button>
       <p id="inbox-status" role="status"></p>
       <div id="inbox-foot"><button id="copy" type="button">Copy all notes</button><button id="refresh" type="button">Refresh</button></div>
     </div>
   </section>
-  <button id="launcher" type="button"><span aria-hidden="true">✎</span> Feedback<span id="launcher-count" aria-hidden="true" hidden></span></button>`;
+  <button id="launcher" type="button"><span aria-hidden="true">✎</span> <span id="launcher-label">Feedback</span><span id="launcher-count" aria-hidden="true" hidden></span></button>`;
   const $ = id => root.getElementById(id);
   const ORIGIN = location.origin;
   let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'page', status = 'open', filterKind = '', nextCursor = null, view = 'inbox', picking = false, start, previousFocus, oldTouchAction;
@@ -264,7 +278,9 @@
     const query=body?'':'?'+new URLSearchParams(params||{}).toString();
     const response=await fetch('/auth/feedback'+query,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
     if(!response.ok) throw new Error(response.status===401?'Sign in to gamma again.':`Could not ${body?'save':'load'} feedback. Please retry.`);
-    return response.json();
+    const data=await response.json();
+    if(data.me) me=data.me;
+    return data;
   }
   const report = note => `Feedback ${note.id}\n${note.category?(KINDS[note.category]||note.category)+' · ':''}${note.resolved?'Resolved':'Open'} · ${new Date(note.created*1000).toISOString()}\n${note.url || ORIGIN + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
   function updateCount() {
@@ -297,22 +313,47 @@
   }
   const when = ts => new Date(ts*1000).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
   const matchesFilter = note => (status==='all'||!!note.resolved===(status==='resolved'))&&(!filterKind||note.category===filterKind);
-  const author = (note, field = 'author') => note[field + '_name'] || '…' + String(note[field]).slice(-4);
+  // A name the lookup gave once stays for the session, so a later response where Steam could not be
+  // asked does not turn the same person back into an ID fragment.
+  const names = new Map();
+  const nameOf = (note, field = 'author') => {
+    const id = String(note[field]), name = note[field + '_name'];
+    if (name) names.set(id, name);
+    return names.get(id) || '';
+  };
+  const author = (note, field = 'author') => nameOf(note, field) || 'Steam …' + String(note[field]).slice(-4);
   const OUTCOMES = {done:'Done',declined:'Declined',duplicate:'Duplicate'};
   function noteArticle(note) {
     const article=document.createElement('article'),comment=document.createElement('p'),meta=document.createElement('p'),
-      pill=document.createElement('span'),time=document.createElement('span'),who=document.createElement('span'),
+      pill=document.createElement('span'),time=document.createElement('time'),who=document.createElement('span'),head=document.createElement('p'),
       place=document.createElement('a'),actions=document.createElement('div'),resolve=document.createElement('button'),
       url=document.createElement('small');
     comment.className='note-comment';comment.textContent=note.comment;
     pill.className='pill '+(note.resolved?'resolved':'open');pill.textContent=note.resolved?(OUTCOMES[note.outcome]||'Resolved'):'Open';
     time.textContent=when(note.created);
-    who.textContent=author(note);
+    who.textContent=author(note);who.className='note-who'+(nameOf(note)?'':' bare');who.title=String(note.author);
+    head.className='note-head';
+    // +1: one per person, tapped again to take back. The count is everyone who has agreed.
+    const plus=document.createElement('button'),mine=(note.plus||[]).includes(me),right=document.createElement('span');
+    plus.type='button';plus.className='plus';plus.setAttribute('aria-pressed',String(mine));
+    plus.textContent='+1'+((note.plus||[]).length?' · '+note.plus.length:'');
+    plus.title=mine?'Take back your +1':'Add your +1';
+    plus.onclick=async()=>{
+      plus.disabled=true;
+      try {
+        const {note:updated}=await api({action:'plus',id:note.id,on:!mine});
+        const swap=list=>list.map(item=>item.id===updated.id?updated:item);
+        notes=swap(notes);pageCache=swap(pageCache);renderInbox();
+      } catch(e){ say(e.message,'inbox'); plus.disabled=false; }
+    };
+    right.className='head-right';right.append(plus,time);
+    head.append(who,right);
     const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
     place.href=openUrl.href;place.textContent='Open location';
     meta.className='note-meta';
+    meta.append(pill);
     if(note.category){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=KINDS[note.category]||note.category;meta.append(tag);}
-    meta.append(pill,time,who,place);
+    meta.append(place);
     url.className='note-url';url.textContent=note.url || ORIGIN + note.path;
     resolve.textContent=note.resolved?'Reopen':'Resolve';
     const send=async(fields,button)=>{
@@ -352,7 +393,7 @@
     copyOne.title='Copy just this note';
     copyOne.onclick=()=>copyText(report(note),'Copied this note.');
     actions.className='note-actions';actions.append(resolve,copyOne);
-    article.append(comment,meta,url);
+    article.append(head,comment,meta,url);
     if(note.resolved){
       const line=document.createElement('p');line.className='note-resolution';
       line.textContent=[(OUTCOMES[note.outcome]||'Resolved')+(note.resolved_by?' by '+author(note,'resolved_by'):'')+(note.resolved_at?' · '+when(note.resolved_at):''),
@@ -369,8 +410,19 @@
     return article;
   }
   const collapsed=new Set();
+  // Search and author narrow the notes already loaded; Load more brings in older ones.
+  let me='',query='',filterAuthor='';
+  const searchable=note=>[note.comment,note.close_note,note.target?.text,note.path,author(note),author(note,'resolved_by')].filter(Boolean).join(' ').toLowerCase();
+  const shown=()=>notes.filter(note=>(!filterAuthor||String(note.author)===filterAuthor)&&(!query||searchable(note).includes(query)));
   function renderInbox() {
-    const groups=buckets(notes);
+    const authors=new Map();
+    for(const note of notes) authors.set(String(note.author),author(note));
+    const select=$('filter-author');
+    select.replaceChildren(new Option('Anyone',''),...[...authors].sort((a,b)=>a[1].localeCompare(b[1])).map(([id,name])=>new Option(name,id)));
+    if(filterAuthor&&!authors.has(filterAuthor)) filterAuthor='';
+    select.value=filterAuthor;
+    const visible=shown();
+    const groups=buckets(visible);
     $('notes').replaceChildren();
     for(const bucket of groups) {
       const details=document.createElement('details'),summary=document.createElement('summary'),
@@ -386,15 +438,15 @@
       details.addEventListener('toggle',()=>{if(details.open) collapsed.delete(bucket.key); else collapsed.add(bucket.key);});
       $('notes').append(details);
     }
-    const open=notes.filter(note=>!note.resolved).length;
+    const open=visible.filter(note=>!note.resolved).length;
     $('filter-status').value=status;$('filter-kind').value=filterKind;
-    $('summary').innerHTML=`<b>${notes.length}</b> note${notes.length===1?'':'s'}${nextCursor?'+':''} · ${open} open · ${groups.length} ${groups.length===1?'place':'places'}`;
+    $('summary').innerHTML=`<b>${visible.length}</b> note${visible.length===1?'':'s'}${nextCursor?'+':''}${visible.length<notes.length?` of ${notes.length} loaded`:''} · ${open} open · ${groups.length} ${groups.length===1?'place':'places'}`;
     $('scope-page').setAttribute('aria-pressed',String(scope==='page'));
     $('scope-site').setAttribute('aria-pressed',String(scope==='site'));
     $('load-more').hidden=!nextCursor;
-    $('copy').textContent=notes.length?`Copy all notes (${notes.length}${nextCursor?' loaded':''})`:'Copy all notes';
-    $('copy').disabled=!notes.length;
-    say(groups.length?'':(status==='all'&&!filterKind?(scope==='page'?'No notes on this page yet.':'No notes yet.'):'No notes match.'),'inbox');
+    $('copy').textContent=visible.length?`Copy all notes (${visible.length}${nextCursor?' loaded':''})`:'Copy all notes';
+    $('copy').disabled=!visible.length;
+    say(groups.length?'':(status==='all'&&!filterKind&&!query&&!filterAuthor?(scope==='page'?'No notes on this page yet.':'No notes yet.'):'No notes match.'),'inbox');
   }
   // pageCache feeds the launcher badge and the composer's earlier notes; the
   // inbox owns its own paged list in `notes`.
@@ -406,7 +458,10 @@
   // The site moves between tabs and runs by changing the hash, which is part of a note's path:
   // the badge has to follow, or it keeps counting the page you left.
   addEventListener('hashchange',()=>{ refreshPageNotes().then(()=>{ if(view==='compose') renderPrior(); }).catch(()=>{}); });
+  // Only the newest request may fill the list: two quick loads (tab then filter) must not both append.
+  let loadId=0;
   async function load(reset=true) {
+    const mine=++loadId;
     if(reset){notes=[];nextCursor=null;$('summary').textContent='Loading…';say('','inbox');}
     try {
       const params={scope,status};
@@ -414,8 +469,9 @@
       if(scope==='page') params.path=currentPath();
       if(nextCursor) params.cursor=nextCursor;
       const data=await api(null,params);
+      if(mine!==loadId) return;
       notes=notes.concat(data.notes);nextCursor=data.next||null;renderInbox();
-    } catch(e){ $('summary').textContent='';say(e.message,'inbox'); }
+    } catch(e){ if(mine!==loadId) return; $('summary').textContent='';say(e.message,'inbox'); }
   }
   $('launcher').onclick=openPanel;
   $('close').onclick=closePanel;$('cancel').onclick=stop;
@@ -431,21 +487,31 @@
   $('scope-site').onclick=()=>{if(scope!=='site'){scope='site';load(true);}};
   $('filter-status').onchange=e=>{status=e.target.value;load(true);};
   $('filter-kind').onchange=e=>{filterKind=e.target.value;load(true);};
+  $('search').oninput=e=>{query=e.target.value.trim().toLowerCase();renderInbox();};
+  $('filter-author').onchange=e=>{filterAuthor=e.target.value;renderInbox();};
   $('kinds').onclick=e=>{const b=e.target.closest('button');if(b)setKind(b.dataset.kind);};
   $('save').onclick=async()=>{
     if(!kind){say('Pick a type first: bug, feature request or improvement idea.');return;}
     if(!$('comment').value.trim()){say('Add a comment first.');$('comment').focus();return;}
     $('save').disabled=true;
-    try{const url=new URL(pageUrl());await api({category:kind,comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';setKind('');syncClear();say('Sent. Everyone on gamma can see it.');await refreshPageNotes();renderPrior();}
+    try{const url=new URL(pageUrl());await api({category:kind,comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';setKind('');syncClear();say('');view='inbox';closePanel();sentFlash();refreshPageNotes().then(renderPrior).catch(()=>{});}
     catch(e){say(e.message);}finally{$('save').disabled=false;}
   };
+  // The panel closes on a successful send; the launcher says so for a moment.
+  let flashTimer;
+  function sentFlash() {
+    const button=$('launcher'), label=$('launcher-label');
+    label.textContent='Sent';button.classList.add('sent');
+    clearTimeout(flashTimer);
+    flashTimer=setTimeout(()=>{label.textContent='Feedback';button.classList.remove('sent');},2500);
+  }
   // Clipboard with a visible fallback: the text is shown in the list to select by hand.
   async function copyText(text,done) {
     try{await navigator.clipboard.writeText(text);say(done,'inbox');}
     catch{say('Clipboard unavailable. Select and copy below.','inbox');const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=text;$('notes').replaceChildren(pre);}
   }
   // Every note in the list, resolved or not, in a collapsed group or not.
-  $('copy').onclick=()=>copyText(notes.map(report).join('\n\n---\n\n'),`Copied all ${notes.length} note${notes.length===1?'':'s'}${nextCursor?' loaded so far (Load more for the rest)':''}.`);
+  $('copy').onclick=()=>copyText(shown().map(report).join('\n\n---\n\n'),`Copied all ${notes.length} note${notes.length===1?'':'s'}${nextCursor?' loaded so far (Load more for the rest)':''}.`);
   const requested=new URLSearchParams(location.search).get('feedback');
   if(requested) {
     openPanel();

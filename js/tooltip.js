@@ -38,11 +38,24 @@ function getFloatingTooltipEl() {
 // page's scrollbar, which pushed a tooltip near the right edge under it and
 // squeezed it narrower.
 function clampTooltipPosition(el, rawLeft, rawTop, margin = 8) {
-  const { clientWidth: vw, clientHeight: vh } = document.documentElement;
+  const { vw, vh } = viewportSize();
   return {
-    left: Math.min(Math.max(rawLeft, margin), Math.max(vw - el.offsetWidth  - margin, margin)),
-    top:  Math.min(Math.max(rawTop,  margin), Math.max(vh - el.offsetHeight - margin, margin)),
+    left: clampAxis(rawLeft, el.offsetWidth,  vw, margin),
+    top:  clampAxis(rawTop,  el.offsetHeight, vh, margin),
   };
+}
+
+// The pieces clampTooltipPosition is built from, for the tooltips that place themselves (a node's
+// tooltip, the floor box, the card zoom): every one of them fits the viewport with these, so none
+// reaches for innerWidth again.
+function viewportSize() {
+  const { clientWidth: vw, clientHeight: vh } = document.documentElement;
+  return { vw, vh };
+}
+// One axis: `raw` (the box's near edge) held `margin` inside a viewport `room` long, for a box
+// `size` long. A box longer than the room sits at the margin.
+function clampAxis(raw, size, room, margin = 8) {
+  return Math.min(Math.max(raw, margin), Math.max(room - size - margin, margin));
 }
 
 // How the shared box is hidden. The three rules below are WCAG 1.4.13 (content
@@ -304,8 +317,18 @@ document.addEventListener("keydown", e => {
 
 // "IRONCLAD" -> "Ironclad", for legends, labels, and tooltips
 function fmtCharName(char) {
-  return char.charAt(0) + char.slice(1).toLowerCase();
+  return titleCaseId(char);
 }
+
+// "LIGHT_ATTACK" -> "Light Attack": an id's words, title-cased. The one copy, so a card, relic,
+// potion, node or character with no label in the catalog reads the same everywhere. Strip any
+// "CARD."-style prefix first.
+function titleCaseId(id) {
+  return String(id).replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// The colour of a character no colour list knows (see charColor in data.js).
+const CHAR_FALLBACK_COLOR = "#a0a0b8";
 
 // The character's head from the game's top panel, to sit before its name
 // wherever the name is shown. A card pool with no character (colorless) keeps
@@ -321,9 +344,10 @@ function charIconHtml(char) {
 
 // A character's name as the site shows it everywhere: the head, then the name in the character's
 // color (see .char-label in dashboard.css, the one place its size and weight are set). Pass large
-// for a character's own pane or heading, the only place it is bigger.
-function charLabelHtml(char, large = false) {
-  const color = CHAR_COLOR_MAP[char] || "#a0a0b8";
-  return `<span class="char-label${large ? " char-label-lg" : ""}" style="--char-color:${color}">${charIconHtml(char)}${fmtCharName(char)}</span>`;
+// for a character's own pane or heading, the only place it is bigger. icon=false leaves the head out
+// where the character is already shown larger beside it (the Ascension tracker's portrait).
+function charLabelHtml(char, large = false, icon = true) {
+  const color = charColor(char);
+  return `<span class="char-label${large ? " char-label-lg" : ""}" style="--char-color:${color}">${icon ? charIconHtml(char) : ""}${fmtCharName(char)}</span>`;
 }
 

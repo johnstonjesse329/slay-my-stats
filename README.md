@@ -176,9 +176,12 @@ from its edge locations worldwide. No server builds pages: visiting `/u/<name>` 
 `users/<slug>.json.gz`, then a file per month of runs), and the dashboard code computes every stat in the browser.
 
 **Uploads appear on the next page load.** The browser sends new runs straight to S3, and a Lambda parses them with
-`run.py` and writes them into the player's month files; there's no build step. Profile files are never cached by
+`run.py` and writes them into the player's month files; there's no build step. The profile summary is never cached by
 CloudFront, and the browser checks for a newer copy on every visit, so a new upload shows up right away. If nothing changed, that check returns a few
-hundred bytes.
+hundred bytes. Month files are fetched at a URL that carries the month's run count and newest run (`?v=`), so the
+browser keeps them for a year and only a month that changed is downloaded again. The built files (`app`, `catalog`, `boot`,
+the CSS and the other scripts) carry a hash of their content in the name (`app.5d4c14bd6b.js`) and are cached for a year too;
+`index.html`, which names them, is checked on every visit, so a deploy reaches everyone at once.
 
 **The home page** reads two small files the Lambda also updates on each upload: the player list for search, and
 the site-wide running totals (see [Site-wide stats](#site-wide-stats)).
@@ -220,7 +223,7 @@ the CLI's default account and region (us-west-2 today).
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
 | **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*` and publish to the alert SNS topic. | A daily summary of uploads, reported for trends. |
-| **Feedback digest Lambda** + two schedules | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Gamma only. EventBridge Scheduler crons at 8 AM America/Chicago, daily and Mondays; it can read `feedback/*` and publish to the gamma alert SNS topic. | Emails the owner the day's new feedback notes, and weekly the open, incoming and resolved counts. |
+| **Feedback digest Lambda** + two schedules | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Gamma only. EventBridge Scheduler crons at 8 AM America/Chicago, Tuesday to Sunday and Mondays; it can read `feedback/*` and publish to the gamma alert SNS topic. | Emails the owner the day's new feedback notes (Tuesday to Sunday), and on Mondays one weekly email with the open, incoming and resolved counts. |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
 | **Metric filters + alarms** `ModRequests`, `ModRefusals` | Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
 | **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
@@ -237,15 +240,15 @@ scripts read).
 | `/u/*` | rewrite to `/index.html` | site bucket | optimized (`/index.html`'s cache entry) |
 | `/<page>`, `/<page>/` (one pair per `site/pages/` file) | rewrite to `/index.html` | site bucket | optimized |
 | `/users/*` | none | data bucket | **disabled**, so a profile shows an upload straight away |
-| everything else (`/`, `/app.js`, `/catalog.json`, art) | none | site bucket | optimized |
+| everything else (`/`, `/app.<hash>.js`, `/catalog.<hash>.json`, art) | none | site bucket | optimized |
 
 `ids/*` in the data bucket has no behavior, so it's unreachable from outside.
 
 Inside the page, `site/boot.js` decides what to draw from `location.pathname`: the player finder and
 site-wide stats on `/`, a hand-written page on `/<page>` (fetched from `/page-<page>.html`), or a
-profile on `/u/<slug>`, which it loads by fetching `/catalog.json`, the profile summary
+profile on `/u/<slug>`, which it loads by fetching the catalog (`/catalog.<hash>.json`), the profile summary
 `/users/<slug>.json.gz` and then all its month files at once, joining them into `window.DATA` and then loading
-`/app.js`.
+`/app.<hash>.js`.
 
 ### Stored data
 
@@ -590,7 +593,7 @@ Signed-in reviewers get a gold **Feedback** button in the lower right, carrying 
 the page. It opens one panel with a **New note** view — pin an element or region, or comment on the page,
 with the exact page URL and the earlier notes for that target in front of you — and an **Inbox** view that
 switches between This page and Whole site, groups notes into one bucket per page and per pinned element or
-region, loads them 25 at a time, and offers resolve, reopen and a copy-ready report. Notes are JSON objects
+region, loads them 25 at a time, and offers search, an author filter, a +1 per person, resolve, reopen and a copy-ready report. Notes are JSON objects
 under `feedback/` in the gamma data bucket, reached through `/auth/feedback`; production never shows the
 button. See [docs/gamma-feedback.md](docs/gamma-feedback.md).
 
@@ -752,8 +755,8 @@ Each refresh keeps a copy of the card, relic and potion data in `local_data/game
 The Runs page's Keeping Up charts need one more file, made after the refresh:
 `python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in
 `tools/power_curve/gamma_raw/`. Without it the charts are hidden. It also records how many enemies each
-encounter fields, from the opening line-up the run files list, which the charts fan into that many icons on a
-fight's floor and the hover box names ("3 enemies"). Their energy and cards chart also needs
+encounter fields, from the opening line-up the run files list, which the charts show as a two-icon depth stack (the
+icon with a smaller, fainter copy behind it; bosses keep one icon) on a fight's floor, and the hover box names ("3 enemies"). Their energy and cards chart also needs
 `python tools/power_curve/export_measured.py` (writes `measured_runs.json`) for logs on this machine. Runs uploaded
 through the site carry the same numbers as `measured`, worked out when they were uploaded. It shows only on runs
 with an event log. The "Keeping up, fight by fight" chart uses the same `fight_demand.json` and needs nothing else:

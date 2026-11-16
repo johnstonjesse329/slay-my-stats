@@ -54,6 +54,7 @@ Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 
 import hashlib
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -93,8 +94,8 @@ ZERO_SHA = "0" * 40
 # A CloudFront invalidation clears the edge but never a browser's own cache.
 ART_CACHE_CONTROL = "public, max-age=2592000"
 
-# The dist/ files (app.js, catalog.json, the CSS) aren't content-hashed either,
-# and they change with every deploy, so browsers get five minutes: enough that
+# The dist/ files that aren't content-hashed (index.html, the manifest, the
+# fonts and previews) can change with a deploy, so browsers get five minutes: enough that
 # moving around the site doesn't re-ask for 600 KB of script and catalog, short
 # enough that a deploy reaches someone already on the site almost at once.
 # HTML is the entry point, so browsers always check it (a 304 when unchanged).
@@ -113,7 +114,15 @@ CONTENT_TYPES = {
 ART_EXTENSIONS = [".png", ".webp"]
 
 
+# build_site.py names app, catalog, boot and the CSS/JS after a hash of their
+# content (app.3fa91c20ab.js), so one name is one file forever: a year, immutable.
+HASHED_CACHE_CONTROL = "public, max-age=31536000, immutable"
+_HASHED_KEY = re.compile(r"\.[0-9a-f]{10}\.(js|css|json)$")
+
+
 def dist_cache_control(key: str) -> str:
+    if _HASHED_KEY.search(key):
+        return HASHED_CACHE_CONTROL
     return HTML_CACHE_CONTROL if key.endswith(".html") else DIST_CACHE_CONTROL
 
 

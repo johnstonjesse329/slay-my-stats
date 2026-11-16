@@ -130,9 +130,9 @@ function renderCardsPage() {
     const gSkips = g ? g[4] - g[0] : 0;
     return {
       gOffered:    g ? g[4] : null,
-      gPickRate:   g && g[4]  ? +(g[0] / g[4] * 100).toFixed(1) : null,
-      gWinPicked:  g && g[0]  ? +(g[1] / g[0] * 100).toFixed(1) : null,
-      gWinSkipped: g && gSkips ? +(g[5] / gSkips * 100).toFixed(1) : null,
+      gPickRate:   g ? winPctNum(g[0], g[4]) : null,
+      gWinPicked:  g ? winPctNum(g[1], g[0]) : null,
+      gWinSkipped: g ? winPctNum(g[5], gSkips) : null,
       id,
       title:    DATA.cardLabels[id] || id,
       type:     meta.type    || "—",
@@ -141,10 +141,10 @@ function renderCardsPage() {
       owner:    pool === "colorless" ? "Colorless" : fmtCharName(pool),
       offered:  b.offered,
       picked:   b.picked,
-      pickRate: b.offered ? +(b.picked / b.offered * 100).toFixed(1) : 0,
+      pickRate: winPctNum(b.picked, b.offered) ?? 0,
       skipped:  b.skippedRuns,
-      winPicked:  b.picked       ? +(b.wonWhenPicked  / b.picked       * 100).toFixed(1) : null,
-      winSkipped: b.skippedRuns  ? +(b.wonWhenSkipped / b.skippedRuns  * 100).toFixed(1) : null,
+      winPicked:  winPctNum(b.wonWhenPicked, b.picked),
+      winSkipped: winPctNum(b.wonWhenSkipped, b.skippedRuns),
     };
   }).filter(r => {
     // The game hides a couple of cards from its own library because they have no
@@ -204,14 +204,14 @@ function renderCardsPage() {
     ] : []),
   ];
 
-  const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.45rem 0.6rem;font-size:var(--fs-sm);width:${col.width};color:${cardsSortKey === col.key ? "#e0c468" : "var(--text-dim)"}"`;
+  const thStyle = (col) => `style="text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;padding:0.45rem 0.6rem;font-size:var(--fs-sm);width:${col.width};color:${cardsSortKey === col.key ? COLORS.gold : "var(--text-dim)"}"`;
   // A fixed-layout table takes its column widths from the first row, which is
   // now the colspan group heading, so pin them in a colgroup. Phones hide the
   // group row and set their own column widths in dashboard.css, so they drop
   // the pin and let those widths apply.
   const table = document.getElementById("cards-table-main");
   let colgroup = table.querySelector("colgroup");
-  if (CARDS_PHONE_MQ.matches) {
+  if (isPhone()) {
     if (colgroup) colgroup.remove();
   } else {
     if (!colgroup) {
@@ -314,8 +314,7 @@ function renderCardsPage() {
 const CARDS_PREVIEW_MQ = "(min-width: 1420px)";
 // Phones show four figure columns at widths of their own (dashboard.css), so
 // the table's pinned column widths follow the breakpoint.
-const CARDS_PHONE_MQ = window.matchMedia("(max-width: 700px)");
-CARDS_PHONE_MQ.addEventListener("change", () => {
+PHONE_MQ.addEventListener("change", () => {
   if (currentPage === "cards") renderCardsPage();
 });
 function previewCard(tr) {

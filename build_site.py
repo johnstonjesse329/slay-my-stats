@@ -25,6 +25,7 @@ Usage:
         Function URL, written to dist/site-config.json for the upload page.
 """
 
+import hashlib
 import html
 import json
 import re
@@ -446,6 +447,29 @@ def build_catalog() -> dict:
     }
 
 
+# Files served under a name that carries a hash of their content, e.g.
+# app.3fa91c20.js. The name changes exactly when the content does, so browsers
+# and the CDN can keep them for a year and a deploy still reaches everyone at
+# once, through the index.html that names them. Maps "app.js" -> "app.3fa91c20.js";
+# main() fills it and writes it to dist/asset-manifest.json for serve_site.py,
+# which builds index.html per request.
+HASHED = {}
+MANIFEST = "asset-manifest.json"
+
+
+def hashed_name(rel_path: str, data) -> str:
+    raw = data.encode("utf-8") if isinstance(data, str) else data
+    stem, dot, ext = rel_path.rpartition(".")
+    return f"{stem}.{hashlib.sha256(raw).hexdigest()[:10]}{dot}{ext}"
+
+
+def asset(rel_path: str) -> str:
+    """The URL for a hashed file, or the plain one when nothing has been built yet."""
+    if not HASHED and (_DIST / MANIFEST).exists():
+        HASHED.update(json.loads((_DIST / MANIFEST).read_text(encoding="utf-8")))
+    return "/" + HASHED.get(rel_path, rel_path)
+
+
 def build_index_html() -> str:
     """
     dist/index.html — same head as run.py's HTML (meta, title, Chart.js)
@@ -456,7 +480,7 @@ def build_index_html() -> str:
     """
     links = [(f"/{name}", html.escape(label)) for name, _, label in site_pages() if label]
     body = run.dashboard_body_html(site_links=links)
-    shared_scripts = "\n".join(f'<script src="/{name}"></script>' for name in SHARED_JS)
+    shared_scripts = "\n".join(f'<script src="{asset(name)}"></script>' for name in SHARED_JS)
     # Every URL serves this same file, so a shared link says what the site is
     # rather than whose page it is: link previews don't run boot.js.
     return f"""<!DOCTYPE html>
@@ -472,17 +496,18 @@ def build_index_html() -> str:
   <meta property="og:image" content="{SITE_URL}/og-preview.png">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/png" href="/node_icons/elite.png">
-  <script src="/chart.js"></script>
-  <link rel="stylesheet" href="/dashboard.css">
-  <link rel="stylesheet" href="/upload.css">
-  <link rel="stylesheet" href="/players.css">
+  <link rel="preload" href="{asset("app.js")}" as="script">
+  <script src="{asset("chart.js")}"></script>
+  <link rel="stylesheet" href="{asset("dashboard.css")}">
+  <link rel="stylesheet" href="{asset("upload.css")}">
+  <link rel="stylesheet" href="{asset("players.css")}">
 </head>
 <body>
 {body}
 {shared_scripts}
-<script src="/boot.js"></script>
-<script src="/upload.js"></script>
-<script src="/feedback.js"></script>
+<script src="{asset("boot.js")}"></script>
+<script src="{asset("upload.js")}"></script>
+<script src="{asset("feedback.js")}"></script>
 </body>
 </html>"""
 
@@ -505,19 +530,31 @@ def main():
         out.write_bytes(data)
         written.append((rel_path, len(data)))
 
-    write("index.html", build_index_html())
-    write("chart.js", (_HERE / "vendor" / "chart.umd.js").read_bytes())
-    write("app.js", run.read_dashboard_js(skip=SHARED_JS))
+    def write_hashed(rel_path: str, content) -> None:
+        name = hashed_name(rel_path, content)
+        HASHED[rel_path] = name
+        write(name, content)
+
+    # Order matters: a file that names another (boot.js names app.js and
+    # catalog.json) is hashed after them, so its own hash covers those names.
+    HASHED.clear()
+    write_hashed("chart.js", (_HERE / "vendor" / "chart.umd.js").read_bytes())
+    write_hashed("app.js", run.read_dashboard_js(skip=SHARED_JS))
     for name in SHARED_JS:
-        write(name, (_HERE / "js" / name).read_text(encoding="utf-8"))
-    write("dashboard.css", (_HERE / "dashboard.css").read_text(encoding="utf-8"))
+        write_hashed(name, (_HERE / "js" / name).read_text(encoding="utf-8"))
+    write_hashed("dashboard.css", (_HERE / "dashboard.css").read_text(encoding="utf-8"))
+    write_hashed("catalog.json", json.dumps(build_catalog(), separators=(",", ":")))
 
     if _SITE_BOOT_JS.exists():
-        write("boot.js", _SITE_BOOT_JS.read_text(encoding="utf-8"))
+        boot = _SITE_BOOT_JS.read_text(encoding="utf-8")
+        for plain in ("app.js", "catalog.json"):
+            assert f'"/{plain}"' in boot, plain
+            boot = boot.replace(f'"/{plain}"', f'"/{HASHED[plain]}"')
+        write_hashed("boot.js", boot)
     else:
         print(f"WARNING: {_SITE_BOOT_JS} does not exist yet — dist/boot.js not written.")
     for name in ("upload.js", "upload.css", "players.css", "feedback.js"):
-        write(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
+        write_hashed(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
     for f in SITE_FILES:
         write(f.name, f.read_bytes())
     # Page bodies, fetched by boot.js. Flat names (not a pages/ folder) so
@@ -534,9 +571,8 @@ def main():
     if ingest_url is None:
         print("NOTE: no --ingest-url; dist/site-config.json has uploads disabled.")
     write("site-config.json", json.dumps({"ingestUrl": ingest_url}))
-
-    catalog_json = json.dumps(build_catalog(), separators=(",", ":"))
-    write("catalog.json", catalog_json)
+    write(MANIFEST, json.dumps(HASHED))
+    write("index.html", build_index_html())
 
     print("Wrote dist/:")
     for rel_path, size in written:

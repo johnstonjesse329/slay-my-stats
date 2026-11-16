@@ -527,11 +527,10 @@ document.addEventListener("keydown", e => {
   }
 });
 
-// A phone can't hover a card, and its three-per-row tiles are small for the
+// A phone (isSmallPhone(), data.js) can't hover a card, and its three-per-row tiles are small for the
 // card's text, so a tap opens the card large, with its enchantment's rule under
 // it. Anything tapped (or Escape) closes it. Wider screens draw the cards at
 // full size and use hover, so they never get this.
-const PHONE_DECK_MQ = window.matchMedia("(max-width: 560px)");
 
 function closeCardLightbox() {
   document.querySelector(".card-lightbox")?.remove();
@@ -559,7 +558,7 @@ function openCardLightbox(card) {
 }
 
 document.addEventListener("click", e => {
-  if (!PHONE_DECK_MQ.matches) return;
+  if (!isSmallPhone()) return;
   const tile = e.target.closest?.(".card-tile-face[data-tile-card]");
   if (!tile) return;
   try { openCardLightbox(JSON.parse(decodeURIComponent(tile.dataset.tileCard))); } catch { /* leave the tile as it is */ }
@@ -600,11 +599,21 @@ window.addEventListener("mousemove", () => document.body.classList.remove("suppr
 // Marks pageDirty.cards clean afterward so showPage("cards") skips its
 // own render entirely instead of immediately redoing this same work.
 if (currentPage === "overview") {
-  setTimeout(() => {
+  // Six seconds after load, in idle time, or sooner when the pointer or focus reaches
+  // the Cards tab. Building ~10k nodes right after first paint delayed
+  // everything else on load.
+  let cardsPrefetched = false;
+  const prefetchCards = () => {
+    if (cardsPrefetched) return;
+    cardsPrefetched = true;
     if (currentPage === "overview" && pageDirty.cards) {
       renderCardsPage();
       pageDirty.cards = false;
     }
-  }, 0);
+  };
+  const tab = document.getElementById("tab-cards");
+  if (tab) ["pointerenter", "focus", "touchstart"].forEach(ev =>
+    tab.addEventListener(ev, prefetchCards, { once: true, passive: true }));
+  setTimeout(() => (window.requestIdleCallback || setTimeout)(prefetchCards), 6000);
 }
 

@@ -109,7 +109,7 @@ function summarize(bucket) {
     wins:            w,
     runs:            n,
     losses:          l,
-    win_pct:         n ? +(w / n * 100).toFixed(1) : null,
+    win_pct:         winPctNum(w, n),
     avg_floor:       n ? +(bucket.floorSum / n).toFixed(1)   : null,
     avg_min:         n ? +(bucket.timeSum  / n).toFixed(1)   : null,
     median_floor:    median(bucket.floorVals),

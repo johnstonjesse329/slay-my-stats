@@ -131,7 +131,7 @@ function summarizeFights(bucket) {
     wins:        w,
     losses:      l,
     runs:        n,
-    win_pct:     +(w / n * 100).toFixed(1),
+    win_pct:     winPctNum(w, n),
     avg_hp:      median(bucket.winHpVals),
     avg_hp_pct:  median(bucket.winHpPctVals),
     avg_cards:   median(bucket.winCardsVals),
@@ -283,7 +283,7 @@ function hpLane(s, max) {
 function winLane(s) {
   // Fights/turns/HP are three distinct stats, not fragments of one — each
   // gets its own line (via showTableTooltip's "\n" handling).
-  const tipLines = [`Fights: ${s.runs} (${s.wins}W / ${s.runs - s.wins}L)`];
+  const tipLines = [`Fights: ${s.runs} (${fmtRecord(s.wins, s.runs - s.wins)})`];
   if (s.avg_turns != null) {
     tipLines.push(`Turns: ${s.avg_turns}W${s.loss_avg_turns != null ? ` / ${s.loss_avg_turns}L` : ""}`);
   }
@@ -295,7 +295,7 @@ function winLane(s) {
   const { color } = winPctStyle(s.win_pct, [60, 40, 20]);
   return `<div class="fl-lane" data-tip="${tipLines.join("\n")}">` +
     `<span class="fl-fill" style="width:${s.win_pct}%;background:${color}"></span>` +
-    `<span class="fl-value" style="left:calc(${s.win_pct}% + 8px)"><b style="color:${color}">${s.win_pct}%</b> · ${s.wins}W / ${s.runs - s.wins}L</span></div>`;
+    `<span class="fl-value" style="left:calc(${s.win_pct}% + 8px)"><b style="color:${color}">${s.win_pct}%</b> · ${fmtRecord(s.wins, s.runs - s.wins)}</span></div>`;
 }
 
 const PCT_TICKS = [0, 25, 50, 75, 100].map(v => [v, `${v}%`]);

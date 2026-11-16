@@ -1456,7 +1456,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <main id="main-content">
 <div id="page-overview">
 <p id="overview-history-summary"></p>
-<p class="chart-caption">Full history across all characters, builds, dates, mods and party sizes. Statistics and charts cover Standard and Dread runs; Daily, Custom and Blitz runs are counted separately above. Filters apply only to Runs, Cards and Seeds.</p>
+<p class="chart-caption">Full history across all characters, builds, dates, mods and party sizes. Stats and charts cover Standard and Dread runs. Daily, Custom and Blitz are counted separately above.</p>
 <div class="cards" id="summary-cards"></div>
 <div class="grid-1">
   <div class="chart-box">
@@ -1677,7 +1677,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <div id="detail-tag-filter" style="display:none">
       <div class="tag-filter-head">
         <button type="button" class="tag-filter-summary" aria-expanded="false">
-          <span class="filter-label">Tags</span>
+          <span class="filter-label">Filter by archetypes</span>
           <span class="tag-filter-text"></span>
           <span class="tag-filter-caret" aria-hidden="true">▾</span>
         </button>
