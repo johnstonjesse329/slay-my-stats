@@ -1202,7 +1202,7 @@ h1 {
   box-shadow: 0 4px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
   /* One set of columns for every row (each row is a subgrid of it), so each
      column is as wide as its widest entry and they line up down the list:
-     char, asc, players, W/L, floor, reading, date. Spacing is each cell's left padding,
+     char, asc, party, W/L, floor, reading, date. Spacing is each cell's left padding,
      not a column gap. */
   display: grid;
   /* Char takes what it needs; the five columns after it share whatever room
@@ -1652,22 +1652,23 @@ h1 {
 /* Wording that only applies where a pointer can drag a chart: hidden on a finger. */
 @media (pointer: coarse) { .drag-only { display: none; } }
 
-/* A line above the run's charts saying they take a drag, until it is dismissed or used. It is in
-   the page's HTML and hidden by default, shown only where a pointer can drag: a finger scrubs the
-   hover box instead, so the line would be telling a phone about a gesture it doesn't have. */
+/* A note under Keeping Up by Floor saying the charts take a drag, until it is dismissed. It is
+   in the page's HTML and hidden by default, shown only where a pointer can drag: a finger scrubs
+   the hover box instead, so the line would be telling a phone about a gesture it doesn't have. */
 .range-tip {
   display: none;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 10px;
-  padding: 8px 12px;
-  border: 1px solid #e0c46859;
-  border-left: 3px solid var(--gold, #e0c468);
-  border-radius: 8px;
-  background: #e0c46812;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--gold, #e0c468);
+  border-radius: 10px;
+  background: var(--panel, #1b1a26);
   color: var(--text);
   font-size: var(--fs-sm);
-  line-height: 1.35;
+  line-height: 1.45;
+  box-shadow: 0 4px 16px #0006;
 }
 @media (any-pointer: fine) { .range-tip:not([hidden]) { display: flex; } }
 .range-tip b { color: var(--gold, #e0c468); font-weight: 700; }
@@ -2047,9 +2048,9 @@ h1 {
 .synergy-lane-label { color: #b9def5; font-size: var(--fs-md); font-weight: 700; line-height: 1.5; margin-bottom: 10px; }
 .synergy-flow > div:last-child .synergy-lane-label { color: #efd6a0; }
 .synergy-items { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
-.synergy-relic { width: min(100%, 360px); }
+.synergy-relic { width: min(100%, 240px); }
 .synergy-relic > .relic-tooltip { display: block; position: static; width: 100%; }
-.synergy-relic .rt-art { height: 150px; }
+.synergy-relic .rt-art { height: 100px; }
 .synergy-items > .synergy-relic { grid-column: 1 / -1; }
 .synergy-item { display: flex; align-items: center; gap: 5px; text-align: left; max-width: 100%; border: 1px solid var(--panel-border); border-radius: 5px; background: rgba(255,255,255,.04); color: var(--text); padding: 3px 6px 3px 3px; cursor: pointer; font: inherit; font-size: var(--fs-sm); line-height: 1.4; }
 .synergy-item-portrait { display: flex; flex-shrink: 0; }

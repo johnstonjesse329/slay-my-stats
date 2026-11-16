@@ -205,7 +205,7 @@ function renderDetailRunList() {
   container.innerHTML = `<div class="detail-run-header-row">
     ${sortHead("char", "Char")}
     ${sortHead("asc", "Asc")}
-    ${sortHead("players", "Players", "Solo or multiplayer; sorting puts solo first.")}
+    ${sortHead("players", "Party", "Who was in the run: solo, or a party of two to four. Sorting puts solo first.")}
     ${sortHead("won", "W/L")}
     ${sortHead("floor", "Floor")}
     ${sortHead("read", "+/–", `Hype, Mid or Rough against the average win on this run's fights.\nOP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
@@ -1178,10 +1178,10 @@ function nodePoints(nodes, getChart, highlight, size = nodePointSize(), keyOf = 
     clip: iconClip(),
   };
 }
-const NODE_POINT = 40;
+const NODE_POINT = 30;
 // A phone shows one act at a time, so the floors are close together: the desktop's icons would
 // overlap into a smear over the line. Sized to sit just inside the floor spacing instead.
-const NODE_POINT_PHONE = 22;
+const NODE_POINT_PHONE = 17;
 const nodePointSize = () => narrowScreen.matches ? NODE_POINT_PHONE : NODE_POINT;
 
 // The y axis for a chart with floor icons: stretched past the data by an
@@ -2012,19 +2012,33 @@ function showFloorTip(context, html) {
   const px = r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
   const w = floorTip.offsetWidth, h = floorTip.offsetHeight;
   const gap = 12;
-  let below = py + gap + h <= vh - 8 || py - gap - h < 8;
-  let top = below ? py + gap : py - gap - h;
-  // A box with nothing to hover (no pickup chips) lets the pointer through, so it can't block
-  // scrubbing along the chart. One with chips has to be reachable, so it sits clear of the
-  // chart instead, under it or over it, and the pointer is never stopped on the way along.
   const live = !!floorTip.querySelector("[data-pick]");
   floorTip.classList.toggle("passive", !live);
-  if (live) {
-    if (r.bottom + 8 + h <= vh - 8) { top = r.bottom + 8; below = true; }
-    else if (r.top - 8 - h >= 8) { top = r.top - 8 - h; below = false; }
+  // Never over the chart: the box sits under it, else above it, else beside it, and the floor it
+  // belongs to is read from the column it is centred on. Only a box that fits nowhere (a phone's
+  // landscape, a very tall table) falls back to the pointer, where at least it can be read.
+  const room = {
+    below: r.bottom + gap + h <= vh - 8,
+    above: r.top - gap - h >= 8,
+    right: r.right + gap + w <= vw - 8,
+    left: r.left - gap - w >= 8,
+  };
+  let below, left, top;
+  if (room.below || room.above) {
+    below = room.below;
+    top = below ? r.bottom + gap : r.top - gap - h;
+    left = Math.max(8, Math.min(px - w / 2, vw - 8 - w));
+  } else if (room.right || room.left) {
+    below = py < r.top + r.height / 2;
+    left = room.right ? r.right + gap : r.left - gap - w;
+    top = Math.max(8, Math.min(py - h / 2, vh - 8 - h));
+  } else {
+    below = py + gap + h <= vh - 8 || py - gap - h < 8;
+    top = below ? py + gap : py - gap - h;
+    left = Math.max(8, Math.min(px - w / 2, vw - 8 - w));
   }
   floorTip.classList.toggle("above", !below);
-  floorTip.style.left = Math.max(8, Math.min(px - w / 2, vw - 8 - w)) + "px";
+  floorTip.style.left = left + "px";
   floorTip.style.top = Math.max(8, top) + "px";
   Object.assign(floorTipAnchor, { x: floorTipPointer.x || px, y: py, below });
 }
@@ -2084,10 +2098,17 @@ const ENEMY_OFFSETS = {
 
 // A multi-enemy fight gets its marker icon fanned into that many icons -- the enemies behind the
 // one on the point, so the group reads at a glance and the count matches the fight -- on every
-// floor chart that draws fight icons (HP, damage done, damage taken, keeping up). Bosses get it
-// too when their data says so (Kaiser Crab's claws). Drawn before the line and the marker, so the
-// marker still pins the exact point.
+// floor chart that draws fight icons (HP, damage done, damage taken, keeping up). Each copy is a
+// fifth fainter than the one in front of it, so two or three of them read as a group without the
+// cluster turning into one blob over the line. Bosses get it too when their data says so (Kaiser
+// Crab's claws). Drawn before the line and the marker, so the marker still pins the exact point.
 function makeManyIconPlugin(nodes) {
+  // How faint a copy at each distance behind the marker is: the same distance behind fades the
+  // same, so a fan reads level rather than lopsided.
+  const fade = offsets => {
+    const depth = [...new Set(offsets.map(([fx, fy]) => +Math.hypot(fx, fy).toFixed(2)))].sort((a, b) => a - b);
+    return offsets.map(([fx, fy]) => 0.85 * Math.pow(0.8, depth.indexOf(+Math.hypot(fx, fy).toFixed(2))));
+  };
   return {
     id: "manyIcons",
     beforeDatasetsDraw(chart) {
@@ -2102,9 +2123,12 @@ function makeManyIconPlugin(nodes) {
           if (count < 2 || i < x.min || i > x.max) return;
           const size = radius * 2;
           const px = x.getPixelForValue(i), py = y.getPixelForValue(ds.data[i]);
-          ctx.globalAlpha = 0.8;
-          (ENEMY_OFFSETS[Math.min(count, 5)] || ENEMY_OFFSETS[5]).forEach(([fx, fy]) =>
-            ctx.drawImage(img, px - radius + fx * radius, py - radius + fy * radius, size, size));
+          const offsets = ENEMY_OFFSETS[Math.min(count, 5)] || ENEMY_OFFSETS[5];
+          const alphas = fade(offsets);
+          offsets.forEach(([fx, fy], k) => {
+            ctx.globalAlpha = alphas[k];
+            ctx.drawImage(img, px - radius + fx * radius, py - radius + fy * radius, size, size);
+          });
         });
       });
       ctx.restore();
@@ -2160,7 +2184,7 @@ let rangeSel = null;      // {from, to}: floor numbers, as the axis numbers them
 let rangeChanges = null;  // the run's floorChanges(), or null when it has no deck history
 let rangeNodes = [];      // its timeline
 let rangeDrag = null;     // {chart, nodes, host, from, moved} while a pointer is down on a chart
-let rangePanel = null;    // the panel, moved under whichever chart the span was dragged on
+let rangePanels = [];     // one under every floor chart while a span is live
 const RANGE_HINT_KEY = "slay-my-stats:range-used:v2";          // the gesture has been used
 const RANGE_TIP_KEY = "slay-my-stats:range-tip-dismissed:v2";  // the line above the charts was closed
 const rangeTipSeen = () => { try { return !!localStorage.getItem(RANGE_TIP_KEY); } catch { return false; } };
@@ -2271,7 +2295,7 @@ function bindRangeSelect(chart, nodes) {
     const to = floorAtPointer(chart, nodes, e.clientX);
     if (to == null) return;
     if (to !== rangeDrag.from) rangeDrag.moved = true;
-    showRange(Math.min(rangeDrag.from, to), Math.max(rangeDrag.from, to), host);
+    showRange(Math.min(rangeDrag.from, to), Math.max(rangeDrag.from, to));
   });
   const end = e => {
     if (!rangeDrag || rangeDrag.chart !== chart) return;
@@ -2284,35 +2308,48 @@ function bindRangeSelect(chart, nodes) {
   canvas.addEventListener("pointercancel", end);
 }
 
-function showRange(from, to, host) {
+function showRange(from, to) {
   rangeSel = { from, to };
   drawFloorCharts();
-  if (!rangePanel) {
-    rangePanel = document.createElement("div");
-    rangePanel.id = "detail-range-panel";
-    rangePanel.className = "range-panel";
-    rangePanel.addEventListener("click", e => { if (e.target.closest("[data-range-clear]")) clearRange(); });
-  }
-  // After the chart's key, so the panel reads as that chart's without splitting the key from it.
-  let anchor = host;
-  while (anchor.nextElementSibling?.classList.contains("floor-legend")) anchor = anchor.nextElementSibling;
-  anchor.after(rangePanel);
-  rangePanel.innerHTML = rangeSummaryHtml();
+  // The same list under every floor chart, not only the one dragged: the span is drawn on all of
+  // them, so what it changed is read beside whichever one is being looked at.
+  const html = rangeSummaryHtml();
+  const hosts = floorCharts().map(c => c.canvas.closest(".chart-wrap")).filter(Boolean);
+  hosts.forEach((wrap, i) => {
+    const panel = rangePanels[i] || makeRangePanel();
+    rangePanels[i] = panel;
+    // After the chart's key, so the panel reads as that chart's without splitting the key from it.
+    let anchor = wrap;
+    while (anchor.nextElementSibling?.classList.contains("floor-legend")) anchor = anchor.nextElementSibling;
+    if (anchor.nextElementSibling !== panel) anchor.after(panel);
+    panel.innerHTML = html;
+  });
+  rangePanels.slice(hosts.length).forEach(p => p.remove());
+  rangePanels.length = hosts.length;
+}
+
+function makeRangePanel() {
+  const panel = document.createElement("div");
+  panel.id = rangePanels.length ? "" : "detail-range-panel";
+  panel.className = "range-panel";
+  panel.addEventListener("click", e => { if (e.target.closest("[data-range-clear]")) clearRange(); });
+  return panel;
 }
 
 function clearRange() {
   rangeSel = null;
   rangeDrag = null;
-  if (rangePanel) { rangePanel.remove(); rangePanel = null; }
+  rangePanels.forEach(p => p.remove());
+  rangePanels = [];
   drawFloorCharts();
 }
 
 document.addEventListener("keydown", e => { if (e.key === "Escape" && rangeSel) clearRange(); });
-// A click anywhere off the panel clears the span; a click on a chart is that chart's own
+// A click anywhere off the panels clears the span; a click on a chart is that chart's own
 // business (it clears there, or starts another drag).
 document.addEventListener("pointerdown", e => {
   if (!rangeSel || rangeDrag) return;
-  if (e.target.closest?.("#detail-range-panel") || e.target.tagName === "CANVAS") return;
+  if (e.target.closest?.(".range-panel") || e.target.tagName === "CANVAS") return;
   clearRange();
 });
 
@@ -2586,7 +2623,7 @@ const KEEP_OP_ACTS = [2, 3];
 const KEEP_SIGNS = { ahead: "▲", meeting: `<i class="bullseye"></i>`, behind: "▼" };
 // Fight icons on a chart, in px: up to the HP and gold charts' size, and a floor and a
 // half wide when a run has many floors; still readable on a phone.
-const KEEP_ICON = { min: 21, max: NODE_POINT };
+const KEEP_ICON = { min: 16, max: NODE_POINT };
 // How big a fight icon is on those charts. A desktop has room for a floor and a half; a phone
 // fits one act into its width, so the icon goes just under the floor spacing there instead of
 // piling up on its neighbours.

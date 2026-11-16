@@ -1695,7 +1695,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="detail-deck-relics"></div>
       <div id="detail-timeline"></div>
       <div id="detail-maps"></div>
-      <p class="range-tip" id="detail-range-tip"><b>Drag across any floor chart</b> to add up what changed over those floors — cards in and out, relics, fights and damage. <button type="button" class="range-tip-close" aria-label="Dismiss this tip">&#10005;</button></p>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
         <p class="chart-caption">This data highlights how your deck is performing per act against broad buckets of effectiveness: how much damage you put out and how much you mitigate. Slower decks with more turns per fight aren't penalized if damage taken is low.</p>
@@ -1739,6 +1738,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         </div>
         <p class="chart-caption" id="detail-keep-play-none">No per-turn log for this run. Runs played with the mod and uploaded through it have one.</p>
       </div>
+      <p class="range-tip" id="detail-range-tip"><b>Drag across any floor chart</b> to add up what changed over those floors — cards in and out, relics, fights and damage. <button type="button" class="range-tip-close" aria-label="Dismiss this tip">&#10005;</button></p>
       <div class="chart-box" id="detail-gold-box" style="margin-top:16px">
         <h2>Gold by Floor</h2>
         <p class="chart-caption">Your gold after each floor.</p>
