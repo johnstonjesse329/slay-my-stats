@@ -482,7 +482,6 @@ def build_index_html() -> str:
 {shared_scripts}
 <script src="/boot.js"></script>
 <script src="/upload.js"></script>
-<script src="/feedback.js"></script>
 </body>
 </html>"""
 
@@ -516,7 +515,7 @@ def main():
         write("boot.js", _SITE_BOOT_JS.read_text(encoding="utf-8"))
     else:
         print(f"WARNING: {_SITE_BOOT_JS} does not exist yet — dist/boot.js not written.")
-    for name in ("upload.js", "upload.css", "players.css", "feedback.js"):
+    for name in ("upload.js", "upload.css", "players.css"):
         write(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
     for f in SITE_FILES:
         write(f.name, f.read_bytes())
