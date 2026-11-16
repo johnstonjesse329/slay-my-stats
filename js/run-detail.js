@@ -2317,6 +2317,18 @@ function makeRangePanel() {
   panel.id = rangePanels.length ? "" : "detail-range-panel";
   panel.className = "range-panel";
   panel.addEventListener("click", e => { if (e.target.closest("[data-range-clear]")) clearRange(); });
+  // A chip is small; hovering or focusing it opens the full card face or relic, as elsewhere.
+  const openTip = e => {
+    const chip = e.target.closest?.("[data-range-tip]");
+    if (!chip) return;
+    const [kind, id, up] = chip.dataset.rangeTip.split(":");
+    showFloatingHtmlTooltip(chip, kind === "relic" ? buildRelicTooltip(id) : buildCardTooltip(id, up === "1"));
+  };
+  const closeTip = e => { if (e.target.closest?.("[data-range-tip]") && e.pointerType !== "touch") hideFloatingHtmlTooltip(); };
+  panel.addEventListener("pointerover", openTip);
+  panel.addEventListener("pointerout", closeTip);
+  panel.addEventListener("focusin", openTip);
+  panel.addEventListener("focusout", closeTip);
   return panel;
 }
 
@@ -2360,18 +2372,19 @@ function rangeSummaryHtml() {
   });
   const tally = list => {
     const counts = new Map();
-    list.forEach(({ id }) => counts.set(id, (counts.get(id) || 0) + 1));
-    return [...counts].map(([id, n]) => ({ id, n }));
+    const ups = new Map();
+    list.forEach(({ id, up }) => { counts.set(id, (counts.get(id) || 0) + 1); if (!ups.has(id)) ups.set(id, up); });
+    return [...counts].map(([id, n]) => ({ id, n, up: ups.get(id) }));
   };
-  const chip = (src, label, n, cls = "", id = "") =>
-    `<span class="range-chip${cls}"${id ? ` data-id="${escapeHtml(id)}"` : ""}>${src ? `<img src="${src}" alt="">` : ""}${escapeHtml(label)}${n > 1 ? ` ×${n}` : ""}</span>`;
+  const chip = (src, label, n, cls = "", id = "", tip = "") =>
+    `<span class="range-chip${cls}"${id ? ` data-id="${escapeHtml(id)}"` : ""}${tip ? ` data-range-tip="${escapeHtml(tip)}" tabindex="0"` : ""}>${src ? `<img src="${src}" alt="">` : ""}${escapeHtml(label)}${n > 1 ? ` ×${n}` : ""}</span>`;
   const cardName = id => cardInfo(id)?.title || fmtCardLabel(id);
   const relicName = id => relicInfo(id)?.title || fmtRelicLabel(id);
   const group = (head, list, kind, name, cls = "") => {
     if (!list.length) return "";
     const src = kind === "card" ? cardImgSrc : relicImgSrc;
     return `<div class="range-group"><span class="range-head">${head}</span>` +
-      tally(list).map(({ id, n }) => chip(src(id), name(id), n, cls, id)).join("") + `</div>`;
+      tally(list).map(({ id, n, up }) => chip(src(id), name(id), n, cls, id, `${kind}:${id}:${up > 0 || cls ? 1 : 0}`)).join("") + `</div>`;
   };
   const groups = group("Cards in", inPlay.added, "card", cardName) +
     group("Upgraded", inPlay.upgraded, "card", cardName, " up") +

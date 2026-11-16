@@ -131,6 +131,18 @@ def main():
         assert group_ids(page, "Cards in") == want["cards_in"], (group_ids(page, "Cards in"), want["cards_in"])
         assert group_ids(page, "Relics in") == want["relics_in"], (group_ids(page, "Relics in"), want["relics_in"])
 
+        # A chip is small: hovering one opens the full card face, a relic the relic tooltip.
+        for sel, want_cls in ((".range-chip[data-range-tip^='card:']", ".card-tooltip"),
+                              (".range-chip[data-range-tip^='relic:']", ".relic-tooltip-wrap, .relic-tooltip")):
+            chip = panel.locator(sel).first
+            if chip.count():
+                chip.hover()
+                page.wait_for_timeout(300)
+                shown = page.locator(".chart-tooltip-rich.tip-live")
+                assert shown.count() == 1 and shown.locator(want_cls).count(), (sel, shown.count(), shown.inner_html()[:300] if shown.count() else "")
+                page.mouse.move(5, 5)
+                page.wait_for_timeout(200)
+
         # The same span is drawn on every floor chart, not just the one dragged.
         drawn = page.evaluate(
             """() => [detailHpChart, detailGoldChart, detailDeckChart, detailRelicChart, ...detailKeepCharts]
