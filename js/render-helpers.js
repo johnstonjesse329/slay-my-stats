@@ -432,7 +432,7 @@ function renderAscTracker() {
     grid.insertBefore(chart, grid.children[1] || null);
   }
   chart.className = "chart-box";
-  chart.innerHTML = `<h2>Run readings by character</h2><p class="chart-caption">All Standard and Dread runs compared with the shared winning-run baseline. Dread and runs without enough data are unrated.</p><div class="asc-readings-legend"><span class="asc-reading-rough">Rough</span><span class="asc-reading-mid">Mid</span><span class="asc-reading-hype">Hype</span><span class="asc-reading-op">OP</span><span class="asc-reading-unrated">Unrated</span></div><div class="asc-readings-chart-rows"></div>`;
+  chart.innerHTML = `<h2>Run readings by character</h2><p class="chart-caption">All Standard and Dread runs compared with the shared winning-run baseline. Dread and runs without enough data are unrated.</p><div class="asc-readings-legend"><div class="asc-readings-legend-items"><span class="asc-reading-rough">Rough</span><span class="asc-reading-mid">Mid</span><span class="asc-reading-hype">Hype</span><span class="asc-reading-op">OP</span><span class="asc-reading-unrated">Unrated</span></div></div><div class="asc-readings-chart-rows"></div>`;
   // Run reading constants are initialized later in the bundle on first load.
   setTimeout(() => {
     if (!chart.isConnected) return;

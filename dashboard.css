@@ -432,9 +432,15 @@ h1 {
 .asc-reading-rough { color: #e28b8b; } .asc-reading-mid { color: #e8c278; }
 .asc-reading-hype { color: #81c99a; } .asc-reading-op { color: #87ceeb; }
 .asc-reading-unrated { color: var(--text-dim); }
-.asc-readings-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0.75rem 0; font-size: var(--fs-sm); }
+.asc-readings-legend { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) 5rem; gap: 0.75rem; margin: 0.75rem 0; font-size: var(--fs-sm); }
+.asc-readings-legend-items { grid-column: 2; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 1rem; }
+.asc-readings-legend-items > span { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text); }
+.asc-readings-legend-items > span::before { content: ""; width: 0.75rem; height: 0.75rem; border-radius: 2px; background: var(--swatch); }
+.asc-readings-legend-items .asc-reading-rough { --swatch: #c45d68; } .asc-readings-legend-items .asc-reading-mid { --swatch: #c79c4b; }
+.asc-readings-legend-items .asc-reading-hype { --swatch: #5cba7d; } .asc-readings-legend-items .asc-reading-op { --swatch: #69b9d4; }
+.asc-readings-legend-items .asc-reading-unrated { --swatch: #747382; }
 .asc-readings-chart-rows { display: grid; gap: 0.6rem; }
-.asc-readings-row { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; font-size: var(--fs-sm); }
+.asc-readings-row { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) 5rem; gap: 0.75rem; align-items: center; font-size: var(--fs-sm); }
 .asc-readings-char { overflow-wrap: anywhere; }
 .asc-readings-bar { display: flex; height: 1.2rem; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.06); }
 .asc-readings-bar > span { min-width: 2px; }
