@@ -6,8 +6,45 @@ import json
 import os
 import re
 import time
+import urllib.parse
 import uuid
 from http.cookies import CookieError, SimpleCookie
+
+PAGE_SIZE = 25
+SCAN_LIMIT = 400  # objects read in one request; a page-scoped view may skip most
+CURSOR = re.compile(r"feedback/\d{10}-[a-f0-9]{32}\.json")
+
+
+def _valid_path(path) -> bool:
+    return isinstance(path, str) and path.startswith("/") and not path.startswith("//") and len(path) <= 3000
+
+
+def _read_notes(store, bucket, scope, path, cursor):
+    """A page of notes, newest first; scope "page" keeps only that path.
+
+    Keys sort newest first, so the cursor is the last key read (StartAfter) and
+    no more keys means the visible inbox is exhausted.
+    """
+    notes, scanned, after = [], 0, cursor or ""
+    while True:
+        args = {"Bucket": bucket, "Prefix": "feedback/", "MaxKeys": 100}
+        if after:
+            args["StartAfter"] = after
+        listing = store.list_objects_v2(**args)
+        contents = listing.get("Contents", [])
+        for index, obj in enumerate(contents):
+            after = obj["Key"]
+            scanned += 1
+            note = json.loads(store.get_object(Bucket=bucket, Key=after)["Body"].read())
+            if scope == "page" and note.get("path") != path:
+                continue
+            notes.append(note)
+            if len(notes) >= PAGE_SIZE:
+                return notes, (after if index + 1 < len(contents) or listing.get("IsTruncated") else None)
+        if not listing.get("IsTruncated"):
+            return notes, None
+        if scanned >= SCAN_LIMIT:
+            return notes, after
 
 
 def handle(event):
@@ -37,11 +74,17 @@ def handle(event):
     store = boto3.client("s3")
     bucket = os.environ["DATA_BUCKET"]
     if method == "GET":
-        # Date-descending keys: bounded latest 200, regardless of inbox size.
-        keys = store.list_objects_v2(Bucket=bucket, Prefix="feedback/", MaxKeys=200)
-        notes = [json.loads(store.get_object(Bucket=bucket, Key=o["Key"])["Body"].read())
-                 for o in keys.get("Contents", [])]
-        return reply(200, {"notes": notes})
+        params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", "")))
+        scope = params.get("scope", "site")
+        cursor = params.get("cursor", "")
+        if scope == "page" and not _valid_path(params.get("path")):
+            return reply(400, {"message": "A page view needs a path."})
+        if scope not in ("page", "site"):
+            return reply(400, {"message": "Scope must be page or site."})
+        if cursor and not CURSOR.fullmatch(cursor):
+            return reply(400, {"message": "Invalid page cursor."})
+        notes, following = _read_notes(store, bucket, scope, params.get("path", ""), cursor)
+        return reply(200, {"notes": notes, "next": following, "scope": scope})
     try:
         raw = event.get("body") or ""
         if len(raw) > 40000:
@@ -59,7 +102,7 @@ def handle(event):
             path = data.get("path", "")
             target = data.get("target", {})
             if (not isinstance(comment, str) or not 1 <= len(comment.strip()) <= 4000
-                    or not isinstance(path, str) or not path.startswith("/") or path.startswith("//") or len(path) > 3000
+                    or not _valid_path(path)
                     or not isinstance(target, dict) or len(json.dumps(target)) > 12000):
                 raise ValueError()
             # The exact page URL, so a report can be reopened without guessing the host.

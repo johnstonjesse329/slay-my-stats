@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import unittest
+import urllib.parse
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -25,12 +26,13 @@ class FeedbackTest(unittest.TestCase):
         self.client.start()
         self.addCleanup(self.client.stop)
 
-    def event(self, body=None, expiry=None):
+    def event(self, body=None, expiry=None, query=''):
         payload = f'76561198000000001.{expiry or int(time.time())+1000}'
         sig = hmac.new(b'test-secret', payload.encode(), hashlib.sha256).hexdigest()
         return {'cookies': [f'__Host-gamma={payload}.{sig}'],
                 'headers': {'origin': 'https://gamma.test'},
                 'requestContext': {'http': {'method': 'POST' if body else 'GET'}},
+                'rawQueryString': query,
                 'body': json.dumps(body) if body else ''}
 
     def test_direct_url_requires_valid_session(self):
@@ -70,6 +72,33 @@ class FeedbackTest(unittest.TestCase):
         for url in ['https://elsewhere.test' + path, 'https://gamma.test.evil.test' + path,
                     'ftp://gamma.test' + path, {'href': path}]:
             self.assertEqual(feedback.handle(self.event({**body, 'url': url}))['statusCode'], 400, url)
+
+    def test_list_pages_and_scopes(self):
+        keys = [f"feedback/{9999999999 - i:010d}-{i:032x}.json" for i in range(30)]
+        docs = {key: {'id': key, 'path': '/a' if i % 2 else '/b', 'target': {'kind': 'page'}, 'resolved': False}
+                for i, key in enumerate(keys)}
+        ordered = sorted(keys)  # S3 lists keys in lexicographic order: newest note first
+        self.store.list_objects_v2.side_effect = lambda **kw: {
+            'Contents': [{'Key': key} for key in [k for k in ordered if k > kw.get('StartAfter', '')][:kw.get('MaxKeys', 1000)]],
+            'IsTruncated': False}
+        self.store.get_object.side_effect = lambda **kw: {'Body': io.BytesIO(json.dumps(docs[kw['Key']]).encode())}
+
+        first = json.loads(feedback.handle(self.event(query='scope=site'))['body'])
+        self.assertEqual(len(first['notes']), feedback.PAGE_SIZE)
+        self.assertEqual(first['scope'], 'site')
+        rest = json.loads(feedback.handle(
+            self.event(query='scope=site&cursor=' + urllib.parse.quote(first['next'])))['body'])
+        self.assertEqual(len(rest['notes']), 30 - feedback.PAGE_SIZE)
+        self.assertIsNone(rest['next'])
+        self.assertEqual([note['id'] for note in first['notes'] + rest['notes']], ordered)
+
+        page = json.loads(feedback.handle(self.event(query='scope=page&path=%2Fa'))['body'])
+        self.assertTrue(page['notes'])
+        self.assertEqual({note['path'] for note in page['notes']}, {'/a'})
+
+        self.assertEqual(feedback.handle(self.event(query='scope=nope'))['statusCode'], 400)
+        self.assertEqual(feedback.handle(self.event(query='scope=page'))['statusCode'], 400)
+        self.assertEqual(feedback.handle(self.event(query='scope=site&cursor=../raw'))['statusCode'], 400)
 
     def test_resolve(self):
         key = 'feedback/1234567890-' + 'a'*32 + '.json'

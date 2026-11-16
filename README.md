@@ -581,13 +581,13 @@ check the Steam account after verifying OpenID or the mod's ticket, including di
 Removing an account and redeploying revokes its access. Production stays public.
 Gamma deploy smoke checks use a short-lived signed session from the same private configuration.
 
-Signed-in reviewers also get a **Feedback** button in the lower right, carrying the number of notes open on
-that page: pin a note to an element or drag out a region, or comment on the whole page. The composer lists
-earlier notes for the same element or page, and the inbox groups notes into one bucket per page and per
-pinned element or region, with resolve, reopen and a copy-ready report. Every note records the page's exact
-URL, shown in the composer and in the inbox; notes are JSON objects under `feedback/` in the gamma data
-bucket, reached through `/auth/feedback`, and production never shows the button. See
-[docs/gamma-feedback.md](docs/gamma-feedback.md).
+Signed-in reviewers also get two controls in the lower right: a gold **Feedback** button that pins a note to an
+element or region, or comments on the whole page, and an **Inbox** button carrying the number of notes open on
+that page. The composer lists earlier notes for the same element or page and shows the page's exact URL; the
+inbox switches between This page and Whole site, groups notes into one bucket per page and per pinned element
+or region, pages 25 notes at a time, and offers resolve, reopen and a copy-ready report. Notes are JSON
+objects under `feedback/` in the gamma data bucket, reached through `/auth/feedback`; production shows
+neither control. See [docs/gamma-feedback.md](docs/gamma-feedback.md).
 
 ### Publishing gamma to production
 
