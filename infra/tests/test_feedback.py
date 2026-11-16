@@ -116,7 +116,7 @@ class FeedbackTest(unittest.TestCase):
     def test_resolve(self):
         key = 'feedback/1234567890-' + 'a'*32 + '.json'
         self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps({'id': key}).encode())}
-        result = feedback.handle(self.event({'action': 'resolve', 'id': key, 'resolved': True}))
+        result = feedback.handle(self.event({'action': 'resolve', 'id': key, 'resolved': True, 'outcome': 'declined', 'close_note': 'Not planned.'}))
         self.assertTrue(json.loads(result['body'])['note']['resolved'])
 
     def resolve(self, key, stored, **fields):
@@ -126,34 +126,66 @@ class FeedbackTest(unittest.TestCase):
 
     def test_resolution_is_recorded(self):
         key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        status, note = self.resolve(key, {'id': key}, resolved=True, close_note=' Fixed the tip. ', resolved_in='ABC1234')
+        status, note = self.resolve(key, {'id': key}, resolved=True, outcome='done', close_note=' Fixed the tip. ', resolved_in='ABC1234')
         self.assertEqual(status, 200)
-        self.assertEqual((note['resolved_by'], note['close_note'], note['resolved_in']), (self.steam, 'Fixed the tip.', 'abc1234'))
+        self.assertEqual((note['resolved_by'], note['close_note'], note['resolved_in'], note['outcome']),
+                         (self.steam, 'Fixed the tip.', 'abc1234', 'done'))
         self.assertIsInstance(note['resolved_at'], int)
 
     def test_reopen_keeps_the_resolution_in_history(self):
         key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        _, closed = self.resolve(key, {'id': key}, resolved=True, close_note='done', resolved_in='abc1234')
+        _, closed = self.resolve(key, {'id': key}, resolved=True, outcome='done', close_note='done', resolved_in='abc1234')
         _, reopened = self.resolve(key, closed, resolved=False)
         self.assertFalse(reopened['resolved'])
         self.assertNotIn('close_note', reopened)
+        self.assertNotIn('outcome', reopened)
         self.assertEqual(len(reopened['history']), 1)
+        self.assertEqual(reopened['history'][0]['outcome'], 'done')
         self.assertEqual(reopened['history'][0]['close_note'], 'done')
         self.assertEqual(reopened['history'][0]['reopened_by'], self.steam)
-        _, again = self.resolve(key, reopened, resolved=True, close_note='really done')
+        _, again = self.resolve(key, reopened, resolved=True, outcome='declined', close_note='really done')
         _, again = self.resolve(key, again, resolved=False)
         self.assertEqual([h['close_note'] for h in again['history']], ['done', 'really done'])
 
     def test_second_resolve_does_not_overwrite_the_first(self):
         key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        _, closed = self.resolve(key, {'id': key}, resolved=True, close_note='first')
-        _, twice = self.resolve(key, closed, resolved=True, close_note='second')
+        _, closed = self.resolve(key, {'id': key}, resolved=True, outcome='declined', close_note='first')
+        _, twice = self.resolve(key, closed, resolved=True, outcome='declined', close_note='second')
         self.assertEqual(twice['close_note'], 'first')
 
     def test_bad_resolution_fields_are_refused(self):
         key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        for fields in ({'resolved_in': 'not a commit'}, {'close_note': 'x' * 2001}, {'close_note': 5}):
-            self.assertEqual(self.resolve(key, {'id': key}, resolved=True, **fields)[0], 400)
+        other = 'feedback/1234567891-' + 'b'*32 + '.json'
+        for fields in ({'outcome': 'done', 'close_note': 'x', 'resolved_in': 'not a commit'},
+                       {'outcome': 'declined', 'close_note': 'x' * 2001}, {'outcome': 'declined', 'close_note': 5},
+                       {}, {'outcome': 'wontfix', 'close_note': 'x'},
+                       {'outcome': 'done', 'close_note': 'x'}, {'outcome': 'done', 'resolved_in': 'abc1234'},
+                       {'outcome': 'declined'}, {'outcome': 'declined', 'close_note': '  '},
+                       {'outcome': 'duplicate'}, {'outcome': 'duplicate', 'duplicate_of': '../secret'}):
+            self.assertEqual(self.resolve(key, {'id': key}, resolved=True, **fields)[0], 400, fields)
+        status, note = self.resolve(key, {'id': key}, resolved=True, outcome='duplicate', duplicate_of=other)
+        self.assertEqual((status, note['duplicate_of'], note['resolved_in']), (200, other, ''))
+
+    def test_filters_by_status_and_category(self):
+        kinds = ['bug', 'feature', 'improvement', None]
+        keys = [f"feedback/{9999999999 - i:010d}-{i:032x}.json" for i in range(8)]
+        docs = {key: {'id': key, 'path': '/a', 'target': {'kind': 'page'}, 'resolved': i % 2 == 0,
+                      **({'category': kinds[i % 4]} if kinds[i % 4] else {})} for i, key in enumerate(keys)}
+        ordered = sorted(keys)
+        self.store.list_objects_v2.side_effect = lambda **kw: {
+            'Contents': [{'Key': key} for key in [k for k in ordered if k > kw.get('StartAfter', '')][:kw.get('MaxKeys', 1000)]],
+            'IsTruncated': False}
+        self.store.get_object.side_effect = lambda **kw: {'Body': io.BytesIO(json.dumps(docs[kw['Key']]).encode())}
+        def ask(query):
+            return [docs[n['id']] for n in json.loads(feedback.handle(self.event(query=query))['body'])['notes']]
+        self.assertEqual(len(ask('scope=site')), 8)
+        self.assertEqual({n['resolved'] for n in ask('scope=site&status=open')}, {False})
+        self.assertEqual(len(ask('scope=site&status=resolved')), 4)
+        self.assertEqual({n.get('category') for n in ask('scope=site&category=bug')}, {'bug'})
+        both = ask('scope=site&status=open&category=feature')
+        self.assertEqual([(n['resolved'], n['category']) for n in both], [(False, 'feature')] * len(both))
+        self.assertEqual(feedback.handle(self.event(query='scope=site&status=nope'))['statusCode'], 400)
+        self.assertEqual(feedback.handle(self.event(query='scope=site&category=nope'))['statusCode'], 400)
 
     def test_feedback_emails(self):
         now, day = 1_800_000_000, 86400

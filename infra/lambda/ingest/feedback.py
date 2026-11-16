@@ -15,10 +15,38 @@ SCAN_LIMIT = 400  # objects read in one request; a page-scoped view may skip mos
 CURSOR = re.compile(r"feedback/\d{10}-[a-f0-9]{32}\.json")
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
 CATEGORIES = {"bug": "Bug", "feature": "Feature request", "improvement": "Improvement idea"}
-RESOLUTION = ("resolved_by", "resolved_at", "close_note", "resolved_in")
+NOTE_ID = re.compile(r"feedback/\d{10}-[a-f0-9]{32}\.json")
+OUTCOMES = ("done", "declined", "duplicate")
+STATUSES = ("open", "resolved", "all")
+RESOLUTION = ("resolved_by", "resolved_at", "close_note", "resolved_in", "outcome", "duplicate_of")
 
 
-def _resolve(note, steam, resolved, close_note, commit):
+def _outcome(data):
+    """The validated close fields of a resolve request; ValueError when they do not fit.
+
+    done needs a commit and a close note, declined needs a close note saying why, and
+    duplicate needs the id of the note it repeats. Every user can read these, so an
+    unexplained decline is refused here rather than left to the person closing it.
+    """
+    outcome = data.get("outcome")
+    close_note = data.get("close_note", "")
+    commit = str(data.get("resolved_in", "")).strip().lower()
+    duplicate_of = data.get("duplicate_of", "")
+    if (outcome not in OUTCOMES or not isinstance(close_note, str) or len(close_note.strip()) > 2000
+            or (commit and not COMMIT.fullmatch(commit)) or not isinstance(duplicate_of, str)):
+        raise ValueError()
+    close_note = close_note.strip()
+    if outcome == "done" and not (commit and close_note):
+        raise ValueError()
+    if outcome == "declined" and not close_note:
+        raise ValueError()
+    if outcome == "duplicate" and not NOTE_ID.fullmatch(duplicate_of):
+        raise ValueError()
+    return {"outcome": outcome, "close_note": close_note, "resolved_in": commit if outcome == "done" else "",
+            "duplicate_of": duplicate_of if outcome == "duplicate" else ""}
+
+
+def _resolve(note, steam, resolved, fields):
     """Resolve or reopen a note in place, keeping who did it, when, why and in which commit.
 
     Reopening moves the resolution into the note's history rather than erasing it, so a note
@@ -29,8 +57,7 @@ def _resolve(note, steam, resolved, close_note, commit):
     if resolved:
         if note.get("resolved"):
             return
-        note.update(resolved=True, resolved_by=steam, resolved_at=now,
-                    close_note=close_note, resolved_in=commit)
+        note.update(resolved=True, resolved_by=steam, resolved_at=now, **fields)
     elif note.get("resolved"):
         entry = {k: note.pop(k, None) for k in RESOLUTION}
         entry.update(reopened_by=steam, reopened_at=now)
@@ -42,8 +69,12 @@ def _valid_path(path) -> bool:
     return isinstance(path, str) and path.startswith("/") and not path.startswith("//") and len(path) <= 3000
 
 
-def _read_notes(store, bucket, scope, path, cursor):
+def _read_notes(store, bucket, scope, path, cursor, status="all", category=""):
     """A page of notes, newest first; scope "page" keeps only that path.
+
+    status (open, resolved or all) and category narrow the page the same way: a note that
+    does not match is read and skipped, so a narrow filter may scan to the limit and hand
+    back a cursor with fewer than a full page.
 
     Keys sort newest first, so the cursor is the last key read (StartAfter) and
     no more keys means the visible inbox is exhausted.
@@ -60,6 +91,10 @@ def _read_notes(store, bucket, scope, path, cursor):
             scanned += 1
             note = json.loads(store.get_object(Bucket=bucket, Key=after)["Body"].read())
             if scope == "page" and note.get("path") != path:
+                continue
+            if status != "all" and bool(note.get("resolved")) != (status == "resolved"):
+                continue
+            if category and note.get("category") != category:
                 continue
             notes.append(note)
             if len(notes) >= PAGE_SIZE:
@@ -104,9 +139,12 @@ def handle(event):
             return reply(400, {"message": "A page view needs a path."})
         if scope not in ("page", "site"):
             return reply(400, {"message": "Scope must be page or site."})
+        status, category = params.get("status", "all"), params.get("category", "")
+        if status not in STATUSES or (category and category not in CATEGORIES):
+            return reply(400, {"message": "Status must be open, resolved or all, and category a known type."})
         if cursor and not CURSOR.fullmatch(cursor):
             return reply(400, {"message": "Invalid page cursor."})
-        notes, following = _read_notes(store, bucket, scope, params.get("path", ""), cursor)
+        notes, following = _read_notes(store, bucket, scope, params.get("path", ""), cursor, status, category)
         return reply(200, {"notes": notes, "next": following, "scope": scope})
     try:
         raw = event.get("body") or ""
@@ -116,13 +154,11 @@ def handle(event):
         action = data.get("action", "create")
         if action == "resolve":
             key = data.get("id", "")
-            if not re.fullmatch(r"feedback/\d{10}-[a-f0-9]{32}\.json", key):
+            if not NOTE_ID.fullmatch(key):
                 raise ValueError()
             note = json.loads(store.get_object(Bucket=bucket, Key=key)["Body"].read())
-            close_note, commit = data.get("close_note", ""), str(data.get("resolved_in", "")).strip().lower()
-            if not isinstance(close_note, str) or len(close_note.strip()) > 2000 or (commit and not COMMIT.fullmatch(commit)):
-                raise ValueError()
-            _resolve(note, steam, bool(data.get("resolved")), close_note.strip(), commit)
+            resolved = bool(data.get("resolved"))
+            _resolve(note, steam, resolved, _outcome(data) if resolved else {})
         elif action == "create":
             comment = data.get("comment", "")
             category = data.get("category")  # notes from before categories have none
