@@ -42,7 +42,8 @@ def main():
                             note['resolved'] = body['resolved']
                             if body['resolved']:
                                 note.update(resolved_by='76561198000000001', resolved_at=1800000100,
-                                            close_note=body.get('close_note'), resolved_in=body.get('resolved_in'))
+                                            outcome=body.get('outcome'), close_note=body.get('close_note'),
+                                            resolved_in=body.get('resolved_in'))
                         else:
                             note = {**body, 'id': 'feedback/' + str(1800000000 + len(notes)) + '-' + 'a' * 32 + '.json',
                                     'created': 1800000000 + len(notes), 'author': 'test', 'resolved': False}
@@ -51,7 +52,9 @@ def main():
                     else:
                         params = dict(parse_qsl(url.query))
                         shown = [item for item in notes
-                                 if params.get('scope') != 'page' or item['path'] == params.get('path')]
+                                 if (params.get('scope') != 'page' or item['path'] == params.get('path'))
+                                 and params.get('status', 'all') in ('all', 'resolved' if item['resolved'] else 'open')
+                                 and params.get('category', item.get('category')) == item.get('category')]
                         request.fulfill(json={'notes': shown, 'next': None, 'scope': params.get('scope', 'site')})
                     return
                 file = ROOT / 'dist' / ('index.html' if url.path == '/' else url.path.lstrip('/'))
@@ -95,12 +98,36 @@ def main():
             page.get_by_role('button', name='This page', exact=True).click()
             wait_summary(page, '1 note · 1 open · 1 place')
             page.get_by_role('button', name='Resolve', exact=True).click()
+            # Declining needs a reason; the commit box only belongs to Done.
+            page.get_by_label('Outcome').select_option('declined')
+            assert not page.get_by_label('Commit').is_visible()
+            page.get_by_label('Close note').fill('Not planned')
+            page.get_by_role('button', name='Mark resolved', exact=True).click()
+            # Resolved notes leave the default Open list and show under Resolved with the outcome.
+            wait_summary(page, '0 notes · 0 open · 0 places')
+            page.get_by_label('Status').select_option('resolved')
+            page.get_by_text('Declined', exact=False).first.wait_for()
+            page.get_by_text('Not planned').wait_for()
+            page.get_by_role('button', name='Reopen', exact=True).click()
+            wait_summary(page, '0 notes · 0 open · 0 places')
+            page.get_by_label('Status').select_option('open')
+            wait_summary(page, '1 note · 1 open · 1 place')
+            page.locator('#filter-kind').select_option('feature')
+            wait_summary(page, '0 notes · 0 open · 0 places')
+            page.locator('#filter-kind').select_option('')
+            wait_summary(page, '1 note · 1 open · 1 place')
+            page.get_by_role('button', name='Resolve', exact=True).click()
+            page.get_by_label('Outcome').select_option('done')
             page.get_by_label('Close note').fill('Fixed in the tip')
             page.get_by_label('Commit').fill('abc1234')
             page.get_by_role('button', name='Mark resolved', exact=True).click()
+            wait_summary(page, '0 notes · 0 open · 0 places')
+            page.get_by_label('Status').select_option('all')
             page.get_by_text('Fixed in the tip · commit abc1234').wait_for()
             page.get_by_role('button', name='Reopen', exact=True).click()
             page.get_by_role('button', name='Resolve', exact=True).wait_for()
+            page.get_by_label('Status').select_option('open')
+            wait_summary(page, '1 note · 1 open · 1 place')
             page.get_by_role('tab', name='New note', exact=True).click()
             page.get_by_role('button', name='Pick on page', exact=True).click()
             heading = page.locator('h1:visible, h2:visible').first

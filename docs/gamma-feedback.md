@@ -28,10 +28,17 @@ panel's X or Escape.
 - **Open location** opens the original page and highlights the element or saved
   region. Layout changes can invalidate a selector; saved target text and viewport
   dimensions remain available in the copied report.
+- A **status** filter (Open by default, Resolved, All) and a **type** filter (any,
+  bug, feature request, improvement idea) narrow the inbox. The Lambda applies them,
+  so a narrow filter may scan several notes per page and hand back fewer than 25.
 - **Resolve / Reopen** tracks review. All allowed gamma reviewers can do this.
-  Resolving asks for an optional close note and commit; the note records who resolved
-  it, when, the close note and the commit. Reopening keeps that resolution in the
-  note's `history`, so a note closed, reopened and closed again shows every step.
+  Resolving picks an **outcome**: *Done* needs a commit and a close note about what
+  changed, *Declined* needs a close note saying why, *Duplicate* needs the id of the
+  other note. The note records who resolved it, when, the outcome, the close note and
+  the commit, and the Lambda refuses a resolve missing what its outcome needs. Resolved
+  notes leave the Open list and show under Resolved with their outcome. Reopening keeps
+  that resolution in the note's `history`, so a note closed, reopened and closed again
+  shows every step. Notes resolved before outcomes existed show as plain Resolved.
 - **Copy open notes** copies the loaded unresolved notes, with page URLs, target
   details, author Steam IDs, and timestamps, ready to paste into Codex.
 - Notes load 25 at a time; **Load more** fetches the next page.
