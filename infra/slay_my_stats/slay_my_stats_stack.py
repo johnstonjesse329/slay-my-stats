@@ -815,7 +815,13 @@ class SlayMyStatsStack(Stack):
             all_alarms += [cloudwatch.Alarm.from_alarm_arn(
                 self, f"Edge{n}", f"arn:aws:cloudwatch:us-east-1:{self.account}:alarm:{EDGE_ALARM_PREFIX}{n}")
                 for n in EDGE_ALARMS]
-            graph = dict(width=8, height=6)
+            # Every graph is a time series: CloudWatch's bar view sums the whole range into one bar.
+            graph = dict(width=6, height=6)
+            hour = Duration.hours(1)
+            def table_use(table, name):
+                return cloudwatch.Metric(namespace="AWS/DynamoDB", metric_name=name, statistic="Sum",
+                                         period=hour, dimensions_map={"TableName": table},
+                                         label=f"{table} {name.replace('Consumed', '').replace('CapacityUnits', '')}")
             cloudwatch.Dashboard(
                 self, "Dashboard", dashboard_name=name_prefix,
                 start="-P14D",
@@ -824,12 +830,14 @@ class SlayMyStatsStack(Stack):
                     [cloudwatch.GraphWidget(title="Players (per day)", left=[
                         ours("ActivePlayersSite"), ours("ActivePlayersMod"), ours("NewPlayers")], **graph),
                      cloudwatch.GraphWidget(title="Total players", left=[ours("TotalPlayers")], **graph),
-                     cloudwatch.GraphWidget(title="Runs added and feedback filed (per day)",
-                                            left=[ours("RunsAdded")], right=[ours("FeedbackFiled")],
-                                            view=cloudwatch.GraphWidgetView.BAR, **graph)],
+                     cloudwatch.GraphWidget(title="Runs added (per day)", left=[ours("RunsAdded")], **graph),
+                     cloudwatch.GraphWidget(title="Feedback filed (per day)", left=[ours("FeedbackFiled")], **graph)],
                     [cloudwatch.GraphWidget(title="Lambda invocations, all functions (per hour)", left=[
                         cloudwatch.Metric(namespace="AWS/Lambda", metric_name="Invocations",
-                                          statistic="Sum", period=Duration.hours(1))], **graph),
+                                          statistic="Sum", period=hour)], **graph),
+                     cloudwatch.GraphWidget(title="DynamoDB capacity used (per hour)", left=[
+                         table_use(t, m) for t in (FEEDBACK_TABLE, "slay-my-stats-adoption")
+                         for m in ("ConsumedReadCapacityUnits", "ConsumedWriteCapacityUnits")], **graph),
                      cloudwatch.GraphWidget(title="Data bucket size", left=[bucket_size], **graph),
                      cloudwatch.GraphWidget(title="Data bucket objects", left=[cloudwatch.Metric(
                          namespace="AWS/S3", metric_name="NumberOfObjects", statistic="Maximum", period=day,
