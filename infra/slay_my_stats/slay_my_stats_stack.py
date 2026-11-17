@@ -584,7 +584,8 @@ class SlayMyStatsStack(Stack):
                 MOD_REFUSALS_ALARM, "Mod upload requests are being refused",
             ),
         }
-        for name, (pattern, (threshold, period), what) in mod_alarms.items():
+        # Prod only: gamma's mod traffic is testing.
+        for name, (pattern, (threshold, period), what) in (mod_alarms.items() if not gamma else ()):
             metric = logs.MetricFilter(
                 self, f"{name}Filter",
                 log_group=mod_log_group,
@@ -732,6 +733,31 @@ class SlayMyStatsStack(Stack):
             )
         )
         kill_switch_fn.add_event_source(lambda_event_sources.SnsEventSource(kill_switch_topic))
+
+        # Prod only, and inside CloudWatch's 10 free alarms with the two mod alarms above.
+        # An uncaught error in sign-in, uploads or feedback (Steam, the session key, the feedback
+        # table, a bug) is a Lambda error; a throttle means the kill switch fired or the account's
+        # concurrency ran out. Email-only failures (digest, upload-failure handler) are left out.
+        if not gamma:
+            five = Duration.minutes(5)
+            alarms = {
+                "IngestErrors": (ingest_fn.metric_errors(statistic="Sum", period=five),
+                                 "Sign-in, upload or feedback requests are failing"),
+                "ModIngestErrors": (mod_fn.metric_errors(statistic="Sum", period=five),
+                                    "Mod upload requests are failing"),
+                "KillSwitchErrors": (kill_switch_fn.metric_errors(statistic="Sum", period=five),
+                                     "The kill switch failed to shut the functions off"),
+                # The kill switch throttles every function at once, so one function's throttles tell.
+                "IngestThrottles": (ingest_fn.metric_throttles(statistic="Sum", period=five),
+                                    "Sign-in and uploads are being turned away (kill switch or concurrency limit)"),
+            }
+            for name, (metric, what) in alarms.items():
+                cloudwatch.Alarm(
+                    self, f"{name}Alarm", metric=metric, threshold=1, evaluation_periods=1,
+                    comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+                    treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+                    alarm_description=f"{what} on {domain_name}.",
+                ).add_alarm_action(cloudwatch_actions.SnsAction(alert_topic))
 
         # Separate from the account-wide budget so Route53's fixed zone fees
         # can't trip it. The filter is by service across the whole account, so

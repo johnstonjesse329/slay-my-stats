@@ -228,7 +228,8 @@ own, `SlayMyStatsFeedbackStack` (`infra/slay_my_stats/feedback_stack.py`), which
 | **Feedback table** `slay-my-stats-feedback` | DynamoDB, on-demand, point-in-time recovery, deletion protection, **retained**. Partition key `env` (`gamma`, `prod`), four indexes for the inbox's filters, TTL on the hourly throttle counters only. Its own stack, shared by both stages; IAM holds each Lambda to the `env` values it may read or write. | The feedback notes, their +1s and the FB-n counter. One table so a note keeps its number and history wherever it is read from. |
 | **SSM parameter** `/slay-my-stats/session-key` | SecureString, imported by name, production only; the ingest Lambda gets read and `kms:Decrypt`. | Signs the session cookie. Kept out of the template and the Lambda's settings, since anyone holding it could sign in as anyone. Rotating it signs everyone out. |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
-| **Metric filters + alarms** `ModRequests`, `ModRefusals` | Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
+| **Metric filters + alarms** `ModRequests`, `ModRefusals` | Production only. Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
+| **Alarms** `IngestErrors`, `ModIngestErrors`, `KillSwitchErrors`, `IngestThrottles` | Production only. Lambda's own Errors and Throttles metrics, 1 or more in 5 minutes; notify the alert SNS topic. With the two above, six alarms: inside CloudWatch's 10 free. | Sign-in, uploads or feedback failing (Steam, the session key, the feedback table, a bug), the kill switch failing, or the site being throttled emails you. |
 | **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
 | **SNS topic + kill-switch Lambda** | Python 3.12, 128 MB. Only permission: `lambda:PutFunctionConcurrency` on the ingest, mod and process functions. | Sets their reserved concurrency to 0. Budgets evaluate a few times a day, so this bounds a sustained attack rather than stopping it instantly. Undo with `aws lambda delete-function-concurrency`. |
 
@@ -385,7 +386,7 @@ sends each run as it ends. It's the same upload through a different door: the mo
   but it's logged and alarmed like the rest of the path.
 - **Limits** are looser, since the mod sends runs as they end, but still there in case a mod goes wrong. They're
   counted apart from the site's, so the mod never uses up an upload from the page.
-- **Alarms.** Every request on this path is logged with `"via": "mod"`. Two metric filters count them, and an
+- **Alarms** (production only). Every request on this path is logged with `"via": "mod"`. Two metric filters count them, and an
   alarm emails the alert address at 30 mod requests in 5 minutes, or 10 refused ones (a 401 or 403) in 15
   minutes. The budget kill switch still sits behind all of it.
 
