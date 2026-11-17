@@ -8,6 +8,15 @@ the architecture diagram (`docs/slay-my-stats-architecture.drawio`, then re-expo
 catches the AWS part (a resource missing from the diagram, or drawn but gone); the
 pre-commit hook runs it whenever infra, docs or the README are in a commit.
 
+## Branches: gamma is the base, main is prod
+
+`gamma` is the trunk for new work. Branch every change from the current
+`origin/gamma` (not `main`), merge it back into `gamma` with `--no-ff`, and push
+`gamma` to deploy it there. Prod is downstream: merge `gamma` into `main` and push
+`main`. Nothing reaches `main` except through `gamma`, so prod gets everything
+that was on gamma at that point. A change that must not ship is reverted on
+`gamma` first. Deploy steps are in the memory runbook.
+
 ## Screenshots
 
 The README screenshots (`images/site-overview.png`, `site-run-detail.png`,
