@@ -137,9 +137,9 @@ function renderPersonalBests() {
   [...chars.map(char => bests[char]), total].forEach(b => { b.currentStreak = b._streak; });
 
 
-  // One table: a row per stat, a column per character with runs under the
-  // filters, so the same stat reads straight across the characters.
-  const shown = chars.filter(char => bests[char].gamesPlayed);
+  // One table: a row per stat, a column per character (every one, played or not), so the
+  // same stat reads straight across the characters.
+  const shown = chars;
   // A column per character, then the total when there's more than one. The
   // header is the character's head and name; a phone keeps the head.
   const cols = shown.map(char => ({ name: fmtCharName(char), color: charColor(char), b: bests[char], icon: charIconUrl(char) }));
@@ -438,15 +438,13 @@ function renderAscTracker() {
     const filtered = overviewRuns();
     chart.querySelector(".asc-readings-chart-rows").innerHTML = DATA.characters.map(char => {
       const runs = filtered.filter(run => run.char === char);
-      if (!runs.length) return "";
       const counts = { Rough: 0, Mid: 0, Hype: 0, OP: 0, Unrated: 0 };
       runs.forEach(run => { const reading = run.mode === "dread" ? null : runReadingOf(run); counts[!reading ? "Unrated" : reading.op ? "OP" : KEEP_WORDS[reading.verdict]]++; });
       const desc = Object.entries(counts).map(([name, n]) => `${name}: ${n}`).join(", ");
       const bars = Object.entries(counts).map(([name, n]) => n ? `<span class="asc-reading-bar-${name.toLowerCase()}" style="width:${n / runs.length * 100}%" data-tip="${name}: ${n} of ${runs.length}"></span>` : "").join("");
       return `<div class="asc-readings-row"><div class="asc-readings-char"></div><div class="asc-readings-bar" role="img" aria-label="${desc}">${bars}</div><span>${runs.length} runs</span></div>`;
-    }).filter(Boolean).join("");
-    const names = DATA.characters.filter(char => filtered.some(run => run.char === char));
-    chart.querySelectorAll(".asc-readings-char").forEach((node, i) => { node.innerHTML = charLabelHtml(names[i]); });
+    }).join("");
+    chart.querySelectorAll(".asc-readings-char").forEach((node, i) => { node.innerHTML = charLabelHtml(DATA.characters[i]); });
   }, 0);
 
   el.parentElement.querySelectorAll(".pb-stat-link").forEach(link => {
@@ -650,7 +648,7 @@ const LOST_WON_LEGEND = `<div class="fl-legend">${LOST_WON_KEY}</div>`;
 // axes: the two axis rows; legend: shown above both lanes, for a section
 // where the ring and dot are in both.
 function renderCharLanes(elId, pivotData, headers, lanes, axes, legend = "") {
-  const stats = DATA.characters.map(char => [char, pivotData[char]?.["ALL"]]).filter(([, s]) => s && s.runs);
+  const stats = DATA.characters.map(char => [char, charAllStat(pivotData, char)]);
   let html = `${legend}<div class="re-rows"><span></span>${headers.map(h => `<div class="fl-section">${h}</div>`).join("")}`;
   stats.forEach(([char, s]) => {
     const color = charColor(char);
@@ -659,7 +657,9 @@ function renderCharLanes(elId, pivotData, headers, lanes, axes, legend = "") {
   document.getElementById(elId).innerHTML = html + `<span></span>${axes.join("")}</div>`;
 }
 
-const charAllStats = pivotData => DATA.characters.map(char => pivotData[char]?.["ALL"]).filter(s => s && s.runs);
+// Every character in the roster, played or not: a character with no runs still gets its row.
+const charAllStat = (pivotData, char) => pivotData[char]?.["ALL"] ?? summarize(emptyBucket());
+const charAllStats = pivotData => DATA.characters.map(char => charAllStat(pivotData, char));
 
 // Time Played: a bar of hours on the character with its share of the total,
 // beside the median run length in runs lost and runs won. The ring and dot
