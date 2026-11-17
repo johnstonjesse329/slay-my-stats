@@ -17,7 +17,7 @@ COMMIT = re.compile(r"[0-9a-f]{7,40}")
 CATEGORIES = {"bug": "Bug", "feature": "Feature request", "improvement": "Improvement idea"}
 NOTE_ID = re.compile(r"feedback/\d{10}-[a-f0-9]{32}\.json")
 OUTCOMES = ("done", "declined", "duplicate")
-STATUSES = ("open", "resolved", "all")
+STATUSES = ("open", "backlog", "resolved", "all")
 RESOLUTION = ("resolved_by", "resolved_at", "close_note", "resolved_in", "outcome", "duplicate_of")
 
 
@@ -46,6 +46,43 @@ def _outcome(data):
             "duplicate_of": duplicate_of if outcome == "duplicate" else ""}
 
 
+def _state(note):
+    """open, backlog or resolved: backlog is an open note we will take on, but not now."""
+    if note.get("resolved"):
+        return "resolved"
+    return "backlog" if note.get("backlog") else "open"
+
+
+def _backlog(note, steam, on, reason):
+    """Put an open note in the backlog, or take it back out. Resolved notes are left alone."""
+    if note.get("resolved"):
+        return False
+    if on:
+        note["backlog"] = {"by": steam, "at": int(time.time()), "reason": reason}
+    elif "backlog" in note:
+        del note["backlog"]
+    else:
+        return False
+    return True
+
+
+def _number_all(store, bucket):
+    """Give every note a stable sequence number (shown as FB-n), oldest first, and return them all.
+
+    Notes already numbered keep theirs; any without one are numbered after the highest in creation
+    order. Gamma's inbox is small, so reading it all on a create or a first view is fine.
+    """
+    notes = sorted(_all_notes(store, bucket), key=lambda n: (n.get("created", 0), n.get("id", "")))
+    top = max([n["seq"] for n in notes if isinstance(n.get("seq"), int)] or [0])
+    for note in notes:
+        if not isinstance(note.get("seq"), int):
+            top += 1
+            note["seq"] = top
+            store.put_object(Bucket=bucket, Key=note["id"], Body=json.dumps(note).encode(),
+                             ContentType="application/json")
+    return notes
+
+
 def _resolve(note, steam, resolved, fields):
     """Resolve or reopen a note in place, keeping who did it, when, why and in which commit.
 
@@ -57,6 +94,7 @@ def _resolve(note, steam, resolved, fields):
     if resolved:
         if note.get("resolved"):
             return
+        note.pop("backlog", None)
         note.update(resolved=True, resolved_by=steam, resolved_at=now, **fields)
     elif note.get("resolved"):
         entry = {k: note.pop(k, None) for k in RESOLUTION}
@@ -101,7 +139,7 @@ def _valid_path(path) -> bool:
 def _read_notes(store, bucket, scope, path, cursor, status="all", category=""):
     """A page of notes, newest first; scope "page" keeps only that path.
 
-    status (open, resolved or all) and category narrow the page the same way: a note that
+    status (open, backlog, resolved or all; open leaves the backlog out) and category narrow the page the same way: a note that
     does not match is read and skipped, so a narrow filter may scan to the limit and hand
     back a cursor with fewer than a full page.
 
@@ -121,7 +159,7 @@ def _read_notes(store, bucket, scope, path, cursor, status="all", category=""):
             note = json.loads(store.get_object(Bucket=bucket, Key=after)["Body"].read())
             if scope == "page" and note.get("path") != path:
                 continue
-            if status != "all" and bool(note.get("resolved")) != (status == "resolved"):
+            if status != "all" and _state(note) != status:
                 continue
             if category and note.get("category") != category:
                 continue
@@ -170,10 +208,13 @@ def handle(event):
             return reply(400, {"message": "Scope must be page or site."})
         status, category = params.get("status", "all"), params.get("category", "")
         if status not in STATUSES or (category and category not in CATEGORIES):
-            return reply(400, {"message": "Status must be open, resolved or all, and category a known type."})
+            return reply(400, {"message": "Status must be open, backlog, resolved or all, and category a known type."})
         if cursor and not CURSOR.fullmatch(cursor):
             return reply(400, {"message": "Invalid page cursor."})
         notes, following = _read_notes(store, bucket, scope, params.get("path", ""), cursor, status, category)
+        if any(not isinstance(n.get("seq"), int) for n in notes):
+            _number_all(store, bucket)  # first view after this shipped: number the old notes once
+            notes, following = _read_notes(store, bucket, scope, params.get("path", ""), cursor, status, category)
         return reply(200, {"notes": [_named(n) for n in notes], "next": following, "scope": scope, "me": steam})
     try:
         raw = event.get("body") or ""
@@ -188,6 +229,14 @@ def handle(event):
             note = json.loads(store.get_object(Bucket=bucket, Key=key)["Body"].read())
             resolved = bool(data.get("resolved"))
             _resolve(note, steam, resolved, _outcome(data) if resolved else {})
+        elif action == "backlog":
+            key = data.get("id", "")
+            reason = data.get("reason", "")
+            if not NOTE_ID.fullmatch(key) or not isinstance(reason, str) or len(reason.strip()) > 500:
+                raise ValueError()
+            note = json.loads(store.get_object(Bucket=bucket, Key=key)["Body"].read())
+            if not _backlog(note, steam, bool(data.get("on")), reason.strip()):
+                return reply(200, {"note": _named(note), "me": steam})
         elif action == "plus":
             # One +1 per signed-in person, set or taken back. Repeating the same request changes
             # nothing and writes nothing, so a double click or a script cannot pile up writes.
@@ -218,7 +267,8 @@ def handle(event):
                     or not (url == origin or url.startswith(origin + "/"))):
                 raise ValueError()
             key = f"feedback/{9999999999 - int(time.time()):010d}-{uuid.uuid4().hex}.json"
-            note = {"id": key, "created": int(time.time()), "author": steam,
+            seq = max([n["seq"] for n in _number_all(store, bucket)] or [0]) + 1
+            note = {"id": key, "seq": seq, "created": int(time.time()), "author": steam,
                     "comment": comment.strip(), "path": path, "url": url, "target": target, "resolved": False}
             if category:
                 note["category"] = category
@@ -250,6 +300,7 @@ def _line(note, origin):
     text = text if len(text) <= 100 else text[:99] + "…"
     kind = CATEGORIES.get(note.get("category"))
     text = f"[{kind}] {text}" if kind else text
+    text = f"FB-{note['seq']} {text}" if isinstance(note.get("seq"), int) else text
     who = _named(note).get("author_name") or "…" + str(note.get("author", "?"))[-4:]
     return f"{who}: {text}\n  {note.get('url') or origin + note.get('path', '')}"
 
@@ -264,16 +315,17 @@ def build_report(notes, now, period, origin):
     """
     window = 86400 if period == "daily" else 7 * 86400
     since = now - window
-    opened = [n for n in notes if not n.get("resolved")]
+    opened = [n for n in notes if _state(n) == "open"]
+    later = [n for n in notes if _state(n) == "backlog"]
     new = sorted((n for n in notes if n.get("created", 0) >= since), key=lambda n: n["created"])
     closed = [n for n in notes if n.get("resolved") and n.get("resolved_at", 0) >= since]
     if period == "daily":
         if not new:
             return None
-        head = f"New feedback in the last day: {len(new)}. Open in total: {len(opened)}.\n\n"
+        head = f"New feedback in the last day: {len(new)}. Open in total: {len(opened)}, backlog: {len(later)}.\n\n"
         return (f"Gamma feedback: {len(new)} new, {len(opened)} open",
                 head + "\n".join(_line(n, origin) for n in new))
-    body = (f"Open in total: {len(opened)}\nCame in this week: {len(new)}\n"
+    body = (f"Open in total: {len(opened)}, backlog: {len(later)}\nCame in this week: {len(new)}\n"
             f"Resolved this week: {len(closed)}\n")
     if opened:
         oldest_first = sorted(opened, key=lambda n: n.get("created", 0))

@@ -86,6 +86,29 @@ def check_find_and_plus(page, name):
                            ".querySelector('.plus').textContent === '+1'")
 
 
+def check_backlog(page):
+    """Backlog keeps a note open but out of the open count; it has its own filter and goes back with one click."""
+    page.get_by_label('Status').select_option('open')
+    wait_summary(page, '2 notes · 2 open · 1 place')
+    if page.get_by_role('button', name='Expand all').count():
+        page.get_by_role('button', name='Expand all').click()
+    before = page.locator('article').count()
+    article = page.locator('article').first
+    article.get_by_role('button', name='Backlog', exact=True).click()
+    page.get_by_label('Why later').fill('after the map work')
+    page.get_by_role('button', name='Move to backlog').click()
+    expect(page.locator('article')).to_have_count(before - 1)
+    page.get_by_label('Status').select_option('backlog')
+    expect(page.locator('article')).to_have_count(1)
+    if page.get_by_role('button', name='Expand all').count():
+        page.get_by_role('button', name='Expand all').click()
+    expect(page.locator('article').first).to_contain_text('after the map work')
+    assert page.locator('.pill.backlog').count() == 1
+    page.locator('article').first.get_by_role('button', name='Move to open').click()
+    expect(page.locator('article')).to_have_count(0)
+    page.get_by_label('Status').select_option('open')
+
+
 def main():
     with sync_playwright() as pw:
         for name, engine, options in [('desktop', pw.chromium, {'viewport': {'width': 1920, 'height': 1080}}),
@@ -106,6 +129,12 @@ def main():
                         if body.get('action') == 'plus':
                             note = next(item for item in notes if item['id'] == body['id'])
                             note['plus'] = ([p for p in note.get('plus', []) if p != 'test'] + (['test'] if body['on'] else []))
+                        elif body.get('action') == 'backlog':
+                            note = next(item for item in notes if item['id'] == body['id'])
+                            if body['on']:
+                                note['backlog'] = {'by': 'test', 'at': 1800000200, 'reason': body.get('reason', '')}
+                            else:
+                                note.pop('backlog', None)
                         elif body.get('action') == 'resolve':
                             note = next(item for item in notes if item['id'] == body['id'])
                             note['resolved'] = body['resolved']
@@ -115,14 +144,14 @@ def main():
                                             resolved_in=body.get('resolved_in'))
                         else:
                             note = {**body, 'id': 'feedback/' + str(1800000000 + len(notes)) + '-' + 'a' * 32 + '.json',
-                                    'created': 1800000000 + len(notes), 'author': 'test', 'resolved': False}
+                                    'created': 1800000000 + len(notes), 'author': 'test', 'resolved': False, 'seq': 100 + len(notes)}
                             notes.append(note)
                         request.fulfill(json={'note': note, 'me': 'test'})
                     else:
                         params = dict(parse_qsl(url.query))
                         shown = [item for item in notes
                                  if (params.get('scope') != 'page' or item['path'] == params.get('path'))
-                                 and params.get('status', 'all') in ('all', 'resolved' if item['resolved'] else 'open')
+                                 and params.get('status', 'all') in ('all', 'resolved' if item['resolved'] else 'backlog' if item.get('backlog') else 'open')
                                  and params.get('category', item.get('category')) == item.get('category')]
                         request.fulfill(json={'notes': shown, 'next': None, 'scope': params.get('scope', 'site'), 'me': 'test'})
                     return
@@ -275,6 +304,7 @@ def main():
             assert bounds['y'] + bounds['height'] <= page.evaluate('innerHeight')
             check_note_layout(page, notes, name)
             check_find_and_plus(page, name)
+            check_backlog(page)
             output = ROOT / '.playwright-mcp' / f'feedback-{name}.png'
             output.parent.mkdir(exist_ok=True)
             page.screenshot(path=str(output))
