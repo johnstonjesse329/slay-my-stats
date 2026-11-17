@@ -19,6 +19,8 @@ from constructs import Construct
 # Prod's hourly requests over 2026-11-03..17: median 9, 95th percentile 599, peak 8,069. A spike
 # alarm well above the peak only fires on something new: a crawler, a loop, an attack.
 REQUESTS_PER_HOUR = 20_000
+EDGE_ALARM_PREFIX = "slay-my-stats-edge-"
+EDGE_ALARMS = ("Prod5xx", "ProdRequestSpike")
 
 
 class SlayMyStatsEdgeAlarmsStack(Stack):
@@ -51,6 +53,8 @@ class SlayMyStatsEdgeAlarmsStack(Stack):
         ):
             cloudwatch.Alarm(
                 self, f"{name}Alarm", metric=alarm_metric, threshold=threshold, evaluation_periods=1,
+                # A fixed name, so the prod stack's dashboard can list it by ARN.
+                alarm_name=f"{EDGE_ALARM_PREFIX}{name}",
                 comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
                 # A quiet site sends no datapoints; that is the normal state, not a fault.
                 treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,

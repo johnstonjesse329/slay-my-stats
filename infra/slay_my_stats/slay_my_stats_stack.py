@@ -36,6 +36,7 @@ from aws_cdk import BundlingOptions, DockerImage, ILocalBundling
 from constructs import Construct
 
 from slay_my_stats.feedback_stack import TABLE_NAME as FEEDBACK_TABLE
+from slay_my_stats.edge_alarms_stack import EDGE_ALARM_PREFIX, EDGE_ALARMS
 
 INGEST_DIR = Path(__file__).resolve().parents[1] / "lambda" / "ingest"
 # The handler parses uploads with the same run.py the local dashboard uses,
@@ -120,6 +121,8 @@ MOD_REQUESTS_ALARM = (30, Duration.minutes(5))
 MOD_REFUSALS_ALARM = (10, Duration.minutes(15))
 
 KILL_SWITCH_BUDGET_USD = 1
+# The data bucket alarm: far past its size (24 MB on 2026-11-17), well under the 5 GB free tier.
+DATA_BUCKET_ALARM_BYTES = 2**30
 KILL_SWITCH_SERVICES = ["AWS Lambda", "AmazonCloudWatch", "Amazon Simple Storage Service"]
 
 KILL_SWITCH_CODE = """
@@ -762,30 +765,78 @@ class SlayMyStatsStack(Stack):
         )
         kill_switch_fn.add_event_source(lambda_event_sources.SnsEventSource(kill_switch_topic))
 
-        # Prod only, and inside CloudWatch's 10 free alarms with the two mod alarms above.
-        # An uncaught error in sign-in, uploads or feedback (Steam, the session key, the feedback
-        # table, a bug) is a Lambda error; a throttle means the kill switch fired or the account's
-        # concurrency ran out. Email-only failures (digest, upload-failure handler) are left out.
+        # Prod only. CloudWatch's free tier is 10 alarm metrics per account, and an alarm on
+        # metric math pays for every metric inside it, so each alarm here watches one metric:
+        # the two mod alarms above, the two CloudFront ones (edge_alarms_stack), and these five,
+        # leaving one spare. Lambda's region-wide Errors and Throttles cover every function, both
+        # stages', in one metric each: an uncaught error anywhere (sign-in, uploads, feedback,
+        # processing, the digest, the kill switch) or a throttle (the kill switch fired, or the
+        # account's concurrency ran out).
         if not gamma:
             five = Duration.minutes(5)
-            alarms = {
-                "IngestErrors": (ingest_fn.metric_errors(statistic="Sum", period=five),
-                                 "Sign-in, upload or feedback requests are failing"),
-                "ModIngestErrors": (mod_fn.metric_errors(statistic="Sum", period=five),
-                                    "Mod upload requests are failing"),
-                "KillSwitchErrors": (kill_switch_fn.metric_errors(statistic="Sum", period=five),
-                                     "The kill switch failed to shut the functions off"),
-                # The kill switch throttles every function at once, so one function's throttles tell.
-                "IngestThrottles": (ingest_fn.metric_throttles(statistic="Sum", period=five),
-                                    "Sign-in and uploads are being turned away (kill switch or concurrency limit)"),
-            }
-            for name, (metric, what) in alarms.items():
+            def lambda_total(name):
+                return cloudwatch.Metric(namespace="AWS/Lambda", metric_name=name,
+                                         statistic="Sum", period=five)
+            def feedback_metric(name):
+                return cloudwatch.Metric(namespace="AWS/DynamoDB", metric_name=name, statistic="Sum",
+                                         period=five, dimensions_map={"TableName": FEEDBACK_TABLE})
+            bucket_size = cloudwatch.Metric(
+                namespace="AWS/S3", metric_name="BucketSizeBytes", statistic="Maximum",
+                period=Duration.days(1),
+                dimensions_map={"BucketName": data_bucket.bucket_name, "StorageType": "StandardStorage"})
+            # (name, metric, threshold, what)
+            alarms = (
+                ("LambdaErrors", lambda_total("Errors"), 1,
+                 "A function (prod or gamma) is failing"),
+                ("LambdaThrottles", lambda_total("Throttles"), 1,
+                 "Functions are being turned away (kill switch or concurrency limit)"),
+                ("FeedbackWriteThrottles", feedback_metric("WriteThrottleEvents"), 1,
+                 "Feedback can't be saved (table write capacity)"),
+                ("FeedbackReadThrottles", feedback_metric("ReadThrottleEvents"), 1,
+                 "Feedback can't be read (table read capacity)"),
+                # S3 reports its size once a day. 24 MB on 2026-11-17; the free tier is 5 GB.
+                ("DataBucketSize", bucket_size, DATA_BUCKET_ALARM_BYTES,
+                 f"The data bucket is past {DATA_BUCKET_ALARM_BYTES // 2**30} GB"),
+            )
+            for name, metric, threshold, what in alarms:
                 cloudwatch.Alarm(
-                    self, f"{name}Alarm", metric=metric, threshold=1, evaluation_periods=1,
+                    self, f"{name}Alarm", metric=metric, threshold=threshold, evaluation_periods=1,
                     comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
                     treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
-                    alarm_description=f"{what} on {domain_name}.",
+                    alarm_description=f"{what} on {domain_name}. Dashboard: {name_prefix}.",
                 ).add_alarm_action(cloudwatch_actions.SnsAction(alert_topic))
+
+            # The dashboard: adoption (from the morning digest), usage, and every alarm.
+            day = Duration.days(1)
+            def ours(name):
+                return cloudwatch.Metric(namespace=name_prefix, metric_name=name,
+                                         statistic="Maximum", period=day)
+            all_alarms = [a for a in self.node.find_all() if isinstance(a, cloudwatch.Alarm)]
+            all_alarms += [cloudwatch.Alarm.from_alarm_arn(
+                self, f"Edge{n}", f"arn:aws:cloudwatch:us-east-1:{self.account}:alarm:{EDGE_ALARM_PREFIX}{n}")
+                for n in EDGE_ALARMS]
+            graph = dict(width=8, height=6)
+            cloudwatch.Dashboard(
+                self, "Dashboard", dashboard_name=name_prefix,
+                start="-P14D",
+                widgets=[
+                    [cloudwatch.AlarmStatusWidget(title="Alarms", alarms=all_alarms, width=24, height=4)],
+                    [cloudwatch.GraphWidget(title="Players (per day)", left=[
+                        ours("ActivePlayersSite"), ours("ActivePlayersMod"), ours("NewPlayers")], **graph),
+                     cloudwatch.GraphWidget(title="Total players", left=[ours("TotalPlayers")], **graph),
+                     cloudwatch.GraphWidget(title="Runs added and feedback filed (per day)",
+                                            left=[ours("RunsAdded")], right=[ours("FeedbackFiled")],
+                                            view=cloudwatch.GraphWidgetView.BAR, **graph)],
+                    [cloudwatch.GraphWidget(title="Lambda invocations, all functions (per hour)", left=[
+                        cloudwatch.Metric(namespace="AWS/Lambda", metric_name="Invocations",
+                                          statistic="Sum", period=Duration.hours(1))], **graph),
+                     cloudwatch.GraphWidget(title="Data bucket size", left=[bucket_size], **graph),
+                     cloudwatch.GraphWidget(title="Data bucket objects", left=[cloudwatch.Metric(
+                         namespace="AWS/S3", metric_name="NumberOfObjects", statistic="Maximum", period=day,
+                         dimensions_map={"BucketName": data_bucket.bucket_name,
+                                         "StorageType": "AllStorageTypes"})], **graph)],
+                ],
+            )
 
         # Separate from the account-wide budget so Route53's fixed zone fees
         # can't trip it. The filter is by service across the whole account, so
