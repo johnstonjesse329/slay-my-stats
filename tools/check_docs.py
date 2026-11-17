@@ -47,6 +47,7 @@ DRAWN = {
     "AccessLogBucket": "access logs",
     "DigestFunction": "daily digest",
     "DigestLogGroup": "CloudWatch",
+    "Dashboard": "dashboard",
 }
 NOT_DRAWN = {  # plumbing inside a drawn box, or an output
     "SiteCertificate": "the ACM cert is noted inside the CloudFront box",
