@@ -1267,6 +1267,36 @@ class DigestTests(Uploads, unittest.TestCase):
         self.assertIn("Failed uploads: 1 (process_failed)", body)
         self.assertIn("Site total: 2 runs, 1 players.", body)
 
+    def test_the_tally_counts_players_by_route(self):
+        self.ingest(body_of(minimal_run(1700000000), minimal_run(1700000100)))
+        [key] = self.store.list("users/_uploads/")
+        upload_id = key.rsplit("/", 1)[-1].split(".", 1)[0]
+        month = handler.datetime.fromtimestamp(NOW, handler.timezone.utc).strftime("%Y-%m")
+        self.store.put(f"analytics/{month}/{upload_id}.json.gz", handler._pack({"via": "mod"}), {}, None)
+        tally = {}
+        handler.build_digest(self.store, NOW + 3600, tally)
+        self.assertEqual({k: v for k, v in tally.items() if k != "day"},
+                         {"TotalPlayers": 1, "TotalRuns": 2, "ActivePlayersSite": 0,
+                          "ActivePlayersMod": 1, "NewPlayers": 1, "RunsAdded": 2})
+
+    def test_adoption_is_kept_in_the_table_and_as_metrics(self):
+        items, metrics = [], []
+        tally = {"day": "2026-11-16", "TotalPlayers": 3, "TotalRuns": 9, "ActivePlayersSite": 1,
+                 "ActivePlayersMod": 2, "NewPlayers": 1, "RunsAdded": 4, "FeedbackFiled": 2}
+        handler.record_adoption(tally, NOW, "adoption", lambda **kw: items.append(kw),
+                                lambda **kw: metrics.append(kw))
+        self.assertEqual(items[0]["Item"]["day"], {"S": "2026-11-16"})
+        self.assertEqual(items[0]["Item"]["TotalRuns"], {"N": "9"})  # the table keeps every field
+        sent = {m["MetricName"]: m["Value"] for m in metrics[0]["MetricData"]}
+        self.assertEqual(sent, {"TotalPlayers": 3.0, "ActivePlayersSite": 1.0, "ActivePlayersMod": 2.0,
+                                "NewPlayers": 1.0, "RunsAdded": 4.0, "FeedbackFiled": 2.0})
+        self.assertEqual(metrics[0]["Namespace"], "slay-my-stats")
+
+    def test_a_failed_adoption_write_never_stops_the_digest(self):
+        def boom(**kw):
+            raise RuntimeError("no table")
+        handler.record_adoption({"day": "2026-11-16"}, NOW, "adoption", boom, boom)  # no raise
+
     def test_uploads_older_than_a_day_are_left_out(self):
         self.ingest(body_of(minimal_run(1700000000)))
         subject, _ = handler.build_digest(self.store, NOW + 2 * 86400)

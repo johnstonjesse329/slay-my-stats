@@ -1905,11 +1905,12 @@ def _upload_via(store, upload_id: str, at: float) -> str:
     return "?"
 
 
-def build_digest(store, now: float) -> tuple[str, str]:
+def build_digest(store, now: float, tally: dict | None = None) -> tuple[str, str]:
     """The subject and body of the email covering the day before `now`:
     each player's new runs, new players, held runs, failed uploads and the site's
     totals. Reads the upload results (kept 7 days), so it needs no record
-    of its own."""
+    of its own. A `tally` dict, when given, is filled with the day's adoption
+    numbers (see record_adoption)."""
     since = now - DIGEST_WINDOW_S
     players, failed, held_ids, held_unnamed = {}, [], {}, 0
     for key in store.list("users/_uploads/"):
@@ -1960,6 +1961,15 @@ def build_digest(store, now: float) -> tuple[str, str]:
     stats = store.get(STATS_KEY)
     total_runs = _unpack(stats[0]).get("allRuns", 0) if stats else 0
     total_players = len(_read_index(store)[0])
+    if tally is not None:
+        tally.update({
+            "day": datetime.fromtimestamp(since, timezone.utc).strftime("%Y-%m-%d"),
+            "TotalPlayers": total_players, "TotalRuns": total_runs,
+            "ActivePlayersSite": sum("site" in p["via"] for p in players.values()),
+            "ActivePlayersMod": sum("mod" in p["via"] for p in players.values()),
+            "NewPlayers": sum(p["new"] for p in players.values()),
+            "RunsAdded": added,
+        })
     footer = f"\nSite total: {total_runs} runs, {total_players} players."
 
     if not players and not failed and not held_unnamed:
@@ -1968,10 +1978,11 @@ def build_digest(store, now: float) -> tuple[str, str]:
     return subject, "\n".join(lines) + "\n" + footer
 
 
-def feedback_sections(now: float, query=None) -> list[tuple[str, str]]:
+def feedback_sections(now: float, query=None, tally: dict | None = None) -> list[tuple[str, str]]:
     """The feedback part of the morning email: for each site in FEEDBACK_DIGEST_SITES
     ("prod=https://slay-my-stats.com,gamma=https://gamma..."), what came in over the last day, or
-    on Mondays the open, incoming and resolved counts. Quiet sites add nothing."""
+    on Mondays the open, incoming and resolved counts. Quiet sites add nothing. A `tally`
+    dict, when given, gets FeedbackFiled: the notes filed on prod over that day."""
     from feedback import all_notes, build_report
     if query is None:
         import boto3
@@ -1982,18 +1993,68 @@ def feedback_sections(now: float, query=None) -> list[tuple[str, str]]:
     sections = []
     for site in filter(None, os.environ.get("FEEDBACK_DIGEST_SITES", "").split(",")):
         env, origin = site.split("=", 1)
-        report = build_report(query(env), now, period, origin, env.capitalize())
+        notes = query(env)
+        if tally is not None and env == "prod":
+            tally["FeedbackFiled"] = sum(now - DIGEST_WINDOW_S <= n.get("created", 0) < now for n in notes)
+        report = build_report(notes, now, period, origin, env.capitalize())
         if report:
             sections.append(report)
     return sections
 
 
+# Sent to CloudWatch for the dashboard: six of the free ten custom metrics. The table keeps
+# every field for good; CloudWatch drops daily points after 15 months.
+ADOPTION_METRICS = ("TotalPlayers", "ActivePlayersSite", "ActivePlayersMod", "NewPlayers", "RunsAdded",
+                    "FeedbackFiled")
+
+
+def record_adoption(tally: dict, at: float, table: str | None = None, put_item=None,
+                    put_metrics=None) -> None:
+    """Keep a day's adoption numbers: a row in the adoption table (kept for good) and
+    the same numbers as CloudWatch metrics for the dashboard, stamped `at`. Best effort:
+    the digest email still goes if this fails."""
+    table = table or os.environ.get("ADOPTION_TABLE")
+    if not table:
+        return  # the dev server and tests have none
+    try:
+        if put_item is None or put_metrics is None:
+            import boto3  # only on Lambda
+            put_item = put_item or boto3.client("dynamodb").put_item
+            put_metrics = put_metrics or boto3.client("cloudwatch").put_metric_data
+        item = {"day": {"S": tally["day"]}}
+        item.update({k: {"N": str(v)} for k, v in tally.items() if k != "day"})
+        put_item(TableName=table, Item=item)
+        stamp = datetime.fromtimestamp(at, timezone.utc)
+        put_metrics(Namespace="slay-my-stats", MetricData=[
+            {"MetricName": k, "Value": float(tally[k]), "Unit": "Count", "Timestamp": stamp}
+            for k in ADOPTION_METRICS if k in tally])
+    except Exception as e:  # noqa: BLE001
+        print(json.dumps({"adoption_failed": type(e).__name__, "detail": str(e)[:200]}))
+
+
 def digest_handler(event, context):
     """Run by EventBridge Scheduler each morning (prod only): yesterday's uploads, then the
-    feedback from both sites, in one email."""
+    feedback from both sites, in one email; and the day's adoption numbers, kept.
+    Invoked by hand with {"adoptionBackfill": n}, it instead records the n days before
+    yesterday (at most 6: upload results are kept a week), sends no email, and leaves out
+    the site totals, which are only known for today."""
     now = time.time()
-    subject, body = build_digest(_get_store(), now)
-    sections = feedback_sections(now)
+    store = _get_store()
+    backfill = int((event or {}).get("adoptionBackfill", 0))
+    if backfill:
+        for days in range(1, min(backfill, 6) + 1):
+            tally = {}
+            build_digest(store, now - days * DIGEST_WINDOW_S, tally)
+            feedback_sections(now - days * DIGEST_WINDOW_S, tally=tally)
+            tally.pop("TotalPlayers"), tally.pop("TotalRuns")
+            record_adoption(tally, now - (days + 0.5) * DIGEST_WINDOW_S)
+            print(json.dumps({"adoption_backfill": tally}))
+        return
+    tally = {}
+    subject, body = build_digest(store, now, tally)
+    sections = feedback_sections(now, tally=tally)
+    # Stamped mid-day, inside the day the numbers cover.
+    record_adoption(tally, now - DIGEST_WINDOW_S / 2)
     if sections:
         subject = " | ".join([subject] + [headline for headline, _ in sections])
         body += "".join(f"\n\n{headline}\n{'-' * len(headline)}\n{text}" for headline, text in sections)
