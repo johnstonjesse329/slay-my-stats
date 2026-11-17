@@ -165,7 +165,7 @@ def main():
         # The line above the charts is only put away by its own x.
         page.locator("#detail-range-tip .range-tip-close").click()
         page.wait_for_timeout(200)
-        assert page.locator("#detail-range-tip").is_visible() is False, "the x puts the line away"
+        assert page.locator("#detail-range-tip").is_visible() is False, "the Ok puts the line away"
         assert not errors, errors
         print(f"range select: floors {FROM}-{TO}, {want['cards_in']} cards in, "
               f"{want['relics_in']} relics, band on {charts} charts, clear on click.")

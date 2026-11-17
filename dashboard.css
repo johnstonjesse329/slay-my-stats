@@ -1717,8 +1717,8 @@ h1 {
   gap: 10px;
   margin: 16px 0 0;
   padding: 12px 14px;
-  border: 1px solid var(--hairline);
-  border-left: 4px solid var(--gold, #e0c468);
+  border: 1px solid var(--gold, #e0c468);
+  border-left-width: 4px;
   border-radius: 10px;
   background: var(--panel, #1b1a26);
   color: var(--text);
@@ -1728,18 +1728,21 @@ h1 {
 }
 @media (any-pointer: fine) { .range-tip:not([hidden]) { display: flex; } }
 .range-tip b { color: var(--gold, #e0c468); font-weight: 700; }
+/* Ok, like the pill's: a gold-edged button that reads as the thing to press. */
 .range-tip-close {
   margin-left: auto;
-  border: 0;
+  flex: none;
+  border: 1px solid var(--gold, #e0c468);
   background: none;
-  color: var(--text-dim);
+  color: var(--gold, #e0c468);
   font: inherit;
-  line-height: 1;
-  padding: 2px 6px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 3px 14px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 999px;
 }
-.range-tip-close:hover, .range-tip-close:focus-visible { color: var(--text); background: #ffffff14; }
+.range-tip-close:hover, .range-tip-close:focus-visible { background: #e0c46826; }
 
 /* A span of floors picked by dragging a chart: what the run changed in it. It sits under the
    chart the drag started on, so the band and the list are read together. */
