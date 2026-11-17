@@ -505,7 +505,6 @@ function renderDetailRun(run) {
   renderDetailRelicChart(run);
   renderDetailKeepCharts(run);
   renderDetailDeckRelics(run);
-  renderRangeTip();
 }
 
 // ---- Timeline ----
@@ -2208,32 +2207,13 @@ let rangeNodes = [];      // its timeline
 let rangeDrag = null;     // {chart, nodes, host, from, moved} while a pointer is down on a chart
 let rangePanels = [];     // one under every floor chart while a span is live
 const RANGE_HINT_KEY = "slay-my-stats:range-used:v2";          // the gesture has been used
-const RANGE_TIP_KEY = "slay-my-stats:range-tip-dismissed:v2";  // the line above the charts was closed
-const rangeTipSeen = () => { try { return !!localStorage.getItem(RANGE_TIP_KEY); } catch { return false; } };
 const rangeUsed = () => { try { return !!localStorage.getItem(RANGE_HINT_KEY); } catch { return false; } };
 const RANGE_PILL_KEY = "slay-my-stats:drag-pill-ok:v1";       // the pill's Ok was clicked
 const rangePillDone = () => { try { return !!localStorage.getItem(RANGE_PILL_KEY) || rangeUsed(); } catch { return false; } };
 // A drag needs a pointer, not a finger, but a laptop with a touchscreen usually has both, and the
-// mouse still drags: the line shows wherever any precise pointer exists.
+// mouse still drags: the pill shows wherever any precise pointer exists.
 const hasFinePointer = () => window.matchMedia("(any-pointer: fine)").matches;
 
-// The line above the charts is in the page's own HTML, so it is there even before this script
-// runs; this only decides whether it shows and wires its Ok. A hint that only appears on hover is
-// no good to someone who never thinks to hover, and a hint drawn only by script is no good when
-// the script has a bad day.
-function renderRangeTip() {
-  const tip = document.getElementById("detail-range-tip");
-  if (!tip) return;
-  // The gesture does not retire the line: someone who drags once may still be the one showing a
-  // friend, and the line is quiet enough to live with. Only its own Ok puts it away.
-  tip.hidden = !hasFinePointer() || rangeTipSeen();
-  if (tip.dataset.wired) return;
-  tip.dataset.wired = "1";
-  tip.querySelector(".range-tip-close")?.addEventListener("click", () => {
-    try { localStorage.setItem(RANGE_TIP_KEY, "1"); } catch { /* private mode */ }
-    tip.hidden = true;
-  });
-}
 const floorOf = n => n.floor + 1;
 
 function makeRangeBandPlugin() {
@@ -2290,7 +2270,7 @@ function bindRangeSelect(chart, nodes) {
   const canvas = chart.canvas;
   const host = canvas.closest(".chart-wrap") || canvas.parentElement;
   host.classList.add("range-ready");
-  // The same advice as the note under Keeping Up, put where the eye is: a pill over the plot
+  // The advice on the gesture, put where the eye is: a pill over the plot
   // while the pointer is on the chart, until it's acknowledged with Ok or the drag is first used.
   const dropPill = () => host.querySelector(".drag-hint")?.remove();
   const showPill = () => {

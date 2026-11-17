@@ -100,12 +100,8 @@ def main():
         page.wait_for_selector("#detail-keep-damage-chart", state="attached", timeout=20000)
         page.wait_for_function("() => typeof detailKeepCharts !== 'undefined' && detailKeepCharts.length > 0")
 
-        # The gesture is invisible, so the run says it in a line above the charts as soon as it
-        # opens, and the first hover on a chart floats the same advice over the plot. (One jump,
-        # not a sweep: crossing a chart on the way trips its own first hover.)
-        tip = page.locator("#detail-range-tip")
-        assert tip.count() == 1, "the run should say the charts take a drag"
-        assert "drag across any floor chart" in tip.inner_text().lower()
+        # The gesture is invisible, so the first hover on a chart floats the advice over the plot.
+        # (One jump, not a sweep: crossing a chart on the way trips its own first hover.)
         el = page.locator("#detail-keep-damage-chart")
         el.scroll_into_view_if_needed()
         box = el.bounding_box()
@@ -117,7 +113,6 @@ def main():
 
         drag(page, "detail-keep-damage-chart", FROM, TO)
         assert page.locator(".drag-hint").count() == 0, "the pill goes once the chart is dragged"
-        assert page.locator("#detail-range-tip").is_visible(), "the line above the charts stays"
 
         panel = page.locator("#detail-range-panel")
         assert panel.count() == 1, "the drag should open the panel"
@@ -162,10 +157,6 @@ def main():
         page.wait_for_timeout(300)
         assert page.locator("#detail-range-panel").count() == 0, "a click should clear the span"
 
-        # The line above the charts is only put away by its own x.
-        page.locator("#detail-range-tip .range-tip-close").click()
-        page.wait_for_timeout(200)
-        assert page.locator("#detail-range-tip").is_visible() is False, "the Ok puts the line away"
         assert not errors, errors
         print(f"range select: floors {FROM}-{TO}, {want['cards_in']} cards in, "
               f"{want['relics_in']} relics, band on {charts} charts, clear on click.")
