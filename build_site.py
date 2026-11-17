@@ -17,12 +17,11 @@ fetched instead of embedded. On / it shows a player finder over
 /users/_index.json.gz instead.
 
 Usage:
-    python build_site.py [--ingest-url URL]
+    python build_site.py
         Cleans dist/ and rebuilds it from card_data.json / relic_data.json /
         potion_data.json, dashboard.css, js/*.js, and site/ (boot.js and
         the upload button/panel, the player finder's CSS, the hand-written
-        pages in site/pages/, site/home-intro.html and its fonts and pictures). --ingest-url is the ingest Lambda's
-        Function URL, written to dist/site-config.json for the upload page.
+        pages in site/pages/, site/home-intro.html and its fonts and pictures).
 """
 
 import hashlib
@@ -563,14 +562,6 @@ def main():
     for name, f, _ in site_pages():
         write(f"page-{name}.html", f.read_text(encoding="utf-8"))
 
-    # Where site/upload.js asks for an upload URL: the ingest Lambda's Function URL, which
-    # only exists once the stack is deployed (tools/deploy.py passes it in).
-    # Without it, the upload button still works up to the POST and then says
-    # uploads aren't available. tools/serve_site.py answers this path itself.
-    ingest_url = sys.argv[sys.argv.index("--ingest-url") + 1] if "--ingest-url" in sys.argv else None
-    if ingest_url is None:
-        print("NOTE: no --ingest-url; dist/site-config.json has uploads disabled.")
-    write("site-config.json", json.dumps({"ingestUrl": ingest_url}))
     write(MANIFEST, json.dumps(HASHED))
     write("index.html", build_index_html())
 

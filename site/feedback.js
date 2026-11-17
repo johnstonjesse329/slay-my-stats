@@ -1,7 +1,7 @@
-// Gamma-only feedback. One panel with two views: write a note, or review the
+// Feedback on every page. One panel with two views: write a note, or review the
 // inbox. The launcher carries how many notes are open on the page you are on.
+// Signed out (prod; gamma's gate always has a session), it leads to the Steam sign-in.
 (() => {
-  if (location.hostname !== 'gamma.slay-my-stats.com' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
   const host = document.createElement('div');
   host.id = 'gamma-feedback';
   document.body.append(host);
@@ -139,7 +139,7 @@
       <div id="modes"><button id="pick" type="button">Pick on page</button><button id="page" type="button">Whole page</button></div>
       <div id="target-row"><p id="target">Whole page</p><button id="clear" type="button" hidden>Clear</button></div>
       <div id="prior" hidden></div>
-      <div id="kinds" role="radiogroup" aria-label="Type"><button type="button" role="radio" aria-checked="false" data-kind="bug">Bug</button><button type="button" role="radio" aria-checked="false" data-kind="feature">Feature request</button><button type="button" role="radio" aria-checked="false" data-kind="improvement">Improvement idea</button></div>
+      <div id="kinds" role="radiogroup" aria-label="Type"><button type="button" role="radio" aria-checked="false" data-kind="bug">Bug</button><button type="button" role="radio" aria-checked="false" data-kind="feature">Feature request</button><button type="button" role="radio" aria-checked="false" data-kind="improvement">Improvement idea</button><button type="button" role="radio" aria-checked="false" data-kind="kudos">Kudos</button></div>
       <label for="comment">What should change?</label>
       <textarea id="comment" maxlength="4000" placeholder="Describe the issue or suggestion…"></textarea>
       <button id="save" type="button">Send</button>
@@ -148,7 +148,7 @@
     <div id="view-inbox" role="tabpanel">
       <div id="summary-row"><p id="summary"></p><button id="toggle-all" type="button">Expand all</button></div>
       <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-page" type="button" aria-pressed="false">This page</button><button id="scope-site" type="button" aria-pressed="false">Whole site</button></div>
-      <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="backlog">Backlog</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option></select><select id="filter-env" aria-label="Environment" hidden></select></div>
+      <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="backlog">Backlog</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option><option value="kudos">Kudos</option></select><select id="filter-env" aria-label="Environment" hidden></select></div>
       <div id="find"><input id="search" type="search" placeholder="Search notes" aria-label="Search notes"><select id="filter-author" aria-label="Author"><option value="">Anyone</option></select></div>
       <div id="notes"></div>
       <button id="load-more" type="button" hidden>Load the next 25</button>
@@ -244,7 +244,7 @@
   function composer() { say(''); showView('compose'); }
   // Clear shows whenever there is something to take back: a pinned element or region, or text typed.
   function syncClear() { $('clear').hidden = target.kind === 'page' && !$('comment').value; }
-  const KINDS = {bug: 'Bug', feature: 'Feature request', improvement: 'Improvement idea'};
+  const KINDS = {bug: 'Bug', feature: 'Feature request', improvement: 'Improvement idea', kudos: 'Kudos'};
   let kind = '';
   function setKind(value) {
     kind = value;
@@ -311,12 +311,16 @@
   let suppressClick=false;
   document.addEventListener('click',e=>{if(suppressClick && !e.composedPath().includes(host)){e.preventDefault();e.stopImmediatePropagation();suppressClick=false;}},true);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(picking)stop();else if(!$('panel').hidden)closePanel();}});
+  let signedOut=false;
+  // Back to this page after Steam; the hash stays behind (the server takes a path and query only).
+  const signIn = () => location.assign('/auth/login?next='+encodeURIComponent(location.pathname+location.search));
   async function api(body, params) {
     const query=body?'':'?'+new URLSearchParams(params||{}).toString();
     const response=await fetch('/auth/feedback'+query,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+    if(response.status===401) signedOut=true;
     if(!response.ok){
       let message='';try{message=(await response.json()).message||'';}catch{}
-      throw new Error(response.status===401?'Sign in to gamma again.':message||`Could not ${body?'save':'load'} feedback. Please retry.`);
+      throw new Error(response.status===401?'Sign in through Steam to use feedback.':message||`Could not ${body?'save':'load'} feedback. Please retry.`);
     }
     const data=await response.json();
     if(data.me) me=data.me;
@@ -383,7 +387,7 @@
     comment.className='note-comment';comment.textContent=note.comment;
     pill.className='pill '+stateOf(note);pill.textContent=note.resolved?(OUTCOMES[note.outcome]||'Resolved'):note.backlog?'Backlog':'Open';
     time.textContent=when(note.created);
-    who.textContent=author(note);who.className='note-who'+(nameOf(note)?'':' bare');who.title=String(note.author);
+    who.textContent=author(note);who.className='note-who'+(nameOf(note)?'':' bare');if(/^\d+$/.test(String(note.author)))who.title=String(note.author);
     head.className='note-head';
     // +1: one per person, tapped again to take back. The count is everyone who has agreed.
     // A note from another environment is shown read-only: its +1 and actions belong there.
@@ -405,7 +409,7 @@
     if(fbId(note)){const id=document.createElement('span');id.className='fbid';id.textContent=fbId(note);head.append(id);}
     head.append(who,right);
     const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
-    place.href=openUrl.href;place.textContent='Open location';
+    if(openUrl.origin===new URL(ORIGIN).origin)place.href=openUrl.href;place.textContent='Open location';
     meta.className='note-meta';
     meta.append(pill);
     if(note.env&&envs.length>1){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=ENV_NAMES[note.env]||note.env;meta.append(tag);}
@@ -597,7 +601,7 @@
       notes=notes.concat(data.notes);nextCursor=data.next||null;renderInbox();
     } catch(e){ if(mine!==loadId) return; $('summary').textContent='';say(e.message,'inbox'); }
   }
-  $('launcher').onclick=openPanel;
+  $('launcher').onclick=()=>signedOut?signIn():openPanel();
   $('close').onclick=closePanel;$('cancel').onclick=stop;
   $('tab-compose').onclick=()=>showView('compose');
   $('tab-inbox').onclick=()=>showView('inbox');
@@ -616,7 +620,7 @@
   $('filter-author').onchange=e=>{filterAuthor=e.target.value;renderInbox();};
   $('kinds').onclick=e=>{const b=e.target.closest('button');if(b)setKind(b.dataset.kind);};
   $('save').onclick=async()=>{
-    if(!kind){say('Pick a type first: bug, feature request or improvement idea.');return;}
+    if(!kind){say('Pick a type first: bug, feature request, improvement idea or kudos.');return;}
     if(!$('comment').value.trim()){say('Add a comment first.');$('comment').focus();return;}
     $('save').disabled=true;
     try{const url=new URL(pageUrl());await api({category:kind,comment:$('comment').value,path:url.pathname+url.search+url.hash,url:url.href,target});$('comment').value='';setKind('');syncClear();say('');view='inbox';closePanel();sentFlash();refreshPageNotes().then(renderPrior).catch(()=>{});}

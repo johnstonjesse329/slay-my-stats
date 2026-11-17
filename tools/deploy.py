@@ -10,8 +10,7 @@ Steps:
   0. Check site/pages/ file names, since the stack routes a URL per page.
   1. `cdk diff`. If the stack changed, print the diff and ask y/N before
      `cdk deploy`. No changes -> skip straight to the site.
-  2. `build_site.py` (given the stack's ingest Function URL for the upload
-     page), then upload only the dist/ files whose content changed (with
+  2. `build_site.py`, then upload only the dist/ files whose content changed (with
      dist_cache_control()), and `aws s3 sync` the game-art folders with ART_CACHE_CONTROL (never
      --delete; art uses --size-only so an unchanged checkout doesn't
      re-upload thousands of images just because mtimes moved).
@@ -35,7 +34,7 @@ value nothing sets by accident: the prompt reads the console, so without it a pu
 an agent or an editor just stalls there.
 
 After the stack step, the ingest Function URL gets an empty POST. Any answer below 500 means the
-function started (it answers 401 to a request with no Steam ticket); a 5xx or no answer fails the
+function started (it answers 404 there: uploads come through /auth/upload, the mod through /mod); a 5xx or no answer fails the
 deploy before the site goes up, which is how a bundle that crashes on import (a 502 for every
 upload from the mod) gets caught on gamma rather than found in the mod's log.
 
@@ -394,8 +393,8 @@ def ingest_function_url() -> str:
 
 def smoke_test_ingest(url: str) -> None:
     """
-    POST an empty body to the ingest Function URL. The function rejects it (401: no Steam
-    ticket), and that is the pass: it started and answered. A 5xx is Lambda reporting that the
+    POST an empty body to the ingest Function URL. The function rejects it (404: nothing is
+    served at its root), and that is the pass: it started and answered. A 5xx is Lambda reporting that the
     code failed to load or crashed (a bad import answers 502 to every upload), and no answer at
     all is as bad, so either fails the deploy.
     """
@@ -480,9 +479,9 @@ def require_feedback_table() -> None:
                           f"({done[:7]}). Run tools/deploy.py --feedback-table first.")
 
 
-def deploy_site(ingest_url: str) -> None:
+def deploy_site() -> None:
     print("Site: building dist/...", flush=True)
-    run([sys.executable, str(_HERE / "build_site.py"), "--ingest-url", ingest_url])
+    run([sys.executable, str(_HERE / "build_site.py")])
     print("Site: uploading changed dist/ files...", flush=True)
     changed = upload_changed_dist()
     for d in ART_DIRS:
@@ -569,9 +568,8 @@ def main() -> int:
         if stage == "prod":
             require_gamma_ok()
         infra_changed = deploy_infra()
-        ingest_url = ingest_function_url()
-        smoke_test_ingest(ingest_url)
-        deploy_site(ingest_url)
+        smoke_test_ingest(ingest_function_url())
+        deploy_site()
         smoke_test_site()
         if infra_changed:
             rebuild_held_runs(stage)

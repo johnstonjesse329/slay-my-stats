@@ -21,9 +21,12 @@ the site bucket:
     /thumbs/...          -> thumbs/...                  (icon-size copies of the art)
     everything else      -> dist/...   (/ -> dist/index.html)
 
-    POST /api/ingest     -> the ingest Lambda's authorize(), storing into
-                            local_data/ (stands in for the Function URL); the
-                            upload URL it hands out is this server's own:
+    /auth/login, /auth/callback, /auth/me, POST /auth/logout
+                         -> the ingest Lambda's Steam sign-in (session.py), with a
+                            key made up per server start; Steam's check is real
+    POST /auth/upload    -> session.py, then the Lambda's authorize(), storing
+                            into local_data/; the upload URL it hands out is
+                            this server's own:
     POST /api/ingest/mod -> the same for the game mod: authorize_mod()
                             (stands in for the mod function's /mod)
     POST /api/ingest/mod/runs -> mod_runs(), the runs a profile has, which the
@@ -55,19 +58,24 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qsl, unquote, urlsplit
+from urllib.parse import unquote, urlsplit
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-# The ingest Lambda's handler (and the run.py it imports), so /api/ingest
+# The ingest Lambda's handler (and the run.py it imports), so /auth/upload
 # runs exactly the code that's deployed.
 sys.path[:0] = [str(_REPO_ROOT), str(_REPO_ROOT / "infra" / "lambda" / "ingest")]
 import handler as ingest_handler  # noqa: E402
+import session  # noqa: E402
+# Sessions here are signed with a key that lives only as long as this server.
+os.environ["SESSION_SECRET"] = os.urandom(32).hex()
+for _name in ("GAMMA_SESSION_SECRET", "GAMMA_ORIGIN", "ALLOWED_STEAM_IDS"):
+    os.environ.pop(_name, None)
 import build_site  # noqa: E402
 _DIST = _REPO_ROOT / "dist"
 _USERS_DIR = _REPO_ROOT / "local_data" / "users"
 _DATA_DIR = _USERS_DIR.parent
 
-# Raw keys handed out by /api/ingest and not yet used, with the size each may
+# Raw keys handed out by /auth/upload and not yet used, with the size each may
 # be: what the presigned POST's signature pins down on real S3.
 _issued_keys: dict[str, int] = {}
 _issued_lock = threading.Lock()
@@ -122,10 +130,8 @@ class Handler(BaseHTTPRequestHandler):
         url_path = unquote(urlsplit(self.path).path)
         parts = [p for p in url_path.split("/") if p]
 
-        # Point the upload page at this server's own /api/ingest instead of
-        # whatever Function URL the last build baked in.
-        if url_path == "/site-config.json":
-            self._send_json(200, {"ingestUrl": "/api/ingest"})
+        if url_path.startswith("/auth/"):
+            self._auth("GET")
             return
 
         # The SPA shell, built per request so a new site/pages/ file shows up
@@ -167,8 +173,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path == "/api/ingest":
-            self._authorize()
+        if path.startswith("/auth/"):
+            self._auth("POST")
         elif path == "/api/ingest/mod":
             self._authorize_mod()
         elif path == "/api/ingest/mod/runs":
@@ -178,21 +184,42 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
-    def _authorize(self):
-        # The real ingest Lambda's authorize(), writing into local_data/
-        # instead of S3. Steam verification is still real: sign in through
-        # Steam with a return_to on this server's origin.
-        params = dict(parse_qsl(urlsplit(self.path).query, keep_blank_values=True))
-        port = self.server.server_address[1]
-        allowed = [f"http://127.0.0.1:{port}/", f"http://localhost:{port}/"]
-
-        try:
-            result = ingest_handler.authorize(params, self.client_address[0], ingest_handler.DirStore(_DATA_DIR),
-                                              allowed, _presign)
-        except ingest_handler.IngestError as e:
-            self._send_json(e.status, {"error": e.code, "message": e.message})
+    def _auth(self, method: str):
+        # session.handle, as CloudFront sends /auth/* to the Lambda. The site's origin is whichever
+        # local name the browser used. Feedback lives in DynamoDB and isn't served here.
+        split = urlsplit(self.path)
+        host = self.headers.get("Host", "")
+        if split.path.rstrip("/") == "/auth/feedback" or not re.fullmatch(r"(localhost|127\.0\.0\.1):\d+", host):
+            self.send_error(404)
             return
-        self._send_json(200, result)
+        os.environ["SITE_ORIGIN"] = f"http://{host}"
+        length = int(self.headers.get("Content-Length") or 0)
+        if length:
+            self.rfile.read(length)
+        event = {"rawPath": split.path, "rawQueryString": split.query,
+                 "cookies": [c.strip() for c in self.headers.get("Cookie", "").split(";") if c.strip()],
+                 "headers": {k.lower(): v for k, v in self.headers.items()},
+                 "requestContext": {"http": {"method": method, "sourceIp": self.client_address[0]}}}
+        response = session.handle(event, upload=self._upload)
+        body = response.get("body", "").encode()
+        self.send_response(response["statusCode"])
+        for name, value in response.get("headers", {}).items():
+            self.send_header(name, value)
+        for cookie in response.get("cookies", []):
+            self.send_header("Set-Cookie", cookie)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _upload(self, event, steam_id):
+        # The real ingest Lambda's authorize(), writing into local_data/ instead of S3.
+        try:
+            result = ingest_handler.authorize(steam_id, self.client_address[0],
+                                              ingest_handler.DirStore(_DATA_DIR), _presign)
+        except ingest_handler.IngestError as e:
+            return {"statusCode": e.status, "headers": {"content-type": "application/json"},
+                    "body": json.dumps({"error": e.code, "message": e.message})}
+        return {"statusCode": 200, "headers": {"content-type": "application/json"}, "body": json.dumps(result)}
 
     def _authorize_mod(self):
         # The same for the mod's door: the real authorize_mod(). The Steam
@@ -220,7 +247,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _raw_upload(self):
         # Stands in for S3: a multipart form POST whose "key" field must be
-        # one /api/ingest handed out, and whose "file" is capped at the same
+        # one /auth/upload handed out, and whose "file" is capped at the same
         # size. Then the S3 event's processing, run right here.
         length = int(self.headers.get("Content-Length") or 0)
         if length > ingest_handler.UPLOAD_MAX_BYTES + 64 * 1024:

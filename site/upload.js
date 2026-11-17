@@ -2,16 +2,15 @@
 // Upload — "Sign in with Steam" and the run-history upload, live site only.
 //
 // Flow:
-//   1. The call to action on the home page or the Upload page sends the
-//      browser to Steam's OpenID login, returning to the page it started on.
-//   2. Steam redirects back to /?openid.mode=id_res&openid.claimed_id=...
-//      Those params are the proof of who signed in; they're moved out of the
-//      address bar (so they don't linger in history or get shared) into
-//      sessionStorage, and the upload panel takes over the page.
+//   1. The call to action asks /auth/me who is signed in. Signed out, it goes
+//      to /auth/login, which sends the browser through Steam's sign-in and
+//      back to /upload with the site's session cookie set (infra session.py).
+//   2. On /upload (or with #upload), a signed-in visitor gets the upload
+//      panel in place of the page.
 //   3. The player picks their history folder. Each .run file is re-serialized
-//      onto one line (NDJSON). The OpenID params go to the ingest endpoint,
-//      which re-verifies them with Steam and hands back a one-time upload
-//      URL (a presigned S3 POST) plus the player's profile slug, if any.
+//      onto one line (NDJSON). A POST to /auth/upload, which trusts only the
+//      session cookie, hands back a one-time upload URL (a presigned S3 POST)
+//      plus the player's profile slug, if any.
 //   4. Runs the profile already has are dropped, the rest are gzip'd with
 //      CompressionStream and POSTed straight to S3 as one file. Its arrival
 //      there triggers the processing, which merges the runs into the profile
@@ -21,21 +20,15 @@
 // the first upload. Each upload's answer ({slug, name}) is also remembered in
 // localStorage, so a later visit can check for new runs before signing in.
 //
-// The ingest endpoint's URL comes from /site-config.json (the Lambda's
-// Function URL, written at deploy time; tools/serve_site.py answers it with
-// its own /api/ingest).
+// /auth/* is on the site's own origin: CloudFront sends it to the ingest
+// Lambda, and tools/serve_site.py answers it locally.
 //
 // Classic script in an IIFE, like boot.js. Every piece of text shown comes
 // from textContent, never from interpolated HTML.
 // =========================================================================
 (function () {
 
-  const STEAM_LOGIN = "https://steamcommunity.com/openid/login";
-  const SIGNIN_KEY = "sms-steam-signin";
   const PROFILE_KEY = "sms-profile-";  // + steamId -> {slug, name}
-  // The ingest endpoint refuses sign-ins older than 30 minutes; stop offering
-  // an upload a bit before that so it doesn't fail at the last step.
-  const SIGNIN_MAX_AGE_MS = 25 * 60 * 1000;
   // How often and how long to wait for an upload's result. Processing a big
   // first upload takes a while; past this the page stops waiting, but the
   // upload still lands.
@@ -65,50 +58,19 @@
 
   // ---- Steam sign-in ------------------------------------------------------
 
+  // Through Steam and back to the Upload page, where the panel lives.
   function startSignIn() {
-    const root = location.origin + "/";
-    // Come back to the page the sign-in started from, when the panel can take it
-    // over -- so an upload begun on /upload stays there instead of landing on the
-    // home page. The ingest Lambda checks only the origin of return_to, not the
-    // path. From anywhere else, the Upload page, which is where the panel lives.
-    const back = location.origin + (onPanelPage ? HERE_PATH : "/upload");
-    const q = new URLSearchParams({
-      "openid.ns": "http://specs.openid.net/auth/2.0",
-      "openid.mode": "checkid_setup",
-      "openid.return_to": back,
-      "openid.realm": root,
-      "openid.identity": "http://specs.openid.net/auth/2.0/identifier_select",
-      "openid.claimed_id": "http://specs.openid.net/auth/2.0/identifier_select",
-    });
-    location.assign(`${STEAM_LOGIN}?${q}`);
+    location.assign("/auth/login?next=%2Fupload");
   }
 
-  // Returns {signIn: {params, steamId, at} | null, fresh}. Picks up a sign-in
-  // Steam just returned in the URL first (stripping it from the address
-  // bar), else a remembered one that's still young enough to use.
-  function takeSignIn() {
-    const search = new URLSearchParams(location.search);
-    const mode = search.get("openid.mode");
-    if (mode) history.replaceState(null, "", location.pathname + location.hash);
-    if (mode === "id_res") {
-      const params = {};
-      for (const [k, v] of search) if (k.startsWith("openid.")) params[k] = v;
-      const m = (params["openid.claimed_id"] || "").match(/^https:\/\/steamcommunity\.com\/openid\/id\/(\d{17})$/);
-      if (m) {
-        const signIn = { params, steamId: m[1], at: Date.now() };
-        try { sessionStorage.setItem(SIGNIN_KEY, JSON.stringify(signIn)); } catch (e) { /* private mode */ }
-        return { signIn, fresh: true };
-      }
-    }
+  // The signed-in Steam ID, or null (signed out, or the server can't be reached).
+  async function whoAmI() {
     try {
-      const saved = JSON.parse(sessionStorage.getItem(SIGNIN_KEY) || "null");
-      if (saved && Date.now() - saved.at < SIGNIN_MAX_AGE_MS) return { signIn: saved, fresh: false };
-    } catch (e) { /* ignore */ }
-    return { signIn: null, fresh: false };
-  }
-
-  function forgetSignIn() {
-    try { sessionStorage.removeItem(SIGNIN_KEY); } catch (e) { /* ignore */ }
+      const resp = await fetch("/auth/me", { cache: "no-store" });
+      return resp.ok ? (await resp.json()).steamId || null : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   function knownProfile(steamId) {
@@ -182,23 +144,16 @@
     return null;
   }
 
-  async function ingestUrl() {
-    const resp = await fetch("/site-config.json", { cache: "no-store" });
-    if (!resp.ok) throw new Error("no site config");
-    const cfg = await resp.json();
-    if (!cfg.ingestUrl) throw new Error("no ingest url");
-    return cfg.ingestUrl;
-  }
-
   // ---- UI -------------------------------------------------------------------
 
   // The site bar's "Upload runs" entry is a link to the Upload page, taken from
   // the `nav:` label on site/pages/upload.html. What this wires up is the call
   // to action on that page.
-  function wireUploadLinks(signIn, canHostPanel) {
-    const upload = () => {
-      if (!signIn || Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) startSignIn();
-      else if (canHostPanel) showUploadPanel(signIn);
+  function wireUploadLinks(canHostPanel) {
+    const upload = async () => {
+      const steamId = await whoAmI();
+      if (!steamId) startSignIn();
+      else if (canHostPanel) showUploadPanel(steamId);
       else location.assign("/upload#upload");
     };
     // <a data-upload> in page text. Delegated, since boot.js fetches page bodies
@@ -211,7 +166,7 @@
   }
 
   // Replaces the page (like boot.js's fallbacks do) with the upload panel.
-  function showUploadPanel(signIn) {
+  function showUploadPanel(steamId) {
     const main = document.getElementById("main-content");
     if (!main) return;
     // boot.js's page renderer is mid-fetch for /upload and would paint the page
@@ -221,7 +176,7 @@
     if (filterBar) filterBar.style.display = "none";
     document.querySelectorAll(".page-tabs").forEach(n => { n.style.display = "none"; });
 
-    const profile = knownProfile(signIn.steamId);
+    const profile = knownProfile(steamId);
     const status = el("div", { className: "upload-status", role: "status" });
     const folderInput = el("input", { type: "file", multiple: true, className: "upload-input", id: "upload-folder" });
     folderInput.setAttribute("webkitdirectory", "");
@@ -239,8 +194,8 @@
     const isMac = navigator.platform.startsWith("Mac");
     const hasPath = isMac || navigator.platform.startsWith("Win");
     const historyPath = isMac
-      ? "~/Library/Application Support/SlayTheSpire2/steam/" + signIn.steamId + "/profile1/saves/history"
-      : "%APPDATA%\\SlayTheSpire2\\steam\\" + signIn.steamId + "\\profile1\\saves\\history";
+      ? "~/Library/Application Support/SlayTheSpire2/steam/" + steamId + "/profile1/saves/history"
+      : "%APPDATA%\\SlayTheSpire2\\steam\\" + steamId + "\\profile1\\saves\\history";
     const pathCode = el("code", { textContent: historyPath });
     const copyBtn = el("button", { type: "button", className: "upload-copy", textContent: "Copy" });
     let copiedTimer;
@@ -292,7 +247,7 @@
       if (busy || !input.files.length) return;
       busy = true;
       try {
-        await upload(signIn, [...input.files], status);
+        await upload(steamId, [...input.files], status);
       } finally {
         busy = false;
         input.value = "";
@@ -372,41 +327,32 @@
   let pending = null;  // {auth, at}
 
   function signInAgain(status, text) {
-    forgetSignIn();
     setStatus(status, text);
     noteOf(status).append(" ", el("button", { type: "button", className: "upload-link", textContent: "Sign in again",
                                       onclick: startSignIn }));
   }
 
-  // The sign-in's params go to the ingest endpoint, which answers with a
-  // one-time upload URL. Resolves to that answer, or null (status says why).
-  async function authorize(signIn, status) {
-    let url;
-    try {
-      url = await ingestUrl();
-    } catch (e) {
-      setStatus(status, "Uploads aren't available right now.");
-      return null;
-    }
+  // The session cookie goes with the POST; the answer is a one-time upload
+  // URL. Resolves to that answer, or null (status says why).
+  async function authorize(status) {
     let resp, result;
     try {
-      resp = await fetch(`${url}?${new URLSearchParams(signIn.params)}`, { method: "POST" });
+      resp = await fetch("/auth/upload", { method: "POST" });
       result = await resp.json();
     } catch (e) {
       setStatus(status, "Upload failed — couldn't reach the server. Try again in a moment.");
       return null;
     }
     if (!resp.ok) {
-      // A rejected or expired sign-in can't be retried; a cooldown or conflict
-      // can. Steam may also refuse a sign-in it already confirmed once.
-      if (["signin_expired", "bad_openid"].includes(result.error)) {
-        signInAgain(status, result.message || "Sign in again to upload.");
+      // Signed out (the session expired, or signed out elsewhere) needs a new
+      // sign-in; a cooldown or conflict can just be retried.
+      if (resp.status === 401) {
+        signInAgain(status, result.message || "Sign in through Steam to upload.");
       } else {
         setStatus(status, result.message || `Upload failed (${resp.status}).`);
       }
       return null;
     }
-    // The sign-in is kept: it works again (after the cooldown) until it expires.
     return result;
   }
 
@@ -423,12 +369,8 @@
     setTimeout(() => location.assign(`/u/${slug}`), 1800);
   }
 
-  async function upload(signIn, files, status) {
+  async function upload(steamId, files, status) {
     if (pending && Date.now() - pending.at >= UPLOAD_URL_MAX_AGE_MS) pending = null;
-    if (!pending && Date.now() - signIn.at >= SIGNIN_MAX_AGE_MS) {
-      signInAgain(status, "Your Steam sign-in has expired.");
-      return;
-    }
 
     step(status, "read");
     const { runs, unreadable } = await readRuns(files);
@@ -442,7 +384,7 @@
     step(status, "check");
     status.stage.details.read = `${runCount(runs.length)} found`;
     renderSteps(status);
-    const known = knownProfile(signIn.steamId);
+    const known = knownProfile(steamId);
     let slug = known && known.slug;
     let have = await existingTimestamps(slug);
     const allThere = () => runs.every(r => have.has(r.start));
@@ -452,7 +394,7 @@
     }
 
     if (!pending) {
-      const auth = await authorize(signIn, status);
+      const auth = await authorize(status);
       if (!auth) return;
       pending = { auth, at: Date.now() };
     }
@@ -508,7 +450,7 @@
       setStatus(status, result.message || "That upload couldn't be added.", profileLink);
       return;
     }
-    if (result.slug) rememberProfile(signIn.steamId, result.slug, result.name);
+    if (result.slug) rememberProfile(steamId, result.slug, result.name);
     // Runs naming a character, card or relic the site doesn't know yet: kept, added later.
     const held = result.held
       ? `${result.held} run(s) use content from a mod or a newer patch. We kept them and will add them if the site supports it.`
@@ -532,11 +474,12 @@
 
   // ---- Entry point -----------------------------------------------------------
 
-  // A sign-in that just arrived opens the panel straight away -- startSignIn sent
-  // Steam back to this page -- and the hash covers a remembered one arriving from
-  // another page's link. Otherwise it waits for the call to action.
-  const { signIn, fresh } = takeSignIn();
-  wireUploadLinks(signIn, onPanelPage);
-  if (onPanelPage && signIn && (fresh || location.hash === "#upload")) showUploadPanel(signIn);
+  // The Upload page (where a sign-in returns) and #upload links open the panel
+  // straight away when signed in. Elsewhere it waits for the call to action, so
+  // ordinary page views don't ask the server who is signed in.
+  wireUploadLinks(onPanelPage);
+  if (onPanelPage && (HERE_PATH === "/upload" || location.hash === "#upload")) {
+    whoAmI().then(steamId => { if (steamId) showUploadPanel(steamId); });
+  }
 
 })();

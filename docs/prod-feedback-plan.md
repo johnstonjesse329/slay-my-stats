@@ -88,7 +88,7 @@ the note's counter.
   admin script shows authors.
 - Per-player daily cap on submissions, the existing length caps, and the kill switch the
   other prod functions honor.
-- Inbox also filters by category (bug, feature request, improvement idea).
+- Inbox also filters by category (bug, feature request, improvement idea, kudos).
 
 ## Build order
 
@@ -110,6 +110,15 @@ the note's counter.
 - The table lives in a small stack of its own, deployed only when the table changes (below).
 - Gamma first: the table, `env`, the Environment filter and the +1 transactions go to gamma;
   prod sign-in sessions and `tools/feedback_admin.py` are the next pass.
+- (2026-11-17) Kudos is a fourth note type, alongside bug, feature request and improvement idea.
+- (2026-11-17) One Steam sign-in covers uploads and feedback: uploads move behind the site's own
+  origin so they carry the session cookie; no second sign-in for either.
+- (2026-11-17) The Feedback button shows to everyone on prod; signed out, it leads to the Steam
+  sign-in. Anyone who bothers to sign in to leave a note is worth hearing from.
+- (2026-11-17) Prod sessions last 30 days. The signing key lives in Parameter Store as a
+  SecureString (created once by hand, like the Steam API key), not in CDK context.
+- (2026-11-17) One 8 AM email: the prod upload digest gains new-feedback sections for prod and
+  gamma (open lists on Mondays); gamma's separate feedback digest is retired.
 
 ## Gamma build design (2026-11-16)
 
