@@ -15,6 +15,6 @@ Existing CloudWatch executions for both daily and weekly reported sent=true and 
 
 ## FB-26: mobile synergy sizes
 
-Cards now use two columns through 600 px, up from three narrow columns. Inline relic panels are capped at 180 px with 48 px art; landscape up to 899 px uses 56 px relic art. Desktop rules remain unchanged.
+Cards now use two columns through 600 px, up from three narrow columns. Inline relic panels occupy one card-width grid cell with 48 px art; landscape up to 899 px uses 56 px relic art. Desktop rules remain unchanged.
 
 Visually inspected the reported run (1792337104) at desktop 1920 × 1080 and named Playwright iPhone 16 portrait/landscape in WebKit. No horizontal page overflow. Evidence: local_data/feedback/evidence/FB-26-{desktop,iphone-portrait,iphone-landscape}.png. The existing broad explorer test could not load its older milworkz fixture locally; checks used the actual reported splitswigs run instead.

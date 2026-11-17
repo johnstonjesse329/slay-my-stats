@@ -2113,13 +2113,13 @@ h1 {
   .synergy-flow > div:last-child { padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--hairline); }
   .synergy-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
   .synergy-item-with-face, .synergy-item-face { width: 100%; }
+  .synergy-items > .synergy-relic { grid-column: auto; width: 100%; }
   .synergy-item-face .cardface { width: 100% !important; height: auto; }
   .synergy-item-relic { flex-direction: column; justify-content: center; text-align: center; padding: 6px; }
   .synergy-item-relic img { width: 48px; height: 48px; object-fit: contain; }
 }
 @media (max-width: 600px) {
   .synergy-items { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .synergy-relic { width: min(100%, 180px); }
   .synergy-relic .rt-art { height: 48px; }
 }
 @media (min-width: 601px) and (max-width: 899px) {
