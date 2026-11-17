@@ -2211,6 +2211,8 @@ const RANGE_HINT_KEY = "slay-my-stats:range-used:v2";          // the gesture ha
 const RANGE_TIP_KEY = "slay-my-stats:range-tip-dismissed:v2";  // the line above the charts was closed
 const rangeTipSeen = () => { try { return !!localStorage.getItem(RANGE_TIP_KEY); } catch { return false; } };
 const rangeUsed = () => { try { return !!localStorage.getItem(RANGE_HINT_KEY); } catch { return false; } };
+const RANGE_PILL_KEY = "slay-my-stats:drag-pill-ok:v1";       // the pill's Ok was clicked
+const rangePillDone = () => { try { return !!localStorage.getItem(RANGE_PILL_KEY) || rangeUsed(); } catch { return false; } };
 // A drag needs a pointer, not a finger, but a laptop with a touchscreen usually has both, and the
 // mouse still drags: the line shows wherever any precise pointer exists.
 const hasFinePointer = () => window.matchMedia("(any-pointer: fine)").matches;
@@ -2289,15 +2291,20 @@ function bindRangeSelect(chart, nodes) {
   const host = canvas.closest(".chart-wrap") || canvas.parentElement;
   host.classList.add("range-ready");
   // The same advice as the note under Keeping Up, put where the eye is: a pill over the plot
-  // while the pointer is on the chart. It lives exactly as long as the pointer does -- no timer,
-  // so it can't vanish while someone is reading it -- and it is not remembered away, because a
-  // hint nobody can call back is no use to whoever is looking next.
+  // while the pointer is on the chart, until it's acknowledged with Ok or the drag is first used.
   const dropPill = () => host.querySelector(".drag-hint")?.remove();
   const showPill = () => {
-    if (!hasFinePointer() || host.querySelector(".drag-hint")) return;
-    const hint = document.createElement("span");
+    if (!hasFinePointer() || rangePillDone() || host.querySelector(".drag-hint")) return;
+    const hint = document.createElement("span"), ok = document.createElement("button");
     hint.className = "drag-hint";
     hint.textContent = "Drag across the chart to add up what changed over these floors";
+    ok.type = "button";
+    ok.textContent = "Ok";
+    ok.onclick = () => {
+      try { localStorage.setItem(RANGE_PILL_KEY, "1"); } catch { /* private mode */ }
+      document.querySelectorAll(".drag-hint").forEach(p => p.remove());
+    };
+    hint.append(ok);
     host.appendChild(hint);
   };
   host.addEventListener("pointerenter", showPill);
