@@ -16,7 +16,9 @@
     #launcher.sent{background:linear-gradient(#cfe8b5,#9fcb7a);border-color:#cfe8b5}
     #launcher-count{min-width:20px;padding:1px 6px;border-radius:999px;background:#191c20;color:#f4dda6;font-size:12px;font-weight:700;text-align:center}
     #launcher:focus-visible,button:focus-visible{outline:3px solid #f6c66d;outline-offset:2px}
-    #panel{order:1;background:#191c20;border:1px solid #82735b;border-radius:12px;padding:16px;width:420px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 100px);min-width:300px;min-height:180px;overflow:auto;resize:both;box-shadow:0 8px 40px #0009}
+    #panel{order:1;background:#191c20;border:1px solid #82735b;border-radius:12px;padding:16px;width:420px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 100px);min-width:300px;min-height:180px;display:flex;flex-direction:column;overflow:hidden;resize:both;box-shadow:0 8px 40px #0009}
+    #panel > header,#panel > #tabs{flex-shrink:0}
+    #view-compose,#view-inbox{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
     #panel.placed{position:fixed;max-height:calc(100dvh - 16px)}
     header{cursor:grab;touch-action:none;user-select:none}header.dragging{cursor:grabbing}header button{cursor:pointer}
     h2{display:flex;align-items:center;gap:10px}

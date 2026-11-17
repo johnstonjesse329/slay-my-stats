@@ -305,6 +305,20 @@ def main():
             check_note_layout(page, notes, name)
             check_find_and_plus(page, name)
             check_backlog(page)
+            page.evaluate("""() => {
+                const r = document.getElementById('gamma-feedback').shadowRoot;
+                const body = r.getElementById('view-inbox');
+                const spacer = document.createElement('div');
+                spacer.style.height = '2000px';
+                body.append(spacer);
+                const header = r.querySelector('header');
+                const before = header.getBoundingClientRect().top;
+                body.scrollTop = 1000;
+                if (body.scrollTop === 0) throw Error('Inbox did not scroll');
+                if (header.getBoundingClientRect().top !== before) throw Error('Header scrolled away');
+                if (r.getElementById('panel').scrollTop !== 0) throw Error('Outer panel scrolled');
+                spacer.remove(); body.scrollTop = 0;
+            }""")
             output = ROOT / '.playwright-mcp' / f'feedback-{name}.png'
             output.parent.mkdir(exist_ok=True)
             page.screenshot(path=str(output))
