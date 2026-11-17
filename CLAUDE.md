@@ -17,6 +17,24 @@ pre-commit hook runs it whenever infra, docs or the README are in a commit.
 that was on gamma at that point. A change that must not ship is reverted on
 `gamma` first. Deploy steps are in the memory runbook.
 
+## Worktrees: assume someone else is working here too
+
+Other sessions work in this repo at the same time, on the same files and
+branches. Assume they are, even when nothing shows it.
+
+- Do every change in a worktree of your own, branched from a fresh
+  `origin/gamma`: `git worktree add -b <branch> "../smst-wt-<branch>" origin/gamma`.
+  Never switch branches, stash, commit or reset in the main checkout or in
+  someone else's worktree; their uncommitted work is theirs.
+- Don't build on a local branch you didn't make. Re-fetch before merging or
+  pushing: if `origin/gamma` moved, merge onto the new tip, and say what else
+  is riding along before it goes to prod.
+- Deploys push from the main checkout (it holds the ignored `cdk.context.json`
+  and art). Only push from it when it is clean and on the commit you mean to
+  ship; if another session is mid-change there, wait or ask.
+- Removing a worktree: unlink its junctions first (`cmd /c rmdir <junction>`).
+  `git worktree remove` deletes through a junction into the main checkout's art.
+
 ## Screenshots
 
 The README screenshots (`images/site-overview.png`, `site-run-detail.png`,
