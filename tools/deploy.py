@@ -48,6 +48,14 @@ successful gamma deploy of a clean checkout writes its commit to `slay-my-stats-
 the git directory (shared by worktrees); a prod deploy of any other commit stops. `DEPLOY_SKIP_GAMMA=1`
 overrides it for a hotfix.
 
+The feedback table both stages share (infra/slay_my_stats/feedback_stack.py) is its own stack, and
+no push touches it. Deploy it by hand, with its diff and a y/N, only when that file changes:
+
+    infra\\.venv\\Scripts\\python.exe tools/deploy.py --feedback-table
+
+That records the commit in `slay-my-stats-feedback-ok` in the git directory. A push stops while the
+file differs from what was last deployed, so a stage never ships code for a table that isn't there.
+
 Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 `git push --no-verify`.
 """
@@ -75,6 +83,9 @@ STAGES = {
     "gamma": ("slay-my-stats-gamma-site", "gamma.slay-my-stats.com", "SlayMyStatsGammaStack"),
 }
 # The data bucket each stage's profiles live in (infra/slay_my_stats/slay_my_stats_stack.py).
+# The shared feedback table's stack and the one file that defines it.
+FEEDBACK_STACK = "SlayMyStatsFeedbackStack"
+FEEDBACK_STACK_FILE = "infra/slay_my_stats/feedback_stack.py"
 DATA_BUCKETS = {"prod": "slay-my-stats-data", "gamma": "slay-my-stats-gamma-data"}
 # Pushing one of these branches deploys its stage (see check_pre_push).
 DEPLOY_BRANCHES = {"main": "prod", "gamma": "gamma"}
@@ -238,14 +249,17 @@ def check_pre_push(ref_lines) -> str | None:
     return DEPLOY_BRANCHES[branch]
 
 
-def deploy_infra() -> bool:
-    """Deploy the stack if it differs; True when it did (the Lambda bundle, and so the
-    known-ID list, may have changed)."""
+def _cdk_env() -> dict:
     # cdk.json runs `python app.py`; put the infra venv first so that resolves
     # to the interpreter with aws_cdk installed.
     venv_bin = _INFRA / ".venv" / ("Scripts" if os.name == "nt" else "bin")
-    env = {**os.environ, "PATH": f"{venv_bin}{os.pathsep}{os.environ['PATH']}"}
+    return {**os.environ, "PATH": f"{venv_bin}{os.pathsep}{os.environ['PATH']}"}
 
+
+def deploy_infra() -> bool:
+    """Deploy the stack if it differs; True when it did (the Lambda bundle, and so the
+    known-ID list, may have changed)."""
+    env = _cdk_env()
     print("Infra: comparing the stack with AWS (cdk diff, usually a minute or two)...", flush=True)
     output = run(["cdk", "diff", STACK_NAME], cwd=_INFRA, env=env, stream=True).stdout
     if "There were no differences" in output:
@@ -428,6 +442,44 @@ def require_gamma_ok() -> None:
                           "For a hotfix, DEPLOY_SKIP_GAMMA=1.")
 
 
+def _feedback_ok_file() -> Path:
+    return _gamma_ok_file().with_name("slay-my-stats-feedback-ok")
+
+
+def deploy_feedback_table() -> None:
+    """Deploy the feedback table's stack: its diff, then a y/N (only DEPLOY_YES=feedback skips it,
+    since the table holds every note). Records the commit when the file is committed as deployed."""
+    env = _cdk_env()
+    print("Feedback table: comparing its stack with AWS (cdk diff)...", flush=True)
+    output = run(["cdk", "diff", FEEDBACK_STACK], cwd=_INFRA, env=env, stream=True).stdout
+    if "There were no differences" in output:
+        print("Feedback table: no changes.")
+    else:
+        if os.environ.get("DEPLOY_YES") == "feedback":
+            print("Feedback table: deploying these changes (DEPLOY_YES=feedback).")
+        elif not ask("Deploy these feedback table changes?"):
+            raise DeployError("feedback table deploy declined")
+        run(["cdk", "deploy", FEEDBACK_STACK, "--exclusively", "--require-approval", "never"], cwd=_INFRA, env=env)
+    if git("status", "--porcelain", "--", FEEDBACK_STACK_FILE):
+        print(f"Note: {FEEDBACK_STACK_FILE} has uncommitted changes, so no deploy is recorded; "
+              "commit it and run --feedback-table again.")
+        return
+    _feedback_ok_file().write_text(git("rev-parse", "HEAD"), encoding="utf-8")
+    print("Feedback table: deployed; recorded.")
+
+
+def require_feedback_table() -> None:
+    """Stop a push while the feedback stack's file differs from its last --feedback-table deploy."""
+    f = _feedback_ok_file()
+    done = f.read_text(encoding="utf-8").strip() if f.exists() else ""
+    if not done:
+        raise DeployError("the feedback table has no deploy recorded. "
+                          "Run tools/deploy.py --feedback-table first.")
+    if git("diff", "--name-only", done, "--", FEEDBACK_STACK_FILE):
+        raise DeployError(f"{FEEDBACK_STACK_FILE} changed since the feedback table was last deployed "
+                          f"({done[:7]}). Run tools/deploy.py --feedback-table first.")
+
+
 def deploy_site(ingest_url: str) -> None:
     print("Site: building dist/...", flush=True)
     run([sys.executable, str(_HERE / "build_site.py"), "--ingest-url", ingest_url])
@@ -493,6 +545,9 @@ def main() -> int:
     sys.stdout.reconfigure(errors="replace")
     pre_push = "--pre-push" in sys.argv
     try:
+        if "--feedback-table" in sys.argv:
+            deploy_feedback_table()
+            return 0
         if pre_push:
             stage = check_pre_push(sys.stdin.read().splitlines())
             if stage is None:
@@ -510,6 +565,7 @@ def main() -> int:
         if not pre_push and git("status", "--porcelain", "--untracked-files=no"):
             print("Note: deploying a working tree with uncommitted changes.")
         check_site_pages()
+        require_feedback_table()
         if stage == "prod":
             require_gamma_ok()
         infra_changed = deploy_infra()

@@ -1,4 +1,16 @@
-"""Private gamma feedback inbox, authenticated even at the direct Function URL."""
+"""The feedback inbox, kept in the shared DynamoDB table (docs/prod-feedback-plan.md).
+
+Gamma's auth Lambda serves it at /auth/feedback, checking the signed gamma session itself so
+the direct Function URL is no way around it. Which environment a note belongs to is fixed by
+the Lambda's own FEEDBACK_ENV, never by the request; FEEDBACK_READ_ENVS lists the ones it may
+read (gamma reads prod too, prod never reads gamma), and IAM holds each role to those.
+
+Items, all keyed by env (partition) and sk:
+    note      sk = the note id; the note's JSON in `body`, plus plus_count and the index keys
+    +1        sk = vote#<note id>#<steam id>
+    throttle  sk = rate#<steam id>#<UTC hour>, deleted by TTL
+    FB-n      env = counter, sk = seq
+"""
 import base64
 import hashlib
 import hmac
@@ -11,14 +23,19 @@ import uuid
 from http.cookies import CookieError, SimpleCookie
 
 PAGE_SIZE = 25
-SCAN_LIMIT = 400  # objects read in one request; a page-scoped view may skip most
-CURSOR = re.compile(r"feedback/\d{10}-[a-f0-9]{32}\.json")
+READ_LIMIT = 400  # items one request may read for a page view, which filters what it reads
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
 CATEGORIES = {"bug": "Bug", "feature": "Feature request", "improvement": "Improvement idea"}
 NOTE_ID = re.compile(r"feedback/\d{10}-[a-f0-9]{32}\.json")
 OUTCOMES = ("done", "declined", "duplicate")
 STATUSES = ("open", "backlog", "resolved", "all")
 RESOLUTION = ("resolved_by", "resolved_at", "close_note", "resolved_in", "outcome", "duplicate_of")
+ENVS = ("gamma", "prod")
+RATE_WRITES = 60  # writes one player may make in a UTC hour...
+RATE_NOTES = 10   # ...of which new notes
+# Index name -> its sort key. Every index is partitioned on env, like the table, so the IAM
+# rule on env (dynamodb:LeadingKeys) covers the indexes too.
+INDEXES = {"base": "sk", "ByState": "st", "ByStateCategory": "stcat", "ByCategory": "cat", "ByPage": "pg"}
 
 
 def _outcome(data):
@@ -66,23 +83,6 @@ def _backlog(note, steam, on, reason):
     return True
 
 
-def _number_all(store, bucket):
-    """Give every note a stable sequence number (shown as FB-n), oldest first, and return them all.
-
-    Notes already numbered keep theirs; any without one are numbered after the highest in creation
-    order. Gamma's inbox is small, so reading it all on a create or a first view is fine.
-    """
-    notes = sorted(_all_notes(store, bucket), key=lambda n: (n.get("created", 0), n.get("id", "")))
-    top = max([n["seq"] for n in notes if isinstance(n.get("seq"), int)] or [0])
-    for note in notes:
-        if not isinstance(note.get("seq"), int):
-            top += 1
-            note["seq"] = top
-            store.put_object(Bucket=bucket, Key=note["id"], Body=json.dumps(note).encode(),
-                             ContentType="application/json")
-    return notes
-
-
 def _resolve(note, steam, resolved, fields):
     """Resolve or reopen a note in place, keeping who did it, when, why and in which commit.
 
@@ -101,6 +101,7 @@ def _resolve(note, steam, resolved, fields):
         entry.update(reopened_by=steam, reopened_at=now)
         note.setdefault("history", []).append(entry)
         note["resolved"] = False
+
 
 _NAMES = {}          # steam id -> (looked up at, display name); warm Lambdas reuse it
 NAME_TTL = 6 * 3600
@@ -136,47 +137,278 @@ def _valid_path(path) -> bool:
     return isinstance(path, str) and path.startswith("/") and not path.startswith("//") and len(path) <= 3000
 
 
-def _read_notes(store, bucket, scope, path, cursor, status="all", category=""):
-    """A page of notes, newest first; scope "page" keeps only that path.
+class Refused(Exception):
+    """A request the inbox turns down: the HTTP status and the message the panel shows."""
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status, self.message = status, message
 
-    status (open, backlog, resolved or all; open leaves the backlog out) and category narrow the page the same way: a note that
-    does not match is read and skipped, so a narrow filter may scan to the limit and hand
-    back a cursor with fewer than a full page.
 
-    Keys sort newest first, so the cursor is the last key read (StartAfter) and
-    no more keys means the visible inbox is exhausted.
+def _code(error):
+    """The DynamoDB error code of a botocore ClientError, or "" for anything else."""
+    return getattr(error, "response", {}).get("Error", {}).get("Code", "")
+
+
+def _page_hash(path):
+    """A page's key in the ByPage index: a raw path can pass the 1 KB key limit."""
+    return hashlib.sha256(path.encode()).hexdigest()[:20]
+
+
+def _index_keys(note):
+    """The index sort keys a note is filed under. A note without a type stays out of the type indexes."""
+    state, nid, category = _state(note), note["id"], note.get("category")
+    keys = {"st": f"{state}#{nid}", "pg": f"{_page_hash(note.get('path', ''))}#{nid}"}
+    if category:
+        keys.update(stcat=f"{state}#{category}#{nid}", cat=f"{category}#{nid}")
+    return keys
+
+
+def note_item(env, note, plus_count):
+    """A note as a table item. The note's own JSON goes in `body` (its target holds fractional pixel
+    sizes, which DynamoDB numbers would turn into Decimals); seq and created sit beside it."""
+    item = {"env": {"S": env}, "sk": {"S": note["id"]}, "body": {"S": json.dumps(note)},
+            "created": {"N": str(int(note.get("created", 0)))}, "plus_count": {"N": str(int(plus_count))}}
+    if isinstance(note.get("seq"), int):
+        item["seq"] = {"N": str(note["seq"])}
+    item.update({name: {"S": value} for name, value in _index_keys(note).items()})
+    return item
+
+
+def vote_key(env, note_id, steam):
+    return {"env": {"S": env}, "sk": {"S": f"vote#{note_id}#{steam}"}}
+
+
+def vote_item(env, note_id, steam, at):
+    return {**vote_key(env, note_id, steam), "at": {"N": str(int(at))}}
+
+
+def _from_item(item):
+    """The note as the page sees it: its stored fields, its env and its +1 count."""
+    note = json.loads(item["body"]["S"])
+    note["env"] = item["env"]["S"]
+    note["plus_count"] = int(item.get("plus_count", {}).get("N", "0"))
+    return note
+
+
+def _plan(scope, path, status, category):
+    """Which index answers a view, the prefix its keys start with, and the filter a page view applies.
+
+    Each index key ends in the note id, so ascending order is newest first. A page has few notes,
+    so This page reads ByPage and checks status and type itself.
     """
-    notes, scanned, after = [], 0, cursor or ""
+    if scope == "page":
+        def keep(note):
+            return (note.get("path") == path and (status == "all" or _state(note) == status)
+                    and (not category or note.get("category") == category))
+        return "ByPage", _page_hash(path) + "#", keep
+    if status != "all" and category:
+        return "ByStateCategory", f"{status}#{category}#", None
+    if status != "all":
+        return "ByState", f"{status}#", None
+    if category:
+        return "ByCategory", f"{category}#", None
+    return "base", "feedback/", None
+
+
+def _key(env, note_id, index, prefix):
+    """The key to resume a query after this note, as DynamoDB's LastEvaluatedKey would give it."""
+    key = {"env": {"S": env}, "sk": {"S": note_id}}
+    if index != "base":
+        key[INDEXES[index]] = {"S": prefix + note_id}
+    return key
+
+
+def _query(db, table, env, plan, start, want):
+    """Up to `want` notes of one env from `start`, newest first, and the key to go on from (None at the end)."""
+    index, prefix, keep = plan
+    args = {"TableName": table, "KeyConditionExpression": "#e = :e AND begins_with(#s, :p)",
+            "ExpressionAttributeNames": {"#e": "env", "#s": INDEXES[index]},
+            "ExpressionAttributeValues": {":e": {"S": env}, ":p": {"S": prefix}}}
+    if index != "base":
+        args["IndexName"] = index
+    notes, read = [], 0
     while True:
-        args = {"Bucket": bucket, "Prefix": "feedback/", "MaxKeys": 100}
-        if after:
-            args["StartAfter"] = after
-        listing = store.list_objects_v2(**args)
-        contents = listing.get("Contents", [])
-        for index, obj in enumerate(contents):
-            after = obj["Key"]
-            scanned += 1
-            note = json.loads(store.get_object(Bucket=bucket, Key=after)["Body"].read())
-            if scope == "page" and note.get("path") != path:
-                continue
-            if status != "all" and _state(note) != status:
-                continue
-            if category and note.get("category") != category:
+        args["Limit"] = 100 if keep else want - len(notes)
+        if start:
+            args["ExclusiveStartKey"] = start
+        page = db.query(**args)
+        items = page.get("Items", [])
+        for i, item in enumerate(items):
+            read += 1
+            note = _from_item(item)
+            if keep and not keep(note):
                 continue
             notes.append(note)
-            if len(notes) >= PAGE_SIZE:
-                return notes, (after if index + 1 < len(contents) or listing.get("IsTruncated") else None)
-        if not listing.get("IsTruncated"):
+            if len(notes) >= want:
+                more = i + 1 < len(items) or "LastEvaluatedKey" in page
+                return notes, (_key(env, note["id"], index, prefix) if more else None)
+        start = page.get("LastEvaluatedKey")
+        if not start:
             return notes, None
-        if scanned >= SCAN_LIMIT:
-            return notes, after
+        if read >= READ_LIMIT:
+            return notes, start
 
 
-def handle(event):
-    def reply(status, body):
-        return {"statusCode": status, "headers": {"content-type": "application/json",
-                "cache-control": "no-store"}, "body": json.dumps(body)}
+def _encode_cursor(cursor):
+    """{env: key or None (from the start)} -> the opaque string the page sends back; envs read to the end are left out."""
+    plain = {env: key and {name: value["S"] for name, value in key.items()} for env, key in cursor.items()}
+    return base64.urlsafe_b64encode(json.dumps(plain, separators=(",", ":")).encode()).decode()
 
+
+def _decode_cursor(raw, envs, plan):
+    """The cursor the page sent, checked strictly: only the envs being read, and keys of exactly the
+    shape this view's index gives, for a real note id. Anything else is a 400."""
+    index, prefix, _ = plan
+    try:
+        plain = json.loads(base64.urlsafe_b64decode(raw.encode()))
+    except ValueError:
+        raise Refused(400, "Invalid page cursor.")
+    names = {"env", "sk"} | ({INDEXES[index]} if index != "base" else set())
+    if not isinstance(plain, dict) or not plain or not set(plain) <= set(envs):
+        raise Refused(400, "Invalid page cursor.")
+    cursor = {}
+    for env, key in plain.items():
+        if key is not None:
+            if (not isinstance(key, dict) or set(key) != names or key["env"] != env
+                    or not isinstance(key["sk"], str) or not NOTE_ID.fullmatch(key["sk"])
+                    or (index == "base" and not key["sk"].startswith(prefix))
+                    or (index != "base" and key[INDEXES[index]] != prefix + key["sk"])):
+                raise Refused(400, "Invalid page cursor.")
+            key = {name: {"S": value} for name, value in key.items()}
+        cursor[env] = key
+    return cursor
+
+
+def _read(db, table, plan, cursor):
+    """A page of notes across the envs in the cursor, merged newest first, and the cursor for the next page.
+
+    Each env is read for a full page; what is not shown is read again next time from the last note
+    shown of that env, so Both never skips or repeats a note.
+    """
+    index, prefix, _ = plan
+    found, read = [], {}
+    for env, start in cursor.items():
+        notes, end = _query(db, table, env, plan, start, PAGE_SIZE)
+        found += notes
+        read[env] = (notes, end, start)
+    page = sorted(found, key=lambda n: n["id"])[:PAGE_SIZE]
+    following = {}
+    for env, (notes, end, start) in read.items():
+        shown = [n for n in page if n["env"] == env]
+        if len(shown) < len(notes):
+            following[env] = _key(env, shown[-1]["id"], index, prefix) if shown else start
+        elif end is not None:
+            following[env] = end
+    return page, (_encode_cursor(following) if following else None)
+
+
+def _with_votes(db, table, notes, steam):
+    """Each note as sent: +1 count and whether this player gave one, never who the others are."""
+    keys = [vote_key(n["env"], n["id"], steam) for n in notes]
+    mine = set()
+    while keys:
+        batch, keys = keys[:100], keys[100:]
+        request = {table: {"Keys": batch, "ProjectionExpression": "sk"}}
+        while request:
+            got = db.batch_get_item(RequestItems=request)
+            mine.update(item["sk"]["S"] for item in got.get("Responses", {}).get(table, []))
+            request = got.get("UnprocessedKeys") or None
+    return [_named({**n, "plus_mine": f"vote#{n['id']}#{steam}" in mine}) for n in notes]
+
+
+def _get(db, table, env, note_id):
+    item = db.get_item(TableName=table, Key={"env": {"S": env}, "sk": {"S": note_id}}, ConsistentRead=True).get("Item")
+    if not item:
+        raise Refused(404, "That note no longer exists.")
+    return item
+
+
+def _throttle(db, table, env, steam, creating):
+    """Count this write against the player's hour; refuse once the hour is used up (FB-24).
+
+    One conditional ADD, so two writes at once cannot both slip under the cap. The counter
+    deletes itself (TTL on `expires`) a day after its hour.
+    """
+    hour = int(time.time() // 3600)
+    names, values = {"#n": "n", "#x": "expires"}, {":one": {"N": "1"}, ":max": {"N": str(RATE_WRITES)},
+                                                     ":exp": {"N": str((hour + 25) * 3600)}}
+    update, condition = "SET #x = if_not_exists(#x, :exp) ADD #n :one", "(attribute_not_exists(#n) OR #n < :max)"
+    if creating:
+        names["#c"] = "c"
+        values[":cmax"] = {"N": str(RATE_NOTES)}
+        update += ", #c :one"
+        condition += " AND (attribute_not_exists(#c) OR #c < :cmax)"
+    try:
+        db.update_item(TableName=table, Key={"env": {"S": env}, "sk": {"S": f"rate#{steam}#{hour}"}},
+                       UpdateExpression=update, ConditionExpression=condition,
+                       ExpressionAttributeNames=names, ExpressionAttributeValues=values)
+    except Exception as error:
+        if _code(error) != "ConditionalCheckFailedException":
+            raise
+        raise Refused(429, "That's a lot of feedback for one hour. Try again later.")
+
+
+def _change(db, table, env, note_id, steam, change):
+    """Apply change(note) -> bool to a stored note, on condition its state is still the one read,
+    so two reviewers cannot overwrite each other. Only the body and the state keys are written;
+    plus_count is left to the +1 transactions."""
+    item = _get(db, table, env, note_id)
+    note = json.loads(item["body"]["S"])
+    if not change(note):
+        return
+    names, values = {"#b": "body", "#st": "st"}, {":b": {"S": json.dumps(note)}, ":was": item["st"],
+                                                   ":st": {"S": _index_keys(note)["st"]}}
+    update = "SET #b = :b, #st = :st"
+    if "stcat" in item:
+        names["#sc"] = "stcat"
+        values[":sc"] = {"S": _index_keys(note)["stcat"]}
+        update += ", #sc = :sc"
+    try:
+        db.update_item(TableName=table, Key={"env": {"S": env}, "sk": {"S": note_id}}, UpdateExpression=update,
+                       ConditionExpression="#st = :was", ExpressionAttributeNames=names, ExpressionAttributeValues=values)
+    except Exception as error:
+        if _code(error) != "ConditionalCheckFailedException":
+            raise
+        raise Refused(409, "Someone changed this note just now. Refresh and try again.")
+
+
+def _plus(db, table, env, note_id, steam, on):
+    """Give or take back this player's +1: the vote item and the count move together in one transaction.
+
+    The vote is put only if absent and deleted only if present, so a repeat fails its condition
+    and changes nothing: one +1 per player, and the count stays exact.
+    """
+    note_key = {"env": {"S": env}, "sk": {"S": note_id}}
+    count = {"Update": {"TableName": table, "Key": note_key, "UpdateExpression": "ADD plus_count :d",
+                        "ConditionExpression": "attribute_exists(sk)",
+                        "ExpressionAttributeValues": {":d": {"N": "1" if on else "-1"}}}}
+    vote = ({"Put": {"TableName": table, "Item": vote_item(env, note_id, steam, time.time()),
+                     "ConditionExpression": "attribute_not_exists(sk)"}} if on else
+            {"Delete": {"TableName": table, "Key": vote_key(env, note_id, steam),
+                        "ConditionExpression": "attribute_exists(sk)"}})
+    try:
+        db.transact_write_items(TransactItems=[vote, count])
+    except Exception as error:
+        if _code(error) != "TransactionCanceledException":
+            raise
+        _get(db, table, env, note_id)  # a missing note is a 404; otherwise it was a repeat
+
+
+def _create(db, table, env, steam, note):
+    """Number the note (one sequence across both envs), then put it and its author's +1 together.
+    A failed put leaves a gap in the numbers, never a repeat."""
+    got = db.update_item(TableName=table, Key={"env": {"S": "counter"}, "sk": {"S": "seq"}},
+                         UpdateExpression="ADD #v :one", ExpressionAttributeNames={"#v": "value"},
+                         ExpressionAttributeValues={":one": {"N": "1"}}, ReturnValues="UPDATED_NEW")
+    note["seq"] = int(got["Attributes"]["value"]["N"])
+    db.transact_write_items(TransactItems=[
+        {"Put": {"TableName": table, "Item": note_item(env, note, 1), "ConditionExpression": "attribute_not_exists(sk)"}},
+        {"Put": {"TableName": table, "Item": vote_item(env, note["id"], steam, note["created"]),
+                 "ConditionExpression": "attribute_not_exists(sk)"}}])
+
+
+def _session(event):
+    """The signed-in gamma reviewer's Steam ID, or None."""
     cookies = SimpleCookie()
     try:
         cookies.load("; ".join(event.get("cookies", [])))
@@ -186,8 +418,19 @@ def handle(event):
                             f"{steam}.{expiry}".encode(), hashlib.sha256).hexdigest()
         if (steam not in os.environ["ALLOWED_STEAM_IDS"].split(",")
                 or int(expiry) <= time.time() or not hmac.compare_digest(signature, expected)):
-            raise ValueError()
+            return None
+        return steam
     except (KeyError, ValueError, CookieError):
+        return None
+
+
+def handle(event):
+    def reply(status, body):
+        return {"statusCode": status, "headers": {"content-type": "application/json",
+                "cache-control": "no-store"}, "body": json.dumps(body)}
+
+    steam = _session(event)
+    if not steam:
         return reply(401, {"message": "Sign in to gamma again to use feedback."})
     method = event.get("requestContext", {}).get("http", {}).get("method")
     if method not in ("GET", "POST"):
@@ -195,104 +438,134 @@ def handle(event):
     origin = os.environ["GAMMA_ORIGIN"]
     if method == "POST" and event.get("headers", {}).get("origin") != origin:
         return reply(403, {"message": "Feedback must be submitted from gamma."})
+    table, env = os.environ["FEEDBACK_TABLE"], os.environ["FEEDBACK_ENV"]
+    readable = [e for e in os.environ.get("FEEDBACK_READ_ENVS", env).split(",") if e in ENVS] or [env]
+    admin = steam in [s for s in os.environ.get("ADMIN_STEAM_IDS", "").split(",") if s]
+    about = {"me": steam, "env": env, "envs": readable, "admin": admin}
     import boto3
-    store = boto3.client("s3")
-    bucket = os.environ["DATA_BUCKET"]
-    if method == "GET":
-        params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", "")))
-        scope = params.get("scope", "site")
-        cursor = params.get("cursor", "")
-        if scope == "page" and not _valid_path(params.get("path")):
-            return reply(400, {"message": "A page view needs a path."})
-        if scope not in ("page", "site"):
-            return reply(400, {"message": "Scope must be page or site."})
-        status, category = params.get("status", "all"), params.get("category", "")
-        if status not in STATUSES or (category and category not in CATEGORIES):
-            return reply(400, {"message": "Status must be open, backlog, resolved or all, and category a known type."})
-        if cursor and not CURSOR.fullmatch(cursor):
-            return reply(400, {"message": "Invalid page cursor."})
-        notes, following = _read_notes(store, bucket, scope, params.get("path", ""), cursor, status, category)
-        if any(not isinstance(n.get("seq"), int) for n in notes):
-            _number_all(store, bucket)  # first view after this shipped: number the old notes once
-            notes, following = _read_notes(store, bucket, scope, params.get("path", ""), cursor, status, category)
-        return reply(200, {"notes": [_named(n) for n in notes], "next": following, "scope": scope, "me": steam})
+    db = boto3.client("dynamodb")
+    try:
+        if method == "GET":
+            return reply(200, {**about, **_get_view(db, table, readable, env, steam, event)})
+        return reply(200, {**about, "note": _post(db, table, env, steam, admin, origin, event)})
+    except Refused as refused:
+        return reply(refused.status, {"message": refused.message})
+
+
+def _get_view(db, table, readable, env, steam, event):
+    params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", "")))
+    if "id" in params:  # one note, for a ?feedback= link
+        if not NOTE_ID.fullmatch(params["id"]):
+            raise Refused(400, "Invalid note id.")
+        for e in readable:
+            item = db.get_item(TableName=table, Key={"env": {"S": e}, "sk": {"S": params["id"]}}).get("Item")
+            if item:
+                return {"notes": _with_votes(db, table, [_from_item(item)], steam), "next": None}
+        return {"notes": [], "next": None}
+    scope = params.get("scope", "site")
+    if scope not in ("page", "site"):
+        raise Refused(400, "Scope must be page or site.")
+    if scope == "page" and not _valid_path(params.get("path")):
+        raise Refused(400, "A page view needs a path.")
+    status, category = params.get("status", "all"), params.get("category", "")
+    if status not in STATUSES or (category and category not in CATEGORIES):
+        raise Refused(400, "Status must be open, backlog, resolved or all, and category a known type.")
+    which = params.get("env", env)
+    envs = readable if which == "both" else [which]
+    if not set(envs) <= set(readable):
+        raise Refused(400, "Environment must be one this inbox can read.")
+    plan = _plan(scope, params.get("path", ""), status, category)
+    cursor = _decode_cursor(params["cursor"], envs, plan) if params.get("cursor") else {e: None for e in envs}
+    notes, following = _read(db, table, plan, cursor)
+    return {"notes": _with_votes(db, table, notes, steam), "next": following, "scope": scope}
+
+
+def _post(db, table, env, steam, admin, origin, event):
     try:
         raw = event.get("body") or ""
         if len(raw) > 40000:
             raise ValueError()
         data = json.loads(base64.b64decode(raw) if event.get("isBase64Encoded") else raw)
         action = data.get("action", "create")
-        if action == "resolve":
-            key = data.get("id", "")
-            if not NOTE_ID.fullmatch(key):
-                raise ValueError()
-            note = json.loads(store.get_object(Bucket=bucket, Key=key)["Body"].read())
-            resolved = bool(data.get("resolved"))
-            _resolve(note, steam, resolved, _outcome(data) if resolved else {})
-        elif action == "backlog":
-            key = data.get("id", "")
-            reason = data.get("reason", "")
-            if not NOTE_ID.fullmatch(key) or not isinstance(reason, str) or len(reason.strip()) > 500:
-                raise ValueError()
-            note = json.loads(store.get_object(Bucket=bucket, Key=key)["Body"].read())
-            if not _backlog(note, steam, bool(data.get("on")), reason.strip()):
-                return reply(200, {"note": _named(note), "me": steam})
-        elif action == "plus":
-            # One +1 per signed-in person, set or taken back. Repeating the same request changes
-            # nothing and writes nothing, so a double click or a script cannot pile up writes.
-            key = data.get("id", "")
-            if not NOTE_ID.fullmatch(key):
-                raise ValueError()
-            note = json.loads(store.get_object(Bucket=bucket, Key=key)["Body"].read())
-            plus = [p for p in note.get("plus", []) if isinstance(p, str)]
-            if bool(data.get("on")) == (steam in plus):
-                return reply(200, {"note": _named(note), "me": steam})
-            plus = [p for p in plus if p != steam] + ([steam] if data.get("on") else [])
-            note["plus"] = plus[:50]
-        elif action == "create":
-            comment = data.get("comment", "")
-            category = data.get("category")  # notes from before categories have none
-            if category is not None and category not in CATEGORIES:
-                raise ValueError()
-            path = data.get("path", "")
-            target = data.get("target", {})
-            if (not isinstance(comment, str) or not 1 <= len(comment.strip()) <= 4000
-                    or not _valid_path(path)
-                    or not isinstance(target, dict) or len(json.dumps(target)) > 12000):
-                raise ValueError()
-            # The exact page URL, so a report can be reopened without guessing the host.
-            # Older clients send only the path; those notes still get one.
-            url = data.get("url") or origin + path
-            if (not isinstance(url, str) or len(url) > 3200
-                    or not (url == origin or url.startswith(origin + "/"))):
-                raise ValueError()
-            key = f"feedback/{9999999999 - int(time.time()):010d}-{uuid.uuid4().hex}.json"
-            seq = max([n["seq"] for n in _number_all(store, bucket)] or [0]) + 1
-            note = {"id": key, "seq": seq, "created": int(time.time()), "author": steam,
-                    "comment": comment.strip(), "path": path, "url": url, "target": target, "resolved": False}
-            if category:
-                note["category"] = category
-        else:
+        if action not in ("create", "plus", "resolve", "backlog"):
             raise ValueError()
+        if action != "create":
+            note_id = data.get("id", "")
+            if not NOTE_ID.fullmatch(note_id):
+                raise ValueError()
+            if data.get("env", env) != env:
+                raise Refused(403, f"Notes from {data.get('env')} can only be changed there.")
+            if action in ("resolve", "backlog") and not admin:
+                raise Refused(403, "Only the site's admin can resolve or backlog notes.")
+        if action == "resolve":
+            resolved = bool(data.get("resolved"))
+            fields = _outcome(data) if resolved else {}
+            change = lambda note: _changed(note, lambda n: _resolve(n, steam, resolved, fields))
+        elif action == "backlog":
+            reason = data.get("reason", "")
+            if not isinstance(reason, str) or len(reason.strip()) > 500:
+                raise ValueError()
+            on = bool(data.get("on"))
+            change = lambda note: _backlog(note, steam, on, reason.strip())
+        elif action == "create":
+            note = _new_note(data, steam, origin)
     except (ValueError, TypeError, AttributeError):
-        return reply(400, {"message": "Invalid feedback. Use a comment of 1–4000 characters."})
-    store.put_object(Bucket=bucket, Key=key, Body=json.dumps(note).encode(), ContentType="application/json")
-    return reply(200, {"note": _named(note), "me": steam})
+        raise Refused(400, "Invalid feedback. Use a comment of 1–4000 characters.")
+    _throttle(db, table, env, steam, action == "create")
+    if action == "create":
+        _create(db, table, env, steam, note)
+        note_id = note["id"]
+    elif action == "plus":
+        _plus(db, table, env, note_id, steam, bool(data.get("on")))
+    else:
+        _change(db, table, env, note_id, steam, change)
+    return _with_votes(db, table, [_from_item(_get(db, table, env, note_id))], steam)[0]
 
 
-def _all_notes(store, bucket):
-    """Every note, for the digests. Gamma's inbox is small, so this reads them all."""
-    notes, token = [], None
+def _changed(note, change):
+    """Run an in-place change and say whether it changed anything."""
+    before = json.dumps(note, sort_keys=True)
+    change(note)
+    return json.dumps(note, sort_keys=True) != before
+
+
+def _new_note(data, steam, origin):
+    comment = data.get("comment", "")
+    category = data.get("category")  # notes from before categories have none
+    if category is not None and category not in CATEGORIES:
+        raise ValueError()
+    path = data.get("path", "")
+    target = data.get("target", {})
+    if (not isinstance(comment, str) or not 1 <= len(comment.strip()) <= 4000
+            or not _valid_path(path)
+            or not isinstance(target, dict) or len(json.dumps(target)) > 12000):
+        raise ValueError()
+    # The exact page URL, so a report can be reopened without guessing the host.
+    # Older clients send only the path; those notes still get one.
+    url = data.get("url") or origin + path
+    if (not isinstance(url, str) or len(url) > 3200
+            or not (url == origin or url.startswith(origin + "/"))):
+        raise ValueError()
+    now = int(time.time())
+    note = {"id": f"feedback/{9999999999 - now:010d}-{uuid.uuid4().hex}.json", "created": now, "author": steam,
+            "comment": comment.strip(), "path": path, "url": url, "target": target, "resolved": False}
+    if category:
+        note["category"] = category
+    return note
+
+
+def all_notes(db, table, env):
+    """Every note of one env, newest first, for the digests and the batch tool."""
+    args = {"TableName": table, "KeyConditionExpression": "#e = :e AND begins_with(sk, :p)",
+            "ExpressionAttributeNames": {"#e": "env"},
+            "ExpressionAttributeValues": {":e": {"S": env}, ":p": {"S": "feedback/"}}}
+    notes = []
     while True:
-        args = {"Bucket": bucket, "Prefix": "feedback/"}
-        if token:
-            args["ContinuationToken"] = token
-        listing = store.list_objects_v2(**args)
-        for obj in listing.get("Contents", []):
-            notes.append(json.loads(store.get_object(Bucket=bucket, Key=obj["Key"])["Body"].read()))
-        if not listing.get("IsTruncated"):
+        page = db.query(**args)
+        notes += [_from_item(item) for item in page.get("Items", [])]
+        if "LastEvaluatedKey" not in page:
             return notes
-        token = listing.get("NextContinuationToken")
+        args["ExclusiveStartKey"] = page["LastEvaluatedKey"]
 
 
 def _line(note, origin):

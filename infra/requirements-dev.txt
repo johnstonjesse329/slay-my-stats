@@ -1,0 +1,4 @@
+# Test-only: infra/tests/test_feedback.py runs the feedback inbox against a local DynamoDB.
+# Never part of the Lambda bundle.
+-r requirements.txt
+moto[dynamodb]>=5.0,<6.0

@@ -5,9 +5,9 @@
     python tools/feedback_batch.py evidence          # the tl;dr table with screenshots (REPORT.md)
     python tools/feedback_batch.py review            # per-page checklist: where to look, how to answer
     python tools/feedback_batch.py resolve           # dry run: what approved entries would close
-    python tools/feedback_batch.py resolve --apply   # write the resolutions to the bucket
+    python tools/feedback_batch.py resolve --apply   # write the resolutions to the feedback table
 
-Needs AWS credentials. `pull` keeps anything already triaged (group, plan, status, close
+Reads and writes gamma's notes in the feedback table (env=gamma). Needs AWS credentials. `pull` keeps anything already triaged (group, plan, status, close
 fields) and only adds new notes, so it can be rerun as notes arrive.
 
 Each entry carries triage fields to fill in:
@@ -19,7 +19,8 @@ Each entry carries triage fields to fill in:
     duplicate_of  id of the note it repeats (outcome duplicate)
 
 `resolve` closes only entries whose status is approved/declined/duplicate, through the same
-validation and _resolve code the Lambda uses, so the notes end up as if closed from the inbox.
+validation, _resolve and conditional write the Lambda uses, so the notes end up as if closed
+from the inbox, and a note someone changed meanwhile is skipped, not overwritten.
 """
 import json
 import subprocess
@@ -30,15 +31,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "infra" / "lambda" / "ingest"))
 import feedback  # noqa: E402
 
-BUCKET = "slay-my-stats-gamma-data"
+TABLE = "slay-my-stats-feedback"
+ENV = "gamma"
 BATCH = ROOT / "local_data" / "feedback" / "batch.json"
 OWNER = None  # steam id recorded as resolver; read from the notes' own author when unset
 STATUS_OUTCOME = {"approved": "done", "declined": "declined", "duplicate": "duplicate"}
 
 
-def _s3():
+def _db():
     import boto3
-    return boto3.client("s3")
+    return boto3.client("dynamodb")
 
 
 def _load():
@@ -62,32 +64,23 @@ def tag(e):
 
 
 def pull():
-    s3, batch = _s3(), _load()
-    known = {e["id"] for e in batch["entries"]}
-    added, token = 0, None
-    while True:
-        args = {"Bucket": BUCKET, "Prefix": "feedback/", **({"ContinuationToken": token} if token else {})}
-        page = s3.list_objects_v2(**args)
-        for obj in page.get("Contents", []):
-            note = json.loads(s3.get_object(Bucket=BUCKET, Key=obj["Key"])["Body"].read())
-            if obj["Key"] in known:
-                for e in batch["entries"]:
-                    if e["id"] == obj["Key"] and note.get("seq"):
-                        e["seq"] = note["seq"]
-                continue
-            if note.get("resolved") or note.get("backlog"):
-                continue
-            n = len(batch["entries"]) + 1
-            batch["entries"].append({
-                "n": n, "seq": note.get("seq"), "id": note["id"], "author": note.get("author"), "created": note.get("created"),
-                "category": note.get("category", ""), "url": note.get("url", ""),
-                "target": _target(note), "comment": note["comment"],
-                "group": "", "plan": "", "status": "new", "commit": "", "close_note": "", "duplicate_of": "",
-            })
-            added += 1
-        if not page.get("IsTruncated"):
-            break
-        token = page["NextContinuationToken"]
+    batch = _load()
+    known = {e["id"]: e for e in batch["entries"]}
+    added = 0
+    for note in feedback.all_notes(_db(), TABLE, ENV):
+        if note["id"] in known:
+            if note.get("seq"):
+                known[note["id"]]["seq"] = note["seq"]
+            continue
+        if note.get("resolved") or note.get("backlog"):
+            continue
+        batch["entries"].append({
+            "n": len(batch["entries"]) + 1, "seq": note.get("seq"), "id": note["id"], "author": note.get("author"),
+            "created": note.get("created"), "category": note.get("category", ""), "url": note.get("url", ""),
+            "target": _target(note), "comment": note["comment"],
+            "group": "", "plan": "", "status": "new", "commit": "", "close_note": "", "duplicate_of": "",
+        })
+        added += 1
     batch["entries"].sort(key=lambda e: e["created"] or 0)
     for i, e in enumerate(batch["entries"], 1):
         e["n"] = i
@@ -115,7 +108,7 @@ def _commit_exists(sha):
 
 
 def resolve(apply):
-    s3, batch, closed = _s3(), _load(), 0
+    db, batch, closed = _db(), _load(), 0
     ids = {e["id"]: e["n"] for e in batch["entries"]}
     for e in batch["entries"]:
         outcome = STATUS_OUTCOME.get(e["status"])
@@ -138,10 +131,12 @@ def resolve(apply):
             continue
         print(f"{tag(e)} -> {outcome}: {fields['close_note'][:90]}")
         if apply:
-            note = json.loads(s3.get_object(Bucket=BUCKET, Key=e["id"])["Body"].read())
-            feedback._resolve(note, e["author"], True, fields)
-            s3.put_object(Bucket=BUCKET, Key=e["id"], Body=json.dumps(note).encode(),
-                          ContentType="application/json")
+            try:
+                feedback._change(db, TABLE, ENV, e["id"], e["author"],
+                                 lambda note: feedback._changed(note, lambda n: feedback._resolve(n, e["author"], True, fields)))
+            except feedback.Refused as refused:
+                print(f"{tag(e)} skipped: {refused.message}")
+                continue
             e["status"] = "closed"
         closed += 1
     if apply:

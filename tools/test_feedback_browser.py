@@ -109,6 +109,31 @@ def check_backlog(page):
     page.get_by_label('Status').select_option('open')
 
 
+def check_other_env(page, notes):
+    """A prod note read on gamma is marked Prod and read-only: no +1 to give, nothing to resolve."""
+    notes.append({'id': 'feedback/1700000000-' + 'f' * 32 + '.json', 'created': 1700000000, 'author': 'player-9999',
+                  'env': 'prod', 'plus_count': 2, 'plus_mine': False, 'resolved': False, 'comment': 'From prod',
+                  'path': '/', 'url': 'https://slay-my-stats.com/', 'target': {'kind': 'page'}})
+    page.get_by_label('Status').select_option('all')
+    env = page.get_by_label('Environment')
+    assert env.is_visible() and env.input_value() == 'gamma'
+    page.get_by_text('From prod').wait_for(state='detached')
+    env.select_option('both')
+    if page.get_by_role('button', name='Expand all').count():
+        page.get_by_role('button', name='Expand all').click()
+    article = page.locator('article').filter(has_text='From prod')
+    expect(article).to_have_count(1)
+    expect(article.locator('.pill.kind').filter(has_text='Prod')).to_have_count(1)
+    expect(article.locator('.plus')).to_be_disabled()
+    expect(article.locator('.plus')).to_have_text('+1 · 2')
+    expect(article.get_by_role('button', name='Resolve', exact=True)).to_be_hidden()
+    expect(article.get_by_role('button', name='Backlog', exact=True)).to_be_hidden()
+    env.select_option('gamma')
+    expect(page.locator('article').filter(has_text='From prod')).to_have_count(0)
+    notes.pop()
+    page.get_by_label('Status').select_option('open')
+
+
 def main():
     with sync_playwright() as pw:
         for name, engine, options in [('desktop', pw.chromium, {'viewport': {'width': 1920, 'height': 1080}}),
@@ -117,9 +142,11 @@ def main():
             browser = engine.launch()
             context = browser.new_context(**options)
             notes, errors = [{'id': 'feedback/1234567890-' + 'b' * 32 + '.json', 'created': 1780000000,
-                              'author': 'test', 'resolved': False, 'comment': 'Elsewhere',
+                              'author': 'test', 'resolved': False, 'comment': 'Elsewhere', 'env': 'gamma',
                               'path': '/u/elsewhere', 'url': 'https://gamma.slay-my-stats.com/u/elsewhere',
                               'target': {'kind': 'page'}}], []
+
+            about = {'me': 'test', 'env': 'gamma', 'envs': ['gamma', 'prod'], 'admin': True}
 
             def route(request):
                 url = urlsplit(request.request.url)
@@ -128,7 +155,9 @@ def main():
                         body = request.request.post_data_json
                         if body.get('action') == 'plus':
                             note = next(item for item in notes if item['id'] == body['id'])
-                            note['plus'] = ([p for p in note.get('plus', []) if p != 'test'] + (['test'] if body['on'] else []))
+                            if body['on'] != note.get('plus_mine', False):
+                                note['plus_count'] = note.get('plus_count', 0) + (1 if body['on'] else -1)
+                            note['plus_mine'] = body['on']
                         elif body.get('action') == 'backlog':
                             note = next(item for item in notes if item['id'] == body['id'])
                             if body['on']:
@@ -145,17 +174,20 @@ def main():
                                             outcome=body.get('outcome'), close_note=body.get('close_note'),
                                             resolved_in=body.get('resolved_in'))
                         else:
-                            note = {**body, 'id': 'feedback/' + str(1800000000 + len(notes)) + '-' + 'a' * 32 + '.json',
+                            note = {**body, 'env': 'gamma', 'plus_count': 1, 'plus_mine': True, 'id': 'feedback/' + str(1800000000 + len(notes)) + '-' + 'a' * 32 + '.json',
                                     'created': 1800000000 + len(notes), 'author': 'test', 'resolved': False, 'seq': 100 + len(notes)}
                             notes.append(note)
-                        request.fulfill(json={'note': note, 'me': 'test'})
+                        request.fulfill(json={**about, 'note': note})
                     else:
                         params = dict(parse_qsl(url.query))
                         shown = [item for item in notes
                                  if (params.get('scope') != 'page' or item['path'] == params.get('path'))
                                  and params.get('status', 'all') in ('all', 'resolved' if item['resolved'] else 'backlog' if item.get('backlog') else 'open')
-                                 and params.get('category', item.get('category')) == item.get('category')]
-                        request.fulfill(json={'notes': shown, 'next': None, 'scope': params.get('scope', 'site'), 'me': 'test'})
+                                 and params.get('category', item.get('category')) == item.get('category')
+                                 and params.get('env', 'gamma') in ('both', item.get('env', 'gamma'))]
+                        if 'id' in params:
+                            shown = [item for item in notes if item['id'] == params['id']]
+                        request.fulfill(json={**about, 'notes': shown, 'next': None, 'scope': params.get('scope', 'site')})
                     return
                 file = DIST / ('index.html' if url.path == '/' else url.path.lstrip('/'))
                 if file.is_file():
@@ -309,6 +341,7 @@ def main():
             check_note_layout(page, notes, name)
             check_find_and_plus(page, name)
             check_backlog(page)
+            check_other_env(page, notes)
             page.evaluate("""() => {
                 const r = document.getElementById('gamma-feedback').shadowRoot;
                 const body = r.getElementById('view-inbox');

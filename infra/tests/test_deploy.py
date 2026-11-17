@@ -111,5 +111,69 @@ class GammaGate(unittest.TestCase):
         deploy.require_gamma_ok()
 
 
+class FeedbackTableGuard(unittest.TestCase):
+    """The table's stack deploys only by --feedback-table; a push stops while its file differs."""
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.file = Path(tmp.name) / "slay-my-stats-feedback-ok"
+        self.calls, self.diff, self.dirty, self.head = [], "", "", "a" * 40
+        def fake_git(*args):
+            self.calls.append(("git", *args))
+            return {"diff": self.diff, "status": self.dirty}.get(args[0], self.head)
+        def fake_run(args, **kw):
+            self.calls.append(tuple(args))
+            out = self.cdk_diff if args[1] == "diff" else ""
+            return deploy.subprocess.CompletedProcess(args, 0, out, "")
+        self.cdk_diff = "There were no differences"
+        for target, new in (("_feedback_ok_file", lambda: self.file), ("git", fake_git), ("run", fake_run)):
+            p = mock.patch.object(deploy, target, new)
+            p.start()
+            self.addCleanup(p.stop)
+        p = mock.patch.dict(os.environ, {}, clear=False)
+        p.start()
+        self.addCleanup(p.stop)
+        os.environ.pop("DEPLOY_YES", None)
+
+    def test_a_push_stops_with_no_table_deploy_recorded(self):
+        with self.assertRaisesRegex(deploy.DeployError, "--feedback-table"):
+            deploy.require_feedback_table()
+
+    def test_a_push_goes_ahead_while_the_file_matches(self):
+        self.file.write_text("c" * 40)
+        deploy.require_feedback_table()
+        self.assertIn(("git", "diff", "--name-only", "c" * 40, "--", deploy.FEEDBACK_STACK_FILE), self.calls)
+
+    def test_a_push_stops_once_the_file_changed(self):
+        self.file.write_text("c" * 40)
+        self.diff = deploy.FEEDBACK_STACK_FILE
+        with self.assertRaisesRegex(deploy.DeployError, r"changed since .*(ccccccc)"):
+            deploy.require_feedback_table()
+
+    def test_an_unchanged_table_records_the_commit_without_deploying(self):
+        deploy.deploy_feedback_table()
+        self.assertEqual(self.file.read_text(), "a" * 40)
+        self.assertFalse([c for c in self.calls if c[:2] == ("cdk", "deploy")])
+
+    def test_a_change_is_asked_about_and_deploys_only_the_table(self):
+        self.cdk_diff = "[+] AWS::DynamoDB::GlobalTable"
+        with mock.patch.object(deploy, "ask", return_value=True):
+            deploy.deploy_feedback_table()
+        self.assertIn(("cdk", "deploy", deploy.FEEDBACK_STACK, "--exclusively", "--require-approval", "never"), self.calls)
+        self.assertEqual(self.file.read_text(), "a" * 40)
+
+    def test_a_declined_change_deploys_and_records_nothing(self):
+        self.cdk_diff = "[+] AWS::DynamoDB::GlobalTable"
+        os.environ["DEPLOY_YES"] = "1"  # gamma's skip does not reach the table
+        with mock.patch.object(deploy, "ask", return_value=False), self.assertRaises(deploy.DeployError):
+            deploy.deploy_feedback_table()
+        self.assertFalse(self.file.exists())
+
+    def test_an_uncommitted_file_records_nothing(self):
+        self.dirty = " M " + deploy.FEEDBACK_STACK_FILE
+        deploy.deploy_feedback_table()
+        self.assertFalse(self.file.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

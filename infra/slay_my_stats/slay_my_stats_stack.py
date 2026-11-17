@@ -34,6 +34,8 @@ import jsii
 from aws_cdk import BundlingOptions, DockerImage, ILocalBundling
 from constructs import Construct
 
+from slay_my_stats.feedback_stack import TABLE_NAME as FEEDBACK_TABLE
+
 INGEST_DIR = Path(__file__).resolve().parents[1] / "lambda" / "ingest"
 # The handler parses uploads with the same run.py the local dashboard uses,
 # so the two can't drift apart. It lives at the repo root, outside the asset
@@ -169,6 +171,25 @@ function handler(event) {
 %s    return request;
 }
 """
+
+
+def feedback_access(stack, role, read, write=()):
+    """Let a function read and write only the feedback items of the given partitions (`env`).
+
+    dynamodb:LeadingKeys holds every key a call names, and the indexes are partitioned on env
+    too, so a Query on any index for another env is refused. The Null check closes the gap
+    where a call names no key at all (ForAllValues would pass it).
+    """
+    table = stack.format_arn(service="dynamodb", resource="table", resource_name=FEEDBACK_TABLE)
+    def allow(actions, envs, resources):
+        role.add_to_principal_policy(iam.PolicyStatement(
+            actions=actions, resources=resources,
+            conditions={"ForAllValues:StringEquals": {"dynamodb:LeadingKeys": list(envs)},
+                        "Null": {"dynamodb:LeadingKeys": "false"}}))
+    allow(["dynamodb:GetItem", "dynamodb:BatchGetItem", "dynamodb:Query", "dynamodb:ConditionCheckItem"],
+          read, [table, f"{table}/index/*"])
+    if write:
+        allow(["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"], write, [table])
 
 
 class SlayMyStatsStack(Stack):
@@ -609,10 +630,16 @@ class SlayMyStatsStack(Stack):
                     "GAMMA_ORIGIN": f"https://{domain_name}",
                     "DATA_BUCKET": data_bucket.bucket_name,
                     "STEAM_API_KEY_PARAM_NAME": STEAM_API_KEY_PARAM_NAME,
+                    # Feedback: gamma writes gamma notes and reads prod's too; on gamma every
+                    # allowlisted reviewer is an admin.
+                    "FEEDBACK_TABLE": FEEDBACK_TABLE,
+                    "FEEDBACK_ENV": "gamma",
+                    "FEEDBACK_READ_ENVS": "gamma,prod",
+                    "ADMIN_STEAM_IDS": ",".join(allowed_ids),
                 },
             )
             auth_url = auth_fn.add_function_url(auth_type=lambda_.FunctionUrlAuthType.NONE)
-            data_bucket.grant_read_write(auth_fn, "feedback/*")
+            feedback_access(self, auth_fn.role, read=("gamma", "prod", "counter"), write=("gamma", "counter"))
             # Feedback shows authors and resolvers by Steam name, looked up with the Web API key
             # (Steam's public profile page is unreliable from AWS addresses).
             steam_api_key_param.grant_read(auth_fn)
@@ -639,10 +666,11 @@ class SlayMyStatsStack(Stack):
                 timeout=Duration.seconds(60),
                 memory_size=256,
                 log_group=feedback_log_group,
-                environment={"DATA_BUCKET": data_bucket.bucket_name, "GAMMA_ORIGIN": f"https://{domain_name}",
+                environment={"FEEDBACK_TABLE": FEEDBACK_TABLE, "FEEDBACK_ENV": "gamma",
+                             "GAMMA_ORIGIN": f"https://{domain_name}",
                              "ALERT_TOPIC_ARN": alert_topic.topic_arn},
             )
-            data_bucket.grant_read(feedback_digest_fn, "feedback/*")
+            feedback_access(self, feedback_digest_fn.role, read=("gamma",))
             alert_topic.grant_publish(feedback_digest_fn)
             scheduler.Schedule(
                 self, "FeedbackDigestDailySchedule",

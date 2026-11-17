@@ -1,7 +1,13 @@
-"""Gamma inbox access and persistence checks (no AWS calls)."""
+"""The gamma feedback inbox against a local DynamoDB (moto), so the real conditions and
+transactions run: numbering, +1 once per player, the conditional resolve, cursors, the
+Gamma / Prod / Both merge, the throttle and the 403s.
+
+    infra\\.venv\\Scripts\\python.exe -m unittest infra.tests.test_feedback
+
+moto is a test-only install (infra/requirements-dev.txt), never in the Lambda bundle.
+"""
 import hashlib
 import hmac
-import io
 import json
 import os
 import sys
@@ -9,31 +15,52 @@ import time
 import unittest
 import urllib.parse
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lambda' / 'ingest'))
-import feedback
+import boto3
+from moto import mock_aws
+
+INFRA = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(INFRA / 'lambda' / 'ingest'), str(INFRA)]
+import feedback  # noqa: E402
+from slay_my_stats.feedback_stack import INDEXES, TABLE_NAME  # noqa: E402
+
+ADMIN, OTHER = '76561198000000001', '76561198000000002'
+
+
+def note_id(i):
+    return f"feedback/{9999999999 - i:010d}-{i:032x}.json"
 
 
 class FeedbackTest(unittest.TestCase):
-    steam = '76561198000000001'
-
     def setUp(self):
-        self.env = patch.dict(os.environ, {'GAMMA_SESSION_SECRET': 'test-secret',
-            'ALLOWED_STEAM_IDS': '76561198000000001', 'GAMMA_ORIGIN': 'https://gamma.test', 'DATA_BUCKET': 'test'})
-        self.env.start()
-        self.addCleanup(self.env.stop)
-        self.store = Mock()
-        self.store.list_objects_v2.return_value = {'Contents': []}
-        self.client = patch('boto3.client', return_value=self.store)
-        self.client.start()
-        self.addCleanup(self.client.stop)
+        env = patch.dict(os.environ, {
+            'GAMMA_SESSION_SECRET': 'test-secret', 'ALLOWED_STEAM_IDS': f'{ADMIN},{OTHER}',
+            'ADMIN_STEAM_IDS': ADMIN, 'GAMMA_ORIGIN': 'https://gamma.test',
+            'FEEDBACK_TABLE': TABLE_NAME, 'FEEDBACK_ENV': 'gamma', 'FEEDBACK_READ_ENVS': 'gamma,prod',
+            'AWS_DEFAULT_REGION': 'us-west-2', 'AWS_ACCESS_KEY_ID': 'test', 'AWS_SECRET_ACCESS_KEY': 'test'})
+        env.start()
+        self.addCleanup(env.stop)
+        aws = mock_aws()
+        aws.start()
+        self.addCleanup(aws.stop)
+        self.db = boto3.client('dynamodb')
+        attrs = [{'AttributeName': a, 'AttributeType': 'S'} for a in ['env', 'sk', *INDEXES.values()]]
+        self.db.create_table(
+            TableName=TABLE_NAME, BillingMode='PAY_PER_REQUEST', AttributeDefinitions=attrs,
+            KeySchema=[{'AttributeName': 'env', 'KeyType': 'HASH'}, {'AttributeName': 'sk', 'KeyType': 'RANGE'}],
+            GlobalSecondaryIndexes=[{'IndexName': name, 'Projection': {'ProjectionType': 'ALL'},
+                                     'KeySchema': [{'AttributeName': 'env', 'KeyType': 'HASH'},
+                                                   {'AttributeName': key, 'KeyType': 'RANGE'}]}
+                                    for name, key in INDEXES.items()])
         names = patch.object(feedback, '_steam_name', return_value=None)
         names.start()
         self.addCleanup(names.stop)
 
-    def event(self, body=None, expiry=None, query=''):
-        payload = f'76561198000000001.{expiry or int(time.time())+1000}'
+    # --- helpers -------------------------------------------------------------------------
+
+    def event(self, body=None, expiry=None, query='', steam=ADMIN):
+        payload = f'{steam}.{expiry or int(time.time()) + 1000}'
         sig = hmac.new(b'test-secret', payload.encode(), hashlib.sha256).hexdigest()
         return {'cookies': [f'__Host-gamma={payload}.{sig}'],
                 'headers': {'origin': 'https://gamma.test'},
@@ -41,217 +68,368 @@ class FeedbackTest(unittest.TestCase):
                 'rawQueryString': query,
                 'body': json.dumps(body) if body else ''}
 
+    def call(self, body=None, **kw):
+        response = feedback.handle(self.event(body, **kw))
+        return response['statusCode'], json.loads(response['body'])
+
+    def note(self, body=None, **kw):
+        status, data = self.call(body, **kw)
+        self.assertEqual(status, 200, data)
+        return data['note']
+
+    def ids(self, query, **kw):
+        status, data = self.call(query=query, **kw)
+        self.assertEqual(status, 200, data)
+        return [n['id'] for n in data['notes']]
+
+    def put(self, i, env='gamma', plus=0, **fields):
+        """A stored note, as the migration or an earlier write left it."""
+        note = {'id': note_id(i), 'seq': i, 'created': 100 + i, 'author': ADMIN, 'comment': f'n{i}',
+                'path': '/a', 'target': {'kind': 'page', 'w': 12.5}, 'resolved': False, **fields}
+        self.db.put_item(TableName=TABLE_NAME, Item=feedback.note_item(env, note, plus))
+        return note['id']
+
+    def stored(self, nid, env='gamma'):
+        return self.db.get_item(TableName=TABLE_NAME, Key={'env': {'S': env}, 'sk': {'S': nid}})['Item']
+
+    def every(self, query, **kw):
+        """Every page of a view, following its cursor."""
+        seen, cursor = [], None
+        while True:
+            q = query + ('&cursor=' + urllib.parse.quote(cursor) if cursor else '')
+            status, data = self.call(query=q, **kw)
+            self.assertEqual(status, 200, data)
+            self.assertLessEqual(len(data['notes']), feedback.PAGE_SIZE)
+            seen += [n['id'] for n in data['notes']]
+            cursor = data['next']
+            if not cursor:
+                return seen
+
+    # --- access --------------------------------------------------------------------------
+
     def test_direct_url_requires_valid_session(self):
-        self.assertEqual(feedback.handle({})['statusCode'], 401)
-        self.assertEqual(feedback.handle(self.event(expiry=1))['statusCode'], 401)
-        self.store.assert_not_called()
-
-    def test_create_and_list(self):
-        response = feedback.handle(self.event({'comment': ' Fix this ', 'path': '/u/test#runs',
-                                               'url': 'https://gamma.test/u/test#runs',
-                                               'target': {'kind': 'element', 'selector': '#runs'}}))
-        self.assertEqual(response['statusCode'], 200)
-        note = json.loads(response['body'])['note']
-        self.assertEqual(note['comment'], 'Fix this')
-        self.assertEqual(note['author'], '76561198000000001')
-        self.assertEqual(note['url'], 'https://gamma.test/u/test#runs')
-        self.store.list_objects_v2.return_value = {'Contents': [{'Key': note['id']}]}
-        self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps(note).encode())}
-        self.assertEqual(json.loads(feedback.handle(self.event())['body'])['notes'], [note])
-
-    def test_notes_carry_steam_names_not_stored(self):
-        with patch.object(feedback, '_steam_name', return_value='Jess'):
-            response = feedback.handle(self.event({'comment': 'Hi', 'path': '/', 'url': 'https://gamma.test/', 'target': {}}))
-        note = json.loads(response['body'])['note']
-        self.assertEqual(note['author_name'], 'Jess')
-        stored = json.loads(self.store.put_object.call_args.kwargs['Body'])
-        self.assertNotIn('author_name', stored)
-
-    def test_category_is_kept_and_checked(self):
-        body = {'comment': 'x', 'path': '/'}
-        for category in ('bug', 'feature', 'improvement'):
-            note = json.loads(feedback.handle(self.event({**body, 'category': category}))['body'])['note']
-            self.assertEqual(note['category'], category)
-        self.assertNotIn('category', json.loads(feedback.handle(self.event(body))['body'])['note'])
-        self.assertEqual(feedback.handle(self.event({**body, 'category': 'idea'}))['statusCode'], 400)
-        _, text = feedback.build_report([{'created': 100, 'author': '1234', 'comment': 'x', 'path': '/',
-                                          'category': 'feature'}], 100, 'daily', 'https://gamma.test')
-        self.assertIn('[Feature request] x', text)
+        with patch('boto3.client') as client:
+            self.assertEqual(feedback.handle({})['statusCode'], 401)
+            self.assertEqual(feedback.handle(self.event(expiry=1))['statusCode'], 401)
+            self.assertEqual(feedback.handle(self.event(steam='76561198000000009'))['statusCode'], 401)
+            client.assert_not_called()
 
     def test_refuses_cross_origin_and_invalid_notes(self):
         event = self.event({'comment': 'hello', 'path': '/'})
         event['headers']['origin'] = 'https://elsewhere.test'
         self.assertEqual(feedback.handle(event)['statusCode'], 403)
-        for body in [{'comment': ' ', 'path': '/'}, {'comment': 'x'*4001, 'path': '/'},
-                     {'comment': 'x', 'path': 'https://elsewhere.test'}, {'action': 'resolve', 'id': '../secret'}]:
-            self.assertEqual(feedback.handle(self.event(body))['statusCode'], 400)
-        self.store.put_object.assert_not_called()
+        for body in [{'comment': ' ', 'path': '/'}, {'comment': 'x' * 4001, 'path': '/'},
+                     {'comment': 'x', 'path': 'https://elsewhere.test'}, {'action': 'resolve', 'id': '../secret'},
+                     {'action': 'nope'}, ['not', 'an', 'object']]:
+            self.assertEqual(self.call(body)[0], 400, body)
+        self.assertEqual(self.db.scan(TableName=TABLE_NAME)['Count'], 0)
+
+    # --- create --------------------------------------------------------------------------
+
+    def test_create_and_list(self):
+        note = self.note({'comment': ' Fix this ', 'path': '/u/test#runs', 'url': 'https://gamma.test/u/test#runs',
+                          'target': {'kind': 'element', 'selector': '#runs', 'w': 10.25}})
+        self.assertEqual((note['comment'], note['author'], note['url'], note['env']),
+                         ('Fix this', ADMIN, 'https://gamma.test/u/test#runs', 'gamma'))
+        self.assertEqual((note['seq'], note['plus_count'], note['plus_mine']), (1, 1, True))  # the author's +1
+        self.assertNotIn('plus', note)
+        status, data = self.call()
+        self.assertEqual([n['id'] for n in data['notes']], [note['id']])
+        self.assertEqual(data['notes'][0]['target']['w'], 10.25)  # fractions survive (kept as JSON)
+        self.assertEqual((data['env'], data['envs'], data['admin'], data['me']), ('gamma', ['gamma', 'prod'], True, ADMIN))
+
+    def test_numbers_continue_one_sequence_across_envs(self):
+        self.db.put_item(TableName=TABLE_NAME, Item={'env': {'S': 'counter'}, 'sk': {'S': 'seq'}, 'value': {'N': '27'}})
+        self.assertEqual(self.note({'comment': 'a', 'path': '/'})['seq'], 28)
+        self.assertEqual(self.note({'comment': 'b', 'path': '/'})['seq'], 29)
+
+    def test_notes_carry_steam_names_not_stored(self):
+        with patch.object(feedback, '_steam_name', return_value='Jess'):
+            note = self.note({'comment': 'Hi', 'path': '/', 'url': 'https://gamma.test/', 'target': {}})
+        self.assertEqual(note['author_name'], 'Jess')
+        self.assertNotIn('author_name', json.loads(self.stored(note['id'])['body']['S']))
+
+    def test_category_is_kept_and_checked(self):
+        body = {'comment': 'x', 'path': '/'}
+        for category in ('bug', 'feature', 'improvement'):
+            self.assertEqual(self.note({**body, 'category': category})['category'], category)
+        plain = self.note(body)
+        self.assertNotIn('category', plain)
+        self.assertNotIn('cat', self.stored(plain['id']))  # kept out of the type indexes
+        self.assertEqual(self.call({**body, 'category': 'idea'})[0], 400)
+        _, text = feedback.build_report([{'created': 100, 'author': '1234', 'comment': 'x', 'path': '/',
+                                          'category': 'feature'}], 100, 'daily', 'https://gamma.test')
+        self.assertIn('[Feature request] x', text)
 
     def test_note_carries_the_full_page_url(self):
         path = '/u/test#detail/1794615305'
         body = {'comment': 'hello', 'path': path, 'target': {'kind': 'page'}}
-        derived = json.loads(feedback.handle(self.event(body))['body'])['note']
-        self.assertEqual(derived['url'], 'https://gamma.test' + path)  # older clients send no url
-        exact = json.loads(feedback.handle(self.event({**body, 'url': 'https://gamma.test' + path}))['body'])['note']
-        self.assertEqual(exact['url'], 'https://gamma.test' + path)
+        self.assertEqual(self.note(body)['url'], 'https://gamma.test' + path)  # older clients send no url
+        self.assertEqual(self.note({**body, 'url': 'https://gamma.test' + path})['url'], 'https://gamma.test' + path)
         for url in ['https://elsewhere.test' + path, 'https://gamma.test.evil.test' + path,
                     'ftp://gamma.test' + path, {'href': path}]:
-            self.assertEqual(feedback.handle(self.event({**body, 'url': url}))['statusCode'], 400, url)
+            self.assertEqual(self.call({**body, 'url': url})[0], 400, url)
+
+    # --- reads ---------------------------------------------------------------------------
 
     def test_list_pages_and_scopes(self):
-        keys = [f"feedback/{9999999999 - i:010d}-{i:032x}.json" for i in range(30)]
-        docs = {key: {'id': key, 'path': '/a' if i % 2 else '/b', 'target': {'kind': 'page'}, 'resolved': False}
-                for i, key in enumerate(keys)}
-        ordered = sorted(keys)  # S3 lists keys in lexicographic order: newest note first
-        self.store.list_objects_v2.side_effect = lambda **kw: {
-            'Contents': [{'Key': key} for key in [k for k in ordered if k > kw.get('StartAfter', '')][:kw.get('MaxKeys', 1000)]],
-            'IsTruncated': False}
-        self.store.get_object.side_effect = lambda **kw: {'Body': io.BytesIO(json.dumps(docs[kw['Key']]).encode())}
+        made = [self.put(i, path='/a' if i % 2 else '/b') for i in range(30)]
+        # +1 and throttle items share the partition and must never show as notes
+        feedback._plus(self.db, TABLE_NAME, 'gamma', made[0], OTHER, True)
+        feedback._throttle(self.db, TABLE_NAME, 'gamma', OTHER, False)
+        status, first = self.call(query='scope=site')
+        self.assertEqual((len(first['notes']), first['scope']), (feedback.PAGE_SIZE, 'site'))
+        self.assertEqual(self.every('scope=site'), sorted(made))  # newest first, nothing twice
+        page = self.every('scope=page&path=%2Fa')
+        self.assertEqual(page, sorted(m for i, m in enumerate(made) if i % 2))
+        self.assertEqual(self.call(query='scope=nope')[0], 400)
+        self.assertEqual(self.call(query='scope=page')[0], 400)
 
-        first = json.loads(feedback.handle(self.event(query='scope=site'))['body'])
-        self.assertEqual(len(first['notes']), feedback.PAGE_SIZE)
-        self.assertEqual(first['scope'], 'site')
-        rest = json.loads(feedback.handle(
-            self.event(query='scope=site&cursor=' + urllib.parse.quote(first['next'])))['body'])
-        self.assertEqual(len(rest['notes']), 30 - feedback.PAGE_SIZE)
-        self.assertIsNone(rest['next'])
-        self.assertEqual([note['id'] for note in first['notes'] + rest['notes']], ordered)
+    def test_cursors_are_checked_strictly(self):
+        for i in range(30):
+            self.put(i)
+        good = self.call(query='scope=site')[1]['next']
+        def forged(plain):
+            import base64
+            return urllib.parse.quote(base64.urlsafe_b64encode(json.dumps(plain).encode()).decode())
+        key = {'env': 'gamma', 'sk': note_id(5)}
+        for cursor in ['../raw', 'e30=', forged([]), forged({'prod': key | {'env': 'prod'}}),
+                       forged({'gamma': {**key, 'extra': 'x'}}), forged({'gamma': {**key, 'sk': 'vote#x'}}),
+                       forged({'gamma': {**key, 'env': 'prod'}}), forged({'counter': None})]:
+            self.assertEqual(self.call(query='scope=site&cursor=' + cursor)[0], 400, cursor)
+        # an index cursor must match its own index
+        status_cursor = forged({'gamma': {**key, 'st': 'open#' + note_id(6)}})
+        self.assertEqual(self.call(query='scope=site&status=open&cursor=' + status_cursor)[0], 400)
+        self.assertEqual(self.call(query='scope=site&cursor=' + urllib.parse.quote(good))[0], 200)
+        self.assertEqual(self.call(query='scope=site&status=open&cursor=' + urllib.parse.quote(good))[0], 400)
 
-        page = json.loads(feedback.handle(self.event(query='scope=page&path=%2Fa'))['body'])
-        self.assertTrue(page['notes'])
-        self.assertEqual({note['path'] for note in page['notes']}, {'/a'})
+    def test_environment_filter_and_both_merge(self):
+        gamma = [self.put(i) for i in range(0, 40, 2)]
+        prod = [self.put(i, env='prod') for i in range(1, 40, 2)]
+        self.assertEqual(self.every('scope=site'), sorted(gamma))  # default: the write env
+        self.assertEqual(self.every('scope=site&env=prod'), sorted(prod))
+        both = self.every('scope=site&env=both')
+        self.assertEqual(both, sorted(gamma + prod))  # merged newest first, no skips or repeats
+        status, data = self.call(query='scope=site&env=both')
+        self.assertEqual({n['env'] for n in data['notes']}, {'gamma', 'prod'})
+        self.assertEqual(self.call(query='scope=site&env=nope')[0], 400)
+        with patch.dict(os.environ, {'FEEDBACK_READ_ENVS': 'gamma'}):  # prod's own Lambda never reads gamma
+            self.assertEqual(self.call(query='scope=site&env=prod')[0], 400)
+            self.assertEqual(self.every('scope=site&env=both'), sorted(gamma))
 
-        self.assertEqual(feedback.handle(self.event(query='scope=nope'))['statusCode'], 400)
-        self.assertEqual(feedback.handle(self.event(query='scope=page'))['statusCode'], 400)
-        self.assertEqual(feedback.handle(self.event(query='scope=site&cursor=../raw'))['statusCode'], 400)
+    def test_both_merge_when_one_env_runs_out(self):
+        gamma = [self.put(i) for i in range(30)]
+        prod = [self.put(100 + i, env='prod') for i in range(3)]  # older than every gamma note
+        self.assertEqual(self.every('scope=site&env=both'), sorted(gamma + prod))
 
-    def test_resolve(self):
-        key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps({'id': key}).encode())}
-        result = feedback.handle(self.event({'action': 'resolve', 'id': key, 'resolved': True, 'outcome': 'declined', 'close_note': 'Not planned.'}))
-        self.assertTrue(json.loads(result['body'])['note']['resolved'])
+    def test_filters_by_status_and_category(self):
+        kinds = ['bug', 'feature', 'improvement', None]
+        for i in range(8):
+            extra = {'category': kinds[i % 4]} if kinds[i % 4] else {}
+            self.put(i, resolved=i % 2 == 0, **extra)
+        def ask(query):
+            return [json.loads(self.stored(nid)['body']['S']) for nid in self.ids(query)]
+        self.assertEqual(len(ask('scope=site')), 8)
+        self.assertEqual({n['resolved'] for n in ask('scope=site&status=open')}, {False})
+        self.assertEqual(len(ask('scope=site&status=resolved')), 4)
+        self.assertEqual({n.get('category') for n in ask('scope=site&category=bug')}, {'bug'})
+        both = ask('scope=site&status=open&category=feature')
+        self.assertEqual([(n['resolved'], n['category']) for n in both], [(False, 'feature')] * 2)
+        page = ask('scope=page&path=%2Fa&status=resolved&category=bug')
+        self.assertEqual([(n['resolved'], n['category']) for n in page], [(True, 'bug')] * 2)
+        self.assertEqual(self.call(query='scope=site&status=nope')[0], 400)
+        self.assertEqual(self.call(query='scope=site&category=nope')[0], 400)
 
-    def test_plus_one_is_one_per_person_and_repeats_write_nothing(self):
-        key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        def plus(stored, on):
-            self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps(stored).encode())}
-            self.store.put_object.reset_mock()
-            result = feedback.handle(self.event({'action': 'plus', 'id': key, 'on': on}))
-            return json.loads(result['body']), self.store.put_object.called
-        body, wrote = plus({'id': key}, True)
-        self.assertEqual((len(body['note']['plus']), wrote), (1, True))
-        again, wrote = plus(body['note'], True)
-        self.assertEqual((again['note']['plus'], wrote), (body['note']['plus'], False))
-        gone, wrote = plus(body['note'], False)
-        self.assertEqual((gone['note']['plus'], wrote), ([], True))
-        self.assertEqual(gone['me'], body['me'])
+    def test_a_feedback_link_finds_its_note_in_any_readable_env(self):
+        nid = self.put(3, env='prod')
+        status, data = self.call(query='id=' + urllib.parse.quote(nid))
+        self.assertEqual([(n['id'], n['env']) for n in data['notes']], [(nid, 'prod')])
+        self.assertEqual(self.call(query='id=' + urllib.parse.quote(note_id(4)))[1]['notes'], [])
+        self.assertEqual(self.call(query='id=../x')[0], 400)
 
-    def resolve(self, key, stored, **fields):
-        self.store.get_object.return_value = {'Body': io.BytesIO(json.dumps(stored).encode())}
-        result = feedback.handle(self.event({'action': 'resolve', 'id': key, **fields}))
-        return result['statusCode'], json.loads(result['body']).get('note')
+    def test_all_notes_is_only_notes(self):
+        nid = self.put(1)
+        self.put(2, env='prod')
+        feedback._plus(self.db, TABLE_NAME, 'gamma', nid, OTHER, True)
+        feedback._throttle(self.db, TABLE_NAME, 'gamma', OTHER, True)
+        self.assertEqual([n['id'] for n in feedback.all_notes(self.db, TABLE_NAME, 'gamma')], [nid])
 
-    def test_resolution_is_recorded(self):
-        key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        status, note = self.resolve(key, {'id': key}, resolved=True, outcome='done', close_note=' Fixed the tip. ', resolved_in='ABC1234')
+    # --- +1 ------------------------------------------------------------------------------
+
+    def test_plus_one_is_one_per_player_and_exact(self):
+        nid = self.put(1, plus=1)  # the author's
+        def plus(on, steam=OTHER):
+            return self.note({'action': 'plus', 'id': nid, 'on': on}, steam=steam)
+        self.assertEqual((plus(True)['plus_count'], plus(True)['plus_count']), (2, 2))  # a repeat changes nothing
+        mine = self.call(query='scope=site', steam=ADMIN)[1]['notes'][0]
+        self.assertEqual((mine['plus_count'], mine['plus_mine']), (2, False))  # ADMIN's vote isn't an item here
+        self.assertNotIn('plus', mine)
+        gone = plus(False)
+        self.assertEqual((gone['plus_count'], gone['plus_mine']), (1, False))
+        self.assertEqual(plus(False)['plus_count'], 1)
+        missing = self.call({'action': 'plus', 'id': note_id(9), 'on': True})
+        self.assertEqual(missing[0], 404)
+        self.assertNotIn('Item', self.db.get_item(TableName=TABLE_NAME, Key=feedback.vote_key('gamma', note_id(9), ADMIN)))
+
+    def test_prod_notes_are_read_only_from_gamma(self):
+        nid = self.put(1, env='prod')
+        for body in ({'action': 'plus', 'id': nid, 'on': True, 'env': 'prod'},
+                     {'action': 'resolve', 'id': nid, 'env': 'prod', 'resolved': True, 'outcome': 'declined', 'close_note': 'x'},
+                     {'action': 'backlog', 'id': nid, 'env': 'prod', 'on': True}):
+            self.assertEqual(self.call(body)[0], 403, body)
+        # without env, the write env is meant: no gamma note by that id
+        self.assertEqual(self.call({'action': 'plus', 'id': nid, 'on': True})[0], 404)
+        self.assertEqual(self.stored(nid, 'prod')['plus_count'], {'N': '0'})
+
+    # --- resolve / backlog ---------------------------------------------------------------
+
+    def resolve(self, nid, steam=ADMIN, **fields):
+        status, data = self.call({'action': 'resolve', 'id': nid, **fields}, steam=steam)
+        return status, data.get('note')
+
+    def test_resolution_is_recorded_and_indexed(self):
+        nid = self.put(1, category='bug')
+        status, note = self.resolve(nid, resolved=True, outcome='done', close_note=' Fixed the tip. ', resolved_in='ABC1234')
         self.assertEqual(status, 200)
         self.assertEqual((note['resolved_by'], note['close_note'], note['resolved_in'], note['outcome']),
-                         (self.steam, 'Fixed the tip.', 'abc1234', 'done'))
+                         (ADMIN, 'Fixed the tip.', 'abc1234', 'done'))
         self.assertIsInstance(note['resolved_at'], int)
+        self.assertEqual(self.ids('scope=site&status=open'), [])
+        self.assertEqual(self.ids('scope=site&status=resolved&category=bug'), [nid])
+
+    def test_only_admins_resolve_or_backlog(self):
+        nid = self.put(1)
+        self.assertEqual(self.resolve(nid, steam=OTHER, resolved=True, outcome='declined', close_note='x')[0], 403)
+        self.assertEqual(self.call({'action': 'backlog', 'id': nid, 'on': True}, steam=OTHER)[0], 403)
+        self.assertEqual(self.call(query='scope=site', steam=OTHER)[1]['admin'], False)
+        self.assertEqual(self.note({'action': 'plus', 'id': nid, 'on': True}, steam=OTHER)['plus_count'], 1)
 
     def test_reopen_keeps_the_resolution_in_history(self):
-        key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        _, closed = self.resolve(key, {'id': key}, resolved=True, outcome='done', close_note='done', resolved_in='abc1234')
-        _, reopened = self.resolve(key, closed, resolved=False)
+        nid = self.put(1)
+        self.resolve(nid, resolved=True, outcome='done', close_note='done', resolved_in='abc1234')
+        _, reopened = self.resolve(nid, resolved=False)
         self.assertFalse(reopened['resolved'])
         self.assertNotIn('close_note', reopened)
-        self.assertNotIn('outcome', reopened)
-        self.assertEqual(len(reopened['history']), 1)
-        self.assertEqual(reopened['history'][0]['outcome'], 'done')
-        self.assertEqual(reopened['history'][0]['close_note'], 'done')
-        self.assertEqual(reopened['history'][0]['reopened_by'], self.steam)
-        _, again = self.resolve(key, reopened, resolved=True, outcome='declined', close_note='really done')
-        _, again = self.resolve(key, again, resolved=False)
+        self.assertEqual([(h['outcome'], h['close_note'], h['reopened_by']) for h in reopened['history']],
+                         [('done', 'done', ADMIN)])
+        self.resolve(nid, resolved=True, outcome='declined', close_note='really done')
+        _, again = self.resolve(nid, resolved=False)
         self.assertEqual([h['close_note'] for h in again['history']], ['done', 'really done'])
 
     def test_second_resolve_does_not_overwrite_the_first(self):
-        key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        _, closed = self.resolve(key, {'id': key}, resolved=True, outcome='declined', close_note='first')
-        _, twice = self.resolve(key, closed, resolved=True, outcome='declined', close_note='second')
+        nid = self.put(1)
+        self.resolve(nid, resolved=True, outcome='declined', close_note='first')
+        _, twice = self.resolve(nid, resolved=True, outcome='declined', close_note='second')
         self.assertEqual(twice['close_note'], 'first')
 
+    def test_a_concurrent_change_is_a_conflict_not_an_overwrite(self):
+        nid = self.put(1)
+        def meanwhile(note):  # another reviewer resolves it between the read and the write
+            self.db.update_item(TableName=TABLE_NAME, Key={'env': {'S': 'gamma'}, 'sk': {'S': nid}},
+                                UpdateExpression='SET st = :s', ExpressionAttributeValues={':s': {'S': 'resolved#' + nid}})
+            note['backlog'] = {'by': ADMIN}
+            return True
+        with self.assertRaises(feedback.Refused) as refused:
+            feedback._change(self.db, TABLE_NAME, 'gamma', nid, ADMIN, meanwhile)
+        self.assertEqual(refused.exception.status, 409)
+        self.assertNotIn('backlog', json.loads(self.stored(nid)['body']['S']))
+
+    def test_resolve_keeps_a_plus_count_that_moved(self):
+        nid = self.put(1, plus=1)
+        self.note({'action': 'plus', 'id': nid, 'on': True}, steam=OTHER)
+        _, note = self.resolve(nid, resolved=True, outcome='declined', close_note='no')
+        self.assertEqual(note['plus_count'], 2)
+
     def test_bad_resolution_fields_are_refused(self):
-        key = 'feedback/1234567890-' + 'a'*32 + '.json'
-        other = 'feedback/1234567891-' + 'b'*32 + '.json'
+        nid, other = self.put(1), note_id(2)
         for fields in ({'outcome': 'done', 'close_note': 'x', 'resolved_in': 'not a commit'},
                        {'outcome': 'declined', 'close_note': 'x' * 2001}, {'outcome': 'declined', 'close_note': 5},
                        {}, {'outcome': 'wontfix', 'close_note': 'x'},
                        {'outcome': 'done', 'close_note': 'x'}, {'outcome': 'done', 'resolved_in': 'abc1234'},
                        {'outcome': 'declined'}, {'outcome': 'declined', 'close_note': '  '},
                        {'outcome': 'duplicate'}, {'outcome': 'duplicate', 'duplicate_of': '../secret'}):
-            self.assertEqual(self.resolve(key, {'id': key}, resolved=True, **fields)[0], 400, fields)
-        status, note = self.resolve(key, {'id': key}, resolved=True, outcome='duplicate', duplicate_of=other)
+            self.assertEqual(self.resolve(nid, resolved=True, **fields)[0], 400, fields)
+        status, note = self.resolve(nid, resolved=True, outcome='duplicate', duplicate_of=other)
         self.assertEqual((status, note['duplicate_of'], note['resolved_in']), (200, other, ''))
-
-    def test_filters_by_status_and_category(self):
-        kinds = ['bug', 'feature', 'improvement', None]
-        keys = [f"feedback/{9999999999 - i:010d}-{i:032x}.json" for i in range(8)]
-        docs = {key: {'id': key, 'path': '/a', 'target': {'kind': 'page'}, 'resolved': i % 2 == 0,
-                      **({'category': kinds[i % 4]} if kinds[i % 4] else {})} for i, key in enumerate(keys)}
-        ordered = sorted(keys)
-        self.store.list_objects_v2.side_effect = lambda **kw: {
-            'Contents': [{'Key': key} for key in [k for k in ordered if k > kw.get('StartAfter', '')][:kw.get('MaxKeys', 1000)]],
-            'IsTruncated': False}
-        self.store.get_object.side_effect = lambda **kw: {'Body': io.BytesIO(json.dumps(docs[kw['Key']]).encode())}
-        def ask(query):
-            return [docs[n['id']] for n in json.loads(feedback.handle(self.event(query=query))['body'])['notes']]
-        self.assertEqual(len(ask('scope=site')), 8)
-        self.assertEqual({n['resolved'] for n in ask('scope=site&status=open')}, {False})
-        self.assertEqual(len(ask('scope=site&status=resolved')), 4)
-        self.assertEqual({n.get('category') for n in ask('scope=site&category=bug')}, {'bug'})
-        both = ask('scope=site&status=open&category=feature')
-        self.assertEqual([(n['resolved'], n['category']) for n in both], [(False, 'feature')] * len(both))
-        self.assertEqual(feedback.handle(self.event(query='scope=site&status=nope'))['statusCode'], 400)
-        self.assertEqual(feedback.handle(self.event(query='scope=site&category=nope'))['statusCode'], 400)
-
-    def test_notes_get_stable_sequence_numbers(self):
-        old = [{'id': f'feedback/{9999999999 - i:010d}-{i:032x}.json', 'created': 100 + i, 'path': '/a'} for i in range(3)]
-        old[0]['seq'] = 7
-        docs = {n['id']: dict(n) for n in old}
-        self.store.list_objects_v2.side_effect = lambda **kw: {'Contents': [{'Key': k} for k in sorted(docs)], 'IsTruncated': False}
-        self.store.get_object.side_effect = lambda **kw: {'Body': io.BytesIO(json.dumps(docs[kw['Key']]).encode())}
-        def put(**kw):
-            docs[kw['Key']] = json.loads(kw['Body'])
-        self.store.put_object.side_effect = put
-        numbered = feedback._number_all(self.store, 'test')
-        self.assertEqual([n['seq'] for n in numbered], [7, 8, 9])
-        created = json.loads(feedback.handle(self.event({'comment': 'new', 'path': '/a'}))['body'])['note']
-        self.assertEqual(created['seq'], 10)
+        self.assertEqual(self.resolve(note_id(7), resolved=True, outcome='declined', close_note='x')[0], 404)
 
     def test_backlog_is_an_open_state_with_its_own_filter(self):
-        key = f'feedback/{9999999998:010d}-{1:032x}.json'
-        doc = {'id': key, 'seq': 1, 'path': '/a', 'target': {'kind': 'page'}, 'resolved': False}
-        self.store.get_object.side_effect = lambda **kw: {'Body': io.BytesIO(json.dumps(doc).encode())}
-        self.store.list_objects_v2.return_value = {'Contents': [{'Key': key}], 'IsTruncated': False}
-        sent = feedback.handle(self.event({'action': 'backlog', 'id': key, 'on': True, 'reason': 'after the map work'}))
-        note = json.loads(sent['body'])['note']
+        nid = self.put(1)
+        note = self.note({'action': 'backlog', 'id': nid, 'on': True, 'reason': 'after the map work'})
         self.assertEqual(note['backlog']['reason'], 'after the map work')
-        doc.update(note)
-        def ask(status):
-            return json.loads(feedback.handle(self.event(query='scope=site&status=' + status))['body'])['notes']
-        self.assertEqual((len(ask('open')), len(ask('backlog'))), (0, 1))
-        feedback.handle(self.event({'action': 'backlog', 'id': key, 'on': False}))
-        self.assertNotIn('backlog', json.loads(self.store.put_object.call_args.kwargs['Body']))
-        long = feedback.handle(self.event({'action': 'backlog', 'id': key, 'on': True, 'reason': 'x' * 501}))
-        self.assertEqual(long['statusCode'], 400)
-        doc.update(note)
-        feedback.handle(self.event({'action': 'resolve', 'id': key, 'resolved': True, 'outcome': 'declined', 'close_note': 'no'}))
-        self.assertNotIn('backlog', json.loads(self.store.put_object.call_args.kwargs['Body']))
+        self.assertEqual((self.ids('scope=site&status=open'), self.ids('scope=site&status=backlog')), ([], [nid]))
+        self.assertNotIn('backlog', self.note({'action': 'backlog', 'id': nid, 'on': False}))
+        self.assertEqual(self.ids('scope=site&status=open'), [nid])
+        self.assertEqual(self.call({'action': 'backlog', 'id': nid, 'on': True, 'reason': 'x' * 501})[0], 400)
+        self.note({'action': 'backlog', 'id': nid, 'on': True})
+        closed = self.resolve(nid, resolved=True, outcome='declined', close_note='no')[1]
+        self.assertNotIn('backlog', closed)
+        self.assertEqual(self.ids('scope=site&status=backlog'), [])
+
+    # --- throttle (FB-24) ----------------------------------------------------------------
+
+    def test_new_notes_are_capped_per_hour(self):
+        for i in range(feedback.RATE_NOTES):
+            self.note({'comment': f'n{i}', 'path': '/'}, steam=OTHER)
+        status, data = self.call({'comment': 'one more', 'path': '/'}, steam=OTHER)
+        self.assertEqual(status, 429, data)
+        self.assertEqual(len(feedback.all_notes(self.db, TABLE_NAME, 'gamma')), feedback.RATE_NOTES)
+        self.note({'comment': 'mine', 'path': '/'}, steam=ADMIN)  # each player has their own count
+        nid = self.ids('scope=site')[0]
+        self.note({'action': 'plus', 'id': nid, 'on': True}, steam=OTHER)  # other writes still go
+
+    def test_all_writes_are_capped_per_hour(self):
+        nid = self.put(1)
+        for i in range(feedback.RATE_WRITES):
+            self.note({'action': 'plus', 'id': nid, 'on': i % 2 == 0}, steam=OTHER)
+        self.assertEqual(self.call({'action': 'plus', 'id': nid, 'on': True}, steam=OTHER)[0], 429)
+        self.assertEqual(self.stored(nid)['plus_count'], {'N': '0'})
+        hour = int(time.time() // 3600)
+        rate = self.stored(f'rate#{OTHER}#{hour}')
+        self.assertEqual(int(rate['expires']['N']), (hour + 25) * 3600)  # TTL clears it
+
+
+    # --- migration from S3 ---------------------------------------------------------------
+
+    def test_migration_copies_once_and_only_raises_the_counter(self):
+        sys.path.insert(0, str(INFRA.parent / 'tools'))
+        import feedback_migrate
+        s3 = boto3.client('s3')
+        s3.create_bucket(Bucket='old', CreateBucketConfiguration={'LocationConstraint': 'us-west-2'})
+        def s3_note(i, **extra):
+            note = {'id': note_id(i), 'seq': i, 'created': 100 + i, 'author': ADMIN, 'comment': f'n{i}',
+                    'path': '/a', 'target': {'w': 1.5}, 'resolved': False, **extra}
+            s3.put_object(Bucket='old', Key=note['id'], Body=json.dumps(note).encode())
+        s3_note(2, plus=[OTHER, ADMIN, OTHER])
+        s3_note(3, resolved=True, outcome='declined', close_note='no', history=[{'outcome': 'done'}])
+        s3.put_object(Bucket='old', Key='feedback/stray.txt', Body=b'x')
+        run = lambda apply: feedback_migrate.migrate(s3, self.db, apply, bucket='old', table=TABLE_NAME, out=lambda *_: None)
+        self.assertEqual(run(False), (2, 0, []))
+        self.assertEqual(self.db.scan(TableName=TABLE_NAME)['Count'], 0)  # a dry run writes nothing
+        self.assertEqual(run(True), (2, 0, []))
+        voted = self.call(query='id=' + urllib.parse.quote(note_id(2)), steam=OTHER)[1]['notes'][0]
+        self.assertEqual((voted['plus_count'], voted['plus_mine'], voted['seq']), (2, True, 2))
+        self.assertNotIn('plus', json.loads(self.stored(note_id(2))['body']['S']))  # voters never sent
+        closed = self.call(query='id=' + urllib.parse.quote(note_id(3)))[1]['notes'][0]
+        self.assertEqual((closed['outcome'], closed['history']), ('declined', [{'outcome': 'done'}]))
+        self.assertEqual(self.ids('scope=site&status=resolved'), [note_id(3)])
+        self.assertEqual(self.note({'comment': 'new', 'path': '/'})['seq'], 4)  # continues after the highest
+        s3_note(5)
+        self.resolve(note_id(2), resolved=True, outcome='declined', close_note='x')  # changed on gamma meanwhile
+        self.assertEqual(run(True), (1, 2, ['FB-2']))  # only the new one; the changed one is listed, kept
+        self.assertTrue(json.loads(self.stored(note_id(2))['body']['S'])['resolved'])
+        counter = lambda: self.db.get_item(TableName=TABLE_NAME, Key={'env': {'S': 'counter'}, 'sk': {'S': 'seq'}})['Item']['value']['N']
+        self.assertEqual(counter(), '5')
+        self.db.put_item(TableName=TABLE_NAME, Item={'env': {'S': 'counter'}, 'sk': {'S': 'seq'}, 'value': {'N': '40'}})
+        run(True)
+        self.assertEqual(counter(), '40')  # never lowered
+
+    # --- emails --------------------------------------------------------------------------
 
     def test_feedback_emails(self):
         now, day = 1_800_000_000, 86400
         def note(created, **extra):
-            return {'created': created, 'author': '76561198000000001', 'comment': 'c', 'path': '/p', 'resolved': False, **extra}
+            return {'created': created, 'author': ADMIN, 'comment': 'c', 'path': '/p', 'resolved': False, **extra}
         notes = [note(now - 100), note(now - 3 * day), note(now - 20 * day),
                  note(now - 10 * day, resolved=True, resolved_at=now - 2 * day),
                  note(now - 10 * day, resolved=True, resolved_at=now - 9 * day)]

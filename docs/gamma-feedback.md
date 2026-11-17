@@ -38,12 +38,17 @@ panel's X or Escape.
 - **Search** and an **author** filter narrow the notes already loaded (Load more brings in older
   ones). Search reads the comment, close note, pinned text, path and names.
 - **+1** sits on each note's title row: one per signed-in person, tapped again to take it back,
-  with the count of everyone who agreed. The Lambda stores the ids on the note (`plus`, at most 50)
-  and a repeat of the same request changes and writes nothing.
+  with the count of everyone who agreed. Each +1 is its own item in the table and the note keeps
+  only the count (`plus_count`), so the inbox never sends who agreed, only whether you did. A
+  repeat of the same request changes nothing.
 - Every note has a stable id, **FB-n**, shown on its title row and in the emails. The Lambda
-  assigns it as `seq` when the note is created (one more than the highest), and numbers
-  the notes that predate it once, oldest first, the first time they are listed. It never
-  changes, so a commit message or close note can cite `FB-12`.
+  takes it from one counter in the table when the note is created, shared by gamma and prod, so
+  numbers never repeat between them. It never changes, so a commit message or close note can cite `FB-12`.
+- An **environment** picker (Gamma, Prod, Both) appears beside the filters when the inbox can read
+  more than its own notes, as gamma's can. Gamma is the default. A note from the other one is
+  marked with its name and is read-only here: its +1 and Resolve belong to the site it was sent from.
+- Each player may make 60 changes an hour (UTC), at most 10 of them new notes; past that the
+  Lambda answers 429 and the panel says so.
 - **Backlog** marks an open note we will take on, but not now, with an optional reason
   (`backlog`: who, when, why). It leaves the Open list and the Feedback button's count, shows
   under the Backlog filter and as its own number in the digests, and **Move to open**
@@ -72,9 +77,10 @@ panel's X or Escape.
   so an existing note can't be sent a second time.
 - Notes load 25 at a time; **Load more** fetches the next page.
 
-The gamma data bucket is retained when the stack is deleted and is versioned, so an
-overwritten or deleted note can be recovered from its earlier versions. Versions of
-everything but `feedback/` expire after 30 days; feedback versions are kept.
+The feedback table has point-in-time recovery (35 days) and deletion protection, and is
+retained if its stack is deleted. The notes from before the table (FB-2 to FB-27) were copied
+into it from `feedback/` in the gamma data bucket by `tools/feedback_migrate.py`; those objects
+and their versions stay there, untouched.
 
 The panel can be dragged by its header and resized from its bottom-right corner or its left edge; it
 keeps its place between openings. On screens 600px wide or narrower it is instead a
@@ -88,18 +94,21 @@ on a quiet day; on Mondays one weekly email instead (never two) with the open to
 resolved that week, and the open notes. Both name the author by Steam name. Notes resolved before resolutions were
 timestamped have no date and are not counted as resolved in a week.
 
-Notes are private JSON objects under `feedback/` in the gamma data bucket. Each
-note stores the page's exact `url` (gamma origin, path, query and hash) next to
+Notes are items in the DynamoDB table `slay-my-stats-feedback` (its own stack,
+`infra/slay_my_stats/feedback_stack.py`), partitioned by `env`: gamma's are `env=gamma`.
+Each note stores the page's exact `url` (gamma origin, path, query and hash) next to
 the same-site `path`, which **Open location** uses. They are accessed through
 `/auth/feedback`, not through the public profile behavior. The endpoint verifies
 the existing signed gamma session independently of CloudFront, checks the Steam
-allowlist, and checks Origin on writes. The gamma auth Lambda receives access
-only to that prefix. Notes do not include screenshots.
+allowlist, and checks Origin on writes. IAM lets the gamma auth Lambda read the
+gamma and prod partitions and write only gamma's (and the FB-n counter); the
+digest Lambda reads gamma's. Notes do not include screenshots.
 
-Newest keys sort first, so a page is one `list_objects_v2` walk: the cursor is the
-last key read. A whole-site page needs 25 notes, while a page-scoped view skips
-other paths (up to 400 objects read in one request). There is no shared index, so
-nothing can disagree with the objects themselves.
+Note ids sort newest first, so a page is one query: on the table for the whole site,
+or on an index for a status, a type or one page (`ByState`, `ByStateCategory`,
+`ByCategory`, `ByPage`). The cursor is the last key read, per environment when
+reading Both. A request reads at most 400 items, so a narrow filter can hand back
+fewer than 25 with more to load.
 
 Verification:
 

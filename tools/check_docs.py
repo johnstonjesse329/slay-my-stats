@@ -6,7 +6,8 @@ Keeps the docs in step with the code: fails (exit 1) when
 
     python tools/check_docs.py
 
-Each construct id in infra/slay_my_stats/slay_my_stats_stack.py is mapped
+Each construct id in infra/slay_my_stats/slay_my_stats_stack.py (and the
+feedback table's own stack, feedback_stack.py) is mapped
 below to the words its box in docs/slay-my-stats-architecture.drawio must
 contain (or None for plumbing that is deliberately not drawn). Add a new
 resource to the stack and this fails until it is drawn and listed here.
@@ -14,7 +15,7 @@ resource to the stack and this fails until it is drawn and listed here.
 import html, pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STACK = ROOT / "infra" / "slay_my_stats" / "slay_my_stats_stack.py"
+STACKS = [ROOT / "infra" / "slay_my_stats" / name for name in ("slay_my_stats_stack.py", "feedback_stack.py")]
 DIAGRAM = ROOT / "docs" / "slay-my-stats-architecture.drawio"
 README = ROOT / "README.md"
 
@@ -52,12 +53,13 @@ NOT_DRAWN = {  # plumbing inside a drawn box, or an output
     "FeedbackDigestLogGroup": "gamma-only; the diagram shows production",
     "FeedbackDigestDailySchedule": "gamma-only; the diagram shows production",
     "FeedbackDigestWeeklySchedule": "gamma-only; the diagram shows production",
+    "FeedbackTable": "only gamma reads and writes it so far; draw it when production does",
 }
 OUTPUT_ID = re.compile(r"(Name|Domain\w*|Url)$")
 
 
 def stack_ids() -> set[str]:
-    src = STACK.read_text(encoding="utf-8")
+    src = "\n".join(stack.read_text(encoding="utf-8") for stack in STACKS)
     ids = set(re.findall(r'\(\s*self,\s*"(\w+)"', src))
     return {i for i in ids if i not in re.findall(r'CfnOutput\(\s*self,\s*"(\w+)"', src)}
 

@@ -207,8 +207,10 @@ pre-commit hook runs it when infra, docs or the README change.
 
 ### AWS resources
 
-Everything is one CDK stack, `SlayMyStatsStack` (`infra/slay_my_stats/slay_my_stats_stack.py`), deployed to
-the CLI's default account and region (us-west-2 today).
+Everything is one CDK stack per stage, `SlayMyStatsStack` (`infra/slay_my_stats/slay_my_stats_stack.py`),
+deployed to the CLI's default account and region (us-west-2 today), plus the feedback table in a stack of its
+own, `SlayMyStatsFeedbackStack` (`infra/slay_my_stats/feedback_stack.py`), which only
+`tools/deploy.py --feedback-table` deploys.
 
 | Resource | Configuration | Why |
 |----------|---------------|-----|
@@ -223,7 +225,8 @@ the CLI's default account and region (us-west-2 today).
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
 | **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*` and publish to the alert SNS topic. | A daily summary of uploads, reported for trends. |
-| **Feedback digest Lambda** + two schedules | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Gamma only. EventBridge Scheduler crons at 8 AM America/Chicago, Tuesday to Sunday and Mondays; it can read `feedback/*` and publish to the gamma alert SNS topic. | Emails the owner the day's new feedback notes (Tuesday to Sunday), and on Mondays one weekly email with the open, incoming and resolved counts. |
+| **Feedback table** `slay-my-stats-feedback` | DynamoDB, on-demand, point-in-time recovery, deletion protection, **retained**. Partition key `env` (`gamma`, `prod`), four indexes for the inbox's filters, TTL on the hourly throttle counters only. Its own stack, shared by both stages; IAM holds each Lambda to the `env` values it may read or write. | The feedback notes, their +1s and the FB-n counter. One table so a note keeps its number and history wherever it is read from. |
+| **Feedback digest Lambda** + two schedules | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Gamma only. EventBridge Scheduler crons at 8 AM America/Chicago, Tuesday to Sunday and Mondays; it can read gamma's notes in the feedback table and publish to the gamma alert SNS topic. | Emails the owner the day's new feedback notes (Tuesday to Sunday), and on Mondays one weekly email with the open, incoming and resolved counts. |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
 | **Metric filters + alarms** `ModRequests`, `ModRefusals` | Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
 | **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
@@ -593,8 +596,8 @@ Signed-in reviewers get a gold **Feedback** button in the lower right, carrying 
 the page. It opens one panel with a **New note** view — pin an element or region, or comment on the page,
 with the exact page URL and the earlier notes for that target in front of you — and an **Inbox** view that
 switches between This page and Whole site, groups notes into one bucket per page and per pinned element or
-region, loads them 25 at a time, and offers search, an author filter, a +1 per person, resolve, reopen and a copy-ready report. Notes are JSON objects
-under `feedback/` in the gamma data bucket, reached through `/auth/feedback`; production never shows the
+region, loads them 25 at a time, and offers search, an author filter, a +1 per person, resolve, reopen and a copy-ready report. Notes live
+in the feedback table as `env=gamma`, reached through `/auth/feedback`; production never shows the
 button. See [docs/gamma-feedback.md](docs/gamma-feedback.md).
 
 ### Publishing gamma to production

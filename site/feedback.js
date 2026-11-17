@@ -148,7 +148,7 @@
     <div id="view-inbox" role="tabpanel">
       <div id="summary-row"><p id="summary"></p><button id="toggle-all" type="button">Expand all</button></div>
       <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-page" type="button" aria-pressed="false">This page</button><button id="scope-site" type="button" aria-pressed="false">Whole site</button></div>
-      <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="backlog">Backlog</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option></select></div>
+      <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="backlog">Backlog</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option></select><select id="filter-env" aria-label="Environment" hidden></select></div>
       <div id="find"><input id="search" type="search" placeholder="Search notes" aria-label="Search notes"><select id="filter-author" aria-label="Author"><option value="">Anyone</option></select></div>
       <div id="notes"></div>
       <button id="load-more" type="button" hidden>Load the next 25</button>
@@ -160,7 +160,7 @@
   <button id="launcher" type="button"><span aria-hidden="true">✎</span> <span id="launcher-label">Feedback</span><span id="launcher-count" aria-hidden="true" hidden></span></button>`;
   const $ = id => root.getElementById(id);
   const ORIGIN = location.origin;
-  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'page', status = 'open', filterKind = '', nextCursor = null, view = 'inbox', picking = false, start, previousFocus, oldTouchAction;
+  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'page', status = 'open', filterKind = '', envFilter = '', writeEnv = '', envs = [], admin = false, nextCursor = null, view = 'inbox', picking = false, start, previousFocus, oldTouchAction;
   const mark = document.createElement('div');
   Object.assign(mark.style, {position:'fixed',pointerEvents:'none',zIndex:'2147483645',border:'2px solid #f6c66d',background:'#f6c66d22',display:'none'});
   document.body.append(mark);
@@ -314,14 +314,26 @@
   async function api(body, params) {
     const query=body?'':'?'+new URLSearchParams(params||{}).toString();
     const response=await fetch('/auth/feedback'+query,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
-    if(!response.ok) throw new Error(response.status===401?'Sign in to gamma again.':`Could not ${body?'save':'load'} feedback. Please retry.`);
+    if(!response.ok){
+      let message='';try{message=(await response.json()).message||'';}catch{}
+      throw new Error(response.status===401?'Sign in to gamma again.':message||`Could not ${body?'save':'load'} feedback. Please retry.`);
+    }
     const data=await response.json();
     if(data.me) me=data.me;
+    if(data.env){writeEnv=data.env;admin=!!data.admin;if(String(data.envs)!==String(envs)){envs=data.envs||[data.env];syncEnvs();}}
     return data;
+  }
+  const ENV_NAMES = {gamma:'Gamma',prod:'Prod'};
+  // The environment picker appears only when this inbox can read more than its own notes.
+  function syncEnvs() {
+    const select=$('filter-env');
+    select.replaceChildren(...envs.map(e=>new Option(ENV_NAMES[e]||e,e)),...(envs.length>1?[new Option('Both','both')]:[]));
+    select.hidden=envs.length<2;
+    select.value=envFilter||writeEnv;
   }
   const stateOf = note => note.resolved?'resolved':note.backlog?'backlog':'open';
   const fbId = note => Number.isInteger(note.seq)?'FB-'+note.seq:'';
-  const report = note => `Feedback ${fbId(note)||note.id}\n${note.category?(KINDS[note.category]||note.category)+' · ':''}${{resolved:'Resolved',backlog:'Backlog',open:'Open'}[stateOf(note)]} · ${new Date(note.created*1000).toISOString()}\n${note.url || ORIGIN + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
+  const report = note => `Feedback ${fbId(note)||note.id}${note.env&&envs.length>1?' ('+(ENV_NAMES[note.env]||note.env)+')':''}\n${note.category?(KINDS[note.category]||note.category)+' · ':''}${{resolved:'Resolved',backlog:'Backlog',open:'Open'}[stateOf(note)]} · ${new Date(note.created*1000).toISOString()}\n${note.url || ORIGIN + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
   function updateCount() {
     const open=pageCache.filter(note=>stateOf(note)==='open').length;
     $('launcher-count').textContent=open?String(open):'';
@@ -374,14 +386,17 @@
     who.textContent=author(note);who.className='note-who'+(nameOf(note)?'':' bare');who.title=String(note.author);
     head.className='note-head';
     // +1: one per person, tapped again to take back. The count is everyone who has agreed.
-    const plus=document.createElement('button'),mine=(note.plus||[]).includes(me),right=document.createElement('span');
+    // A note from another environment is shown read-only: its +1 and actions belong there.
+    const here=!note.env||note.env===writeEnv;
+    const plus=document.createElement('button'),mine=!!note.plus_mine,count=note.plus_count||0,right=document.createElement('span');
     plus.type='button';plus.className='plus';plus.setAttribute('aria-pressed',String(mine));
-    plus.textContent='+1'+((note.plus||[]).length?' · '+note.plus.length:'');
-    plus.title=mine?'Take back your +1':'Add your +1';
+    plus.textContent='+1'+(count?' · '+count:'');
+    plus.title=!here?'Only on '+(ENV_NAMES[note.env]||note.env):mine?'Take back your +1':'Add your +1';
+    plus.disabled=!here;
     plus.onclick=async()=>{
       plus.disabled=true;
       try {
-        const {note:updated}=await api({action:'plus',id:note.id,on:!mine});
+        const {note:updated}=await api({action:'plus',id:note.id,env:note.env,on:!mine});
         const swap=list=>list.map(item=>item.id===updated.id?updated:item);
         notes=swap(notes);pageCache=swap(pageCache);renderInbox();
       } catch(e){ say(e.message,'inbox'); plus.disabled=false; }
@@ -393,6 +408,7 @@
     place.href=openUrl.href;place.textContent='Open location';
     meta.className='note-meta';
     meta.append(pill);
+    if(note.env&&envs.length>1){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=ENV_NAMES[note.env]||note.env;meta.append(tag);}
     if(note.category){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=KINDS[note.category]||note.category;meta.append(tag);}
     meta.append(place);
     url.className='note-url';url.textContent=note.url || ORIGIN + note.path;
@@ -400,7 +416,7 @@
     const send=async(fields,button)=>{
       button.disabled=true;
       try {
-        const {note:updated}=await api({action:'resolve',id:note.id,...fields});
+        const {note:updated}=await api({action:'resolve',id:note.id,env:note.env,...fields});
         const swap=list=>list.map(item=>item.id===updated.id?updated:item);
         notes=swap(notes).filter(matchesFilter);pageCache=swap(pageCache);
         renderInbox();renderPrior();updateCount();
@@ -432,12 +448,13 @@
     };
     // Backlog: still open, but we will take it on later. An optional reason; one click takes it back out.
     const later=document.createElement('button');
-    later.textContent=note.backlog?'Move to open':'Backlog';later.hidden=!!note.resolved;
+    later.textContent=note.backlog?'Move to open':'Backlog';later.hidden=!!note.resolved||!here||!admin;
+    resolve.hidden=!here||!admin;
     later.title=note.backlog?'Take it out of the backlog':'We will take this on, but not now';
     const sendLater=async(on,reason,button)=>{
       button.disabled=true;
       try {
-        const {note:updated}=await api({action:'backlog',id:note.id,on,reason});
+        const {note:updated}=await api({action:'backlog',id:note.id,env:note.env,on,reason});
         const swap=list=>list.map(item=>item.id===updated.id?updated:item);
         notes=swap(notes).filter(matchesFilter);pageCache=swap(pageCache);
         renderInbox();renderPrior();updateCount();
@@ -572,6 +589,7 @@
     try {
       const params={scope,status};
       if(filterKind) params.category=filterKind;
+      if(envFilter) params.env=envFilter;
       if(scope==='page') params.path=currentPath();
       if(nextCursor) params.cursor=nextCursor;
       const data=await api(null,params);
@@ -593,6 +611,7 @@
   $('scope-site').onclick=()=>{if(scope!=='site'){scope='site';load(true);}};
   $('filter-status').onchange=e=>{status=e.target.value;load(true);};
   $('filter-kind').onchange=e=>{filterKind=e.target.value;load(true);};
+  $('filter-env').onchange=e=>{envFilter=e.target.value===writeEnv?'':e.target.value;load(true);};
   $('search').oninput=e=>{query=e.target.value.trim().toLowerCase();renderInbox();};
   $('filter-author').onchange=e=>{filterAuthor=e.target.value;renderInbox();};
   $('kinds').onclick=e=>{const b=e.target.closest('button');if(b)setKind(b.dataset.kind);};
@@ -623,8 +642,9 @@
     // Open location lands on the inbox with that note opened and marked, not on a blank new note.
     status='all';scope='page';focusId=requested;view='inbox';
     openPanel();
-    api(null,{scope:'site'}).then(data=>{
-      const note=data.notes.find(n=>n.id===requested);if(!note){say('This note is outside the latest notes.','inbox');return;}
+    api(null,{id:requested}).then(data=>{
+      const note=data.notes[0];if(!note){say('This note could not be found.','inbox');return;}
+      if(note.env&&note.env!==writeEnv&&!envFilter){envFilter='both';syncEnvs();load(true);}
       let attempts=0;
       const timer=setInterval(()=>{
         let el;try{el=note.target.selector && document.querySelector(note.target.selector);}catch{}
