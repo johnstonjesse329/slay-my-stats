@@ -42,7 +42,7 @@
 }
 .upload-panel h2 { color: var(--gold); margin-bottom: 0.75rem; }
 .upload-panel p { margin-bottom: 0.75rem; line-height: 1.5; }
-.upload-panel a { color: var(--gold); }
+.upload-panel a:not(.upload-btn) { color: var(--gold); }
 .upload-panel code {
   display: inline-block;
   max-width: 100%;

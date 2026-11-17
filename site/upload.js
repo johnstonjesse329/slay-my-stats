@@ -336,15 +336,24 @@
     renderSteps(status);
   }
 
+  // Stop after `key` with it done: the stages after it don't apply (nothing new
+  // to send), so they are dropped rather than left waiting.
+  function stepsEndAt(status, key, detail) {
+    if (!status.stage) return;
+    status.stage = { key: "done", halted: false, last: key, details: { ...status.stage.details, [key]: detail } };
+    renderSteps(status);
+  }
+
   function renderSteps(status) {
     if (!status.stage) return;
     const at = status.stage.key === "done" ? STEPS.length : STEPS.findIndex(s => s[0] === status.stage.key);
+    const shown = status.stage.last ? STEPS.slice(0, STEPS.findIndex(s => s[0] === status.stage.last) + 1) : STEPS;
     let list = status.querySelector(".upload-progress");
     if (!list) {
       list = el("ol", { className: "upload-progress" });
       status.prepend(list);
     }
-    list.replaceChildren(...STEPS.map(([key, doing, did], i) => {
+    list.replaceChildren(...shown.map(([key, doing, did], i) => {
       const state = i < at ? "done" : i > at ? "wait" : status.stage.halted ? "halt" : "now";
       const mark = { done: "✓", now: "◐", halt: "•", wait: "○" }[state];
       const item = el("li", { className: state }, [el("i", { textContent: mark, ariaHidden: "true" }),
@@ -442,6 +451,7 @@
     let have = await existingTimestamps(slug);
     const allThere = () => runs.every(r => have.has(r.start));
     if (allThere()) {
+      stepsEndAt(status, "check", "0 new");
       finishAtProfile(status, alreadyThere(runs.length), slug);
       return;
     }
@@ -459,6 +469,7 @@
       have = await existingTimestamps(slug);
       if (allThere()) {
         pending = null;
+        stepsEndAt(status, "check", "0 new");
         finishAtProfile(status, alreadyThere(runs.length), slug);
         return;
       }
@@ -510,6 +521,7 @@
       : "";
     if (!result.added) {
       if (result.duplicates) {
+        stepsDone(status, "0 new");
         finishAtProfile(status, [alreadyThere(result.duplicates), held].filter(Boolean).join(" "), result.slug || slug);
       } else if (held) {
         setStatus(status, held, profileLink);
