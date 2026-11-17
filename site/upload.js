@@ -239,9 +239,6 @@
       el("p", {}, profile
         ? ["Signed in with Steam as ", el("a", { href: `/u/${profile.slug}`, textContent: profile.name }), "."]
         : ["Signed in with Steam."]),
-      // The button leads the panel, so the way to upload is the first thing there;
-      // the steps below are how to get the picker to the right folder.
-      el("div", { className: "upload-actions" }, [folderBtn, folderInput]),
       el("ol", { className: "upload-steps" }, [
         // The path, and getting the picker to it, are the only platform-specific
         // steps; everything else applies wherever runs can be picked at all.
@@ -249,7 +246,8 @@
           step("Copy the folder path.",
             el("div", { className: "upload-path" }, [pathCode, copyBtn])),
         ] : []),
-        step("Click Choose history folder."),
+        step("Click Choose history folder.",
+          el("div", { className: "upload-actions" }, [folderBtn, folderInput])),
         ...(hasPath ? [isMac
           ? step("Go to the folder:", " press ⌘⇧G, paste, and then press Return.")
           : step("Go to the folder:", " click the address bar, paste, and then press Enter.")] : []),
