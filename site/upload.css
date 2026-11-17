@@ -94,3 +94,6 @@
 .upload-progress-note:empty { display: none; }
 @keyframes upload-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .upload-progress li.now i { animation: none; } }
+
+/* The way out once an upload is over (upload.js finishAtProfile). */
+.upload-done { display: table; margin-top: 0.75rem; }
