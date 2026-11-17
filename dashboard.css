@@ -590,6 +590,19 @@ h1 {
   white-space: nowrap;
   box-shadow: 0 4px 16px #0007;
 }
+/* The pill lets the chart have the pointer; only its Ok takes a click. */
+.drag-hint button {
+  pointer-events: auto;
+  margin-left: 8px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--gold);
+  background: none;
+  border: 1px solid #e0c46880;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.drag-hint button:hover { background: #e0c46826; }
 /* Touch: a finger dragged along a chart scrubs its floors, so it must not start a text selection or
    the callout, and a sideways drag stays with the chart while an up-down one still scrolls the page. */
 @media (pointer: coarse) {
