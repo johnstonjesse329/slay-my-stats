@@ -462,16 +462,30 @@
       line.textContent=['Backlog '+when(note.backlog.at),note.backlog.reason].filter(Boolean).join(' - ');
       article.append(line);
     }
+    const appendCommit = (line, commit) => {
+      if (!commit) return;
+      line.append(' · commit ');
+      if (/^[0-9a-f]{7,40}$/i.test(commit)) {
+        const link = document.createElement('a');
+        link.href = 'https://github.com/johnstonjesse329/slay-my-stats/commit/' + commit;
+        link.textContent = commit;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        line.append(link);
+      } else line.append(String(commit));
+    };
     if(note.resolved){
       const line=document.createElement('p');line.className='note-resolution';
       line.textContent=[(OUTCOMES[note.outcome]||'Resolved')+(note.resolved_by?' by '+author(note,'resolved_by'):'')+(note.resolved_at?' · '+when(note.resolved_at):''),
-        note.close_note,note.resolved_in&&'commit '+note.resolved_in,note.duplicate_of&&'duplicate of '+note.duplicate_of].filter(Boolean).join(' · ');
+        note.close_note,note.duplicate_of&&'duplicate of '+note.duplicate_of].filter(Boolean).join(' · ');
+      appendCommit(line,note.resolved_in);
       article.append(line);
     }
     for(const old of note.history||[]){
       const line=document.createElement('p');line.className='note-history';
       line.textContent='Earlier: resolved'+(old.resolved_at?' '+when(old.resolved_at):'')+(old.close_note?' ("'+old.close_note+'")':'')+
         (old.reopened_at?', reopened '+when(old.reopened_at):'');
+      appendCommit(line,old.resolved_in);
       article.append(line);
     }
     article.append(actions);

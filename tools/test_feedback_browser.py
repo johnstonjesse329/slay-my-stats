@@ -137,6 +137,8 @@ def main():
                                 note.pop('backlog', None)
                         elif body.get('action') == 'resolve':
                             note = next(item for item in notes if item['id'] == body['id'])
+                            if not body['resolved'] and note.get('resolved'):
+                                note.setdefault('history', []).append({key: note.get(key) for key in ('resolved_in', 'resolved_at', 'close_note')})
                             note['resolved'] = body['resolved']
                             if body['resolved']:
                                 note.update(resolved_by='76561198000000001', resolved_by_name='Test Admin', resolved_at=1800000100,
@@ -265,8 +267,10 @@ def main():
             wait_summary(page, '0 notes · 0 open · 0 places')
             page.get_by_label('Status').select_option('all')
             page.get_by_text('Fixed in the tip · commit abc1234').wait_for()
+            expect(page.locator('.note-resolution').get_by_role('link', name='abc1234', exact=True)).to_have_attribute('href', 'https://github.com/johnstonjesse329/slay-my-stats/commit/abc1234')
             page.get_by_role('button', name='Reopen', exact=True).click()
             page.get_by_role('button', name='Resolve', exact=True).wait_for()
+            expect(page.locator('.note-history').get_by_role('link', name='abc1234', exact=True)).to_have_attribute('href', 'https://github.com/johnstonjesse329/slay-my-stats/commit/abc1234')
             page.get_by_label('Status').select_option('open')
             wait_summary(page, '1 note · 1 open · 1 place')
             page.get_by_role('tab', name='New note', exact=True).click()
