@@ -309,7 +309,7 @@
   }
 
   // Stop after `key` with it done: the stages after it don't apply (nothing new
-  // to send), so they are dropped rather than left waiting.
+  // to send), so they stay listed, marked "nothing new", rather than left waiting.
   function stepsEndAt(status, key, detail) {
     if (!status.stage) return;
     status.stage = { key: "done", halted: false, last: key, details: { ...status.stage.details, [key]: detail } };
@@ -319,19 +319,20 @@
   function renderSteps(status) {
     if (!status.stage) return;
     const at = status.stage.key === "done" ? STEPS.length : STEPS.findIndex(s => s[0] === status.stage.key);
-    const shown = status.stage.last ? STEPS.slice(0, STEPS.findIndex(s => s[0] === status.stage.last) + 1) : STEPS;
+    const skipFrom = status.stage.last ? STEPS.findIndex(s => s[0] === status.stage.last) + 1 : STEPS.length;
     let list = status.querySelector(".upload-progress");
     if (!list) {
       list = el("ol", { className: "upload-progress" });
       status.prepend(list);
     }
-    list.replaceChildren(...shown.map(([key, doing, did], i) => {
-      const state = i < at ? "done" : i > at ? "wait" : status.stage.halted ? "halt" : "now";
-      const mark = { done: "✓", now: "◐", halt: "•", wait: "○" }[state];
+    list.replaceChildren(...STEPS.map(([key, doing, did], i) => {
+      const state = i >= skipFrom ? "skip" : i < at ? "done" : i > at ? "wait" : status.stage.halted ? "halt" : "now";
+      const mark = { done: "✓", now: "◐", halt: "•", wait: "○", skip: "–" }[state];
       const item = el("li", { className: state }, [el("i", { textContent: mark, ariaHidden: "true" }),
                       document.createTextNode(state === "done" ? did : doing)]);
       const detail = status.stage.details[key];
-      if (detail && state !== "wait") item.append(el("small", { textContent: detail }));
+      if (state === "skip") item.append(el("small", { textContent: "nothing new" }));
+      else if (detail && state !== "wait") item.append(el("small", { textContent: detail }));
       return item;
     }));
   }
