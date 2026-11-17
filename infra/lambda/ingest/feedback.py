@@ -25,7 +25,7 @@ from http.cookies import CookieError, SimpleCookie
 PAGE_SIZE = 25
 READ_LIMIT = 400  # items one request may read for a page view, which filters what it reads
 COMMIT = re.compile(r"[0-9a-f]{7,40}")
-CATEGORIES = {"bug": "Bug", "feature": "Feature request", "improvement": "Improvement idea"}
+CATEGORIES = {"bug": "Bug", "feature": "Feature request", "improvement": "Improvement idea", "kudos": "Kudos"}
 NOTE_ID = re.compile(r"feedback/\d{10}-[a-f0-9]{32}\.json")
 OUTCOMES = ("done", "declined", "duplicate")
 STATUSES = ("open", "backlog", "resolved", "all")

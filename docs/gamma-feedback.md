@@ -33,7 +33,7 @@ panel's X or Escape.
   region, with the inbox showing that note's group open and the note marked. Layout changes can invalidate a selector; saved target text and viewport
   dimensions remain available in the copied report.
 - A **status** filter (Open by default, Backlog, Resolved, All) and a **type** filter (any,
-  bug, feature request, improvement idea) narrow the inbox. The Lambda applies them,
+  bug, feature request, improvement idea, kudos) narrow the inbox. The Lambda applies them,
   so a narrow filter may scan several notes per page and hand back fewer than 25.
 - **Search** and an **author** filter narrow the notes already loaded (Load more brings in older
   ones). Search reads the comment, close note, pinned text, path and names.

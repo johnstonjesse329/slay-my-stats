@@ -151,7 +151,7 @@ class FeedbackTest(unittest.TestCase):
 
     def test_category_is_kept_and_checked(self):
         body = {'comment': 'x', 'path': '/'}
-        for category in ('bug', 'feature', 'improvement'):
+        for category in ('bug', 'feature', 'improvement', 'kudos'):
             self.assertEqual(self.note({**body, 'category': category})['category'], category)
         plain = self.note(body)
         self.assertNotIn('category', plain)
