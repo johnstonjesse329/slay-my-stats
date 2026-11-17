@@ -693,13 +693,8 @@
   }
 
   async function showSitePage(name) {
-    // The upload panel claims #main-content on /upload when a sign-in arrives
-    // (site/upload.js), and it runs before this fetch resolves -- so a page it has
-    // claimed is left alone, checked once before the fetch and once after.
-    if (window.uploadPanelActive) return;
     showFallback("");
     const html = await fetchFragment(`/page-${name}.html`);
-    if (window.uploadPanelActive) return;
     if (html === null) {
       showFallback("There's no page at this address.");
       document.getElementById("main-content")?.append(el("p", {}, [el("a", { href: "/", textContent: "Find a player" })]));
@@ -716,6 +711,8 @@
     if (title) document.title = title.includes("Slay My Stats") ? title : `${title} — Slay My Stats`;
     main.textContent = "";
     main.append(section);
+    // The Upload page's signed-in panel goes into this page (site/upload.js).
+    if (window.placeUploadPanel) window.placeUploadPanel();
   }
 
   // ---- Entry point ---------------------------------------------------------

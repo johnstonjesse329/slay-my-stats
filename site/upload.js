@@ -165,13 +165,29 @@
     });
   }
 
-  // Replaces the page (like boot.js's fallbacks do) with the upload panel.
+  // On the Upload page the panel takes the sign-in button's place inside the page
+  // (the [data-upload-slot] in site/pages/upload.html), so the text around it
+  // stays for everyone. That page is fetched in by boot.js, which may land after
+  // the sign-in check does: a panel with no slot yet waits in `pendingId`, and
+  // boot.js calls placeUploadPanel() once the page is in.
+  // On the root page (a /#upload link) it replaces the page, as boot.js's
+  // fallbacks do.
+  let pendingId = null;
+  let placed = false;
+  window.placeUploadPanel = () => {
+    if (pendingId) { const id = pendingId; pendingId = null; showUploadPanel(id); }
+  };
+
   function showUploadPanel(steamId) {
     const main = document.getElementById("main-content");
-    if (!main) return;
-    // boot.js's page renderer is mid-fetch for /upload and would paint the page
-    // body over this panel when it resolves, so claim #main-content first.
-    window.uploadPanelActive = true;
+    if (!main || placed) return;
+    const inPage = HERE_PATH === "/upload";
+    const slot = inPage ? main.querySelector("[data-upload-slot]") : null;
+    if (inPage && !slot) { pendingId = steamId; return; }
+    placed = true;
+    // boot.js's root-page renderer is mid-fetch and would paint the stats over a
+    // panel that replaces the page, so claim #main-content first.
+    if (!inPage) window.uploadPanelActive = true;
     const filterBar = document.getElementById("shared-filter-bar");
     if (filterBar) filterBar.style.display = "none";
     document.querySelectorAll(".page-tabs").forEach(n => { n.style.display = "none"; });
@@ -218,10 +234,14 @@
 
     const step = (title, ...body) => el("li", {}, [title, ...body]);
     const panel = el("section", { className: "upload-panel" }, [
-      el("h2", { textContent: "Upload your runs" }),
+      // The Upload page has its own heading above the slot.
+      ...(inPage ? [] : [el("h2", { textContent: "Upload your runs" })]),
       el("p", {}, profile
         ? ["Signed in with Steam as ", el("a", { href: `/u/${profile.slug}`, textContent: profile.name }), "."]
         : ["Signed in with Steam."]),
+      // The button leads the panel, so the way to upload is the first thing there;
+      // the steps below are how to get the picker to the right folder.
+      el("div", { className: "upload-actions" }, [folderBtn, folderInput]),
       el("ol", { className: "upload-steps" }, [
         // The path, and getting the picker to it, are the only platform-specific
         // steps; everything else applies wherever runs can be picked at all.
@@ -229,8 +249,7 @@
           step("Copy the folder path.",
             el("div", { className: "upload-path" }, [pathCode, copyBtn])),
         ] : []),
-        step("Click Choose history folder.",
-          el("div", { className: "upload-actions" }, [folderBtn, folderInput])),
+        step("Click Choose history folder."),
         ...(hasPath ? [isMac
           ? step("Go to the folder:", " press ⌘⇧G, paste, and then press Return.")
           : step("Go to the folder:", " click the address bar, paste, and then press Enter.")] : []),
@@ -239,8 +258,8 @@
       el("p", { className: "upload-note", textContent: "Runs already on your profile are skipped." }),
       status,
     ]);
-    main.textContent = "";
-    main.append(panel);
+    if (slot) slot.replaceWith(panel);
+    else { main.textContent = ""; main.append(panel); }
 
     let busy = false;
     const onPick = async (input) => {
