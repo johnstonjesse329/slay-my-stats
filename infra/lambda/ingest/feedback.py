@@ -141,17 +141,26 @@ def _valid_path(path) -> bool:
             and "\\" not in path and not any(ord(c) < 0x20 or ord(c) == 0x7F for c in path))
 
 
+ID_FIELDS = ("author", "resolved_by", "reopened_by", "by")  # every place a note records a Steam ID
+
+
 def _masked(note, steam):
-    """The note as a non-admin reader sees it: other players' Steam IDs become an opaque tag,
-    keyed on the session secret, so notes by one person still group without naming the account."""
+    """The note as a non-admin reader sees it: other players' Steam IDs, at any depth (backlog,
+    history), become an opaque tag keyed on the session secret, so notes by one person still group
+    without naming the account. Builds a copy; the stored note is untouched."""
     import hmac
     import session
-    out = dict(note)
-    for field in ("author", "resolved_by"):
-        who = out.get(field)
-        if who and str(who) != steam:
-            out[field] = "p" + hmac.new(session._key(), str(who).encode(), hashlib.sha256).hexdigest()[:12]
-    return out
+
+    def tag(who):
+        return "p" + hmac.new(session._key(), str(who).encode(), hashlib.sha256).hexdigest()[:12]
+
+    def walk(value):
+        if isinstance(value, list):
+            return [walk(v) for v in value]
+        if isinstance(value, dict):
+            return {k: tag(v) if k in ID_FIELDS and v and str(v) != steam else walk(v) for k, v in value.items()}
+        return value
+    return walk(note)
 
 
 class Refused(Exception):

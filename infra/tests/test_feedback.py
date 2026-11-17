@@ -336,6 +336,17 @@ class FeedbackTest(unittest.TestCase):
         self.assertEqual(own['author'], OTHER)
         self.assertNotIn(ADMIN, json.dumps(self.note({'action': 'plus', 'id': nid, 'on': True}, steam=OTHER)))
         self.assertEqual({n['author'] for n in self.call(query='scope=site')[1]['notes']}, {ADMIN, OTHER})
+        # Backlog, resolution and reopen history all name the admin; none of it reaches OTHER.
+        self.resolve(nid, resolved=True, outcome='declined', close_note='x')
+        self.resolve(nid, resolved=False)
+        self.resolve(nid, resolved=True, outcome='declined', close_note='y')
+        seen = json.dumps(self.call(query='id=' + nid, steam=OTHER)[1])
+        self.assertNotIn(ADMIN, seen)
+        self.assertEqual(self.call(query='id=' + nid)[1]['notes'][0]['history'][0]['reopened_by'], ADMIN)
+        parked = self.note({'comment': 'later', 'path': '/'})['id']
+        self.call({'action': 'backlog', 'id': parked, 'on': True})
+        self.assertEqual(self.call(query='id=' + parked)[1]['notes'][0]['backlog']['by'], ADMIN)
+        self.assertNotIn(ADMIN, json.dumps(self.call(query='id=' + parked, steam=OTHER)[1]))
 
     def test_reopen_keeps_the_resolution_in_history(self):
         nid = self.put(1)
