@@ -328,7 +328,7 @@ sequenceDiagram
 2. **Pick the folder.** The browser reads the `.run` files locally and drops runs your profile already has. It
    knows your profile from an earlier upload in this browser, or else from the ingest Lambda's answer. It gzips
    the rest as NDJSON (one run per line).
-3. **Get an upload URL.** The ingest Lambda checks the per-IP limit, checks the session cookie and that the request came from the site, and enforces a 60-second cooldown per
+3. **Get an upload URL.** The ingest Lambda checks the per-IP limit (on the address CloudFront saw, so a direct call can't fake it), checks the session cookie and that the request came from the site, and enforces a 60-second cooldown per
    Steam account. It answers with a presigned POST, good for 10 minutes, for one new `raw/` object of up to
    100 MB, plus the upload's id. It never sees your runs.
 4. **Send.** The browser POSTs the file straight to S3.
@@ -571,6 +571,8 @@ Set up once, outside CDK:
   (ignored by git), next to the address failed uploads are emailed to:
   `{"certificateArn": "arn:aws:acm:us-east-1:…", "hostedZoneId": "Z…", "alertEmail": "you@example.com"}`.
   After the first deploy with it, click the confirmation link AWS emails there;
+- `"originVerifySecret"` in the same file, a random 64-character hex string. CloudFront sends it to the
+  ingest Lambda, which only trusts the viewer address CloudFront reports when the secret matches;
 - the Steam Web API key: `aws ssm put-parameter --name /slay-my-stats/steam-api-key --type SecureString`;
 - the session key, a random 64-character hex string: `aws ssm put-parameter --name /slay-my-stats/session-key --type SecureString`;
 - `cdk bootstrap` for the account and region.

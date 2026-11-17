@@ -396,13 +396,23 @@ class AuthorizeTests(Uploads, unittest.TestCase):
         self.assertNotEqual(handler.ip_limit_key("2001:db8:1:2::1"), handler.ip_limit_key("2001:db8:1:3::1"))
         self.assertNotIn("203.0.113.7", handler.ip_limit_key("203.0.113.7"))
 
+    @patch.dict(os.environ, {"ORIGIN_VERIFY_SECRET": "s" * 40})
     def test_viewer_ip_comes_from_cloudfront(self):
-        event = {"headers": {"cloudfront-viewer-address": "198.51.100.4:51234"},
+        event = {"headers": {"cloudfront-viewer-address": "198.51.100.4:51234", "x-origin-verify": "s" * 40},
                  "requestContext": {"http": {"sourceIp": "192.0.2.1"}}}
         self.assertEqual(handler.viewer_ip(event), "198.51.100.4")
         event["headers"]["cloudfront-viewer-address"] = "2001:db8::7:443"
         self.assertEqual(handler.viewer_ip(event), "2001:db8::7")
         event["headers"]["cloudfront-viewer-address"] = "junk"
+        self.assertEqual(handler.viewer_ip(event), "192.0.2.1")
+
+    @patch.dict(os.environ, {"ORIGIN_VERIFY_SECRET": "s" * 40})
+    def test_viewer_ip_ignores_a_faked_address(self):
+        # A direct call to the Function URL: the made-up address doesn't count without the secret.
+        event = {"headers": {"cloudfront-viewer-address": "198.51.100.4:51234"},
+                 "requestContext": {"http": {"sourceIp": "192.0.2.1"}}}
+        self.assertEqual(handler.viewer_ip(event), "192.0.2.1")
+        event["headers"]["x-origin-verify"] = "wrong"
         self.assertEqual(handler.viewer_ip(event), "192.0.2.1")
 
 
@@ -1337,6 +1347,7 @@ class LambdaHandlerTests(unittest.TestCase):
         handler._store = None
         handler.time.time, handler.lookup_steam_name = self.saved
 
+    @patch.dict(os.environ, {"ORIGIN_VERIFY_SECRET": "s" * 40})
     def test_event_plumbing(self):
         import session
         cookie = session.session_cookie(STEAM_ID).split(";", 1)[0]
@@ -1344,7 +1355,8 @@ class LambdaHandlerTests(unittest.TestCase):
             "rawPath": "/auth/upload",
             "requestContext": {"http": {"method": "POST", "sourceIp": "192.0.2.9"}},
             "headers": {"User-Agent": "TestBrowser/1", "Referer": "https://example.test/upload",
-                        "origin": "https://slay-my-stats.com", "cloudfront-viewer-address": "203.0.113.7:50000"},
+                        "origin": "https://slay-my-stats.com", "cloudfront-viewer-address": "203.0.113.7:50000",
+                        "x-origin-verify": "s" * 40},
             "cookies": [cookie],
         }
         resp = handler.lambda_handler(event, None)
