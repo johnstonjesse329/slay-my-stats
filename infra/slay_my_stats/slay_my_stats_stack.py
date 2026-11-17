@@ -232,6 +232,11 @@ class SlayMyStatsStack(Stack):
         session_key = required_context("gammaSessionSecret") if gamma else ""
         if gamma and not (isinstance(session_key, str) and len(session_key) >= 64):
             raise ValueError('"gammaSessionSecret" must be a random secret of at least 64 characters.')
+        # CloudFront sends this on every request to the ingest Function URL, so the handler can tell
+        # its CloudFront-Viewer-Address from one a direct caller made up (the per-address upload limit).
+        origin_secret = required_context("originVerifySecret")
+        if not (isinstance(origin_secret, str) and len(origin_secret) >= 32):
+            raise ValueError('"originVerifySecret" must be a random secret of at least 32 characters.')
         # Only the owner resolves, reopens or backlogs feedback; other reviewers write and +1.
         owner_id = required_context("ownerSteamId")
         if not (isinstance(owner_id, str) and len(owner_id) == 17 and owner_id.isascii() and owner_id.isdigit()):
@@ -423,6 +428,7 @@ class SlayMyStatsStack(Stack):
                 "ENTRY": "site",
                 # Sign-ins return here, and POSTs must come from here.
                 "SITE_ORIGIN": f"https://{domain_name}",
+                "ORIGIN_VERIFY_SECRET": origin_secret,
                 # The Function URL is reachable directly, past CloudFront's
                 # gate, so the handler checks the signed-in account itself.
                 **({"ALLOWED_STEAM_IDS": ",".join(allowed_ids), "GAMMA_SESSION_SECRET": session_key,
@@ -668,10 +674,12 @@ class SlayMyStatsStack(Stack):
         fn_url = ingest_fn.add_function_url(auth_type=lambda_.FunctionUrlAuthType.NONE)
         # CloudFront-Viewer-Address (the rate limit's address) is among the viewer headers this
         # policy forwards; the Host header isn't, since the Function URL answers only its own.
+        # x-origin-verify vouches for that address (see viewer_ip in the handler).
         # Behaviors match in the order they're added, so gamma's auth/upload goes before auth/*.
         def auth_behavior(path, url):
             distribution.add_behavior(
-                path, origins.HttpOrigin(Fn.select(2, Fn.split("/", url))),
+                path, origins.HttpOrigin(Fn.select(2, Fn.split("/", url)),
+                                         custom_headers={"x-origin-verify": origin_secret}),
                 allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,

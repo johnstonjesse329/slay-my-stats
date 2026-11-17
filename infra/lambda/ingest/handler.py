@@ -79,6 +79,7 @@ local_data/.
 import base64
 import gzip
 import hashlib
+import hmac
 import ipaddress
 import json
 import math
@@ -1779,9 +1780,14 @@ def record_upload(store, event: dict, result: dict, via: str, now: float | None 
 
 def viewer_ip(event: dict) -> str:
     """The browser's address. Through CloudFront the caller is an edge server, so it is
-    CloudFront's own CloudFront-Viewer-Address header ("ip:port"); a direct call to the Function URL
-    could fake that header, but only to dodge the per-address limit, never a session."""
-    address = (event.get("headers") or {}).get("cloudfront-viewer-address", "")
+    CloudFront's own CloudFront-Viewer-Address header ("ip:port"). A direct call to the Function URL
+    could fake that header to dodge the per-address limit, so it counts only alongside the secret
+    x-origin-verify header that CloudFront adds on the way in; without it, the caller's own address."""
+    headers = event.get("headers") or {}
+    expected = os.environ.get("ORIGIN_VERIFY_SECRET", "")
+    via_cloudfront = bool(expected) and hmac.compare_digest(
+        headers.get("x-origin-verify", "").encode(), expected.encode())
+    address = headers.get("cloudfront-viewer-address", "") if via_cloudfront else ""
     try:
         return str(ipaddress.ip_address(address.rsplit(":", 1)[0]))
     except ValueError:
