@@ -41,7 +41,7 @@ INDEXES = {"base": "sk", "ByState": "st", "ByStateCategory": "stcat", "ByCategor
 def _outcome(data):
     """The validated close fields of a resolve request; ValueError when they do not fit.
 
-    done needs a commit and a close note, declined needs a close note saying why, and
+    done needs a close note (the commit is optional), declined needs a close note saying why, and
     duplicate needs the id of the note it repeats. Every user can read these, so an
     unexplained decline is refused here rather than left to the person closing it.
     """
@@ -50,15 +50,17 @@ def _outcome(data):
     commit = str(data.get("resolved_in", "")).strip().lower()
     duplicate_of = data.get("duplicate_of", "")
     if (outcome not in OUTCOMES or not isinstance(close_note, str) or len(close_note.strip()) > 2000
-            or (commit and not COMMIT.fullmatch(commit)) or not isinstance(duplicate_of, str)):
+            or not isinstance(duplicate_of, str)):
         raise ValueError()
     close_note = close_note.strip()
-    if outcome == "done" and not (commit and close_note):
-        raise ValueError()
+    if commit and not COMMIT.fullmatch(commit):
+        raise Refused(400, "The commit should be a git hash (7 to 40 characters, 0-9 and a-f).")
+    if outcome == "done" and not close_note:
+        raise Refused(400, "Done needs a note on what changed.")
     if outcome == "declined" and not close_note:
-        raise ValueError()
+        raise Refused(400, "Declined needs a note saying why.")
     if outcome == "duplicate" and not NOTE_ID.fullmatch(duplicate_of):
-        raise ValueError()
+        raise Refused(400, "Duplicate needs the id of the note it repeats.")
     return {"outcome": outcome, "close_note": close_note, "resolved_in": commit if outcome == "done" else "",
             "duplicate_of": duplicate_of if outcome == "duplicate" else ""}
 
@@ -481,12 +483,13 @@ def _get_view(db, table, readable, env, steam, event):
 
 
 def _post(db, table, env, steam, admin, origin, event):
+    action = "create"
     try:
         raw = event.get("body") or ""
         if len(raw) > 40000:
             raise ValueError()
         data = json.loads(base64.b64decode(raw) if event.get("isBase64Encoded") else raw)
-        action = data.get("action", "create")
+        action = data.get("action", "create") if isinstance(data, dict) else "create"
         if action not in ("create", "plus", "resolve", "backlog"):
             raise ValueError()
         if action != "create":
@@ -510,7 +513,9 @@ def _post(db, table, env, steam, admin, origin, event):
         elif action == "create":
             note = _new_note(data, steam, origin)
     except (ValueError, TypeError, AttributeError):
-        raise Refused(400, "Invalid feedback. Use a comment of 1–4000 characters.")
+        if action == "create":
+            raise Refused(400, "Invalid feedback. Use a comment of 1–4000 characters.")
+        raise Refused(400, "That change could not be saved. Refresh and try again.")
     _throttle(db, table, env, steam, action == "create")
     if action == "create":
         _create(db, table, env, steam, note)

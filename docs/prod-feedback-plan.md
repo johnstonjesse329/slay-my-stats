@@ -27,7 +27,7 @@ Prod is public; gamma is a private preview for specific people. Feedback follows
 ## Roles
 
 - **Any signed-in player**: submit a note, read the inbox, +1 a note.
-- **Admin** (the owner; the allowlisted Steam IDs): resolve, reopen and backlog. Enforced in the
+- **Admin** (the owner only, `ownerSteamId`): resolve, reopen and backlog. Enforced in the
   Lambda (403 for anyone else), not only by hiding buttons.
 
 ## Storage: one DynamoDB table
@@ -54,7 +54,7 @@ Gamma moved from S3 to the table on 2026-11-16 (see "Moving gamma over" below).
 
 Prod has no endpoint that can close a note. `tools/feedback_admin.py`, run with the
 owner's AWS credentials, lists open notes and resolves or reopens one. The inbox reads
-the table, so a change shows at once. The script fills the commit from
+the table, so a change shows at once. When there is a commit, the script fills it from
 `git rev-parse HEAD` and uses a conditional update (the note must still be in the state
 the script read) so it cannot overwrite a concurrent change. Gamma keeps its web Resolve
 while the workflow is tried there.
@@ -65,7 +65,7 @@ A resolved note carries an `outcome`:
 
 | outcome | needs | meaning |
 | --- | --- | --- |
-| `done` | commit (linked to GitHub, the repo is public) and a close note | we built or fixed it |
+| `done` | a close note; a commit when there is one (linked to GitHub, the repo is public) | we built or fixed it |
 | `declined` | close note saying why | we decided not to |
 | `duplicate` | the id of the other note | already reported |
 
@@ -168,7 +168,7 @@ follow.
   (60 writes an hour, of which at most 10 new notes); over it, 429 and nothing else is
   written. A TTL field deletes the counter after a day. Before this, gamma had no rate limit,
   only the 50-voter cap on a note.
-- Only admins (`ADMIN_STEAM_IDS`; on gamma, the allowlist) resolve, reopen or backlog:
+- Only admins (`ADMIN_STEAM_IDS`, set from `ownerSteamId`) resolve, reopen or backlog:
   403 otherwise. Nobody resolves a `prod` note from gamma (gamma's role can only read them).
 
 ### Reads

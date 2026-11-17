@@ -582,6 +582,7 @@ stack isn't built at all.
 Gamma requires Steam sign-in. Only SteamID64 strings listed in `"gammaAllowedSteamIds"` in
 `infra/cdk.context.json` can enter, for example `["76561198000000001"]`. Set `"gammaSessionSecret"`
 to a cryptographically random secret (at least 64 characters; `python -c "import secrets; print(secrets.token_hex(32))"`).
+Set `"ownerSteamId"` to your own id from that list: only it can resolve, reopen or backlog feedback notes.
 Keep this ignored configuration and generated CDK templates private: the signing key is deployed in the
 CloudFront function and login Lambda. Rotating it invalidates existing sessions.
 

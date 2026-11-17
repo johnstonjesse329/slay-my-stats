@@ -14,7 +14,7 @@ Each entry carries triage fields to fill in:
     group      theme the note belongs to ("mobile charts", "fool missing", ...)
     plan       one line on what the fix is
     status     new -> planned -> built -> approved   (or declined / duplicate)
-    commit     the commit that shipped it (outcome done)
+    commit     the commit that shipped it (outcome done, optional)
     close_note what changed, or why not -- visible to every gamma reviewer
     duplicate_of  id of the note it repeats (outcome duplicate)
 
@@ -118,12 +118,13 @@ def resolve(apply):
                   "duplicate_of": e["duplicate_of"]}
         try:
             fields = feedback._outcome(fields)
-        except ValueError:
-            print(f"{tag(e)} skipped: {outcome} needs " + {
-                "done": "a commit and a close note", "declined": "a close note",
-                "duplicate": "duplicate_of set to a note id"}[outcome])
+        except feedback.Refused as refused:
+            print(f"{tag(e)} skipped: {refused.message}")
             continue
-        if outcome == "done" and not _commit_exists(fields["resolved_in"]):
+        except ValueError:
+            print(f"{tag(e)} skipped: invalid close fields")
+            continue
+        if fields["resolved_in"] and not _commit_exists(fields["resolved_in"]):
             print(f"{tag(e)} skipped: commit {fields['resolved_in']} is not in this repo")
             continue
         if fields["duplicate_of"] and fields["duplicate_of"] not in ids:

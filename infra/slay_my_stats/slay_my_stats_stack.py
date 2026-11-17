@@ -227,6 +227,10 @@ class SlayMyStatsStack(Stack):
         session_key = required_context("gammaSessionSecret") if gamma else ""
         if gamma and not (isinstance(session_key, str) and len(session_key) >= 64):
             raise ValueError('"gammaSessionSecret" must be a random secret of at least 64 characters.')
+        # Only the owner resolves, reopens or backlogs feedback; other reviewers write and +1.
+        owner_id = required_context("ownerSteamId") if gamma else ""
+        if gamma and owner_id not in allowed_ids:
+            raise ValueError('"ownerSteamId" must be one of "gammaAllowedSteamIds".')
 
         # users/<slug>.json.gz and users/<slug>/<YYYY-MM>.json.gz: each
         # player's profile summary and runs by month, plus the public
@@ -630,12 +634,12 @@ class SlayMyStatsStack(Stack):
                     "GAMMA_ORIGIN": f"https://{domain_name}",
                     "DATA_BUCKET": data_bucket.bucket_name,
                     "STEAM_API_KEY_PARAM_NAME": STEAM_API_KEY_PARAM_NAME,
-                    # Feedback: gamma writes gamma notes and reads prod's too; on gamma every
-                    # allowlisted reviewer is an admin.
+                    # Feedback: gamma writes gamma notes and reads prod's too; only the
+                    # owner is an admin.
                     "FEEDBACK_TABLE": FEEDBACK_TABLE,
                     "FEEDBACK_ENV": "gamma",
                     "FEEDBACK_READ_ENVS": "gamma,prod",
-                    "ADMIN_STEAM_IDS": ",".join(allowed_ids),
+                    "ADMIN_STEAM_IDS": owner_id,
                 },
             )
             auth_url = auth_fn.add_function_url(auth_type=lambda_.FunctionUrlAuthType.NONE)

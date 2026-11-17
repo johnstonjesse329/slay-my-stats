@@ -297,6 +297,24 @@ class FeedbackTest(unittest.TestCase):
         self.assertEqual(self.ids('scope=site&status=open'), [])
         self.assertEqual(self.ids('scope=site&status=resolved&category=bug'), [nid])
 
+    def test_a_refused_resolve_says_what_is_missing(self):
+        nid = self.put(1)
+        cases = [
+            ({'outcome': 'done', 'resolved_in': 'abc1234'}, 'Done needs a note on what changed.'),
+            ({'outcome': 'done', 'close_note': 'x', 'resolved_in': 'not-a-hash'}, 'The commit should be a git hash'),
+            ({'outcome': 'declined'}, 'Declined needs a note saying why.'),
+            ({'outcome': 'duplicate', 'duplicate_of': 'FB-3'}, 'Duplicate needs the id of the note it repeats.'),
+            ({'outcome': 'shrug'}, 'That change could not be saved.'),
+        ]
+        for fields, message in cases:
+            status, data = self.call({'action': 'resolve', 'id': nid, 'resolved': True, **fields})
+            self.assertEqual(status, 400, fields)
+            self.assertTrue(data['message'].startswith(message), (fields, data['message']))
+        self.assertIn('1–4000', self.call({'comment': ''})[1]['message'])
+        self.assertEqual(self.ids('scope=site&status=open'), [nid])
+        status, note = self.resolve(nid, resolved=True, outcome='done', close_note='Works now.')
+        self.assertEqual((status, note['outcome'], note['resolved_in']), (200, 'done', ''))
+
     def test_only_admins_resolve_or_backlog(self):
         nid = self.put(1)
         self.assertEqual(self.resolve(nid, steam=OTHER, resolved=True, outcome='declined', close_note='x')[0], 403)
@@ -345,7 +363,7 @@ class FeedbackTest(unittest.TestCase):
         for fields in ({'outcome': 'done', 'close_note': 'x', 'resolved_in': 'not a commit'},
                        {'outcome': 'declined', 'close_note': 'x' * 2001}, {'outcome': 'declined', 'close_note': 5},
                        {}, {'outcome': 'wontfix', 'close_note': 'x'},
-                       {'outcome': 'done', 'close_note': 'x'}, {'outcome': 'done', 'resolved_in': 'abc1234'},
+                       {'outcome': 'done', 'resolved_in': 'abc1234'},  # done without a commit is fine
                        {'outcome': 'declined'}, {'outcome': 'declined', 'close_note': '  '},
                        {'outcome': 'duplicate'}, {'outcome': 'duplicate', 'duplicate_of': '../secret'}):
             self.assertEqual(self.resolve(nid, resolved=True, **fields)[0], 400, fields)

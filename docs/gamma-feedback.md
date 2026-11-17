@@ -53,9 +53,10 @@ panel's X or Escape.
   (`backlog`: who, when, why). It leaves the Open list and the Feedback button's count, shows
   under the Backlog filter and as its own number in the digests, and **Move to open**
   takes it back. Resolving a note clears it.
-- **Resolve / Reopen** tracks review. All allowed gamma reviewers can do this.
-  Resolving picks an **outcome**: *Done* needs a commit and a close note about what
-  changed, *Declined* needs a close note saying why, *Duplicate* needs the id of the
+- **Resolve / Reopen** tracks review. Only the owner (`ownerSteamId`) can do this, and Backlog too; other
+  reviewers don't see the buttons and the Lambda answers 403.
+  Resolving picks an **outcome**: *Done* needs a close note about what changed (a commit is
+  optional and links to GitHub), *Declined* needs a close note saying why, *Duplicate* needs the id of the
   other note. The note records who resolved it, when, the outcome, the close note and
   the commit, and the Lambda refuses a resolve missing what its outcome needs. Resolved
   notes leave the Open list and show under Resolved with their outcome. Reopening keeps
