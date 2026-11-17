@@ -2117,6 +2117,14 @@ h1 {
   .synergy-item-relic { flex-direction: column; justify-content: center; text-align: center; padding: 6px; }
   .synergy-item-relic img { width: 48px; height: 48px; object-fit: contain; }
 }
+@media (max-width: 600px) {
+  .synergy-items { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .synergy-relic { width: min(100%, 180px); }
+  .synergy-relic .rt-art { height: 48px; }
+}
+@media (min-width: 601px) and (max-width: 899px) {
+  .synergy-relic .rt-art { height: 56px; }
+}
 @media (min-width: 900px) {
   .synergy-flow { grid-template-columns: minmax(0, 1fr) 24px minmax(0, calc(var(--synergy-card-width) * 3 + 26px)); }
   .synergy-flow > div:last-child .synergy-items { display: grid; grid-template-columns: repeat(3, minmax(0, var(--synergy-card-width))); }
