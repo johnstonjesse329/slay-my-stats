@@ -10,6 +10,7 @@ from aws_cdk import (
     aws_cloudwatch_actions as cloudwatch_actions,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
+    aws_dynamodb as dynamodb,
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_lambda_destinations as lambda_destinations,
@@ -611,7 +612,20 @@ class SlayMyStatsStack(Stack):
         # nothing new is recorded. Prod only: gamma's uploads are testing.
         # Below them, the new feedback on prod and on gamma (Mondays: the open,
         # incoming and resolved counts), so feedback never sends an email of its own.
+        # It also keeps the day's adoption numbers (players, by site and mod): a row
+        # in the adoption table, kept for good, and the same as metrics for the dashboard.
         if not gamma:
+            # One small row a day. Provisioned at 1/1, inside DynamoDB's always-free 25,
+            # and kept if the stack is ever deleted.
+            adoption_table = dynamodb.Table(
+                self, "AdoptionTable",
+                table_name="slay-my-stats-adoption",
+                partition_key=dynamodb.Attribute(name="day", type=dynamodb.AttributeType.STRING),
+                billing_mode=dynamodb.BillingMode.PROVISIONED,
+                read_capacity=1, write_capacity=1,
+                deletion_protection=True,
+                removal_policy=RemovalPolicy.RETAIN,
+            )
             digest_log_group = logs.LogGroup(
                 self, "DigestLogGroup",
                 retention=logs.RetentionDays.ONE_MONTH,
@@ -627,8 +641,14 @@ class SlayMyStatsStack(Stack):
                 log_group=digest_log_group,
                 environment={"DATA_BUCKET": data_bucket.bucket_name, "SITE_DOMAIN": domain_name,
                              "ALERT_TOPIC_ARN": alert_topic.topic_arn, "FEEDBACK_TABLE": FEEDBACK_TABLE,
-                             "FEEDBACK_DIGEST_SITES": f"prod=https://{DOMAIN_NAME},gamma=https://gamma.{DOMAIN_NAME}"},
+                             "FEEDBACK_DIGEST_SITES": f"prod=https://{DOMAIN_NAME},gamma=https://gamma.{DOMAIN_NAME}",
+                             "ADOPTION_TABLE": adoption_table.table_name},
             )
+            adoption_table.grant(digest_fn, "dynamodb:PutItem")
+            digest_fn.add_to_role_policy(iam.PolicyStatement(
+                actions=["cloudwatch:PutMetricData"], resources=["*"],  # it takes no resource
+                conditions={"StringEquals": {"cloudwatch:namespace": name_prefix}},
+            ))
             feedback_access(self, digest_fn.role, read=("prod", "gamma"))
             data_bucket.grant_read(digest_fn, "users/*")
             data_bucket.grant_read(digest_fn, "analytics/*")

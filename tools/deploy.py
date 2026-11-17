@@ -55,6 +55,12 @@ no push touches it. Deploy it by hand, with its diff and a y/N, only when that f
 That records the commit in `slay-my-stats-feedback-ok` in the git directory. A push stops while the
 file differs from what was last deployed, so a stage never ships code for a table that isn't there.
 
+The alarms on prod's CloudFront metrics (infra/slay_my_stats/edge_alarms_stack.py) are a stack in
+us-east-1, where CloudFront's metrics are. No push touches it either; deploy it by hand, with its
+diff and a y/N, when that file changes:
+
+    infra\\.venv\\Scripts\\python.exe tools/deploy.py --edge-alarms
+
 Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 `git push --no-verify`.
 """
@@ -85,6 +91,8 @@ STAGES = {
 # The shared feedback table's stack and the one file that defines it.
 FEEDBACK_STACK = "SlayMyStatsFeedbackStack"
 FEEDBACK_STACK_FILE = "infra/slay_my_stats/feedback_stack.py"
+# The us-east-1 alarms on prod's CloudFront metrics.
+EDGE_ALARMS_STACK = "SlayMyStatsEdgeAlarmsStack"
 DATA_BUCKETS = {"prod": "slay-my-stats-data", "gamma": "slay-my-stats-gamma-data"}
 # Pushing one of these branches deploys its stage (see check_pre_push).
 DEPLOY_BRANCHES = {"main": "prod", "gamma": "gamma"}
@@ -467,6 +475,23 @@ def deploy_feedback_table() -> None:
     print("Feedback table: deployed; recorded.")
 
 
+def deploy_edge_alarms() -> None:
+    """Deploy the CloudFront alarms' stack: its diff, then a y/N (DEPLOY_YES=edge skips it). Nothing
+    gates a push on it: the alarms watch the site, the site never calls them."""
+    env = _cdk_env()
+    print("Edge alarms: comparing their stack with AWS (cdk diff)...", flush=True)
+    output = run(["cdk", "diff", EDGE_ALARMS_STACK], cwd=_INFRA, env=env, stream=True).stdout
+    if "There were no differences" in output:
+        print("Edge alarms: no changes.")
+        return
+    if os.environ.get("DEPLOY_YES") == "edge":
+        print("Edge alarms: deploying these changes (DEPLOY_YES=edge).")
+    elif not ask("Deploy these edge alarm changes?"):
+        raise DeployError("edge alarms deploy declined")
+    run(["cdk", "deploy", EDGE_ALARMS_STACK, "--exclusively", "--require-approval", "never"], cwd=_INFRA, env=env)
+    print("Edge alarms: deployed. A first deploy emails a subscription link; confirm it.")
+
+
 def require_feedback_table() -> None:
     """Stop a push while the feedback stack's file differs from its last --feedback-table deploy."""
     f = _feedback_ok_file()
@@ -546,6 +571,9 @@ def main() -> int:
     try:
         if "--feedback-table" in sys.argv:
             deploy_feedback_table()
+            return 0
+        if "--edge-alarms" in sys.argv:
+            deploy_edge_alarms()
             return 0
         if pre_push:
             stage = check_pre_push(sys.stdin.read().splitlines())

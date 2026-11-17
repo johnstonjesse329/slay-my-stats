@@ -15,7 +15,8 @@ resource to the stack and this fails until it is drawn and listed here.
 import html, pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STACKS = [ROOT / "infra" / "slay_my_stats" / name for name in ("slay_my_stats_stack.py", "feedback_stack.py")]
+STACKS = [ROOT / "infra" / "slay_my_stats" / name for name in ("slay_my_stats_stack.py", "feedback_stack.py",
+                                                                     "edge_alarms_stack.py")]
 DIAGRAM = ROOT / "docs" / "slay-my-stats-architecture.drawio"
 README = ROOT / "README.md"
 
@@ -36,6 +37,8 @@ DRAWN = {
     "SteamApiKeyParam": "Parameter Store",
     "SessionKeyParam": "Parameter Store",
     "FeedbackTable": "DynamoDB",
+    "AdoptionTable": "adoption",
+    "EdgeAlertTopic": "Amazon SNS",
     "IngestLogGroup": "CloudWatch",
     "ModIngestLogGroup": "CloudWatch",
     "ProcessLogGroup": "CloudWatch",
