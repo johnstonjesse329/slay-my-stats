@@ -442,7 +442,7 @@ function renderAscTracker() {
       runs.forEach(run => { const reading = run.mode === "dread" ? null : runReadingOf(run); counts[!reading ? "Unrated" : reading.op ? "OP" : KEEP_WORDS[reading.verdict]]++; });
       const desc = Object.entries(counts).map(([name, n]) => `${name}: ${n}`).join(", ");
       const bars = Object.entries(counts).map(([name, n]) => n ? `<span class="asc-reading-bar-${name.toLowerCase()}" style="width:${n / runs.length * 100}%" data-tip="${name}: ${n} of ${runs.length}"></span>` : "").join("");
-      return `<div class="asc-readings-row"><div class="asc-readings-char"></div><div class="asc-readings-bar" role="img" aria-label="${desc}">${bars}</div><span>${runs.length} runs</span></div>`;
+      return `<div class="asc-readings-row"><div class="asc-readings-char"></div><div class="asc-readings-bar" role="img" aria-label="${desc}">${bars}</div><span>${runCount(runs.length)}</span></div>`;
     }).join("");
     chart.querySelectorAll(".asc-readings-char").forEach((node, i) => { node.innerHTML = charLabelHtml(DATA.characters[i]); });
   }, 0);

@@ -454,6 +454,12 @@ h1 {
 .asc-reading-bar-hype { background: var(--win); } .asc-reading-bar-op { background: #69b9d4; }
 .asc-reading-bar-unrated { background: #747382; }
 .asc-readings-grid-layout > .chart-box:last-child { grid-column: 1 / -1; }
+@media (max-width: 700px) {
+  .asc-readings-legend { grid-template-columns: minmax(0, 1fr); }
+  .asc-readings-legend-items { grid-column: 1; justify-content: flex-start; gap: 0.3rem 0.9rem; }
+  .asc-readings-row { grid-template-columns: minmax(0, 1fr) auto; gap: 0.25rem 0.75rem; }
+  .asc-readings-bar { grid-column: 1 / -1; grid-row: 2; }
+}
 /* Title and caption left, three headline numbers right. */
 .asc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem 2rem; flex-wrap: wrap; }
 .asc-stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; margin-bottom: 0.9rem; }
