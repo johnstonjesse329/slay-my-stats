@@ -13,7 +13,7 @@ How a pile of gamma feedback notes becomes verified, evidenced, closed notes.
 
 ## Steps
 
-1. `python tools/feedback_batch.py pull`, then group (`group`, `plan` per entry in
+1. `python tools/feedback_batch.py pull` (entries carry the note's stable `FB-n` id and are labelled with it; backlog notes are not pulled), then group (`group`, `plan` per entry in
    `local_data/feedback/batch.json`).
 2. Per group, hand the worker a brief with: the entries (`n`, comment, url, selector,
    viewport), the files in scope, the rules in `CLAUDE.md`, and the expected output.

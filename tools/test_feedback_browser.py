@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 from urllib.parse import parse_qsl, quote as urlquote, urlsplit
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = Path(os.environ.get('FEEDBACK_TEST_DIST') or ROOT / 'dist')  # a copy of dist/ can stand in
@@ -86,6 +86,29 @@ def check_find_and_plus(page, name):
                            ".querySelector('.plus').textContent === '+1'")
 
 
+def check_backlog(page):
+    """Backlog keeps a note open but out of the open count; it has its own filter and goes back with one click."""
+    page.get_by_label('Status').select_option('open')
+    wait_summary(page, '2 notes · 2 open · 1 place')
+    if page.get_by_role('button', name='Expand all').count():
+        page.get_by_role('button', name='Expand all').click()
+    before = page.locator('article').count()
+    article = page.locator('article').first
+    article.get_by_role('button', name='Backlog', exact=True).click()
+    page.get_by_label('Why later').fill('after the map work')
+    page.get_by_role('button', name='Move to backlog').click()
+    expect(page.locator('article')).to_have_count(before - 1)
+    page.get_by_label('Status').select_option('backlog')
+    expect(page.locator('article')).to_have_count(1)
+    if page.get_by_role('button', name='Expand all').count():
+        page.get_by_role('button', name='Expand all').click()
+    expect(page.locator('article').first).to_contain_text('after the map work')
+    assert page.locator('.pill.backlog').count() == 1
+    page.locator('article').first.get_by_role('button', name='Move to open').click()
+    expect(page.locator('article')).to_have_count(0)
+    page.get_by_label('Status').select_option('open')
+
+
 def main():
     with sync_playwright() as pw:
         for name, engine, options in [('desktop', pw.chromium, {'viewport': {'width': 1920, 'height': 1080}}),
@@ -106,6 +129,12 @@ def main():
                         if body.get('action') == 'plus':
                             note = next(item for item in notes if item['id'] == body['id'])
                             note['plus'] = ([p for p in note.get('plus', []) if p != 'test'] + (['test'] if body['on'] else []))
+                        elif body.get('action') == 'backlog':
+                            note = next(item for item in notes if item['id'] == body['id'])
+                            if body['on']:
+                                note['backlog'] = {'by': 'test', 'at': 1800000200, 'reason': body.get('reason', '')}
+                            else:
+                                note.pop('backlog', None)
                         elif body.get('action') == 'resolve':
                             note = next(item for item in notes if item['id'] == body['id'])
                             note['resolved'] = body['resolved']
@@ -115,14 +144,14 @@ def main():
                                             resolved_in=body.get('resolved_in'))
                         else:
                             note = {**body, 'id': 'feedback/' + str(1800000000 + len(notes)) + '-' + 'a' * 32 + '.json',
-                                    'created': 1800000000 + len(notes), 'author': 'test', 'resolved': False}
+                                    'created': 1800000000 + len(notes), 'author': 'test', 'resolved': False, 'seq': 100 + len(notes)}
                             notes.append(note)
                         request.fulfill(json={'note': note, 'me': 'test'})
                     else:
                         params = dict(parse_qsl(url.query))
                         shown = [item for item in notes
                                  if (params.get('scope') != 'page' or item['path'] == params.get('path'))
-                                 and params.get('status', 'all') in ('all', 'resolved' if item['resolved'] else 'open')
+                                 and params.get('status', 'all') in ('all', 'resolved' if item['resolved'] else 'backlog' if item.get('backlog') else 'open')
                                  and params.get('category', item.get('category')) == item.get('category')]
                         request.fulfill(json={'notes': shown, 'next': None, 'scope': params.get('scope', 'site'), 'me': 'test'})
                     return
@@ -177,6 +206,27 @@ def main():
             wait_summary(page, '1 note · 1 open · 1 place')
             assert page.locator('.bucket').count() == 1
             assert 'Whole page' in page.locator('.bucket summary').first.inner_text()
+            # Groups start collapsed, showing the newest comment; one button opens or closes them all.
+            assert page.locator('.bucket[open]').count() == 0
+            assert 'Make this clearer' in page.locator('.bucket-snippet').first.inner_text()
+            assert page.locator('#toggle-all').inner_text() == 'Expand all'
+            page.locator('#toggle-all').click()
+            assert page.locator('.bucket[open]').count() == 1
+            expect(page.locator('#toggle-all')).to_have_text('Collapse all')
+            # The inbox follows the site's tabs: a note filed on another page shows when you move there.
+            page.evaluate("location.hash = '#elsewhere'")
+            wait_summary(page, '0 notes · 0 open · 0 places')
+            page.evaluate("history.back()")
+            wait_summary(page, '1 note · 1 open · 1 place')
+            page.locator('#toggle-all').click() if page.locator('.bucket[open]').count() == 0 else None
+            # The left-edge grip widens the panel toward the left.
+            before = page.locator('#panel').bounding_box()
+            grip = page.locator('#grip').bounding_box()
+            if name == 'desktop':
+                page.mouse.move(grip['x'] + 6, grip['y'] + grip['height'] / 2)
+                page.mouse.down(); page.mouse.move(grip['x'] - 120, grip['y'] + grip['height'] / 2, steps=5); page.mouse.up()
+                after = page.locator('#panel').bounding_box()
+                assert after['width'] > before['width'] + 80 and abs((after['x'] + after['width']) - (before['x'] + before['width'])) < 2, (before, after)
             assert page.locator('.note-url').first.inner_text() == 'https://gamma.slay-my-stats.com/'
             # One note listed: its own Copy, and a copy-all that says how many it takes.
             assert page.get_by_role('button', name='Copy details', exact=True).count() == 1
@@ -254,14 +304,16 @@ def main():
             assert bounds['y'] + bounds['height'] <= page.evaluate('innerHeight')
             check_note_layout(page, notes, name)
             check_find_and_plus(page, name)
+            check_backlog(page)
             output = ROOT / '.playwright-mcp' / f'feedback-{name}.png'
             output.parent.mkdir(exist_ok=True)
             page.screenshot(path=str(output))
-            # Opening an existing note from its link must not copy its text into the entry.
+            # Open location lands on the inbox with that note's group opened and the note marked,
+            # not on a blank new note.
             page.goto('https://gamma.slay-my-stats.com/?feedback=' + urlquote(notes[0]['id'], safe=''))
-            page.get_by_text('Reviewing:', exact=False).wait_for()
-            assert page.get_by_label('What should change?').input_value() == ''
-            assert page.get_by_role('radio', name='Bug', exact=True).get_attribute('aria-checked') == 'false'
+            assert page.get_by_role('tab', name='Inbox', exact=True).get_attribute('aria-selected') == 'true'
+            expect(page.locator('article.focused')).to_have_count(1)
+            assert page.locator('.bucket[open]').count() == 1
             assert not errors, errors
             print(f'{name}: passed; {output}')
             browser.close()

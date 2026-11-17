@@ -24,6 +24,7 @@ class FeedbackTest(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
         self.store = Mock()
+        self.store.list_objects_v2.return_value = {'Contents': []}
         self.client = patch('boto3.client', return_value=self.store)
         self.client.start()
         self.addCleanup(self.client.stop)
@@ -212,6 +213,40 @@ class FeedbackTest(unittest.TestCase):
         self.assertEqual([(n['resolved'], n['category']) for n in both], [(False, 'feature')] * len(both))
         self.assertEqual(feedback.handle(self.event(query='scope=site&status=nope'))['statusCode'], 400)
         self.assertEqual(feedback.handle(self.event(query='scope=site&category=nope'))['statusCode'], 400)
+
+    def test_notes_get_stable_sequence_numbers(self):
+        old = [{'id': f'feedback/{9999999999 - i:010d}-{i:032x}.json', 'created': 100 + i, 'path': '/a'} for i in range(3)]
+        old[0]['seq'] = 7
+        docs = {n['id']: dict(n) for n in old}
+        self.store.list_objects_v2.side_effect = lambda **kw: {'Contents': [{'Key': k} for k in sorted(docs)], 'IsTruncated': False}
+        self.store.get_object.side_effect = lambda **kw: {'Body': io.BytesIO(json.dumps(docs[kw['Key']]).encode())}
+        def put(**kw):
+            docs[kw['Key']] = json.loads(kw['Body'])
+        self.store.put_object.side_effect = put
+        numbered = feedback._number_all(self.store, 'test')
+        self.assertEqual([n['seq'] for n in numbered], [7, 8, 9])
+        created = json.loads(feedback.handle(self.event({'comment': 'new', 'path': '/a'}))['body'])['note']
+        self.assertEqual(created['seq'], 10)
+
+    def test_backlog_is_an_open_state_with_its_own_filter(self):
+        key = f'feedback/{9999999998:010d}-{1:032x}.json'
+        doc = {'id': key, 'seq': 1, 'path': '/a', 'target': {'kind': 'page'}, 'resolved': False}
+        self.store.get_object.side_effect = lambda **kw: {'Body': io.BytesIO(json.dumps(doc).encode())}
+        self.store.list_objects_v2.return_value = {'Contents': [{'Key': key}], 'IsTruncated': False}
+        sent = feedback.handle(self.event({'action': 'backlog', 'id': key, 'on': True, 'reason': 'after the map work'}))
+        note = json.loads(sent['body'])['note']
+        self.assertEqual(note['backlog']['reason'], 'after the map work')
+        doc.update(note)
+        def ask(status):
+            return json.loads(feedback.handle(self.event(query='scope=site&status=' + status))['body'])['notes']
+        self.assertEqual((len(ask('open')), len(ask('backlog'))), (0, 1))
+        feedback.handle(self.event({'action': 'backlog', 'id': key, 'on': False}))
+        self.assertNotIn('backlog', json.loads(self.store.put_object.call_args.kwargs['Body']))
+        long = feedback.handle(self.event({'action': 'backlog', 'id': key, 'on': True, 'reason': 'x' * 501}))
+        self.assertEqual(long['statusCode'], 400)
+        doc.update(note)
+        feedback.handle(self.event({'action': 'resolve', 'id': key, 'resolved': True, 'outcome': 'declined', 'close_note': 'no'}))
+        self.assertNotIn('backlog', json.loads(self.store.put_object.call_args.kwargs['Body']))
 
     def test_feedback_emails(self):
         now, day = 1_800_000_000, 86400

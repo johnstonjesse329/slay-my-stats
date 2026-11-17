@@ -22,6 +22,17 @@
     h2{display:flex;align-items:center;gap:10px}
     h2::before{content:'';width:10px;height:16px;flex:none;opacity:.7;background:radial-gradient(circle,#edc782 1.3px,transparent 1.6px) 0 0/5px 5.5px}
     header:hover h2::before{opacity:1}
+    #grip{position:fixed;width:12px;cursor:ew-resize;touch-action:none;z-index:1;display:flex;align-items:center;justify-content:center}
+    #grip::before{content:'';width:4px;height:48px;max-height:60%;border-radius:2px;background:#82735b;opacity:.8}
+    #grip:hover::before,#grip.dragging::before{background:#edc782;opacity:1}
+    article.focused{outline:2px solid #edc782;outline-offset:4px;border-radius:4px}
+    .bucket-snippet{display:block;color:#bcb8b0;font-size:12px;font-weight:400;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .bucket > summary::before{content:'▸';color:#edc782;flex:none;margin-right:2px}
+    .bucket[open] > summary::before{content:'▾'}
+    .bucket-text{min-width:0;flex:1}
+    #summary-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 10px}
+    #summary-row #summary{margin:0}
+    #toggle-all{flex:none;padding:3px 10px;font-size:12px;border-radius:999px}
     #panel::-webkit-resizer{background:linear-gradient(135deg,transparent 52%,#edc782 52% 60%,transparent 60% 72%,#edc782 72% 80%,transparent 80%);border-bottom-right-radius:10px}
     h2{font-size:18px;margin:0;letter-spacing:.01em}
     header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
@@ -74,7 +85,8 @@
     .note-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0;font-size:11px;color:#bcb8b0}
     .note-meta a{margin-left:auto}
     .pill{padding:1px 7px;border-radius:999px;font-weight:700;font-size:10px;letter-spacing:.03em;text-transform:uppercase}
-    .pill.open{background:#e0c468;color:#191c20}.pill.resolved{background:#3a3460;color:#c9c4d8}
+    .pill.open{background:#e0c468;color:#191c20}.pill.resolved{background:#3a3460;color:#c9c4d8}.pill.backlog{background:#2f4a5c;color:#d6e8f2}
+    .fbid{font-weight:700;font-size:11px;color:#bcb8b0;letter-spacing:.03em;margin-right:6px}
     .note-url{display:block;margin:6px 0 8px;color:#8f8a80;font-size:11px;overflow-wrap:anywhere}
     .note-actions{display:flex;gap:10px;align-items:center}
     .note-actions button{background:none;border:0;padding:0;color:#edc782;text-decoration:underline;font-size:12px}
@@ -132,9 +144,9 @@
       <p id="status" role="status"></p>
     </div>
     <div id="view-inbox" role="tabpanel">
-      <p id="summary"></p>
+      <div id="summary-row"><p id="summary"></p><button id="toggle-all" type="button">Expand all</button></div>
       <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-page" type="button" aria-pressed="false">This page</button><button id="scope-site" type="button" aria-pressed="false">Whole site</button></div>
-      <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option></select></div>
+      <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="backlog">Backlog</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option></select></div>
       <div id="find"><input id="search" type="search" placeholder="Search notes" aria-label="Search notes"><select id="filter-author" aria-label="Author"><option value="">Anyone</option></select></div>
       <div id="notes"></div>
       <button id="load-more" type="button" hidden>Load the next 25</button>
@@ -142,6 +154,7 @@
       <div id="inbox-foot"><button id="copy" type="button">Copy all notes</button><button id="refresh" type="button">Refresh</button></div>
     </div>
   </section>
+  <div id="grip" role="separator" aria-orientation="vertical" aria-label="Drag to widen the panel to the left" title="Drag to resize" hidden></div>
   <button id="launcher" type="button"><span aria-hidden="true">✎</span> <span id="launcher-label">Feedback</span><span id="launcher-count" aria-hidden="true" hidden></span></button>`;
   const $ = id => root.getElementById(id);
   const ORIGIN = location.origin;
@@ -185,7 +198,28 @@
     const r = panel.getBoundingClientRect();
     panel.style.left = Math.max(8, Math.min(r.left, innerWidth - r.width - 8)) + 'px';
     panel.style.top = Math.max(8, Math.min(r.top, innerHeight - r.height - 8)) + 'px';
+    syncGrip();
   }
+  // A grip on the panel's left edge: widening toward the left is where the room is, and the
+  // native corner handle only reaches right and down.
+  function syncGrip() {
+    const grip = $('grip'), panel = $('panel');
+    grip.hidden = panel.hidden || !panel.classList.contains('placed');
+    if (grip.hidden) return;
+    const r = panel.getBoundingClientRect();
+    Object.assign(grip.style, {left: (r.left - 6) + 'px', top: (r.top + 14) + 'px', height: Math.max(0, r.height - 28) + 'px'});
+  }
+  $('grip').addEventListener('pointerdown', e => {
+    const panel = $('panel'), grip = $('grip'), right = panel.getBoundingClientRect().right;
+    grip.classList.add('dragging'); grip.setPointerCapture(e.pointerId);
+    const move = ev => {
+      const width = Math.max(300, Math.min(right - Math.max(8, ev.clientX), innerWidth - 16));
+      panel.style.width = width + 'px'; panel.style.left = (right - width) + 'px'; syncGrip();
+    };
+    const done = () => { grip.classList.remove('dragging'); grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', done); grip.removeEventListener('pointercancel', done); };
+    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', done); grip.addEventListener('pointercancel', done);
+    e.preventDefault();
+  });
   addEventListener('resize', keepOnScreen);
   // A view that fills in later (the inbox loads its notes) makes the panel taller; keep its bottom in view.
   new ResizeObserver(keepOnScreen).observe($('panel'));
@@ -195,13 +229,14 @@
     const move = ev => {
       panel.style.left = Math.max(8 - r.width + 80, Math.min(ev.clientX - dx, innerWidth - 80)) + 'px';
       panel.style.top = Math.max(0, Math.min(ev.clientY - dy, innerHeight - 40)) + 'px';
+      syncGrip();
     };
     head.classList.add('dragging');
     const done = () => { head.classList.remove('dragging'); removeEventListener('pointermove', move); removeEventListener('pointerup', done); removeEventListener('pointercancel', done); };
     addEventListener('pointermove', move); addEventListener('pointerup', done); addEventListener('pointercancel', done);
     e.preventDefault();
   });
-  function closePanel() { $('panel').hidden = true; previousFocus?.focus(); }
+  function closePanel() { $('panel').hidden = true; syncGrip(); previousFocus?.focus(); }
   function pageUrl() { const url=new URL(location.href); url.searchParams.delete('feedback'); return url.href; }
   function currentPath() { const url=new URL(pageUrl()); return url.pathname+url.search+url.hash; }
   function composer() { say(''); showView('compose'); }
@@ -228,11 +263,11 @@
     const box=$('prior'), matches=pageCache.filter(sameTarget);
     box.replaceChildren();
     if(!matches.length){box.hidden=true;return;}
-    const open=matches.filter(note=>!note.resolved).length, title=document.createElement('b'), list=document.createElement('ul');
+    const open=matches.filter(note=>stateOf(note)==='open').length, title=document.createElement('b'), list=document.createElement('ul');
     title.textContent=`${matches.length} earlier note${matches.length===1?'':'s'} here`+(open?` · ${open} open`:' · all resolved');
     for(const note of matches.slice(0,8)) {
       const li=document.createElement('li');
-      li.textContent=`${note.resolved?'[resolved] ':''}${note.category?`[${KINDS[note.category]||note.category}] `:''}${note.comment.replace(/\s+/g,' ').slice(0,240)}`;
+      li.textContent=`${note.resolved?'[resolved] ':note.backlog?'[backlog] ':''}${note.category?`[${KINDS[note.category]||note.category}] `:''}${note.comment.replace(/\s+/g,' ').slice(0,240)}`;
       if(note.resolved) li.className='resolved';
       list.append(li);
     }
@@ -282,9 +317,11 @@
     if(data.me) me=data.me;
     return data;
   }
-  const report = note => `Feedback ${note.id}\n${note.category?(KINDS[note.category]||note.category)+' · ':''}${note.resolved?'Resolved':'Open'} · ${new Date(note.created*1000).toISOString()}\n${note.url || ORIGIN + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
+  const stateOf = note => note.resolved?'resolved':note.backlog?'backlog':'open';
+  const fbId = note => Number.isInteger(note.seq)?'FB-'+note.seq:'';
+  const report = note => `Feedback ${fbId(note)||note.id}\n${note.category?(KINDS[note.category]||note.category)+' · ':''}${{resolved:'Resolved',backlog:'Backlog',open:'Open'}[stateOf(note)]} · ${new Date(note.created*1000).toISOString()}\n${note.url || ORIGIN + note.path}\n${JSON.stringify(note.target,null,2)}\n\n${note.comment}`;
   function updateCount() {
-    const open=pageCache.filter(note=>!note.resolved).length;
+    const open=pageCache.filter(note=>stateOf(note)==='open').length;
     $('launcher-count').textContent=open?String(open):'';
     $('launcher-count').hidden=!open;
     $('launcher').title=open?`${open} open note${open===1?'':'s'} on this page`:'Send feedback on this page';
@@ -307,12 +344,12 @@
     const out=[...map.values()];
     for(const bucket of out) {
       bucket.notes.sort((a,b)=>b.created-a.created);
-      bucket.open=bucket.notes.filter(note=>!note.resolved).length;
+      bucket.open=bucket.notes.filter(note=>stateOf(note)==='open').length;
     }
     return out.sort((a,b)=>b.notes[0].created-a.notes[0].created);
   }
   const when = ts => new Date(ts*1000).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
-  const matchesFilter = note => (status==='all'||!!note.resolved===(status==='resolved'))&&(!filterKind||note.category===filterKind);
+  const matchesFilter = note => (status==='all'||stateOf(note)===status)&&(!filterKind||note.category===filterKind);
   // A name the lookup gave once stays for the session, so a later response where Steam could not be
   // asked does not turn the same person back into an ID fragment.
   const names = new Map();
@@ -324,12 +361,13 @@
   const author = (note, field = 'author') => nameOf(note, field) || 'Steam …' + String(note[field]).slice(-4);
   const OUTCOMES = {done:'Done',declined:'Declined',duplicate:'Duplicate'};
   function noteArticle(note) {
-    const article=document.createElement('article'),comment=document.createElement('p'),meta=document.createElement('p'),
+    const article=document.createElement('article');article.dataset.id=note.id;
+    const comment=document.createElement('p'),meta=document.createElement('p'),
       pill=document.createElement('span'),time=document.createElement('time'),who=document.createElement('span'),head=document.createElement('p'),
       place=document.createElement('a'),actions=document.createElement('div'),resolve=document.createElement('button'),
       url=document.createElement('small');
     comment.className='note-comment';comment.textContent=note.comment;
-    pill.className='pill '+(note.resolved?'resolved':'open');pill.textContent=note.resolved?(OUTCOMES[note.outcome]||'Resolved'):'Open';
+    pill.className='pill '+stateOf(note);pill.textContent=note.resolved?(OUTCOMES[note.outcome]||'Resolved'):note.backlog?'Backlog':'Open';
     time.textContent=when(note.created);
     who.textContent=author(note);who.className='note-who'+(nameOf(note)?'':' bare');who.title=String(note.author);
     head.className='note-head';
@@ -347,6 +385,7 @@
       } catch(e){ say(e.message,'inbox'); plus.disabled=false; }
     };
     right.className='head-right';right.append(plus,time);
+    if(fbId(note)){const id=document.createElement('span');id.className='fbid';id.textContent=fbId(note);head.append(id);}
     head.append(who,right);
     const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
     place.href=openUrl.href;place.textContent='Open location';
@@ -389,11 +428,38 @@
       row.append(done,cancel);form.append(outcome,text,commit,twin,row);
       resolve.hidden=true;actions.after(form);text.focus();
     };
+    // Backlog: still open, but we will take it on later. An optional reason; one click takes it back out.
+    const later=document.createElement('button');
+    later.textContent=note.backlog?'Move to open':'Backlog';later.hidden=!!note.resolved;
+    later.title=note.backlog?'Take it out of the backlog':'We will take this on, but not now';
+    const sendLater=async(on,reason,button)=>{
+      button.disabled=true;
+      try {
+        const {note:updated}=await api({action:'backlog',id:note.id,on,reason});
+        const swap=list=>list.map(item=>item.id===updated.id?updated:item);
+        notes=swap(notes).filter(matchesFilter);pageCache=swap(pageCache);
+        renderInbox();renderPrior();updateCount();
+      } catch(e){ say(e.message,'inbox'); button.disabled=false; }
+    };
+    later.onclick=()=>{
+      if(note.backlog) return sendLater(false,'',later);
+      const form=document.createElement('div'),why=document.createElement('input'),row=document.createElement('div'),
+        go=document.createElement('button'),back=document.createElement('button');
+      form.className='close-form';why.maxLength=500;why.placeholder='Why later (optional)';why.setAttribute('aria-label','Why later');
+      go.type=back.type='button';go.textContent='Move to backlog';back.textContent='Cancel';
+      go.onclick=()=>sendLater(true,why.value,go);back.onclick=()=>{form.remove();later.hidden=false;};
+      row.append(go,back);form.append(why,row);later.hidden=true;actions.after(form);why.focus();
+    };
     const copyOne=document.createElement('button');copyOne.type='button';copyOne.textContent='Copy details';
     copyOne.title='Copy just this note';
     copyOne.onclick=()=>copyText(report(note),'Copied this note.');
-    actions.className='note-actions';actions.append(resolve,copyOne);
+    actions.className='note-actions';actions.append(resolve,later,copyOne);
     article.append(head,comment,meta,url);
+    if(note.backlog){
+      const line=document.createElement('p');line.className='note-resolution';
+      line.textContent=['Backlog '+when(note.backlog.at),note.backlog.reason].filter(Boolean).join(' - ');
+      article.append(line);
+    }
     if(note.resolved){
       const line=document.createElement('p');line.className='note-resolution';
       line.textContent=[(OUTCOMES[note.outcome]||'Resolved')+(note.resolved_by?' by '+author(note,'resolved_by'):'')+(note.resolved_at?' · '+when(note.resolved_at):''),
@@ -409,7 +475,18 @@
     article.append(actions);
     return article;
   }
-  const collapsed=new Set();
+  // Groups start collapsed; this holds the ones opened. focusId is a note to open and mark (Open location).
+  const expanded=new Set();
+  let focusId=null,triedSite=false;
+  function syncToggleAll() {
+    const keys=[...$('notes').querySelectorAll('details.bucket')];
+    $('toggle-all').hidden=!keys.length;
+    $('toggle-all').textContent=keys.length&&keys.every(d=>d.open)?'Collapse all':'Expand all';
+  }
+  $('toggle-all').onclick=()=>{
+    const all=[...$('notes').querySelectorAll('details.bucket')],open=!all.every(d=>d.open);
+    for(const d of all) d.open=open;
+  };
   // Search and author narrow the notes already loaded; Load more brings in older ones.
   let me='',query='',filterAuthor='';
   const searchable=note=>[note.comment,note.close_note,note.target?.text,note.path,author(note),author(note,'resolved_by')].filter(Boolean).join(' ').toLowerCase();
@@ -425,22 +502,31 @@
     const groups=buckets(visible);
     $('notes').replaceChildren();
     for(const bucket of groups) {
-      const details=document.createElement('details'),summary=document.createElement('summary'),
-        label=document.createElement('span'),meta=document.createElement('span'),body=document.createElement('div');
+      const details=document.createElement('details'),summary=document.createElement('summary'),text=document.createElement('span'),
+        label=document.createElement('span'),snippet=document.createElement('span'),meta=document.createElement('span'),body=document.createElement('div');
       details.className='bucket'+(bucket.open?'':' resolved');
-      details.open=!collapsed.has(bucket.key);
+      if(focusId&&bucket.notes.some(n=>n.id===focusId)) expanded.add(bucket.key);
+      details.open=expanded.has(bucket.key);
       label.className='bucket-label';label.textContent=bucket.label;
+      snippet.className='bucket-snippet';snippet.textContent=bucket.notes[0].comment.replace(/\s+/g,' ');
+      text.className='bucket-text';text.append(label,snippet);
       meta.className='bucket-meta';meta.textContent=`${bucket.kind} · ${bucket.notes.length} note${bucket.notes.length===1?'':'s'} · ${bucket.open} open`;
-      summary.append(label,meta);
+      summary.append(text,meta);
       body.className='bucket-body';
       for(const note of bucket.notes) body.append(noteArticle(note));
       details.append(summary,body);
-      details.addEventListener('toggle',()=>{if(details.open) collapsed.delete(bucket.key); else collapsed.add(bucket.key);});
+      details.addEventListener('toggle',()=>{if(details.open) expanded.add(bucket.key); else expanded.delete(bucket.key); syncToggleAll();});
       $('notes').append(details);
     }
-    const open=visible.filter(note=>!note.resolved).length;
+    syncToggleAll();
+    if(focusId) {
+      const el=$('notes').querySelector(`article[data-id="${CSS.escape(focusId)}"]`);
+      if(el){el.classList.add('focused');el.scrollIntoView({block:'nearest'});focusId=null;}
+      else if(!nextCursor&&scope==='page'&&!triedSite){triedSite=true;scope='site';load(true);return;}
+    }
+    const open=visible.filter(note=>stateOf(note)==='open').length,backlogged=visible.filter(note=>stateOf(note)==='backlog').length;
     $('filter-status').value=status;$('filter-kind').value=filterKind;
-    $('summary').innerHTML=`<b>${visible.length}</b> note${visible.length===1?'':'s'}${nextCursor?'+':''}${visible.length<notes.length?` of ${notes.length} loaded`:''} · ${open} open · ${groups.length} ${groups.length===1?'place':'places'}`;
+    $('summary').innerHTML=`<b>${visible.length}</b> note${visible.length===1?'':'s'}${nextCursor?'+':''}${visible.length<notes.length?` of ${notes.length} loaded`:''} · ${open} open${backlogged?` · ${backlogged} backlog`:''} · ${groups.length} ${groups.length===1?'place':'places'}`;
     $('scope-page').setAttribute('aria-pressed',String(scope==='page'));
     $('scope-site').setAttribute('aria-pressed',String(scope==='site'));
     $('load-more').hidden=!nextCursor;
@@ -457,7 +543,11 @@
   }
   // The site moves between tabs and runs by changing the hash, which is part of a note's path:
   // the badge has to follow, or it keeps counting the page you left.
-  addEventListener('hashchange',()=>{ refreshPageNotes().then(()=>{ if(view==='compose') renderPrior(); }).catch(()=>{}); });
+  // An open inbox on "This page" follows too, so its list is never the page you left.
+  addEventListener('hashchange',()=>{
+    refreshPageNotes().then(()=>{ if(view==='compose') renderPrior(); }).catch(()=>{});
+    if(!$('panel').hidden&&view==='inbox'&&scope==='page') load(true);
+  });
   // Only the newest request may fill the list: two quick loads (tab then filter) must not both append.
   let loadId=0;
   async function load(reset=true) {
@@ -514,18 +604,16 @@
   $('copy').onclick=()=>copyText(shown().map(report).join('\n\n---\n\n'),`Copied all ${notes.length} note${notes.length===1?'':'s'}${nextCursor?' loaded so far (Load more for the rest)':''}.`);
   const requested=new URLSearchParams(location.search).get('feedback');
   if(requested) {
+    // Open location lands on the inbox with that note opened and marked, not on a blank new note.
+    status='all';scope='page';focusId=requested;view='inbox';
     openPanel();
-    // Opening a note to review it is a compose errand, whatever the panel opens on.
-    showView('compose');
     api(null,{scope:'site'}).then(data=>{
-      const note=data.notes.find(n=>n.id===requested);if(!note){say('This note is outside the latest notes.');return;}
-      // The note already exists: show where it points, and leave the entry empty so it can't be sent twice.
-      $('target').textContent=`Reviewing: ${note.target.text || note.path}`;syncClear();
+      const note=data.notes.find(n=>n.id===requested);if(!note){say('This note is outside the latest notes.','inbox');return;}
       let attempts=0;
       const timer=setInterval(()=>{
         let el;try{el=note.target.selector && document.querySelector(note.target.selector);}catch{}
         if(el){clearInterval(timer);if(note.target.kind==='region' && note.target.scroll && note.target.rect){window.scrollTo(note.target.scroll.x,note.target.scroll.y);rect(note.target.rect);}else{el.scrollIntoView({block:'center'});rect(el.getBoundingClientRect());}setTimeout(()=>mark.style.display='none',6000);}
-        else if(++attempts>=30){clearInterval(timer);say('Original element unavailable. Use the saved text and viewport in Copy.');}
+        else if(++attempts>=30){clearInterval(timer);say('Original element unavailable. Use the saved text and viewport in Copy.','inbox');}
       },300);
     }).catch(e=>say(e.message));
   } else {

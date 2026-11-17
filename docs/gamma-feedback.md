@@ -26,11 +26,13 @@ panel's X or Escape.
 - **This page** (the default) and **Whole site** switch what the inbox shows.
 - Notes are grouped into one bucket per whole page and per pinned element or
   region, newest bucket first, each with its note and open counts. A bucket can
-  be collapsed; that choice lasts for the session.
+  start collapsed, each showing its newest comment; **Expand all** / **Collapse all** opens
+  or closes every one, and an open one stays open for the session. On **This page** the
+  list follows the site's tabs and runs.
 - **Open location** opens the original page and highlights the element or saved
-  region. Layout changes can invalidate a selector; saved target text and viewport
+  region, with the inbox showing that note's group open and the note marked. Layout changes can invalidate a selector; saved target text and viewport
   dimensions remain available in the copied report.
-- A **status** filter (Open by default, Resolved, All) and a **type** filter (any,
+- A **status** filter (Open by default, Backlog, Resolved, All) and a **type** filter (any,
   bug, feature request, improvement idea) narrow the inbox. The Lambda applies them,
   so a narrow filter may scan several notes per page and hand back fewer than 25.
 - **Search** and an **author** filter narrow the notes already loaded (Load more brings in older
@@ -38,6 +40,14 @@ panel's X or Escape.
 - **+1** sits on each note's title row: one per signed-in person, tapped again to take it back,
   with the count of everyone who agreed. The Lambda stores the ids on the note (`plus`, at most 50)
   and a repeat of the same request changes and writes nothing.
+- Every note has a stable id, **FB-n**, shown on its title row and in the emails. The Lambda
+  assigns it as `seq` when the note is created (one more than the highest), and numbers
+  the notes that predate it once, oldest first, the first time they are listed. It never
+  changes, so a commit message or close note can cite `FB-12`.
+- **Backlog** marks an open note we will take on, but not now, with an optional reason
+  (`backlog`: who, when, why). It leaves the Open list and the Feedback button's count, shows
+  under the Backlog filter and as its own number in the digests, and **Move to open**
+  takes it back. Resolving a note clears it.
 - **Resolve / Reopen** tracks review. All allowed gamma reviewers can do this.
   Resolving picks an **outcome**: *Done* needs a commit and a close note about what
   changed, *Declined* needs a close note saying why, *Duplicate* needs the id of the
@@ -66,7 +76,7 @@ The gamma data bucket is retained when the stack is deleted and is versioned, so
 overwritten or deleted note can be recovered from its earlier versions. Versions of
 everything but `feedback/` expire after 30 days; feedback versions are kept.
 
-The panel can be dragged by its header and resized from its bottom-right corner; it
+The panel can be dragged by its header and resized from its bottom-right corner or its left edge; it
 keeps its place between openings. On screens 600px wide or narrower it is instead a
 full-width bottom sheet (no dragging or resizing, 16px inputs so iOS doesn't zoom, larger
 tap targets). **Clear** on the New note tab drops a pinned
@@ -74,7 +84,7 @@ element and the typed text.
 
 **Emails.** The gamma stack also emails the alert address: each morning (8 AM
 Central, Tuesday to Sunday) the notes that came in over the last day with the number open, and nothing
-on a quiet day; on Mondays one weekly email instead (never two) with the open total, the notes that came in and the ones
+on a quiet day; on Mondays one weekly email instead (never two) with the open total (with the backlog counted apart), the notes that came in and the ones
 resolved that week, and the open notes. Both name the author by Steam name. Notes resolved before resolutions were
 timestamped have no date and are not counted as resolved in a week.
 

@@ -56,6 +56,11 @@ def _target(note):
             "viewport": t.get("viewport", {})}
 
 
+def tag(e):
+    """The note's stable id (FB-n, assigned by the feedback Lambda) or, before it had one, the batch's own #n."""
+    return f"FB-{e['seq']}" if e.get("seq") else f"#{e['n']}"
+
+
 def pull():
     s3, batch = _s3(), _load()
     known = {e["id"] for e in batch["entries"]}
@@ -64,14 +69,17 @@ def pull():
         args = {"Bucket": BUCKET, "Prefix": "feedback/", **({"ContinuationToken": token} if token else {})}
         page = s3.list_objects_v2(**args)
         for obj in page.get("Contents", []):
-            if obj["Key"] in known:
-                continue
             note = json.loads(s3.get_object(Bucket=BUCKET, Key=obj["Key"])["Body"].read())
-            if note.get("resolved"):
+            if obj["Key"] in known:
+                for e in batch["entries"]:
+                    if e["id"] == obj["Key"] and note.get("seq"):
+                        e["seq"] = note["seq"]
+                continue
+            if note.get("resolved") or note.get("backlog"):
                 continue
             n = len(batch["entries"]) + 1
             batch["entries"].append({
-                "n": n, "id": note["id"], "author": note.get("author"), "created": note.get("created"),
+                "n": n, "seq": note.get("seq"), "id": note["id"], "author": note.get("author"), "created": note.get("created"),
                 "category": note.get("category", ""), "url": note.get("url", ""),
                 "target": _target(note), "comment": note["comment"],
                 "group": "", "plan": "", "status": "new", "commit": "", "close_note": "", "duplicate_of": "",
@@ -95,7 +103,7 @@ def report():
         print(f"\n## {name} ({len(entries)})")
         for e in entries:
             where = e["target"]["selector"] or "whole page"
-            print(f"- #{e['n']} [{e['status']}] {e['category'] or '-'} · {e['url']} · {where}")
+            print(f"- {tag(e)} [{e['status']}] {e['category'] or '-'} · {e['url']} · {where}")
             print(f"    {e['comment'][:220]}")
             if e["plan"]:
                 print(f"    plan: {e['plan']}")
@@ -118,17 +126,17 @@ def resolve(apply):
         try:
             fields = feedback._outcome(fields)
         except ValueError:
-            print(f"#{e['n']} skipped: {outcome} needs " + {
+            print(f"{tag(e)} skipped: {outcome} needs " + {
                 "done": "a commit and a close note", "declined": "a close note",
                 "duplicate": "duplicate_of set to a note id"}[outcome])
             continue
         if outcome == "done" and not _commit_exists(fields["resolved_in"]):
-            print(f"#{e['n']} skipped: commit {fields['resolved_in']} is not in this repo")
+            print(f"{tag(e)} skipped: commit {fields['resolved_in']} is not in this repo")
             continue
         if fields["duplicate_of"] and fields["duplicate_of"] not in ids:
-            print(f"#{e['n']} skipped: duplicate_of is not a note in this batch")
+            print(f"{tag(e)} skipped: duplicate_of is not a note in this batch")
             continue
-        print(f"#{e['n']} -> {outcome}: {fields['close_note'][:90]}")
+        print(f"{tag(e)} -> {outcome}: {fields['close_note'][:90]}")
         if apply:
             note = json.loads(s3.get_object(Bucket=BUCKET, Key=e["id"])["Body"].read())
             feedback._resolve(note, e["author"], True, fields)
@@ -151,7 +159,7 @@ def evidence():
         shot = e.get("evidence") or ""
         shot = f"![]({Path(shot).name})" if shot else "-"
         tldr = (e.get("tldr") or e.get("plan") or "").replace("|", "/").replace("\n", " ")
-        print(f"| {e['n']} | {e['status']} | {e.get('commit') or '-'} | {tldr} | {shot} |")
+        print(f"| {tag(e)} | {e['status']} | {e.get('commit') or '-'} | {tldr} | {shot} |")
 
 
 PREVIEW = "http://localhost:8095/"
@@ -180,8 +188,8 @@ def review():
         print(f"\n## {title}\n\n**Open:** {PREVIEW}{hash_}  \n**Do:** {todo}\n")
         for e in rows:
             shot = Path(e["evidence"]).name if e.get("evidence") else "none"
-            print(f"- [ ] **#{e['n']}** {e.get('tldr') or e['plan']}  \n"
-                  f"  Reply: `ok {e['n']}` / `change {e['n']}: ...`  · screenshot: `{shot}`")
+            print(f"- [ ] **{tag(e)}** {e.get('tldr') or e['plan']}  \n"
+                  f"  Reply: `ok {tag(e)}` / `change {tag(e)}: ...`  · screenshot: `{shot}`")
     print("\n## Not a page\n")
     print("- **#24** digest emails: nothing to click until the schedule is deployed. After deploy, "
           "check Tuesday's email: one message, Steam names. Reply `ok 24` to approve the deploy.")
