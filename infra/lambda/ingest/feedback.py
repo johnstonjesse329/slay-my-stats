@@ -135,7 +135,23 @@ def _named(note):
 
 
 def _valid_path(path) -> bool:
-    return isinstance(path, str) and path.startswith("/") and not path.startswith("//") and len(path) <= 3000
+    """A path on this site: one leading slash, and no backslash or control character a browser
+    could read as a second slash (so "/\evil.example" never becomes a link off the site)."""
+    return (isinstance(path, str) and path.startswith("/") and not path.startswith("//") and len(path) <= 3000
+            and "\\" not in path and not any(ord(c) < 0x20 or ord(c) == 0x7F for c in path))
+
+
+def _masked(note, steam):
+    """The note as a non-admin reader sees it: other players' Steam IDs become an opaque tag,
+    keyed on the session secret, so notes by one person still group without naming the account."""
+    import hmac
+    import session
+    out = dict(note)
+    for field in ("author", "resolved_by"):
+        who = out.get(field)
+        if who and str(who) != steam:
+            out[field] = "p" + hmac.new(session._key(), str(who).encode(), hashlib.sha256).hexdigest()[:12]
+    return out
 
 
 class Refused(Exception):
@@ -432,8 +448,12 @@ def handle(event):
     db = boto3.client("dynamodb")
     try:
         if method == "GET":
-            return reply(200, {**about, **_get_view(db, table, readable, env, steam, event)})
-        return reply(200, {**about, "note": _post(db, table, env, steam, admin, origin, event)})
+            view = _get_view(db, table, readable, env, steam, event)
+            if not admin:
+                view["notes"] = [_masked(n, steam) for n in view["notes"]]
+            return reply(200, {**about, **view})
+        note = _post(db, table, env, steam, admin, origin, event)
+        return reply(200, {**about, "note": note if admin else _masked(note, steam)})
     except Refused as refused:
         return reply(refused.status, {"message": refused.message})
 

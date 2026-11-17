@@ -387,7 +387,7 @@
     comment.className='note-comment';comment.textContent=note.comment;
     pill.className='pill '+stateOf(note);pill.textContent=note.resolved?(OUTCOMES[note.outcome]||'Resolved'):note.backlog?'Backlog':'Open';
     time.textContent=when(note.created);
-    who.textContent=author(note);who.className='note-who'+(nameOf(note)?'':' bare');who.title=String(note.author);
+    who.textContent=author(note);who.className='note-who'+(nameOf(note)?'':' bare');if(/^\d+$/.test(String(note.author)))who.title=String(note.author);
     head.className='note-head';
     // +1: one per person, tapped again to take back. The count is everyone who has agreed.
     // A note from another environment is shown read-only: its +1 and actions belong there.
@@ -409,7 +409,7 @@
     if(fbId(note)){const id=document.createElement('span');id.className='fbid';id.textContent=fbId(note);head.append(id);}
     head.append(who,right);
     const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
-    place.href=openUrl.href;place.textContent='Open location';
+    if(openUrl.origin===new URL(ORIGIN).origin)place.href=openUrl.href;place.textContent='Open location';
     meta.className='note-meta';
     meta.append(pill);
     if(note.env&&envs.length>1){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=ENV_NAMES[note.env]||note.env;meta.append(tag);}

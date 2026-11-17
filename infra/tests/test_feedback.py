@@ -122,7 +122,8 @@ class FeedbackTest(unittest.TestCase):
         event['headers']['origin'] = 'https://elsewhere.test'
         self.assertEqual(feedback.handle(event)['statusCode'], 403)
         for body in [{'comment': ' ', 'path': '/'}, {'comment': 'x' * 4001, 'path': '/'},
-                     {'comment': 'x', 'path': 'https://elsewhere.test'}, {'action': 'resolve', 'id': '../secret'},
+                     {'comment': 'x', 'path': 'https://elsewhere.test'}, {'comment': 'x', 'path': '/\elsewhere.test'},
+                     {'comment': 'x', 'path': '/	/elsewhere.test'}, {'action': 'resolve', 'id': '../secret'},
                      {'action': 'nope'}, ['not', 'an', 'object']]:
             self.assertEqual(self.call(body)[0], 400, body)
         self.assertEqual(self.db.scan(TableName=TABLE_NAME)['Count'], 0)
@@ -324,6 +325,17 @@ class FeedbackTest(unittest.TestCase):
         self.assertEqual(self.call({'action': 'backlog', 'id': nid, 'on': True}, steam=OTHER)[0], 403)
         self.assertEqual(self.call(query='scope=site', steam=OTHER)[1]['admin'], False)
         self.assertEqual(self.note({'action': 'plus', 'id': nid, 'on': True}, steam=OTHER)['plus_count'], 1)
+
+    def test_only_admins_see_other_players_steam_ids(self):
+        nid = self.note({'comment': 'mine', 'path': '/'})['id']  # by ADMIN
+        theirs = self.call(query='scope=site', steam=OTHER)[1]['notes'][0]
+        self.assertNotIn(ADMIN, json.dumps(theirs))
+        again = self.call(query='scope=site', steam=OTHER)[1]['notes'][0]
+        self.assertEqual(theirs['author'], again['author'])  # one person stays one tag
+        own = self.note({'comment': 'yours', 'path': '/'}, steam=OTHER)
+        self.assertEqual(own['author'], OTHER)
+        self.assertNotIn(ADMIN, json.dumps(self.note({'action': 'plus', 'id': nid, 'on': True}, steam=OTHER)))
+        self.assertEqual({n['author'] for n in self.call(query='scope=site')[1]['notes']}, {ADMIN, OTHER})
 
     def test_reopen_keeps_the_resolution_in_history(self):
         nid = self.put(1)
