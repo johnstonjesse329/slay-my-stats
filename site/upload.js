@@ -356,17 +356,12 @@
     return result;
   }
 
-  // Every state where there is nothing left to do here ends on the profile page,
-  // so the runs just added -- or the ones that turned out to be there already --
-  // are what you see next. A beat first, so the line above can be read rather
-  // than flashing past, and it says so, so the pause doesn't look like a hang.
+  // Every state where there is nothing left to do here ends with a way to the
+  // profile page. It waits for a click, so the steps above can be read first.
   function finishAtProfile(status, text, slug) {
-    if (!slug) {
-      setStatus(status, text);
-      return;
-    }
-    setStatus(status, `${text} Taking you to your profile…`);
-    setTimeout(() => location.assign(`/u/${slug}`), 1800);
+    setStatus(status, text);
+    if (slug) noteOf(status).append(el("a", { className: "upload-btn upload-done", href: `/u/${slug}`,
+                                              textContent: "Go to your runs" }));
   }
 
   async function upload(steamId, files, status) {
