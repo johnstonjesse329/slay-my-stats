@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 import urllib.parse
+from unittest.mock import patch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -343,16 +344,14 @@ class Uploads:
     def setUp(self):
         self.store = MemStore()
 
-    def authorize(self, now=NOW, ip="203.0.113.7", issued=None, **param_kw):
-        issued = now - 60 if issued is None else issued
-        return handler.authorize(openid_params(issued=issued, **param_kw), ip, self.store, ALLOWED,
-                                 fake_presign, now=now, post=steam_says())
+    def authorize(self, now=NOW, ip="203.0.113.7", steam_id=STEAM_ID):
+        return handler.authorize(steam_id, ip, self.store, fake_presign, now=now)
 
     def process(self, key, now=NOW, name="Mr. Bean!"):
         return handler.process_upload(key, self.store, now=now, lookup_name=named(name))
 
-    def ingest(self, body, now=NOW, name="Mr. Bean!", ip="203.0.113.7", **param_kw):
-        auth = self.authorize(now=now, ip=ip, **param_kw)
+    def ingest(self, body, now=NOW, name="Mr. Bean!", ip="203.0.113.7", **kw):
+        auth = self.authorize(now=now, ip=ip, **kw)
         key = auth["fields"]["key"]
         self.store.put(key, body, {}, None)
         self.last_key = key
@@ -373,25 +372,16 @@ class AuthorizeTests(Uploads, unittest.TestCase):
         self.assertRegex(auth["fields"]["key"], rf"^raw/{STEAM_ID}/\d{{8}}T\d{{6}}Z-[A-Za-z0-9_-]{{16}}\.ndjson\.gz$")
         self.assertEqual(auth["fields"]["key"], handler.raw_key(STEAM_ID, auth["uploadId"], NOW))
         self.assertEqual((auth["maxBytes"], auth["slug"]), (handler.UPLOAD_MAX_BYTES, None))
-        self.assertNotEqual(auth["uploadId"], self.authorize(now=NOW + 120, nonce_suffix="2")["uploadId"])
+        self.assertNotEqual(auth["uploadId"], self.authorize(now=NOW + 120)["uploadId"])
 
     def test_returns_known_slug(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        self.assertEqual(self.authorize(now=NOW + 120, nonce_suffix="2")["slug"], "mrbean")
-
-    def test_bad_signin(self):
-        with self.assertRaises(handler.IngestError):
-            handler.authorize(openid_params(), "1.2.3.4", self.store, ALLOWED, fake_presign, now=NOW,
-                              post=steam_says(False))
+        self.assertEqual(self.authorize(now=NOW + 120)["slug"], "mrbean")
 
     def test_cooldown(self):
         self.authorize()
-        self.assertRefused("cooldown", now=NOW + 10, nonce_suffix="soon")
-        self.authorize(now=NOW + 61, nonce_suffix="later")
-
-    def test_signin_reused_after_cooldown(self):
-        self.authorize()
-        self.authorize(now=NOW + 120, issued=NOW - 60)
+        self.assertRefused("cooldown", now=NOW + 10)
+        self.authorize(now=NOW + 61)
 
     def test_ip_limit(self):
         for i in range(handler.IP_UPLOADS_PER_HOUR):
@@ -406,14 +396,14 @@ class AuthorizeTests(Uploads, unittest.TestCase):
         self.assertNotEqual(handler.ip_limit_key("2001:db8:1:2::1"), handler.ip_limit_key("2001:db8:1:3::1"))
         self.assertNotIn("203.0.113.7", handler.ip_limit_key("203.0.113.7"))
 
-    def test_ip_limit_checked_before_steam(self):
-        for i in range(handler.IP_UPLOADS_PER_HOUR):
-            self.authorize(steam_id=f"7656119800000001{i}", now=NOW + i)
-        post = steam_says()
-        with self.assertRaises(handler.IngestError):
-            handler.authorize(openid_params(steam_id="76561198000000020"), "203.0.113.7", self.store,
-                              ALLOWED, fake_presign, now=NOW + 10, post=post)
-        self.assertEqual(post.calls, [])
+    def test_viewer_ip_comes_from_cloudfront(self):
+        event = {"headers": {"cloudfront-viewer-address": "198.51.100.4:51234"},
+                 "requestContext": {"http": {"sourceIp": "192.0.2.1"}}}
+        self.assertEqual(handler.viewer_ip(event), "198.51.100.4")
+        event["headers"]["cloudfront-viewer-address"] = "2001:db8::7:443"
+        self.assertEqual(handler.viewer_ip(event), "2001:db8::7")
+        event["headers"]["cloudfront-viewer-address"] = "junk"
+        self.assertEqual(handler.viewer_ip(event), "192.0.2.1")
 
 
 TICKET = "14000000" + "ab" * 100
@@ -611,7 +601,7 @@ class AuthorizeModTests(Uploads, unittest.TestCase):
         for i in range(handler.IP_UPLOADS_PER_HOUR + 2):
             self.authorize_mod(now=NOW + i * handler.MOD_COOLDOWN_SECONDS)
         self.assertEqual(len(self.store.json(handler.ip_limit_key("203.0.113.7"))["times"]), 1)
-        self.authorize(now=NOW + 61, nonce_suffix="2")
+        self.authorize(now=NOW + 61)
 
 
 class ModRunsTests(Uploads, unittest.TestCase):
@@ -661,7 +651,7 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.assertEqual(res["status"], "done")
 
         res = self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000003)),
-                          now=NOW + 120, nonce_suffix="second")
+                          now=NOW + 120)
         self.assertEqual((res["added"], res["duplicates"], res["total"]), (1, 1, 3))
         self.assertEqual([r["ts"] for r in self.store.runs()], [1700000001, 1700000002, 1700000003])
 
@@ -682,7 +672,7 @@ class ProcessTests(Uploads, unittest.TestCase):
         # 2024-03, 2023-07, then 2023-11 between them and a resend of 2023-07.
         self.ingest(body_of(minimal_run(1710000000), minimal_run(1690000000)))
         res = self.ingest(body_of(minimal_run(1700000000), minimal_run(1690000000)),
-                          now=NOW + 120, nonce_suffix="2")
+                          now=NOW + 120)
         self.assertEqual((res["added"], res["duplicates"], res["total"]), (1, 1, 3))
         self.assertEqual(self.store.months(), ["2023-07", "2023-11", "2024-03"])
         self.assertEqual(self.store.profile()["months"],
@@ -692,12 +682,12 @@ class ProcessTests(Uploads, unittest.TestCase):
     def test_only_touched_months_are_written(self):
         self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000)))
         july = self.store.objects["users/mrbean/2023-07.json.gz"]
-        self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120, nonce_suffix="2")
+        self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120)
         self.assertIs(self.store.objects["users/mrbean/2023-07.json.gz"], july)
 
     def test_resent_run_is_reparsed(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        res = self.ingest(body_of(minimal_run(1700000001, ascension=9)), now=NOW + 120, nonce_suffix="2")
+        res = self.ingest(body_of(minimal_run(1700000001, ascension=9)), now=NOW + 120)
         self.assertEqual((res["added"], res["duplicates"]), (0, 1))
         self.assertEqual(self.store.runs()[0]["asc"], 9)
         self.assertEqual(self.stats()["allRuns"], 1)  # counted once
@@ -705,7 +695,7 @@ class ProcessTests(Uploads, unittest.TestCase):
     def test_nothing_new_does_not_write_profile(self):
         self.ingest(body_of(minimal_run(1700000001)))
         before = dict(self.store.objects)
-        res = self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120, nonce_suffix="again")
+        res = self.ingest(body_of(minimal_run(1700000001)), now=NOW + 120)
         self.assertEqual((res["added"], res["duplicates"], res["slug"], res["total"]), (0, 1, "mrbean", 1))
         for key in ("users/mrbean.json.gz", "users/mrbean/2023-11.json.gz", handler.INDEX_KEY):
             self.assertIs(self.store.objects[key], before[key])
@@ -723,7 +713,7 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.put_v1_profile(1700000001, 1700000002)
         self.ingest(body_of(minimal_run(1700000003)))
         self.assertEqual(self.store.profile()["noRaw"], [1700000001, 1700000002])
-        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2")
+        self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002)), now=NOW + 120)
         self.assertEqual(self.store.profile()["noRaw"], [])
         self.assertEqual(len(self.store.runs()), 3)
 
@@ -764,7 +754,7 @@ class ProcessTests(Uploads, unittest.TestCase):
 
     def test_junk_is_deleted(self):
         for i, body in enumerate([b"not gzip", body_of({"no": "fields"}, [1]), body_of()]):
-            res = self.ingest(body, now=NOW + 120 * i, nonce_suffix=str(i))
+            res = self.ingest(body, now=NOW + 120 * i)
             self.assertEqual(res["status"], "failed", body)
             self.assertNotIn(self.last_key, self.store.objects)
             self.assertEqual(self.result()["status"], "failed")
@@ -784,7 +774,7 @@ class ProcessTests(Uploads, unittest.TestCase):
 
     def test_steam_id_never_public(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        self.assertNotIn(STEAM_ID, json.dumps(self.authorize(now=NOW + 120, nonce_suffix="x")["slug"]))
+        self.assertNotIn(STEAM_ID, json.dumps(self.authorize(now=NOW + 120)["slug"]))
         for key, (data, *_rest) in self.store.objects.items():
             if key.startswith("users/"):
                 self.assertNotIn(STEAM_ID, key)
@@ -812,7 +802,7 @@ class ProcessTests(Uploads, unittest.TestCase):
 
     def test_rename_keeps_slug(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2", name="Sir Bean")
+        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, name="Sir Bean")
         self.assertEqual((res["slug"], res["name"]), ("mrbean", "Sir Bean"))
         self.assertEqual([(p["slug"], p["name"], p["runs"]) for p in self.store.index()], [("mrbean", "Sir Bean", 2)])
 
@@ -827,7 +817,7 @@ class ProcessTests(Uploads, unittest.TestCase):
 
     def test_returning_player_keeps_name_if_steam_is_down(self):
         self.ingest(body_of(minimal_run(1700000001)))
-        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2", name=None)
+        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, name=None)
         self.assertEqual((res["added"], res["name"]), (1, "Mr. Bean!"))
 
     def test_redelivered_event_counts_once(self):
@@ -859,7 +849,7 @@ class ProcessTests(Uploads, unittest.TestCase):
             orig_put(key, data, metadata, if_match)
         racy.put = put
         self.store = racy
-        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120, nonce_suffix="2")
+        res = self.ingest(body_of(minimal_run(1700000002)), now=NOW + 120)
         self.assertEqual(res["total"], 4)
         self.assertEqual([r["ts"] for r in racy.runs()], [1700000001, 1700000002, 1700000009, 1702000000])
         self.assertEqual(racy.profile()["months"], {"2023-11": [1700000001, 1700000002, 1700000009],
@@ -899,7 +889,7 @@ class ProcessTests(Uploads, unittest.TestCase):
     def test_stats_count_each_run_once(self):
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002, win=False)))
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000003, run_time=900)),
-                    now=NOW + 120, nonce_suffix="second")
+                    now=NOW + 120)
         s = self.stats()
         solo = s["solo"]
         self.assertEqual((s["allRuns"], solo["runs"], solo["wins"], solo["minutes"]), (3, 3, 2, 55))
@@ -948,7 +938,7 @@ class ProcessTests(Uploads, unittest.TestCase):
 
     def test_upload_writes_the_seed_file_and_remove_takes_it_along(self):
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002)))
-        self.ingest(body_of(minimal_run(1700000003)), now=NOW + 120, nonce_suffix="second")
+        self.ingest(body_of(minimal_run(1700000003)), now=NOW + 120)
         got = self.store.get(handler.seeds_key("mrbean"))
         doc = handler._unpack(got[0])
         self.assertEqual(doc["v"], 1)
@@ -985,7 +975,7 @@ class ProcessTests(Uploads, unittest.TestCase):
     def test_party_is_kept_for_multiplayer_runs_only(self):
         self.ingest(body_of(minimal_run(1700000001)))
         self.assertNotIn("party", self.store.runs()[0])
-        self.ingest(body_of(multiplayer_run(1700000002)), now=NOW + 120, nonce_suffix="second")
+        self.ingest(body_of(multiplayer_run(1700000002)), now=NOW + 120)
         self.assertEqual([r["party"] for r in self.store.runs() if "party" in r], [["IRONCLAD", "SILENT"]])
     def test_shop_card_buys_come_from_cards_gained(self):
         # The shelf (card_choices) is all was_picked false; the bought card is
@@ -1062,7 +1052,7 @@ class RebuildTests(Uploads, unittest.TestCase):
         legacy = handler.run.parse_run_data(minimal_run(1600000000), steam_id=STEAM_ID)
         handler.save_profile(self.store, STEAM_ID, None, None, "Mr. Bean!", [legacy], {}, NOW)
         self.ingest(body_of(minimal_run(1700000001), minimal_run(1700000002)))
-        self.ingest(body_of(minimal_run(1700000003)), now=NOW + 120, nonce_suffix="2")
+        self.ingest(body_of(minimal_run(1700000003)), now=NOW + 120)
 
         # Simulate an old parser's output on the profile.
         slug, etag, doc = handler._read_profile(self.store, STEAM_ID)
@@ -1086,7 +1076,7 @@ class RebuildTests(Uploads, unittest.TestCase):
         # so does its month file when it was the only run in it.
         self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000)))
         self.store.delete(self.last_key)
-        self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120, nonce_suffix="2")
+        self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120)
         summary = handler.rebuild_profile(self.store, STEAM_ID)
         self.assertEqual((summary["runs"], summary["dropped"]), (1, 1))
         self.assertEqual(self.store.months(), ["2023-11"])
@@ -1103,7 +1093,7 @@ class RebuildTests(Uploads, unittest.TestCase):
         self.assertEqual([p["slug"] for p in self.store.index()], ["other"])
         self.assertEqual(len(self.store.runs("76561198000000002")), 1)  # someone else's: untouched
         # Their next upload starts over, under the same slug.
-        res = self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120, nonce_suffix="2")
+        res = self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120)
         self.assertEqual((res["slug"], res["added"], res["total"]), ("mrbean", 1, 1))
 
     def test_remove_runs(self):
@@ -1127,7 +1117,7 @@ class RebuildTests(Uploads, unittest.TestCase):
 
     def test_remove_runs_drops_a_month_and_raw_upload_left_empty(self):
         self.ingest(body_of(minimal_run(1690000000)))
-        self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120, nonce_suffix="2")
+        self.ingest(body_of(minimal_run(1700000000)), now=NOW + 120)
         handler.remove_runs(self.store, "mrbean", [1700000000])
         self.assertEqual(self.store.months(), ["2023-07"])
         self.assertEqual(len([k for k in self.store.objects if k.startswith(f"raw/{STEAM_ID}/")]), 1)
@@ -1303,34 +1293,36 @@ class LambdaHandlerTests(unittest.TestCase):
         self.store = MemStore()
         self.store.presign_post = fake_presign
         handler._store = self.store
-        self.saved = (handler.verify_openid, handler.time.time, handler.lookup_steam_name,
-                      os.environ.get("ALLOWED_RETURN_TO"))
-        orig_verify = handler.verify_openid
-        handler.verify_openid = lambda p, a, now=None, post=None: orig_verify(p, a, now=NOW, post=steam_says())
+        self.saved = (handler.time.time, handler.lookup_steam_name)
         handler.time.time = lambda: NOW
         handler.lookup_steam_name = named("Mr. Bean!")
-        os.environ["ALLOWED_RETURN_TO"] = ",".join(ALLOWED)
+        env = patch.dict(os.environ, {"SESSION_SECRET": "test-key", "SITE_ORIGIN": "https://slay-my-stats.com"})
+        env.start()
+        self.addCleanup(env.stop)
+        import session
+        session._secret = None
+        self.addCleanup(setattr, session, "_secret", None)
 
     def tearDown(self):
         handler._store = None
-        handler.verify_openid, handler.time.time, handler.lookup_steam_name, allowed = self.saved
-        if allowed is None:
-            os.environ.pop("ALLOWED_RETURN_TO", None)
-        else:
-            os.environ["ALLOWED_RETURN_TO"] = allowed
+        handler.time.time, handler.lookup_steam_name = self.saved
 
     def test_event_plumbing(self):
+        import session
+        cookie = session.session_cookie(STEAM_ID).split(";", 1)[0]
         event = {
-            "requestContext": {"http": {"method": "POST", "sourceIp": "203.0.113.7"}},
-            "headers": {"User-Agent": "TestBrowser/1", "Referer": "https://example.test/upload"},
-            "rawQueryString": urllib.parse.urlencode(openid_params()),
+            "rawPath": "/auth/upload",
+            "requestContext": {"http": {"method": "POST", "sourceIp": "192.0.2.9"}},
+            "headers": {"User-Agent": "TestBrowser/1", "Referer": "https://example.test/upload",
+                        "origin": "https://slay-my-stats.com", "cloudfront-viewer-address": "203.0.113.7:50000"},
+            "cookies": [cookie],
         }
         resp = handler.lambda_handler(event, None)
         self.assertEqual(resp["statusCode"], 200, resp["body"])
         auth = json.loads(resp["body"])
         key = auth["fields"]["key"]
         self.assertEqual((auth["url"], auth["slug"]), ("https://s3.example/", None))
-        self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 429)  # same sign-in again: cooldown
+        self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 429)  # again at once: cooldown
 
         # Each handed-out upload leaves a private note.
         notes = [k for k in self.store.list("analytics/")]
@@ -1347,8 +1339,13 @@ class LambdaHandlerTests(unittest.TestCase):
         result = self.store.json(handler.result_key(upload_id))
         self.assertEqual((result["added"], result["slug"]), (1, "mrbean"))
 
-        event["requestContext"]["http"]["method"] = "GET"
-        self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 405)
+        # Signed out, from another site, or not a POST: refused before any limit is touched.
+        for change, status in [({"cookies": []}, 401),
+                               ({"headers": {**event["headers"], "origin": "https://evil.example"}}, 403),
+                               ({"requestContext": {"http": {"method": "GET"}}}, 405)]:
+            self.assertEqual(handler.lambda_handler({**event, **change}, None)["statusCode"], status)
+        # The old way in (OpenID on the Function URL root) is gone.
+        self.assertEqual(handler.lambda_handler({**event, "rawPath": "/"}, None)["statusCode"], 404)
 
     def test_mod_event_plumbing(self):
         saved = handler.verify_ticket
@@ -1385,9 +1382,10 @@ class LambdaHandlerTests(unittest.TestCase):
             self.assertEqual(post(other, path="/mod/runs")[0], 401)
             self.assertEqual(lines[-1], {"via": "mod", "status": 401, "code": "bad_ticket"})
 
-            # Anything else is still the site's way in, and isn't counted as the mod's.
-            self.assertEqual(post(good, path="/")[1]["error"], "bad_openid")
-            self.assertEqual(lines[-1], {"status": 401, "code": "bad_openid"})
+            # Nothing else answers on the mod's way in, and it isn't counted as the mod's.
+            calls = len(lines)
+            self.assertEqual(post(good, path="/")[1]["error"], "not_found")
+            self.assertEqual(len(lines), calls)
 
             # On AWS each function answers only its own way in, so the mod's
             # can be shut off alone. Refused before Steam or storage is asked.

@@ -1,7 +1,7 @@
-// Gamma-only feedback. One panel with two views: write a note, or review the
+// Feedback on every page. One panel with two views: write a note, or review the
 // inbox. The launcher carries how many notes are open on the page you are on.
+// Signed out (prod; gamma's gate always has a session), it leads to the Steam sign-in.
 (() => {
-  if (location.hostname !== 'gamma.slay-my-stats.com' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
   const host = document.createElement('div');
   host.id = 'gamma-feedback';
   document.body.append(host);
@@ -311,12 +311,16 @@
   let suppressClick=false;
   document.addEventListener('click',e=>{if(suppressClick && !e.composedPath().includes(host)){e.preventDefault();e.stopImmediatePropagation();suppressClick=false;}},true);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(picking)stop();else if(!$('panel').hidden)closePanel();}});
+  let signedOut=false;
+  // Back to this page after Steam; the hash stays behind (the server takes a path and query only).
+  const signIn = () => location.assign('/auth/login?next='+encodeURIComponent(location.pathname+location.search));
   async function api(body, params) {
     const query=body?'':'?'+new URLSearchParams(params||{}).toString();
     const response=await fetch('/auth/feedback'+query,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+    if(response.status===401) signedOut=true;
     if(!response.ok){
       let message='';try{message=(await response.json()).message||'';}catch{}
-      throw new Error(response.status===401?'Sign in to gamma again.':message||`Could not ${body?'save':'load'} feedback. Please retry.`);
+      throw new Error(response.status===401?'Sign in through Steam to use feedback.':message||`Could not ${body?'save':'load'} feedback. Please retry.`);
     }
     const data=await response.json();
     if(data.me) me=data.me;
@@ -597,7 +601,7 @@
       notes=notes.concat(data.notes);nextCursor=data.next||null;renderInbox();
     } catch(e){ if(mine!==loadId) return; $('summary').textContent='';say(e.message,'inbox'); }
   }
-  $('launcher').onclick=openPanel;
+  $('launcher').onclick=()=>signedOut?signIn():openPanel();
   $('close').onclick=closePanel;$('cancel').onclick=stop;
   $('tab-compose').onclick=()=>showView('compose');
   $('tab-inbox').onclick=()=>showView('inbox');

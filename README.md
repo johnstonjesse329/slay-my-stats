@@ -61,7 +61,7 @@ over the recipient's saved default; opening a link does not overwrite that defau
 ```text
 slay-my-stats/
 ├── run.py                   Reads .run files into dashboard data. The upload Lambdas parse with it.
-├── build_site.py            Builds dist/ for the site: index.html, app.js, catalog.json, site-config.json
+├── build_site.py            Builds dist/ for the site: index.html, app.js, catalog.json
 ├── dashboard.css            Dashboard styles
 ├── js/                      Dashboard code, one module per page or concern (shared)
 │   ├── data.js              window.DATA shape and helpers
@@ -89,7 +89,7 @@ slay-my-stats/
 │   ├── players.css          site bar, finder, site stats, pages
 │   ├── upload.js            Steam sign-in and the upload panel
 │   ├── upload.css
-│   └── feedback.js          gamma-only feedback panel (inert elsewhere; talks to /auth/feedback)
+│   └── feedback.js          feedback panel on every page (talks to /auth/feedback)
 ├── infra/                   CDK app
 │   ├── app.py
 │   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
@@ -216,17 +216,17 @@ own, `SlayMyStatsFeedbackStack` (`infra/slay_my_stats/feedback_stack.py`), which
 |----------|---------------|-----|
 | **Site bucket** `slay-my-stats-site` | Private (CloudFront OAC only). Destroyed with the stack. | The built `dist/` plus game art. Rebuildable from the repo at any time. |
 | **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` only). **Retained** if the stack is deleted (gamma too, and gamma's is versioned; old versions outside `feedback/` expire after 30 days). CORS for `https://slay-my-stats.com` POSTs, since uploads go straight here. Upload results expire after 7 days. | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
-| **CloudFront distribution** | `slay-my-stats.com`, HTTP redirects to HTTPS, default root `index.html`. Behaviors below. | One domain for the site and the profile data, so the browser needs no CORS for reads. |
+| **CloudFront distribution** | `slay-my-stats.com`, HTTP redirects to HTTPS, default root `index.html`. Behaviors below; `auth/*` goes to the ingest Lambda's Function URL. | One domain for the site, the profile data and the sign-in, so the browser needs no CORS and the session cookie stays on the site. |
 | **CloudFront Function** (`ProfileUrlRewriteFunction`) | Viewer request, JS 2.0. Sets the URI to `/index.html`. | Page URLs like `/u/<slug>` have no S3 object. Rewriting at the edge keeps the shareable URL in the address bar. Attached only to page behaviors, so asset requests never pay for it. |
 | **Route 53 A record** | Alias to the distribution, in an existing hosted zone. | The domain. The hosted zone is created outside CDK. |
 | **ACM certificate** | Imported by ARN, us-east-1. | CloudFront only reads certificates from us-east-1. Created outside CDK. |
-| **Ingest Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Public Function URL, CORS for `https://slay-my-stats.com` POSTs only. | Checks the Steam sign-in and the rate limits, then hands out a presigned POST for one upload. It verifies the sign-in itself, so no API Gateway, and never sees the upload, so it stays small. |
+| **Ingest Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Function URL with no CORS, reached through CloudFront's `auth/*`. | The Steam sign-in and its 30-day session cookie, feedback, and the upload URL: it checks the session and the rate limits, then hands out a presigned POST for one upload. No API Gateway, and it never sees the upload, so it stays small. |
 | **Mod Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Same code as the ingest Lambda, answering only `/mod` and `/mod/runs`. Public Function URL, no CORS. | The game mod's door (see "Mod uploads"). Its own function so it can be shut off alone. |
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
-| **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*` and publish to the alert SNS topic. | A daily summary of uploads, reported for trends. |
+| **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*` and publish to the alert SNS topic. | A daily summary of uploads and feedback, reported for trends. |
 | **Feedback table** `slay-my-stats-feedback` | DynamoDB, on-demand, point-in-time recovery, deletion protection, **retained**. Partition key `env` (`gamma`, `prod`), four indexes for the inbox's filters, TTL on the hourly throttle counters only. Its own stack, shared by both stages; IAM holds each Lambda to the `env` values it may read or write. | The feedback notes, their +1s and the FB-n counter. One table so a note keeps its number and history wherever it is read from. |
-| **Feedback digest Lambda** + two schedules | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Gamma only. EventBridge Scheduler crons at 8 AM America/Chicago, Tuesday to Sunday and Mondays; it can read gamma's notes in the feedback table and publish to the gamma alert SNS topic. | Emails the owner the day's new feedback notes (Tuesday to Sunday), and on Mondays one weekly email with the open, incoming and resolved counts. |
+| **SSM parameter** `/slay-my-stats/session-key` | SecureString, imported by name, production only; the ingest Lambda gets read and `kms:Decrypt`. | Signs the session cookie. Kept out of the template and the Lambda's settings, since anyone holding it could sign in as anyone. Rotating it signs everyone out. |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
 | **Metric filters + alarms** `ModRequests`, `ModRefusals` | Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
 | **Budget** `slay-my-stats-kill-switch` | A small monthly limit on actual cost, filtered to Lambda, CloudWatch and S3. Notifies SNS. | All of these stay inside the free tier at normal traffic, so spend past the limit means abuse. Route 53's fixed zone fee is left out so it can't trip it. |
@@ -293,14 +293,17 @@ sequenceDiagram
     participant R as Process Lambda
 
     P->>B: Upload runs
-    B->>S: OpenID checkid_setup (return_to = site root)
-    S-->>B: redirect to / with signed openid.* params
-    Note over B: params moved from the URL<br/>into sessionStorage
-    P->>B: picks the history folder
-    Note over B: reads .run files locally, drops runs<br/>the profile already has, gzips NDJSON
-    B->>L: POST openid.* params
+    B->>L: /auth/login
+    L-->>B: redirect to Steam
+    B->>S: OpenID checkid_setup
+    S-->>B: redirect to /auth/callback with signed openid.* params
+    B->>L: /auth/callback
     L->>S: check_authentication
     S-->>L: is_valid
+    L-->>B: session cookie, redirect to /upload
+    P->>B: picks the history folder
+    Note over B: reads .run files locally, drops runs<br/>the profile already has, gzips NDJSON
+    B->>L: POST /auth/upload (session cookie)
     Note over L: per-IP limit, cooldown
     L-->>B: presigned POST for one raw/ object, upload id
     B->>D: POST the gzip'd runs
@@ -314,14 +317,13 @@ sequenceDiagram
 ```
 
 1. **Sign in.** "Upload runs" in the site bar (or the home page's button) opens the Upload page, and its button
-   sends you to Steam's OpenID login. Steam redirects back to the
-   site with signed `openid.*` parameters, which prove your Steam ID. Every upload carries that proof, and the
-   ingest Lambda re-checks it with Steam. The same sign-in works for more uploads until it's 30 minutes old.
+   sends you through `/auth/login` to Steam's OpenID login. Steam redirects back to `/auth/callback` with signed
+   `openid.*` parameters, which the ingest Lambda checks with Steam once. It then sets a signed, HttpOnly session
+   cookie good for 30 days, the same one feedback uses.
 2. **Pick the folder.** The browser reads the `.run` files locally and drops runs your profile already has. It
    knows your profile from an earlier upload in this browser, or else from the ingest Lambda's answer. It gzips
    the rest as NDJSON (one run per line).
-3. **Get an upload URL.** The ingest Lambda checks the per-IP limit, verifies the sign-in (Steam confirms the
-   signature, `return_to` is this site, and it's under 30 minutes old) and enforces a 60-second cooldown per
+3. **Get an upload URL.** The ingest Lambda checks the per-IP limit, checks the session cookie and that the request came from the site, and enforces a 60-second cooldown per
    Steam account. It answers with a presigned POST, good for 10 minutes, for one new `raw/` object of up to
    100 MB, plus the upload's id. It never sees your runs.
 4. **Send.** The browser POSTs the file straight to S3.
@@ -480,7 +482,8 @@ infra\.venv\Scripts\python.exe tools/serve_site.py --port 8123 # http://127.0.0.
 ```
 
 `tools/serve_site.py` emulates the CloudFront routing. It also stands in for the upload path, running the real
-Lambda code against `local_data/` (the same layout as the bucket): `POST /api/ingest` is the ingest Lambda, and the
+Lambda code against `local_data/` (the same layout as the bucket): `/auth/*` is the ingest Lambda's sign-in (signed
+with a key made up each time the server starts, so a restart signs you out) and `POST /auth/upload` its upload URL; the
 upload URL it hands out is the server's own `/api/raw-upload`, which stores the file under `local_data/raw/` and
 processes it on the spot, in place of S3 and its event. So the upload flow, including a real Steam sign-in, works
 locally. Locally the Steam name comes from the public profile XML, unless
@@ -491,7 +494,7 @@ flowchart LR
     subgraph local["tools/serve_site.py (127.0.0.1)"]
         dist["dist/<br/>(build_site.py)"]
         users[("local_data/<br/>users/, ids/, raw/")]
-        ingest["/api/ingest<br/>handler.authorize()"]
+        ingest["/auth/*<br/>session.handle()"]
         rawup["/api/raw-upload<br/>handler.process_upload()"]
     end
     b["Browser"] --> dist
@@ -542,8 +545,8 @@ both, along with `measured.py`, `tools/power_curve/derive_telemetry.py`, a card-
 `card_data.json`, and the known IDs cut from it and `relic_data.json` (so synth needs the game data; without it
 the energy chart's Card cost line is flat and no run is held). To skip deploying for one push, use `SKIP_DEPLOY=1 git push`.
 
-After the stack step, the deploy sends the ingest Function URL an empty POST. The function answers 401 (no
-Steam ticket), and anything under 500 passes; a 5xx, or no answer, stops the deploy before the site goes up.
+After the stack step, the deploy sends the ingest Function URL an empty POST. The function answers 404 (nothing
+is served at its root), and anything under 500 passes; a 5xx, or no answer, stops the deploy before the site goes up.
 That is what a bundle that crashes on import looks like (a 502 for every upload from the mod), and the
 tests alone can't see it, since they import the code from the repo rather than from the Lambda's flat layout.
 After the site goes up, `tools/smoke_site.py` loads it as a visitor would, retrying for four minutes while
@@ -564,6 +567,7 @@ Set up once, outside CDK:
   `{"certificateArn": "arn:aws:acm:us-east-1:…", "hostedZoneId": "Z…", "alertEmail": "you@example.com"}`.
   After the first deploy with it, click the confirmation link AWS emails there;
 - the Steam Web API key: `aws ssm put-parameter --name /slay-my-stats/steam-api-key --type SecureString`;
+- the session key, a random 64-character hex string: `aws ssm put-parameter --name /slay-my-stats/session-key --type SecureString`;
 - `cdk bootstrap` for the account and region.
 
 ### Gamma
@@ -589,8 +593,8 @@ CloudFront function and login Lambda. Rotating it invalidates existing sessions.
 Visitors are redirected through Steam; a verified, allowed account receives a Secure, HttpOnly,
 host-only cookie valid for 12 hours. CloudFront checks its signature, expiry and current allowlist
 before serving pages, assets or profile data, including cached files. Upload endpoints independently
-check the Steam account after verifying OpenID or the mod's ticket, including direct Function URL calls.
-Removing an account and redeploying revokes its access. Production stays public.
+check the Steam account in the session or the mod's ticket, including direct Function URL calls.
+Removing an account and redeploying revokes its access. Production stays public, with its own 30-day sign-in.
 Gamma deploy smoke checks use a short-lived signed session from the same private configuration.
 
 Signed-in reviewers get a gold **Feedback** button in the lower right, carrying the number of notes open on
@@ -598,8 +602,9 @@ the page. It opens one panel with a **New note** view — pin an element or regi
 with the exact page URL and the earlier notes for that target in front of you — and an **Inbox** view that
 switches between This page and Whole site, groups notes into one bucket per page and per pinned element or
 region, loads them 25 at a time, and offers search, an author filter, a +1 per person, resolve, reopen and a copy-ready report. Notes live
-in the feedback table as `env=gamma`, reached through `/auth/feedback`; production never shows the
-button. See [docs/gamma-feedback.md](docs/gamma-feedback.md).
+in the feedback table as `env=gamma`, reached through `/auth/feedback`. Production shows the same button to
+everyone; signed out, it leads to the Steam sign-in, and its notes are `env=prod`. The 8 AM digest email carries
+both stages' new notes, and on Mondays the weekly counts. See [docs/gamma-feedback.md](docs/gamma-feedback.md).
 
 ### Publishing gamma to production
 

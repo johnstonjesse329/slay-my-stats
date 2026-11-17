@@ -21,8 +21,9 @@ import boto3
 from moto import mock_aws
 
 INFRA = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(INFRA / 'lambda' / 'ingest'), str(INFRA)]
+sys.path[:0] = [str(INFRA / 'lambda' / 'ingest'), str(INFRA), str(INFRA.parent)]  # the repo root holds run.py
 import feedback  # noqa: E402
+import session  # noqa: E402
 from slay_my_stats.feedback_stack import INDEXES, TABLE_NAME  # noqa: E402
 
 ADMIN, OTHER = '76561198000000001', '76561198000000002'
@@ -41,6 +42,8 @@ class FeedbackTest(unittest.TestCase):
             'AWS_DEFAULT_REGION': 'us-west-2', 'AWS_ACCESS_KEY_ID': 'test', 'AWS_SECRET_ACCESS_KEY': 'test'})
         env.start()
         self.addCleanup(env.stop)
+        session._secret = None
+        self.addCleanup(setattr, session, '_secret', None)
         aws = mock_aws()
         aws.start()
         self.addCleanup(aws.stop)
@@ -158,7 +161,7 @@ class FeedbackTest(unittest.TestCase):
         self.assertNotIn('cat', self.stored(plain['id']))  # kept out of the type indexes
         self.assertEqual(self.call({**body, 'category': 'idea'})[0], 400)
         _, text = feedback.build_report([{'created': 100, 'author': '1234', 'comment': 'x', 'path': '/',
-                                          'category': 'feature'}], 100, 'daily', 'https://gamma.test')
+                                          'category': 'feature'}], 100, 'daily', 'https://gamma.test', 'Gamma')
         self.assertIn('[Feature request] x', text)
 
     def test_note_carries_the_full_page_url(self):
@@ -451,15 +454,39 @@ class FeedbackTest(unittest.TestCase):
         notes = [note(now - 100), note(now - 3 * day), note(now - 20 * day),
                  note(now - 10 * day, resolved=True, resolved_at=now - 2 * day),
                  note(now - 10 * day, resolved=True, resolved_at=now - 9 * day)]
-        subject, body = feedback.build_report(notes, now, 'daily', 'https://gamma.test')
+        subject, body = feedback.build_report(notes, now, 'daily', 'https://gamma.test', 'Gamma')
         self.assertEqual(subject, 'Gamma feedback: 1 new, 3 open')
         self.assertIn('https://gamma.test/p', body)
-        self.assertIsNone(feedback.build_report(notes[2:], now, 'daily', 'https://gamma.test'))
-        subject, body = feedback.build_report(notes, now, 'weekly', 'https://gamma.test')
+        self.assertIsNone(feedback.build_report(notes[2:], now, 'daily', 'https://gamma.test', 'Gamma'))
+        subject, body = feedback.build_report(notes, now, 'weekly', 'https://gamma.test', 'Gamma')
         self.assertEqual(subject, 'Gamma feedback, this week: 3 open, 2 in, 1 resolved')
         self.assertIn('Still open:', body)
-        self.assertEqual(feedback.build_report([], now, 'weekly', 'https://gamma.test')[0],
+        self.assertEqual(feedback.build_report([], now, 'weekly', 'https://gamma.test', 'Gamma')[0],
                          'Gamma feedback, this week: 0 open, 0 in, 0 resolved')
+
+    def test_morning_email_carries_both_sites(self):
+        import handler
+        monday, day = 1_799_020_800 + 13 * 3600, 86400  # Monday 2027-01-04, 13:00 UTC
+        self.assertEqual(time.gmtime(monday).tm_wday, 0)
+        notes = {'prod': [{'created': monday - 3 * day, 'author': ADMIN, 'comment': 'p', 'path': '/'}], 'gamma': []}
+        sites = 'prod=https://prod.test,gamma=https://gamma.test'
+        with patch.dict(os.environ, {'FEEDBACK_DIGEST_SITES': sites}):
+            # Tuesday: prod's note is three days old, gamma has none, so nothing to add.
+            self.assertEqual(handler.feedback_sections(monday + day, notes.get), [])
+            # Monday: the weekly counts for both, even when nothing came in.
+            sections = handler.feedback_sections(monday, notes.get)
+        self.assertEqual([h for h, _ in sections], ['Prod feedback, this week: 1 open, 1 in, 0 resolved',
+                                                     'Gamma feedback, this week: 0 open, 0 in, 0 resolved'])
+        self.assertIn('https://prod.test/', sections[0][1])
+        sent = []
+        with patch.object(handler, 'build_digest', return_value=('Uploads', 'body')), \
+                patch.object(handler, '_get_store'), \
+                patch.object(handler, '_alert', side_effect=lambda *a: sent.append(a)), \
+                patch.object(handler, 'feedback_sections', return_value=sections):
+            handler.digest_handler({}, None)
+        subject, body = sent[0]
+        self.assertTrue(subject.startswith('Uploads | Prod feedback, this week'))
+        self.assertIn('\n\nGamma feedback, this week: 0 open, 0 in, 0 resolved\n---', body)
 
 
 if __name__ == '__main__':

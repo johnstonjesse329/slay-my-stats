@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT), str(ROOT / "infra/lambda/ingest")]
 import handler
+import session
 
 SID = "76561198000000001"
 OTHER = "76561198000000002"
@@ -29,6 +30,8 @@ class GammaAuthTests(unittest.TestCase):
                                           "ALLOWED_STEAM_IDS": SID})
         self.env.start()
         self.addCleanup(self.env.stop)
+        session._secret = None
+        self.addCleanup(setattr, session, "_secret", None)
 
     def event(self, path, query="", cookies=()):
         return {"rawPath": path, "rawQueryString": query, "cookies": list(cookies),
@@ -81,14 +84,14 @@ class GammaAuthTests(unittest.TestCase):
             with self.assertRaises(handler.IngestError) as error:
                 handler._mod_player({"steamId": OTHER, "ticket": "ticket"})
             self.assertEqual(error.exception.status, 403)
-        with patch.object(handler, "verify_openid", return_value=OTHER):
-            # An unauthorized browser account is refused before reading account data or signing S3 forms.
-            from unittest.mock import Mock
-            store = Mock()
-            store.get.return_value = None
-            with self.assertRaises(handler.IngestError) as error:
-                handler.authorize({}, "127.0.0.1", store, [ORIGIN], Mock())
-            self.assertEqual(error.exception.status, 403)
+        # An unauthorized browser account is refused before reading account data or signing S3 forms.
+        from unittest.mock import Mock
+        store, presign = Mock(), Mock()
+        store.get.return_value = None
+        with self.assertRaises(handler.IngestError) as error:
+            handler.authorize(OTHER, "127.0.0.1", store, presign)
+        self.assertEqual(error.exception.status, 403)
+        presign.assert_not_called()
 
     @unittest.skipUnless(shutil.which("node"), "Node required for CloudFront runtime checks")
     def test_edge_rejects_forgery_expiry_and_removed_accounts(self):

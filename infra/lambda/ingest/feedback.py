@@ -1,7 +1,8 @@
 """The feedback inbox, kept in the shared DynamoDB table (docs/prod-feedback-plan.md).
 
-Gamma's auth Lambda serves it at /auth/feedback, checking the signed gamma session itself so
-the direct Function URL is no way around it. Which environment a note belongs to is fixed by
+Served at /auth/feedback (session.py): gamma's auth Lambda on gamma, the ingest Lambda on prod.
+Each request's signed session cookie is checked here, so the direct Function URL is no way
+around it. Which environment a note belongs to is fixed by
 the Lambda's own FEEDBACK_ENV, never by the request; FEEDBACK_READ_ENVS lists the ones it may
 read (gamma reads prod too, prod never reads gamma), and IAM holds each role to those.
 
@@ -13,14 +14,12 @@ Items, all keyed by env (partition) and sk:
 """
 import base64
 import hashlib
-import hmac
 import json
 import os
 import re
 import time
 import urllib.parse
 import uuid
-from http.cookies import CookieError, SimpleCookie
 
 PAGE_SIZE = 25
 READ_LIMIT = 400  # items one request may read for a page view, which filters what it reads
@@ -409,37 +408,22 @@ def _create(db, table, env, steam, note):
                  "ConditionExpression": "attribute_not_exists(sk)"}}])
 
 
-def _session(event):
-    """The signed-in gamma reviewer's Steam ID, or None."""
-    cookies = SimpleCookie()
-    try:
-        cookies.load("; ".join(event.get("cookies", [])))
-        token = cookies["__Host-gamma"].value
-        steam, expiry, signature = token.split(".")
-        expected = hmac.new(os.environ["GAMMA_SESSION_SECRET"].encode(),
-                            f"{steam}.{expiry}".encode(), hashlib.sha256).hexdigest()
-        if (steam not in os.environ["ALLOWED_STEAM_IDS"].split(",")
-                or int(expiry) <= time.time() or not hmac.compare_digest(signature, expected)):
-            return None
-        return steam
-    except (KeyError, ValueError, CookieError):
-        return None
-
-
 def handle(event):
     def reply(status, body):
         return {"statusCode": status, "headers": {"content-type": "application/json",
                 "cache-control": "no-store"}, "body": json.dumps(body)}
 
-    steam = _session(event)
+    import session
+    steam = session.steam_id(event)
     if not steam:
-        return reply(401, {"message": "Sign in to gamma again to use feedback."})
+        return reply(401, {"message": "Sign in to gamma again to use feedback." if os.environ.get("GAMMA_ORIGIN")
+                           else "Sign in through Steam to use feedback."})
     method = event.get("requestContext", {}).get("http", {}).get("method")
     if method not in ("GET", "POST"):
         return reply(405, {"message": "Method not allowed."})
-    origin = os.environ["GAMMA_ORIGIN"]
-    if method == "POST" and event.get("headers", {}).get("origin") != origin:
-        return reply(403, {"message": "Feedback must be submitted from gamma."})
+    origin = session.origin()
+    if method == "POST" and not session.same_origin(event):
+        return reply(403, {"message": "Feedback must be sent from the site."})
     table, env = os.environ["FEEDBACK_TABLE"], os.environ["FEEDBACK_ENV"]
     readable = [e for e in os.environ.get("FEEDBACK_READ_ENVS", env).split(",") if e in ENVS] or [env]
     admin = steam in [s for s in os.environ.get("ADMIN_STEAM_IDS", "").split(",") if s]
@@ -583,8 +567,9 @@ def _line(note, origin):
     return f"{who}: {text}\n  {note.get('url') or origin + note.get('path', '')}"
 
 
-def build_report(notes, now, period, origin):
-    """The owner's feedback email, or None when there is nothing worth sending.
+def build_report(notes, now, period, origin, label):
+    """One site's (`label`: "Prod", "Gamma") section of the owner's morning email, as
+    (headline, body), or None when there is nothing worth sending.
 
     "daily" lists what came in over the last day and sends nothing on a quiet day. "weekly"
     always sends: how many notes are open, how many came in and how many were resolved over
@@ -601,11 +586,11 @@ def build_report(notes, now, period, origin):
         if not new:
             return None
         head = f"New feedback in the last day: {len(new)}. Open in total: {len(opened)}, backlog: {len(later)}.\n\n"
-        return (f"Gamma feedback: {len(new)} new, {len(opened)} open",
+        return (f"{label} feedback: {len(new)} new, {len(opened)} open",
                 head + "\n".join(_line(n, origin) for n in new))
     body = (f"Open in total: {len(opened)}, backlog: {len(later)}\nCame in this week: {len(new)}\n"
             f"Resolved this week: {len(closed)}\n")
     if opened:
         oldest_first = sorted(opened, key=lambda n: n.get("created", 0))
         body += "\nStill open:\n" + "\n".join(_line(n, origin) for n in oldest_first)
-    return f"Gamma feedback, this week: {len(opened)} open, {len(new)} in, {len(closed)} resolved", body
+    return f"{label} feedback, this week: {len(opened)} open, {len(new)} in, {len(closed)} resolved", body

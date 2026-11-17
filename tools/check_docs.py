@@ -34,6 +34,8 @@ DRAWN = {
     "KillSwitchFunction": "stops uploads",
     "KillSwitchBudget": "AWS Budgets",
     "SteamApiKeyParam": "Parameter Store",
+    "SessionKeyParam": "Parameter Store",
+    "FeedbackTable": "DynamoDB",
     "IngestLogGroup": "CloudWatch",
     "ModIngestLogGroup": "CloudWatch",
     "ProcessLogGroup": "CloudWatch",
@@ -49,11 +51,6 @@ NOT_DRAWN = {  # plumbing inside a drawn box, or an output
     "SteamGateFunction": "gamma-only Steam session check; the diagram shows production",
     "GammaAuthFunction": "gamma-only Steam login; the diagram shows production",
     "DigestSchedule": "the 8 AM schedule is noted inside the Digest box",
-    "FeedbackDigestFunction": "gamma-only feedback email; the diagram shows production",
-    "FeedbackDigestLogGroup": "gamma-only; the diagram shows production",
-    "FeedbackDigestDailySchedule": "gamma-only; the diagram shows production",
-    "FeedbackDigestWeeklySchedule": "gamma-only; the diagram shows production",
-    "FeedbackTable": "only gamma reads and writes it so far; draw it when production does",
 }
 OUTPUT_ID = re.compile(r"(Name|Domain\w*|Url)$")
 

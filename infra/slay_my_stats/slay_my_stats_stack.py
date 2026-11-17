@@ -60,7 +60,7 @@ SITE_PAGES = sorted(f.stem for f in (Path(__file__).resolve().parents[2] / "site
 @jsii.implements(ILocalBundling)
 class _CopyIngestSources:
     def try_bundle(self, output_dir: str, *, image=None, **_kwargs) -> bool:
-        for name in ("handler.py", "measured.py", "feedback.py"):
+        for name in ("handler.py", "measured.py", "feedback.py", "session.py"):
             shutil.copy(INGEST_DIR / name, output_dir)
         shutil.copy(RUN_PY, output_dir)
         shutil.copy(DERIVE_PY, output_dir)
@@ -85,7 +85,8 @@ class _CopyIngestSources:
 def _ingest_asset_hash() -> str:
     import hashlib
     h = hashlib.sha256()
-    for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", INGEST_DIR / "feedback.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
+    for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", INGEST_DIR / "feedback.py",
+              INGEST_DIR / "session.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
               IDS_PY, RELIC_DATA, RETIRED_IDS):
         if p.exists():
             h.update(p.read_bytes())
@@ -93,6 +94,9 @@ def _ingest_asset_hash() -> str:
 
 
 STEAM_API_KEY_PARAM_NAME ="/slay-my-stats/steam-api-key"
+# Signs prod's sign-in cookies (session.py). A SecureString created once by hand, like the
+# Steam API key (README "Deploying"); replacing its value signs everyone out.
+SESSION_KEY_PARAM_NAME = "/slay-my-stats/session-key"
 DOMAIN_NAME = "slay-my-stats.com"
 # The ACM certificate and Route 53 hosted zone are created outside CDK and
 # passed in as context ("certificateArn", "hostedZoneId"), which lives in the
@@ -228,7 +232,9 @@ class SlayMyStatsStack(Stack):
         if gamma and not (isinstance(session_key, str) and len(session_key) >= 64):
             raise ValueError('"gammaSessionSecret" must be a random secret of at least 64 characters.')
         # Only the owner resolves, reopens or backlogs feedback; other reviewers write and +1.
-        owner_id = required_context("ownerSteamId") if gamma else ""
+        owner_id = required_context("ownerSteamId")
+        if not (isinstance(owner_id, str) and len(owner_id) == 17 and owner_id.isascii() and owner_id.isdigit()):
+            raise ValueError('"ownerSteamId" must be a SteamID64 string.')
         if gamma and owner_id not in allowed_ids:
             raise ValueError('"ownerSteamId" must be one of "gammaAllowedSteamIds".')
 
@@ -393,8 +399,10 @@ class SlayMyStatsStack(Stack):
             asset_hash=_ingest_asset_hash(),
         )
 
-        # Checks the Steam sign-in and the rate limits, then hands out a
-        # presigned POST for one new raw/ object. Never sees the upload.
+        # The site's /auth/* behind CloudFront (session.py): Steam sign-in, then per upload
+        # the rate limits and a presigned POST for one new raw/ object (it never sees the
+        # upload), and on prod the feedback notes. On gamma, sign-in and feedback are
+        # GammaAuthFunction's and only /auth/upload comes here.
         ingest_log_group = logs.LogGroup(
             self, "IngestLogGroup",
             retention=logs.RetentionDays.ONE_WEEK,
@@ -412,12 +420,17 @@ class SlayMyStatsStack(Stack):
                 "DATA_BUCKET": data_bucket.bucket_name,
                 # The website's way in only: /mod is the mod function's.
                 "ENTRY": "site",
-                # The OpenID return_to origins sign-ins are accepted from; an
-                # assertion Steam issued for any other site is refused.
-                "ALLOWED_RETURN_TO": f"https://{domain_name}/",
+                # Sign-ins return here, and POSTs must come from here.
+                "SITE_ORIGIN": f"https://{domain_name}",
                 # The Function URL is reachable directly, past CloudFront's
-                # gate, so the handler checks the verified Steam account itself.
-                **({"ALLOWED_STEAM_IDS": ",".join(allowed_ids)} if gamma else {}),
+                # gate, so the handler checks the signed-in account itself.
+                **({"ALLOWED_STEAM_IDS": ",".join(allowed_ids), "GAMMA_SESSION_SECRET": session_key,
+                    "GAMMA_ORIGIN": f"https://{domain_name}"} if gamma else {
+                    "SESSION_SECRET_PARAM_NAME": SESSION_KEY_PARAM_NAME,
+                    # Feedback: prod writes and reads prod's notes only; only the owner is an admin.
+                    "FEEDBACK_TABLE": FEEDBACK_TABLE, "FEEDBACK_ENV": "prod", "FEEDBACK_READ_ENVS": "prod",
+                    "ADMIN_STEAM_IDS": owner_id,
+                    "STEAM_API_KEY_PARAM_NAME": STEAM_API_KEY_PARAM_NAME}),
             },
         )
         # Read/write covers the limits, the slug lookup, and signing the
@@ -506,6 +519,20 @@ class SlayMyStatsStack(Stack):
         )
         process_fn.add_environment("STEAM_API_KEY_PARAM_NAME", STEAM_API_KEY_PARAM_NAME)
 
+        if not gamma:
+            # Prod's sign-in key, and feedback's Steam names (looked up with the Web API key).
+            ssm.StringParameter.from_secure_string_parameter_attributes(
+                self, "SessionKeyParam", parameter_name=SESSION_KEY_PARAM_NAME,
+            ).grant_read(ingest_fn)
+            steam_api_key_param.grant_read(ingest_fn)
+            ingest_fn.add_to_role_policy(
+                iam.PolicyStatement(
+                    actions=["kms:Decrypt"],
+                    resources=[self.format_arn(service="kms", resource="alias", resource_name="aws/ssm")],
+                )
+            )
+            feedback_access(self, ingest_fn.role, read=("prod", "counter"), write=("prod", "counter"))
+
         # The game mod's way in: POST /mod and /mod/runs, open to any Steam
         # account. Same code as the ingest function, but a function of its
         # own, so it can be shut off alone without taking the website's
@@ -581,6 +608,8 @@ class SlayMyStatsStack(Stack):
         # added how many runs, new players, failures, the site's totals. It
         # reads the upload results the bucket already keeps for a week, so
         # nothing new is recorded. Prod only: gamma's uploads are testing.
+        # Below them, the new feedback on prod and on gamma (Mondays: the open,
+        # incoming and resolved counts), so feedback never sends an email of its own.
         if not gamma:
             digest_log_group = logs.LogGroup(
                 self, "DigestLogGroup",
@@ -596,8 +625,10 @@ class SlayMyStatsStack(Stack):
                 memory_size=256,
                 log_group=digest_log_group,
                 environment={"DATA_BUCKET": data_bucket.bucket_name, "SITE_DOMAIN": domain_name,
-                             "ALERT_TOPIC_ARN": alert_topic.topic_arn},
+                             "ALERT_TOPIC_ARN": alert_topic.topic_arn, "FEEDBACK_TABLE": FEEDBACK_TABLE,
+                             "FEEDBACK_DIGEST_SITES": f"prod=https://{DOMAIN_NAME},gamma=https://gamma.{DOMAIN_NAME}"},
             )
+            feedback_access(self, digest_fn.role, read=("prod", "gamma"))
             data_bucket.grant_read(digest_fn, "users/*")
             data_bucket.grant_read(digest_fn, "analytics/*")
             alert_topic.grant_publish(digest_fn)
@@ -609,16 +640,23 @@ class SlayMyStatsStack(Stack):
                 description=f"Daily upload digest for {domain_name}",
             )
 
-        # No API Gateway: OpenID verification happens inside the handler, so
-        # a bare public Function URL is enough and one less moving part.
-        fn_url = ingest_fn.add_function_url(
-            auth_type=lambda_.FunctionUrlAuthType.NONE,
-            cors=lambda_.FunctionUrlCorsOptions(
-                allowed_origins=[f"https://{domain_name}"],
-                allowed_methods=[lambda_.HttpMethod.POST],
-                allowed_headers=["content-type"],
-            ),
-        )
+        # No API Gateway: the handler checks the session itself, so a bare
+        # public Function URL is enough and one less moving part. Pages reach
+        # it through CloudFront's auth/ behaviors below, on the site's own
+        # origin, so it needs no CORS.
+        fn_url = ingest_fn.add_function_url(auth_type=lambda_.FunctionUrlAuthType.NONE)
+        # CloudFront-Viewer-Address (the rate limit's address) is among the viewer headers this
+        # policy forwards; the Host header isn't, since the Function URL answers only its own.
+        # Behaviors match in the order they're added, so gamma's auth/upload goes before auth/*.
+        def auth_behavior(path, url):
+            distribution.add_behavior(
+                path, origins.HttpOrigin(Fn.select(2, Fn.split("/", url))),
+                allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
+                origin_request_policy=cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+            )
+        auth_behavior("auth/upload" if gamma else "auth/*", fn_url.url)
 
         if gamma:
             auth_fn = lambda_.Function(
@@ -654,51 +692,7 @@ class SlayMyStatsStack(Stack):
                 )
             )
 
-            # The owner's feedback emails, to the same alert address: new notes each morning
-            # Tuesday to Sunday (nothing on a quiet day), and on Mondays one weekly email with the open,
-            # incoming and resolved counts, so Monday is never two emails.
-            feedback_log_group = logs.LogGroup(
-                self, "FeedbackDigestLogGroup",
-                retention=logs.RetentionDays.ONE_MONTH,
-                removal_policy=RemovalPolicy.DESTROY,
-            )
-            feedback_digest_fn = lambda_.Function(
-                self, "FeedbackDigestFunction",
-                runtime=lambda_.Runtime.PYTHON_3_12,
-                handler="handler.feedback_digest_handler",
-                code=ingest_code,
-                timeout=Duration.seconds(60),
-                memory_size=256,
-                log_group=feedback_log_group,
-                environment={"FEEDBACK_TABLE": FEEDBACK_TABLE, "FEEDBACK_ENV": "gamma",
-                             "GAMMA_ORIGIN": f"https://{domain_name}",
-                             "ALERT_TOPIC_ARN": alert_topic.topic_arn},
-            )
-            feedback_access(self, feedback_digest_fn.role, read=("gamma",))
-            alert_topic.grant_publish(feedback_digest_fn)
-            scheduler.Schedule(
-                self, "FeedbackDigestDailySchedule",
-                schedule=scheduler.ScheduleExpression.cron(
-                    minute="0", hour="8", week_day="TUE-SUN", time_zone=TimeZone.AMERICA_CHICAGO),
-                target=scheduler_targets.LambdaInvoke(
-                    feedback_digest_fn, input=scheduler.ScheduleTargetInput.from_object({"period": "daily"})),
-                description="Daily gamma feedback email",
-            )
-            scheduler.Schedule(
-                self, "FeedbackDigestWeeklySchedule",
-                schedule=scheduler.ScheduleExpression.cron(
-                    minute="0", hour="8", week_day="MON", time_zone=TimeZone.AMERICA_CHICAGO),
-                target=scheduler_targets.LambdaInvoke(
-                    feedback_digest_fn, input=scheduler.ScheduleTargetInput.from_object({"period": "weekly"})),
-                description="Weekly gamma feedback email",
-            )
-            distribution.add_behavior(
-                "auth/*", origins.HttpOrigin(Fn.select(2, Fn.split("/", auth_url.url))),
-                allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
-                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
-                origin_request_policy=cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-            )
+            auth_behavior("auth/*", auth_url.url)
 
         # Kill switch: budget breach -> SNS -> small Lambda that sets the ingest,
         # mod and process functions' reserved concurrency to 0, so every further

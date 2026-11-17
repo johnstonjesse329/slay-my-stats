@@ -2,7 +2,8 @@
 
 After deploying the site and gamma CDK stack, signed-in gamma reviewers get a
 gold **Feedback** button in the lower right on every page, carrying the number of
-open notes on the page they are looking at. Production shows neither. It opens
+open notes on the page they are looking at. Production shows the same button to
+everyone, leading to the Steam sign-in while signed out; its notes are `env=prod`. It opens
 one panel with two views, **New note** and **Inbox**; either is closed with the
 panel's X or Escape.
 
@@ -102,8 +103,8 @@ the same-site `path`, which **Open location** uses. They are accessed through
 `/auth/feedback`, not through the public profile behavior. The endpoint verifies
 the existing signed gamma session independently of CloudFront, checks the Steam
 allowlist, and checks Origin on writes. IAM lets the gamma auth Lambda read the
-gamma and prod partitions and write only gamma's (and the FB-n counter); the
-digest Lambda reads gamma's. Notes do not include screenshots.
+gamma and prod partitions and write only gamma's (and the FB-n counter); prod's
+ingest Lambda reads and writes only prod's, and the production digest Lambda reads both. Notes do not include screenshots.
 
 Note ids sort newest first, so a page is one query: on the table for the whole site,
 or on an index for a status, a type or one page (`ByState`, `ByStateCategory`,

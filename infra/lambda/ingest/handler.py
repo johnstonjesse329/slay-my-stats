@@ -2,16 +2,13 @@
 merges its runs into the user's stored blob. Two Lambda entry points share
 this file (plus failure_handler, below):
 
-lambda_handler -- the Function URL (POST from the browser upload page):
-    query string  every openid.* parameter Steam appended to our return_to
-                  URL, passed through untouched -- the proof of who is
-                  uploading. Re-verified with Steam on every upload; there
-                  are no sessions.
-    Flow: per-IP limit -> verify the OpenID assertion -> refuse if this
-    Steam account asked less than COOLDOWN_SECONDS ago (a cost
+lambda_handler -- the Function URL. CloudFront sends the site's /auth/* here
+    (session.py): Steam sign-in, a signed session cookie, feedback on prod,
+    and POST /auth/upload, which the upload page calls once signed in.
+    Flow: refuse a request with no valid session -> per-IP limit -> refuse
+    if this Steam account asked less than COOLDOWN_SECONDS ago (a cost
     circuit-breaker, not a feature) -> answer with a presigned POST for one
-    new raw/ object, capped at UPLOAD_MAX_BYTES, plus the upload's id. A
-    sign-in works again (after the cooldown) until it expires.
+    new raw/ object, capped at UPLOAD_MAX_BYTES, plus the upload's id.
 
     POST /mod is the game mod's way in, open to any Steam account. Its
     JSON body is {"steamId", "ticket"}: a Steam Web API ticket the game got
@@ -1042,11 +1039,10 @@ def _update_seeds(store, slug: str, entries: list[dict]) -> None:
 # Handing out upload URLs
 # ---------------------------------------------------------------------------
 
-def authorize(params: dict, ip: str, store, allowed_return_to: list[str], presign,
-              now: float | None = None, post=_post_to_steam) -> dict:
+def authorize(steam_id: str, ip: str, store, presign, now: float | None = None) -> dict:
     """
-    Check the limits and the sign-in, then hand out a presigned POST for one
-    new raw/ object. Storage-agnostic, like the rest: `store` provides
+    Check the limits for a signed-in player (session.py has already checked
+    the session), then hand out a presigned POST for one new raw/ object. Storage-agnostic, like the rest: `store` provides
         get(key) -> (bytes, last_modified_epoch, etag, metadata) or None
         put(key, bytes, metadata, if_match_etag or None for "must not exist")
             raising StoreConflict if that precondition fails
@@ -1054,15 +1050,11 @@ def authorize(params: dict, ip: str, store, allowed_return_to: list[str], presig
     and `presign(key, max_bytes, expires_seconds)` returns {"url", "fields"}.
     """
     now = time.time() if now is None else now
-    # The IP limit comes first, so a flood from one address never reaches Steam.
     got_ip = store.get(ip_limit_key(ip))
     ip_times = [t for t in (_unpack(got_ip[0]).get("times", []) if got_ip else []) if now - t < IP_WINDOW_SECONDS]
     if len(ip_times) >= IP_UPLOADS_PER_HOUR:
         raise IngestError(429, "rate_limited", "Too many uploads from your network. Try again in an hour.")
 
-    # A sign-in can be used again until it expires; whether Steam accepts the
-    # same one twice is up to Steam. The cooldown and IP limit still apply.
-    steam_id = verify_openid(params, allowed_return_to, now=now, post=post)
     require_allowed_steam_id(steam_id)
     got = store.get(steam_limit_key(steam_id))
     if got and now - _unpack(got[0]).get("at", 0) < COOLDOWN_SECONDS:
@@ -1770,7 +1762,7 @@ def record_upload(store, event: dict, result: dict, via: str, now: float | None 
     try:
         now = time.time() if now is None else now
         headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
-        ip = event.get("requestContext", {}).get("http", {}).get("sourceIp", "")
+        ip = viewer_ip(event)
         note = {
             "at": int(now), "via": via,
             "userAgent": headers.get("user-agent", "")[:300],
@@ -1785,20 +1777,49 @@ def record_upload(store, event: dict, result: dict, via: str, now: float | None 
         print(json.dumps({"analytics_failed": type(e).__name__}))
 
 
+def viewer_ip(event: dict) -> str:
+    """The browser's address. Through CloudFront the caller is an edge server, so it is
+    CloudFront's own CloudFront-Viewer-Address header ("ip:port"); a direct call to the Function URL
+    could fake that header, but only to dodge the per-address limit, never a session."""
+    address = (event.get("headers") or {}).get("cloudfront-viewer-address", "")
+    try:
+        return str(ipaddress.ip_address(address.rsplit(":", 1)[0]))
+    except ValueError:
+        return event.get("requestContext", {}).get("http", {}).get("sourceIp", "")
+
+
+def _site_upload(event: dict, steam_id: str) -> dict:
+    """POST /auth/upload from a signed-in page (session.handle checked the session)."""
+    store = _get_store()
+    try:
+        result = authorize(steam_id, viewer_ip(event), store, store.presign_post)
+    except IngestError as e:
+        print(json.dumps({"status": e.status, "code": e.code}))
+        return _response(e.status, {"error": e.code, "message": e.message})
+    print(json.dumps({"status": 200, "uploadId": result["uploadId"]}))
+    record_upload(store, event, result, "site")
+    return _response(200, result)
+
+
 def lambda_handler(event, context):
-    """The Function URL (payload format 2.0): hands out upload URLs."""
+    """The Function URL (payload format 2.0). The site's way in (ENTRY "site") serves /auth/*
+    through CloudFront: Steam sign-in, uploads and, on prod, feedback (session.py). The mod's
+    (ENTRY "mod") serves /mod and /mod/runs."""
     http = event.get("requestContext", {}).get("http", {})
+    path = event.get("rawPath", "").rstrip("/")
+    entry = os.environ.get("ENTRY", "")
+    if path.startswith("/auth/") and entry != "mod":
+        import session
+        return session.handle(event, upload=_site_upload)
     if http.get("method") != "POST":
         return _response(405, {"error": "method_not_allowed", "message": "POST only."})
     # Log lines from the mod's way in say so: the stack counts them, and
     # alarms when there are too many.
-    path = event.get("rawPath", "").rstrip("/")
     via = {"via": "mod"} if path in ("/mod", "/mod/runs") else {}
     # On AWS each function answers only its own way in: ENTRY is "site" on
     # the website's and "mod" on the mod's. Unset (the dev server, tests),
-    # it answers both.
-    entry = os.environ.get("ENTRY", "")
-    if entry and entry != ("mod" if via else "site"):
+    # it answers both. The site's uploads now go through /auth/upload.
+    if not via or entry not in ("", "mod"):
         return _response(404, {"error": "not_found", "message": "Nothing here."})
     store = _get_store()
     try:
@@ -1806,76 +1827,20 @@ def lambda_handler(event, context):
             result = mod_runs(_mod_body(event), store)
             print(json.dumps({**via, "status": 200, "runs": len(result["runs"])}))
             return _response(200, result)
-        if via:
-            result = authorize_mod(_mod_body(event), store, store.presign_post)
-        else:
-            params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", ""), keep_blank_values=True))
-            allowed = [p for p in os.environ.get("ALLOWED_RETURN_TO", "").split(",") if p]
-            result = authorize(params, http.get("sourceIp", ""), store, allowed, store.presign_post)
+        result = authorize_mod(_mod_body(event), store, store.presign_post)
     except IngestError as e:
         print(json.dumps({**via, "status": e.status, "code": e.code}))
         return _response(e.status, {"error": e.code, "message": e.message})
     print(json.dumps({**via, "status": 200, "uploadId": result["uploadId"]}))
-    record_upload(store, event, result, "mod" if via else "site")
+    record_upload(store, event, result, "mod")
     return _response(200, result)
 
 
 def gamma_auth_handler(event, context):
-    """Steam OpenID login for gamma; issue a host-only, signed 12-hour cookie."""
-    import hmac
-    import secrets
-    from http.cookies import CookieError, SimpleCookie
-
-    origin = os.environ["GAMMA_ORIGIN"]
-    secret = os.environ["GAMMA_SESSION_SECRET"]
-    cookies = SimpleCookie()
-    try:
-        cookies.load("; ".join(event.get("cookies", [])))
-    except CookieError:
-        cookies = SimpleCookie()
-
-    def redirect(location, set_cookies=()):
-        return {"statusCode": 302, "headers": {"location": location, "cache-control": "no-store",
-                "referrer-policy": "no-referrer"}, "cookies": list(set_cookies), "body": ""}
-
-    def cookie(name, value, age):
-        return f"{name}={value}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age={age}"
-
-    path = event.get("rawPath", "")
-    if path == "/auth/feedback":
-        from feedback import handle
-        return handle(event)
-    if event.get("requestContext", {}).get("http", {}).get("method") != "GET":
-        return _response(405, {"error": "method_not_allowed"})
-    if path == "/auth/login":
-        state = secrets.token_hex(32)
-        params = {"openid.ns": "http://specs.openid.net/auth/2.0", "openid.mode": "checkid_setup",
-                  "openid.return_to": origin + "/auth/callback?state=" + state, "openid.realm": origin + "/",
-                  "openid.identity": "http://specs.openid.net/auth/2.0/identifier_select",
-                  "openid.claimed_id": "http://specs.openid.net/auth/2.0/identifier_select"}
-        return redirect(STEAM_OPENID_ENDPOINT + "?" + urllib.parse.urlencode(params),
-                        [cookie("__Host-gamma-state", state, 600)])
-    if path != "/auth/callback":
-        return _response(404, {"error": "not_found"})
-    params = dict(urllib.parse.parse_qsl(event.get("rawQueryString", "")))
-    state = cookies.get("__Host-gamma-state")
-    try:
-        if not state or not re.fullmatch(r"[a-f0-9]{64}", state.value) or not hmac.compare_digest(
-                state.value.encode(), params.get("state", "").encode()):
-            raise IngestError(401, "bad_state", "Start a new gamma sign-in.")
-        if params.get("openid.return_to") != origin + "/auth/callback?state=" + state.value:
-            raise IngestError(401, "bad_openid", "Sign-in was for a different callback.")
-        steam_id = verify_openid(params, [origin])
-        require_allowed_steam_id(steam_id)
-    except IngestError as e:
-        response = _response(e.status, {"error": e.code, "message": e.message})
-        response["headers"]["cache-control"] = "no-store"
-        response["cookies"] = [cookie("__Host-gamma-state", "", 0)]
-        return response
-    payload = steam_id + "." + str(int(time.time()) + 12 * 3600)
-    signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return redirect("/", [cookie("__Host-gamma", payload + "." + signature, 12 * 3600),
-                          cookie("__Host-gamma-state", "", 0)])
+    """Gamma's /auth/* (CloudFront sends /auth/upload to the ingest function instead): the
+    same Steam sign-in as prod, with gamma's 12-hour cookie and reviewer list (session.py)."""
+    import session
+    return session.handle(event)
 
 
 def process_handler(event, context):
@@ -2003,21 +1968,34 @@ def build_digest(store, now: float) -> tuple[str, str]:
     return subject, "\n".join(lines) + "\n" + footer
 
 
+def feedback_sections(now: float, query=None) -> list[tuple[str, str]]:
+    """The feedback part of the morning email: for each site in FEEDBACK_DIGEST_SITES
+    ("prod=https://slay-my-stats.com,gamma=https://gamma..."), what came in over the last day, or
+    on Mondays the open, incoming and resolved counts. Quiet sites add nothing."""
+    from feedback import all_notes, build_report
+    if query is None:
+        import boto3
+        db = boto3.client("dynamodb")
+        query = lambda env: all_notes(db, os.environ["FEEDBACK_TABLE"], env)
+    # 8 AM in Chicago is 13:00 or 14:00 UTC, so the UTC weekday is Chicago's.
+    period = "weekly" if time.gmtime(now).tm_wday == 0 else "daily"
+    sections = []
+    for site in filter(None, os.environ.get("FEEDBACK_DIGEST_SITES", "").split(",")):
+        env, origin = site.split("=", 1)
+        report = build_report(query(env), now, period, origin, env.capitalize())
+        if report:
+            sections.append(report)
+    return sections
+
+
 def digest_handler(event, context):
-    """Run by EventBridge Scheduler each morning (prod only)."""
-    subject, body = build_digest(_get_store(), time.time())
+    """Run by EventBridge Scheduler each morning (prod only): yesterday's uploads, then the
+    feedback from both sites, in one email."""
+    now = time.time()
+    subject, body = build_digest(_get_store(), now)
+    sections = feedback_sections(now)
+    if sections:
+        subject = " | ".join([subject] + [headline for headline, _ in sections])
+        body += "".join(f"\n\n{headline}\n{'-' * len(headline)}\n{text}" for headline, text in sections)
     print(json.dumps({"digest": subject}))
     _alert(subject, body)
-
-
-def feedback_digest_handler(event, context):
-    """Run by EventBridge Scheduler on gamma: a daily email of new feedback and a weekly one with the
-    open, incoming and resolved counts. The schedule's input names which ("period")."""
-    import boto3
-    from feedback import all_notes, build_report
-    period = "weekly" if event.get("period") == "weekly" else "daily"
-    notes = all_notes(boto3.client("dynamodb"), os.environ["FEEDBACK_TABLE"], os.environ["FEEDBACK_ENV"])
-    report = build_report(notes, time.time(), period, os.environ["GAMMA_ORIGIN"])
-    print(json.dumps({"feedback_digest": period, "sent": bool(report), "notes": len(notes)}))
-    if report:
-        _alert(*report)
