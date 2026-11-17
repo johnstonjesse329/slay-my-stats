@@ -26,9 +26,11 @@ panel's X or Escape.
 - **This page** (the default) and **Whole site** switch what the inbox shows.
 - Notes are grouped into one bucket per whole page and per pinned element or
   region, newest bucket first, each with its note and open counts. A bucket can
-  be collapsed; that choice lasts for the session.
+  start collapsed, each showing its newest comment; **Expand all** / **Collapse all** opens
+  or closes every one, and an open one stays open for the session. On **This page** the
+  list follows the site's tabs and runs.
 - **Open location** opens the original page and highlights the element or saved
-  region. Layout changes can invalidate a selector; saved target text and viewport
+  region, with the inbox showing that note's group open and the note marked. Layout changes can invalidate a selector; saved target text and viewport
   dimensions remain available in the copied report.
 - A **status** filter (Open by default, Resolved, All) and a **type** filter (any,
   bug, feature request, improvement idea) narrow the inbox. The Lambda applies them,
@@ -66,7 +68,7 @@ The gamma data bucket is retained when the stack is deleted and is versioned, so
 overwritten or deleted note can be recovered from its earlier versions. Versions of
 everything but `feedback/` expire after 30 days; feedback versions are kept.
 
-The panel can be dragged by its header and resized from its bottom-right corner; it
+The panel can be dragged by its header and resized from its bottom-right corner or its left edge; it
 keeps its place between openings. **Clear** on the New note tab drops a pinned
 element and the typed text.
 

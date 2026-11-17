@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 from urllib.parse import parse_qsl, quote as urlquote, urlsplit
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = Path(os.environ.get('FEEDBACK_TEST_DIST') or ROOT / 'dist')  # a copy of dist/ can stand in
@@ -177,6 +177,27 @@ def main():
             wait_summary(page, '1 note · 1 open · 1 place')
             assert page.locator('.bucket').count() == 1
             assert 'Whole page' in page.locator('.bucket summary').first.inner_text()
+            # Groups start collapsed, showing the newest comment; one button opens or closes them all.
+            assert page.locator('.bucket[open]').count() == 0
+            assert 'Make this clearer' in page.locator('.bucket-snippet').first.inner_text()
+            assert page.locator('#toggle-all').inner_text() == 'Expand all'
+            page.locator('#toggle-all').click()
+            assert page.locator('.bucket[open]').count() == 1
+            expect(page.locator('#toggle-all')).to_have_text('Collapse all')
+            # The inbox follows the site's tabs: a note filed on another page shows when you move there.
+            page.evaluate("location.hash = '#elsewhere'")
+            wait_summary(page, '0 notes · 0 open · 0 places')
+            page.evaluate("history.back()")
+            wait_summary(page, '1 note · 1 open · 1 place')
+            page.locator('#toggle-all').click() if page.locator('.bucket[open]').count() == 0 else None
+            # The left-edge grip widens the panel toward the left.
+            before = page.locator('#panel').bounding_box()
+            grip = page.locator('#grip').bounding_box()
+            if name == 'desktop':
+                page.mouse.move(grip['x'] + 6, grip['y'] + grip['height'] / 2)
+                page.mouse.down(); page.mouse.move(grip['x'] - 120, grip['y'] + grip['height'] / 2, steps=5); page.mouse.up()
+                after = page.locator('#panel').bounding_box()
+                assert after['width'] > before['width'] + 80 and abs((after['x'] + after['width']) - (before['x'] + before['width'])) < 2, (before, after)
             assert page.locator('.note-url').first.inner_text() == 'https://gamma.slay-my-stats.com/'
             # One note listed: its own Copy, and a copy-all that says how many it takes.
             assert page.get_by_role('button', name='Copy details', exact=True).count() == 1
@@ -257,11 +278,12 @@ def main():
             output = ROOT / '.playwright-mcp' / f'feedback-{name}.png'
             output.parent.mkdir(exist_ok=True)
             page.screenshot(path=str(output))
-            # Opening an existing note from its link must not copy its text into the entry.
+            # Open location lands on the inbox with that note's group opened and the note marked,
+            # not on a blank new note.
             page.goto('https://gamma.slay-my-stats.com/?feedback=' + urlquote(notes[0]['id'], safe=''))
-            page.get_by_text('Reviewing:', exact=False).wait_for()
-            assert page.get_by_label('What should change?').input_value() == ''
-            assert page.get_by_role('radio', name='Bug', exact=True).get_attribute('aria-checked') == 'false'
+            assert page.get_by_role('tab', name='Inbox', exact=True).get_attribute('aria-selected') == 'true'
+            expect(page.locator('article.focused')).to_have_count(1)
+            assert page.locator('.bucket[open]').count() == 1
             assert not errors, errors
             print(f'{name}: passed; {output}')
             browser.close()
