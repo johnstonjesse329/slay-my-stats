@@ -1526,7 +1526,9 @@ class RealHistoryTests(unittest.TestCase):
         res = handler.process_upload(key, store, now=NOW, lookup_name=named("Me"))
         self.assertEqual(res["rejected"], 0, res)
         expected = sorted((run.parse_run(f) for f in files), key=lambda r: r["ts"])
-        self.assertEqual(store.runs(steam_id), json.loads(json.dumps(expected)))
+        # Ingest adds multiplayerIdsShared to co-op runs (the mod's upload setting); a .run file has no such field.
+        stored = [{k: v for k, v in r.items() if k != "multiplayerIdsShared"} for r in store.runs(steam_id)]
+        self.assertEqual(stored, json.loads(json.dumps(expected)))
 
 
 class TelemetryTests(Uploads, unittest.TestCase):
