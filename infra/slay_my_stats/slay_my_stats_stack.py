@@ -252,6 +252,8 @@ class SlayMyStatsStack(Stack):
         # users/_index.json.gz list and users/_uploads/<id>.json.gz, each
         # upload's result for the page to poll. Private (CloudFront only
         # serves users/*): ids/<steamid>.json.gz maps Steam IDs to slugs,
+        # coop/<seed>.json.gz lists co-op copies by party Steam IDs (behind each
+        # profile's public users/<slug>/_coop.json.gz links),
         # limits/ holds the upload rate limits, analytics/ a note per upload,
         # and raw/<steamid>/ keeps every upload as sent, so profiles can be
         # rebuilt after a parser fix.
@@ -286,7 +288,7 @@ class SlayMyStatsStack(Stack):
                     prefix=prefix,
                     noncurrent_version_expiration=Duration.days(30),
                     expired_object_delete_marker=True,
-                ) for prefix in ("users/", "ids/", "limits/", "analytics/", "raw/")
+                ) for prefix in ("users/", "ids/", "coop/", "limits/", "analytics/", "raw/")
             ] if gamma else []),
         )
 

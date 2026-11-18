@@ -449,6 +449,23 @@ class Spool:
         self._files = {}
         self.ts = set()
         self._telemetry = {}
+        self._coop = {}       # ts -> co-op entry (see coop_entry), later copies winning
+        self._coop_drop = {}  # ts -> seed of a co-op run whose partners aren't shared
+
+    def add_coop(self, ts: int, seed, entry: dict | None) -> None:
+        """A co-op run's entry for the private co-op index, or None when the
+        uploader didn't share the party's Steam IDs (its old entry is then dropped)."""
+        if entry:
+            self._coop[ts] = entry
+            self._coop_drop.pop(ts, None)
+        else:
+            self._coop.pop(ts, None)
+            if isinstance(seed, str) and seed:
+                self._coop_drop[ts] = seed
+
+    def coop(self) -> tuple[list[dict], list[tuple[str, int]]]:
+        """(entries to list, (seed, ts) to take off) for _update_coop."""
+        return list(self._coop.values()), [(seed, ts) for ts, seed in self._coop_drop.items()]
 
     def add_telemetry(self, ts: int, telemetry: dict) -> None:
         """A run's cleaned per-turn log, held until the merge has a store to put
@@ -591,6 +608,9 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = N
                 if rows:
                     parsed["measured"] = rows
             spool.add(parsed)
+            if parsed.get("mp"):
+                shared = parsed.get("multiplayerIdsShared") is not False
+                spool.add_coop(ts, parsed.get("seed"), coop_entry(data, parsed, steam_id) if shared else None)
             good += 1
         else:
             rejected += 1
@@ -755,6 +775,153 @@ def clean_telemetry_summary(obj) -> dict | None:
             })
         out.append({"enc": name(f.get("enc")), "hp0": num(f.get("hp0")), "hp1": num(f.get("hp1")), "turns": turns})
     return {"v": obj["v"], "fights": out} if out else None
+
+
+# ---------------------------------------------------------------------------
+# Co-op links: the same game, as each player in it uploaded it
+# ---------------------------------------------------------------------------
+#
+# Every player in a co-op game saves their own copy of it. The copies share the
+# seed and the party (in the same order), but each one's start time is that
+# player's own clock, a few seconds apart. What ties them together for certain is
+# the party's Steam IDs, which a run carries only when its uploader shared them
+# (the mod's shareMultiplayerIds), and which are never published. So:
+#
+#   coop/<seed>.json.gz          private: {"v": 1, "runs": [{"slug", "ts", "party",
+#                                "i", "ids"}]}, one entry per uploaded copy whose
+#                                uploader shared the IDs
+#   users/<slug>/_coop.json.gz   public: {"v": 1, "runs": {"<ts>": {"i", "with":
+#                                [{"slug", "ts", "i"}]}}}, each of that profile's
+#                                co-op runs that another profile has a copy of
+#
+# Two copies are the same game when their party's Steam IDs and characters match
+# and they started within COOP_TS_WINDOW of each other. A link needs both copies
+# listed, so it only exists where both players shared their IDs. Whoever uploads
+# a copy refreshes the links of every profile in that game, so it doesn't matter
+# who uploads first, or whether the others had a profile yet.
+
+COOP_TS_WINDOW = 300  # seconds; copies of one game seen so far start up to ~30 s apart
+
+
+def coop_key(seed: str) -> str:
+    return f"coop/{seed}.json.gz"
+
+
+def links_key(slug: str) -> str:
+    return f"users/{slug}/_coop.json.gz"
+
+
+def _norm_steam_id(value) -> str | None:
+    """A Steam ID as the copies can compare it. Some game builds write it as a
+    float64, rounding the last digit or two, so every copy's IDs are rounded the
+    same way before they are compared (the IDs are never shown, only matched)."""
+    if isinstance(value, bool):
+        return None
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return str(n) if n > 0 else None
+
+
+def coop_entry(data: dict, parsed: dict, steam_id: str) -> dict | None:
+    """A co-op run's entry for coop/<seed>, or None when it can't be matched: a
+    party Steam ID is missing (stripped by the uploader's config, or a save
+    without them), the uploader isn't in the party, or the run has no seed."""
+    players = data.get("players") or []
+    ids = [_norm_steam_id(p.get("id")) if isinstance(p, dict) else None for p in players]
+    seed = parsed.get("seed")
+    if len(ids) < 2 or None in ids or _norm_steam_id(steam_id) not in ids:
+        return None
+    if not (isinstance(seed, str) and seed and SAFE_STRING_RE.match(seed)):
+        return None
+    return {"ts": parsed["ts"], "seed": seed, "party": list(parsed.get("party") or []),
+            "i": run.local_player_index(data, steam_id), "ids": sorted(set(ids))}
+
+
+def _same_game(a: dict, b: dict) -> bool:
+    return a["ids"] == b["ids"] and a["party"] == b["party"] and abs(a["ts"] - b["ts"]) <= COOP_TS_WINDOW
+
+
+def _update_coop(store, slug: str, entries: list[dict], drop=()) -> None:
+    """List a profile's co-op runs in coop/<seed> (replacing its old entries for
+    the same runs), take off the (seed, ts) in `drop`, and refresh the public links
+    of every profile in those games."""
+    by_seed = {}
+    for e in entries:
+        by_seed.setdefault(e["seed"], ([], set()))[0].append({k: v for k, v in e.items() if k != "seed"})
+    for seed, ts in drop:
+        by_seed.setdefault(seed, ([], set()))[1].add(ts)
+    refresh = {}  # slug -> {seed: ts to take off its links}
+    for seed, (add, gone) in sorted(by_seed.items()):
+        key = coop_key(seed)
+        replaced = {e["ts"] for e in add} | gone
+        for _ in range(MERGE_RETRIES):
+            got = store.get(key)
+            old = _unpack(got[0])["runs"] if got else []
+            new = [r for r in old if r["slug"] != slug or r["ts"] not in replaced]
+            new += [{**e, "slug": slug} for e in add]
+            new.sort(key=lambda r: (r["ts"], r["slug"]))
+            if new == old:
+                break
+            try:
+                if new:
+                    store.put(key, _pack({"v": 1, "runs": new}), {}, got[2] if got else None)
+                elif got:
+                    store.delete(key)
+                break
+            except StoreConflict:
+                continue
+        else:
+            raise IngestError(503, "busy", "Co-op links are busy. Try again shortly.")
+        # Everyone who shared a game with these runs, before or after this change.
+        mine = [r for r in old + new if r["slug"] == slug and r["ts"] in replaced]
+        for r in old + new:
+            if r["slug"] != slug and any(_same_game(r, m) for m in mine):
+                refresh.setdefault(r["slug"], {}).setdefault(seed, set())
+        refresh.setdefault(slug, {}).setdefault(seed, set()).update(gone)
+    for member, seeds in sorted(refresh.items()):
+        _refresh_links(store, member, seeds)
+
+
+def _refresh_links(store, member: str, seeds: dict) -> None:
+    """Rewrite one profile's public links for its runs on these seeds from
+    coop/<seed> as it stands. The seed files are read after the links file, and
+    the write is conditional on that read, so a concurrent upload of the same
+    game can't leave an older view on top."""
+    key = links_key(member)
+    for _ in range(MERGE_RETRIES):
+        got = store.get(key)
+        before = _unpack(got[0]).get("runs", {}) if got else {}
+        runs = dict(before)
+        for seed, gone in sorted(seeds.items()):
+            for ts in gone:
+                runs.pop(str(ts), None)
+            rec = store.get(coop_key(seed))
+            listed = _unpack(rec[0])["runs"] if rec else []
+            for e in listed:
+                if e["slug"] != member:
+                    continue
+                others = [o for o in listed if o["slug"] != member and _same_game(e, o)]
+                if others:
+                    runs[str(e["ts"])] = {"i": e["i"], "with": [
+                        {"slug": o["slug"], "ts": o["ts"], "i": o["i"]}
+                        for o in sorted(others, key=lambda o: (o["i"], o["slug"]))]}
+                else:
+                    runs.pop(str(e["ts"]), None)
+        if runs == before and (got or not runs):
+            return
+        try:
+            store.put(key, _pack({"v": 1, "runs": dict(sorted(runs.items()))}), {}, got[2] if got else None)
+            return
+        except StoreConflict:
+            continue
+    raise IngestError(503, "busy", "Co-op links are busy. Try again shortly.")
+
+
+def _coop_runs(runs) -> list[tuple[str, int]]:
+    """(seed, ts) of the co-op runs among these, for taking them off coop/."""
+    return [(r["seed"], r["ts"]) for r in runs if r.get("mp") and isinstance(r.get("seed"), str) and r["seed"]]
 
 
 def steam_limit_key(steam_id: str) -> str:
@@ -1307,6 +1474,11 @@ def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) ->
             merge_stats(delta, tally(added, slug))
             seeded += seed_entries(added)
 
+        # Before the early return below, so a copy sent again still refreshes its links.
+        coop, coop_drop = spool.coop()
+        if coop or coop_drop:
+            _update_coop(store, slug, coop, coop_drop)
+
         if not changed and doc is not None and not (_no_raw(doc) & spool.ts):
             return result
         name = name or clean_name(lookup_name(steam_id)) or doc["name"]
@@ -1459,6 +1631,8 @@ def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: boo
                    "unreadableUploads": unreadable, "held": held.get("runs", 0)}
         if dry_run:
             return summary
+        coop, coop_drop = spool.coop()
+        _update_coop(store, slug, coop, coop_drop)
     try:
         store.put(blob_key(slug), _pack(_summary(doc["name"], months, no_raw, run.PARSER_VERSION)), {}, etag)
     except StoreConflict:
@@ -1511,6 +1685,12 @@ def remove_profile(store, slug: str, raw: bool = False, dry_run: bool = False) -
     """
     steam_ids = [k[len("ids/"):-len(".json.gz")] for k in store.list("ids/")
                  if (got := store.get(k)) and _unpack(got[0]).get("slug") == slug]
+    profile = store.get(blob_key(slug))
+    if profile and not dry_run:
+        # Off the co-op index first, so the other players' links to it go too.
+        drop = [st for _, runs in stored_months(store, slug, _unpack(profile[0])) for st in _coop_runs(runs)]
+        if drop:
+            _update_coop(store, slug, [], drop)
     keys = sorted(store.list(f"users/{slug}/"))
     if store.get(blob_key(slug)):
         keys.append(blob_key(slug))
@@ -1586,6 +1766,7 @@ def remove_runs(store, slug: str, ts_list, dry_run: bool = False) -> dict:
                 store.delete(key)
 
     months = {m: list(ts) for m, ts in doc.get("months", {}).items()}
+    coop_drop = []
     for m in sorted(months):
         hit = want & set(months[m])
         if not hit:
@@ -1594,7 +1775,9 @@ def remove_runs(store, slug: str, ts_list, dry_run: bool = False) -> dict:
         if dry_run:
             continue
         month = store.get(month_key(slug, m))
-        runs = [r for r in (_unpack(month[0])["runs"] if month else []) if r["ts"] not in want]
+        stored = _unpack(month[0])["runs"] if month else []
+        coop_drop += _coop_runs(r for r in stored if r["ts"] in want)
+        runs = [r for r in stored if r["ts"] not in want]
         if runs:
             _put_over(store, month_key(slug, m), _pack({"v": 2, "runs": runs}))
             months[m] = [r["ts"] for r in runs]
@@ -1614,6 +1797,8 @@ def remove_runs(store, slug: str, ts_list, dry_run: bool = False) -> dict:
     out["missing"] = sorted(want - found)
     if dry_run:
         return out
+    if coop_drop:
+        _update_coop(store, slug, [], coop_drop)
     no_raw = set(doc.get("noRaw", [])) - want
     try:
         store.put(blob_key(slug), _pack(_summary(doc["name"], months, no_raw, doc.get("parser", 0))), got[3], got[2])

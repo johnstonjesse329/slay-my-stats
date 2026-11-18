@@ -781,9 +781,9 @@
     const index = await loadIndex();
     const indexEntry = index ? (index.players || []).find(p => p.slug === slug) || null : null;
 
-    let runs;
+    let runs, links;
     try {
-      runs = await loadRuns(slug, userDoc);
+      [runs, links] = await Promise.all([loadRuns(slug, userDoc), loadCoopLinks(slug)]);
     } catch (e) {
       showError();
       return;
@@ -794,8 +794,36 @@
       showNoRuns();
       return;
     }
+    attachCoopLinks(runs, links, index);
     window.DATA = buildData(catalog, runs);
+    window.DATA.profile = { slug, name: userDoc.name };
     loadAppScript();
+  }
+
+  // The other players' copies of this profile's co-op runs:
+  // /users/<slug>/_coop.json.gz, {"runs": {"<ts>": {"i", "with": [{"slug", "ts", "i"}]}}},
+  // written by the ingest Lambda for games where every linked player shared their party's
+  // Steam IDs (which it never publishes). It changes whenever a partner uploads, so it is
+  // revalidated on every visit. Missing (no linked runs yet) or unreadable means no links.
+  async function loadCoopLinks(slug) {
+    try {
+      const resp = await fetch(`/users/${slug}/_coop.json.gz`, { cache: "no-cache" });
+      return resp.ok ? ((await resp.json()).runs || {}) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // Puts each link on its run as run.coop = {i, with: [{slug, name, ts, i}]}: i is the
+  // party slot (the order of run.party) of this profile's player and of each partner,
+  // the name the partner's current one from the player list.
+  function attachCoopLinks(runs, links, index) {
+    const names = Object.fromEntries(((index && index.players) || []).map(p => [p.slug, p.name]));
+    for (const run of runs) {
+      const link = run.mp && links[run.ts];
+      if (!link || !Array.isArray(link.with) || !link.with.length) continue;
+      run.coop = { i: link.i, with: link.with.map(w => ({ slug: w.slug, ts: w.ts, i: w.i, name: names[w.slug] || w.slug })) };
+    }
   }
 
   // Every run on a profile, oldest first. The summary lists its months; each

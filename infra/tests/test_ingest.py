@@ -1262,6 +1262,112 @@ class HoldTests(Uploads, unittest.TestCase):
         self.assertIn("(a mod, or a newer patch):\n  CHARACTER.CLOUD-CLOUD", body)
 
 
+
+# ---------------------------------------------------------------------------
+# Co-op links
+# ---------------------------------------------------------------------------
+
+# Far enough apart that rounding through a float64 (spacing 16 here) keeps them apart.
+PAL_ID = "76561198012345678"
+ATK_ID = "76561198087654321"
+
+
+def coop_copy(start_time, ids=(STEAM_ID, PAL_ID), chars=("IRONCLAD", "SILENT"), seed="COOPSEED1", **extra):
+    """One player's copy of a co-op game: every copy lists the same party, in the
+    same order, with that player's own start time."""
+    players = [{"id": pid, "character": f"CHARACTER.{c}", "deck": [], "relics": []}
+               for pid, c in zip(ids, chars)]
+    return minimal_run(start_time, players=players, seed=seed, **extra)
+
+
+class CoopLinkTests(Uploads, unittest.TestCase):
+    NAMES = {STEAM_ID: "Mr. Bean!", PAL_ID: "Pal", ATK_ID: "Atkins"}
+
+    def upload(self, steam_id, *runs, now=NOW):
+        auth = handler.authorize(steam_id, "203.0.113.7", self.store, fake_presign, now=now)
+        key = auth["fields"]["key"]
+        self.store.put(key, body_of(*runs), {}, None)
+        return handler.process_upload(key, self.store, now=now, lookup_name=lambda s: self.NAMES[s])
+
+    def links(self, slug):
+        key = handler.links_key(slug)
+        return self.store.json(key)["runs"] if key in self.store.objects else {}
+
+    def test_both_copies_link_whoever_uploads_first(self):
+        self.upload(STEAM_ID, coop_copy(1700000000))
+        self.assertEqual(self.links("mrbean"), {})  # the partner has no copy yet
+        self.upload(PAL_ID, coop_copy(1700000003))
+        self.assertEqual(self.links("mrbean"), {"1700000000": {"i": 0, "with": [{"slug": "pal", "ts": 1700000003, "i": 1}]}})
+        self.assertEqual(self.links("pal"), {"1700000003": {"i": 1, "with": [{"slug": "mrbean", "ts": 1700000000, "i": 0}]}})
+
+    def test_three_player_game(self):
+        ids, chars = (STEAM_ID, PAL_ID, ATK_ID), ("SILENT", "IRONCLAD", "SILENT")
+        for n, sid in enumerate(ids):
+            self.upload(sid, coop_copy(1700000000 + 10 * n, ids, chars), now=NOW + n)
+        self.assertEqual([w["slug"] for w in self.links("pal")["1700000010"]["with"]], ["mrbean", "atkins"])
+        self.assertEqual(self.links("atkins")["1700000020"]["i"], 2)
+
+    def test_steam_ids_are_never_public(self):
+        self.upload(STEAM_ID, coop_copy(1700000000))
+        self.upload(PAL_ID, coop_copy(1700000001))
+        for key, (data, *_rest) in self.store.objects.items():
+            if key.startswith("users/"):
+                text = gzip.decompress(data).decode()
+                for sid in (STEAM_ID, PAL_ID):
+                    self.assertNotIn(sid, text, key)
+                    self.assertNotIn(str(int(float(sid))), text, key)
+
+    def test_no_link_unless_both_shared_ids(self):
+        self.upload(STEAM_ID, coop_copy(1700000000))
+        self.upload(PAL_ID, {**coop_copy(1700000001, ids=("", PAL_ID)), "multiplayerIdsShared": False})
+        self.assertEqual(self.links("mrbean"), {})
+        self.assertEqual(self.links("pal"), {})
+
+    def test_turning_sharing_off_takes_the_link_away(self):
+        self.upload(STEAM_ID, coop_copy(1700000000))
+        self.upload(PAL_ID, coop_copy(1700000001))
+        self.upload(PAL_ID, {**coop_copy(1700000001), "multiplayerIdsShared": False}, now=NOW + 60)
+        self.assertEqual(self.links("mrbean"), {})
+
+    def test_different_games_on_one_seed_dont_link(self):
+        self.upload(STEAM_ID, coop_copy(1700000000), coop_copy(1700100000, seed="DAILY"),
+                    coop_copy(1700200000, seed="SOLOISH"))
+        # Same seed and party, but hours later: a replay, not this game.
+        self.upload(PAL_ID, coop_copy(1700005000),
+                    # Another group on the same daily seed at the same moment.
+                    coop_copy(1700100002, ids=(ATK_ID, PAL_ID), seed="DAILY"),
+                    # The same people, different characters.
+                    coop_copy(1700200001, chars=("SILENT", "IRONCLAD"), seed="SOLOISH"))
+        self.assertEqual(self.links("mrbean"), {})
+
+    def test_rounded_ids_still_match(self):
+        self.upload(STEAM_ID, coop_copy(1700000000))
+        rounded = [int(float(STEAM_ID)), int(float(PAL_ID))]
+        self.upload(PAL_ID, coop_copy(1700000001, ids=rounded))
+        self.assertIn("1700000000", self.links("mrbean"))
+
+    def test_remove_runs_and_profile_take_links_away(self):
+        self.upload(STEAM_ID, coop_copy(1700000000), coop_copy(1700050000, seed="SECOND"))
+        self.upload(PAL_ID, coop_copy(1700000001), coop_copy(1700050001, seed="SECOND"))
+        handler.remove_runs(self.store, "pal", [1700000001])
+        self.assertEqual(list(self.links("mrbean")), ["1700050000"])
+        self.assertEqual(list(self.links("pal")), ["1700050001"])
+        handler.remove_profile(self.store, "pal")
+        self.assertEqual(self.links("mrbean"), {})
+        self.assertEqual({r["slug"] for r in self.store.json(handler.coop_key("COOPSEED1"))["runs"]}, {"mrbean"})
+
+    def test_rebuild_relinks(self):
+        self.upload(STEAM_ID, coop_copy(1700000000))
+        self.upload(PAL_ID, coop_copy(1700000001))
+        for key in self.store.list("coop/") + self.store.list("users/mrbean/_coop") + self.store.list("users/pal/_coop"):
+            self.store.delete(key)
+        handler.rebuild_profile(self.store, STEAM_ID, lookup_name=lambda s: self.NAMES[s])
+        self.assertEqual(self.links("mrbean"), {})  # pal's copy isn't listed again yet
+        handler.rebuild_profile(self.store, PAL_ID, lookup_name=lambda s: self.NAMES[s])
+        self.assertIn("1700000000", self.links("mrbean"))
+        self.assertIn("1700000001", self.links("pal"))
+
+
 class DigestTests(Uploads, unittest.TestCase):
     def setUp(self):
         super().setUp()
