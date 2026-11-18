@@ -2252,10 +2252,11 @@ def feedback_sections(now: float, query=None, tally: dict | None = None) -> list
     return sections
 
 
-# Sent to CloudWatch for the dashboard: six of the free ten custom metrics. The table keeps
-# every field for good; CloudWatch drops daily points after 15 months.
+# Sent to CloudWatch for the dashboard: eight of the free ten custom metrics (each past ten
+# costs about $0.30 a month). The table keeps every field for good; CloudWatch drops daily
+# points after 15 months. PageViews and Visitors come from views_section.
 ADOPTION_METRICS = ("TotalPlayers", "ActivePlayersSite", "ActivePlayersMod", "NewPlayers", "RunsAdded",
-                    "FeedbackFiled")
+                    "FeedbackFiled", "PageViews", "Visitors")
 
 
 def record_adoption(tally: dict, at: float, table: str | None = None, put_item=None,
@@ -2285,12 +2286,14 @@ def record_adoption(tally: dict, at: float, table: str | None = None, put_item=N
 VIEWS_KEY = "analytics/views/{day}.json.gz"
 
 
-def views_section(store, day: str, logs=None, log_prefix: str | None = None) -> tuple[str, str]:
+def views_section(store, day: str, logs=None, log_prefix: str | None = None,
+                  tally: dict | None = None) -> tuple[str, str]:
     """The morning email's page views: the view pings and page loads in the access logs for
     `day` (UTC, YYYY-MM-DD), counted (views.py) and kept as analytics/views/<day>.json.gz,
     then shown next to the six days before it that were kept. `logs` is a store over the
     access-log bucket; CloudFront names each file <prefix><distribution>.<day>-<hour>...,
-    so one listing finds the day's."""
+    so one listing finds the day's. The day's totals go into `tally` as PageViews and
+    Visitors, for the adoption row and the dashboard."""
     if logs is None:
         logs = S3Store(os.environ["ACCESS_LOG_BUCKET"])
     prefix = (log_prefix if log_prefix is not None else os.environ.get("ACCESS_LOG_PREFIX", "")) + day
@@ -2302,6 +2305,8 @@ def views_section(store, day: str, logs=None, log_prefix: str | None = None) -> 
                 yield from views.read_log(got[0])
 
     today = views.count_views(rows(), day)
+    if tally is not None:
+        tally.update(PageViews=today["views"], Visitors=today["visitors"])
     _put_over(store, VIEWS_KEY.format(day=day), _pack(today))
     earlier = []
     start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
@@ -2316,7 +2321,7 @@ def views_section(store, day: str, logs=None, log_prefix: str | None = None) -> 
 def digest_handler(event, context):
     """Run by EventBridge Scheduler each morning (prod only): yesterday's uploads, then the
     feedback from both sites, then the page views, in one email; and the day's adoption
-    numbers and page views, kept.
+    numbers and page views, kept (the totals also as dashboard metrics).
     Invoked by hand with {"adoptionBackfill": n}, it instead records the n days before
     yesterday (at most 6: upload results are kept a week), sends no email, and leaves out
     the site totals, which are only known for today."""
@@ -2335,17 +2340,21 @@ def digest_handler(event, context):
     tally = {}
     subject, body = build_digest(store, now, tally)
     sections = feedback_sections(now, tally=tally)
+    # Page views are counted before the adoption numbers are kept, so they're kept with them.
+    # Best effort: the email still goes.
+    views_part = ""
+    if os.environ.get("ACCESS_LOG_BUCKET"):
+        try:
+            headline, text = views_section(store, tally["day"], tally=tally)
+            views_part = f"\n\n{headline}\n{'-' * len(headline)}\n{text}"
+        except Exception as e:  # noqa: BLE001
+            print(json.dumps({"views_failed": type(e).__name__, "detail": str(e)[:200]}))
     # Stamped mid-day, inside the day the numbers cover.
     record_adoption(tally, now - DIGEST_WINDOW_S / 2)
     if sections:
         subject = " | ".join([subject] + [headline for headline, _ in sections])
         body += "".join(f"\n\n{headline}\n{'-' * len(headline)}\n{text}" for headline, text in sections)
-    # Page views go last and stay out of the subject. Best effort: the email still goes.
-    if os.environ.get("ACCESS_LOG_BUCKET"):
-        try:
-            headline, text = views_section(store, tally["day"])
-            body += f"\n\n{headline}\n{'-' * len(headline)}\n{text}"
-        except Exception as e:  # noqa: BLE001
-            print(json.dumps({"views_failed": type(e).__name__, "detail": str(e)[:200]}))
+    # Page views go last and stay out of the subject.
+    body += views_part
     print(json.dumps({"digest": subject}))
     _alert(subject, body)

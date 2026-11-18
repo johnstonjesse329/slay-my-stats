@@ -823,7 +823,7 @@ class SlayMyStatsStack(Stack):
                     alarm_description=f"{what} on {domain_name}. Dashboard: {name_prefix}.",
                 ).add_alarm_action(cloudwatch_actions.SnsAction(alert_topic))
 
-            # The dashboard: adoption (from the morning digest), usage, and every alarm.
+            # The dashboard: adoption and page views (from the morning digest), usage, and every alarm.
             day = Duration.days(1)
             def ours(name):
                 return cloudwatch.Metric(namespace=name_prefix, metric_name=name,
@@ -849,6 +849,8 @@ class SlayMyStatsStack(Stack):
                      cloudwatch.GraphWidget(title="Total players", left=[ours("TotalPlayers")], **graph),
                      cloudwatch.GraphWidget(title="Runs added (per day)", left=[ours("RunsAdded")], **graph),
                      cloudwatch.GraphWidget(title="Feedback filed (per day)", left=[ours("FeedbackFiled")], **graph)],
+                    [cloudwatch.GraphWidget(title="Page views and visitors (per day)", left=[
+                        ours("PageViews"), ours("Visitors")], **graph)],
                     [cloudwatch.GraphWidget(title="Lambda invocations, all functions (per hour)", left=[
                         cloudwatch.Metric(namespace="AWS/Lambda", metric_name="Invocations",
                                           statistic="Sum", period=hour)], **graph),

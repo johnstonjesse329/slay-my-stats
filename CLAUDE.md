@@ -35,16 +35,19 @@ branches. Assume they are, even when nothing shows it.
 
 - Do every change in a worktree of your own, branched from a fresh
   `origin/gamma`: `git worktree add -b <branch> "../smst-wt-<branch>" origin/gamma`.
-  Never switch branches, stash, commit or reset in the main checkout or in
+  Never switch branches, stash, commit or reset in the repo folder or in
   someone else's worktree; their uncommitted work is theirs.
 - Don't build on a local branch you didn't make. Re-fetch before merging or
   pushing: if `origin/gamma` moved, merge onto the new tip, and say what else
   is riding along before it goes to prod.
-- Deploys push from the main checkout (it holds the ignored `cdk.context.json`
-  and art). Only push from it when it is clean and on the commit you mean to
-  ship; if another session is mid-change there, wait or ask.
+- Push to deploy from your own worktree; leave the repo folder alone. The
+  push builds the pushed commit in an export that borrows the repo folder's
+  ignored inputs (`cdk.context.json`, art, venv), and only one deploy runs at
+  a time. If yours stops on the deploy lock, wait and push again; don't
+  `--break-lock` unless `tools/deploy.py --lock-status` shows it is over an
+  hour old and nothing is deploying.
 - Removing a worktree: unlink its junctions first (`cmd /c rmdir <junction>`).
-  `git worktree remove` deletes through a junction into the main checkout's art.
+  `git worktree remove` deletes through a junction into the repo folder's art.
 
 ## Screenshots
 

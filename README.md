@@ -123,6 +123,7 @@ slay-my-stats/
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
 │   ├── deploy.py            pre-push deploy (see "Deploying")
+│   ├── test_deploy.py       the deploy lock and commit export, on a throwaway repo
 │   ├── smoke_site.py        loads the deployed site as a visitor would; deploy.py runs it last
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
@@ -248,7 +249,7 @@ own, `SlayMyStatsFeedbackStack` (`infra/slay_my_stats/feedback_stack.py`), which
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
 | **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*`, write `analytics/views/*`, read the access-log bucket's `site/*`, publish to the alert SNS topic, write the adoption table and put metrics in the `slay-my-stats` namespace. | A daily summary of uploads, feedback and page views, reported for trends (see [Page views](#page-views)). |
-| **Adoption table** `slay-my-stats-adoption` | DynamoDB, provisioned at 1 read and 1 write (inside the always-free 25), deletion protection, **retained**. Production only. One row a day, keyed by date. | The day's player, run and feedback counts, kept for trends. The digest also sends six of them as CloudWatch metrics for the dashboard; CloudWatch keeps those 15 months, the table keeps them for good. |
+| **Adoption table** `slay-my-stats-adoption` | DynamoDB, provisioned at 1 read and 1 write (inside the always-free 25), deletion protection, **retained**. Production only. One row a day, keyed by date. | The day's player, run and feedback counts, kept for trends. The digest also sends six of them, plus the day's page views and visitors, as CloudWatch metrics for the dashboard; CloudWatch keeps those 15 months, the table keeps them for good. |
 | **Feedback table** `slay-my-stats-feedback` | DynamoDB, on-demand, point-in-time recovery, deletion protection, **retained**. Partition key `env` (`gamma`, `prod`), four indexes for the inbox's filters, TTL on the hourly throttle counters only. Its own stack, shared by both stages; IAM holds each Lambda to the `env` values it may read or write. | The feedback notes, their +1s and the FB-n counter, and the reactions on What's new posts (`react#`/`rcount#` items beside the notes, which every note query skips). One table so a note keeps its number and history wherever it is read from. |
 | **SSM parameter** `/slay-my-stats/session-key` | SecureString, imported by name, production only; the ingest Lambda gets read and `kms:Decrypt`. | Signs the session cookie. Kept out of the template and the Lambda's settings, since anyone holding it could sign in as anyone. Rotating it signs everyone out. |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
@@ -554,8 +555,9 @@ and where page loads came from. The paths and tab names come from the requests t
 `site/pages/` or a new tab in `PAGES` is counted from the day it ships; anything that doesn't look like a path or
 a name is dropped. No addresses or user agents are kept, and the owner's own visits count like anyone's.
 
-It costs nothing beyond what was already running: the pings are cached at the edge, the logs were already kept,
-and nothing goes to CloudWatch. The numbers are a day old, and standard logs are best-effort, so a few requests
+It costs nothing beyond what was already running: the pings are cached at the edge and the logs were already kept.
+The day's total views and visitors also go to CloudWatch as two metrics (eight of the free ten) and show on the
+dashboard's **Page views and visitors** graph; the per-page and per-tab counts stay in the files. The numbers are a day old, and standard logs are best-effort, so a few requests
 can be missing. `tools/visit_sources.py` reads the same logs by hand, for page-load sources over a longer span.
 
 ### Maintenance tools
@@ -634,9 +636,9 @@ every push of `gamma` run it for [gamma](#gamma):
 ```mermaid
 flowchart TB
     push["git push (main or gamma)"] --> hook["githooks/pre-push"]
-    hook --> check{"HEAD is the pushed commit,<br/>tree clean, fast-forward (main)?"}
+    hook --> check{"fast-forward (main)?<br/>no other deploy holding the lock?"}
     check -- no --> abort["push aborted"]
-    check -- yes --> diff["cdk diff"]
+    check -- yes --> export["export the pushed commit<br/>to local_data/deploy-build/"] --> diff["cdk diff"]
     diff -- "changes" --> ask{"Deploy these<br/>infra changes? y/N"}
     ask -- N --> abort2["push aborted"]
     ask -- y --> deploy["cdk deploy"] --> smoke
@@ -667,8 +669,19 @@ request to another host left hanging and fails unless content is on screen withi
 slow CDN script looked like when Chart.js still came from jsdelivr. Without Playwright that step is skipped with
 a note. Run it by hand with `python tools/smoke_site.py [host] [--player slug] [--browser]`.
 Production only deploys a commit that gamma has already deployed and passed: a successful gamma deploy of a
-clean checkout records its commit inside the git directory, and a prod deploy of any other commit stops and
-says to push to gamma first. `DEPLOY_SKIP_GAMMA=1` overrides it for a hotfix.
+commit records it inside the git directory, and a prod deploy of any other commit stops and says to push to
+gamma first. `DEPLOY_SKIP_GAMMA=1` overrides it for a hotfix.
+
+A push builds the pushed commit, not the checkout it is pushed from: `git archive` exports it to the main
+checkout's `local_data/deploy-build/`, which borrows that checkout's ignored inputs (the infra venv,
+`infra/cdk.context.json`, the art folders and game data) and is deleted afterwards. So you can push from any
+worktree, and no checkout needs to be clean or on that commit. By hand, `tools/deploy.py --stage gamma --ref
+origin/gamma` does the same; without `--ref` it deploys the working tree as it is.
+
+One deploy runs at a time, of either stage or any stack, across every checkout and worktree: each takes
+`slay-my-stats-deploy.lock` in the git directory, and a second one stops and names the holder, its commit and
+when it started. `tools/deploy.py --lock-status` shows it. A deploy killed part-way (a closed terminal) leaves
+the lock behind; once nothing is still deploying, `tools/deploy.py --break-lock` clears it.
 
 Set up once, outside CDK:
 
