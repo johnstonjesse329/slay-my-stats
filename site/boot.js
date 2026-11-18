@@ -693,7 +693,7 @@
     return section;
   }
 
-  async function showSitePage(name) {
+  async function showSitePage(name, postId) {
     showFallback("");
     const html = await fetchFragment(`/page-${name}.html`);
     if (html === null) {
@@ -715,6 +715,8 @@
     window.noteView();
     // The Upload page's signed-in panel goes into this page (site/upload.js).
     if (window.placeUploadPanel) window.placeUploadPanel();
+    // What's new: reactions, requests, and the post a /whats-new/<id> link names (site/whats-new.js).
+    if (name === "whats-new" && window.placeWhatsNew) window.placeWhatsNew(section, postId);
   }
 
   // ---- Page views ------------------------------------------------------------
@@ -746,6 +748,12 @@
     if (location.pathname === "/" || location.pathname === "/index.html") {
       showFinder();
       window.noteView();
+      return;
+    }
+    // A What's new post's own link, /whats-new/<post id>: the page, at that post.
+    const post = location.pathname.match(/^\/whats-new\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/);
+    if (post) {
+      showSitePage("whats-new", post[1]);
       return;
     }
     // Hand-written pages: one path segment, lowercase letters, digits and

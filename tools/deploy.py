@@ -555,11 +555,13 @@ def smoke_test_site() -> None:
 
 
 def check_site_pages() -> None:
-    """Fail before cdk runs if a site/pages/ file name can't be a URL."""
+    """Fail before cdk runs if a site/pages/ file name can't be a URL, or a What's new post
+    (site/whats-new/) has a name or header the page can't use."""
     sys.path.insert(0, str(_HERE))
     import build_site
     try:
-        build_site.site_pages()
+        for name, f, _ in build_site.site_pages():
+            build_site.page_body(name, f)
     except build_site.PageError as e:
         raise DeployError(str(e))
 

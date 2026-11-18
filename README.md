@@ -43,6 +43,13 @@ The dashboard has five pages: Overview, Runs, Cards, Relics and Seeds. They cove
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup, among your own runs or everyone's.
 
+**What's new** (`/whats-new`) lists what's shipped on the site and the mod, newest first, each post at its own
+link (`/whats-new/<id>`). Anyone can read it. Signed in through Steam, you can react to a post with a +1 or one
+of six of the game's icons (Rest Site, Elite, Red Skull, Glass Eye, Unknown, Happy Flower), and a post that closes
+feedback notes says how many players asked for it, with "You asked for this" for those who did. The site bar marks
+What's new with a dot until that browser has opened it since the newest post. Posts are files in `site/whats-new/`
+(see [its README](site/whats-new/README.md)).
+
 Overview always shows the full history, ignoring saved filters and filter links. Its
 statistics and charts cover Standard and Dread runs across all characters, builds, dates,
 mods and party sizes; a mode breakdown separately counts Daily, Custom and Blitz runs.
@@ -92,6 +99,7 @@ slay-my-stats/
 ├── site/                    Site-only code
 │   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>, pages
 │   ├── pages/               hand-written pages: <name>.html is served at /<name> (see its README)
+│   ├── whats-new/           What's new posts, one HTML file each, shown on pages/whats-new.html (see its README)
 │   ├── home-intro.html      the home page's hero: title, upload button, a line pointing to the Workshop mod, preview picture
 │   ├── home-preview.webp    that picture, and og-preview.png (the link preview): shots of a made-up player,
 │   │                        retaken by hand when the dashboard's look changes
@@ -99,15 +107,17 @@ slay-my-stats/
 │   ├── players.css          site bar, finder, site stats, pages
 │   ├── upload.js            Steam sign-in and the upload panel
 │   ├── upload.css
-│   └── feedback.js          feedback panel on every page (talks to /auth/feedback)
+│   ├── feedback.js          feedback panel on every page (talks to /auth/feedback)
+│   └── whats-new.js         What's new reactions and requests, and the site bar's new-post dot (talks to /auth/reactions)
 ├── infra/                   CDK app
 │   ├── app.py
 │   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
 │   ├── lambda/ingest/handler.py               the upload Lambdas (ingest, process, failure), the gamma Steam login and the feedback router
 │   ├── lambda/ingest/measured.py              per-floor energy and card numbers, read from a run's event log at upload
 │   ├── lambda/ingest/feedback.py              the gamma feedback inbox (session check, notes, resolve)
+│   ├── lambda/ingest/reactions.py             What's new reactions and who asked for a post, kept in the feedback table
 │   ├── lambda/ingest/views.py                 page views, counted from CloudFront's access logs for the morning digest
-│   ├── tests/test_ingest.py, test_measured.py, test_feedback.py, test_gamma_auth.py, test_views.py
+│   ├── tests/test_ingest.py, test_measured.py, test_feedback.py, test_gamma_auth.py, test_views.py, test_whats_new.py
 │   └── requirements.txt     CDK, boto3
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
@@ -198,8 +208,9 @@ the CSS and the other scripts) carry a hash of their content in the name (`app.5
 the site-wide running totals (see [Site-wide stats](#site-wide-stats)).
 
 **Server-side code** is just the upload Lambdas (one checks the Steam sign-in and hands out an upload URL, one
-adds each upload to its profile), the budget kill switch, and a morning email of the day's uploads. Viewing a page runs no Lambda at all;
-the only code involved is a small CloudFront Function that sends every `/u/<name>` address to `index.html`.
+adds each upload to its profile), the budget kill switch, and a morning email of the day's uploads. Viewing a page runs no Lambda,
+apart from the What's new page asking the ingest Lambda for its reaction counts; the only other code involved is a small
+CloudFront Function that sends every `/u/<name>` address to `index.html`.
 
 ## The website
 
@@ -231,13 +242,13 @@ own, `SlayMyStatsFeedbackStack` (`infra/slay_my_stats/feedback_stack.py`), which
 | **CloudFront Function** (`ProfileUrlRewriteFunction`) | Viewer request, JS 2.0. Sets the URI to `/index.html`. | Page URLs like `/u/<slug>` have no S3 object. Rewriting at the edge keeps the shareable URL in the address bar. Attached only to page behaviors, so asset requests never pay for it. |
 | **Route 53 A record** | Alias to the distribution, in an existing hosted zone. | The domain. The hosted zone is created outside CDK. |
 | **ACM certificate** | Imported by ARN, us-east-1. | CloudFront only reads certificates from us-east-1. Created outside CDK. |
-| **Ingest Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Function URL with no CORS, reached through CloudFront's `auth/*`. | The Steam sign-in and its 30-day session cookie, feedback, and the upload URL: it checks the session and the rate limits, then hands out a presigned POST for one upload. No API Gateway, and it never sees the upload, so it stays small. |
+| **Ingest Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Function URL with no CORS, reached through CloudFront's `auth/*`. | The Steam sign-in and its 30-day session cookie, feedback, What's new reactions, and the upload URL: it checks the session and the rate limits, then hands out a presigned POST for one upload. No API Gateway, and it never sees the upload, so it stays small. |
 | **Mod Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Same code as the ingest Lambda, answering only `/mod` and `/mod/runs`. Public Function URL, no CORS. | The game mod's door (see "Mod uploads"). Its own function so it can be shut off alone. |
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
 | **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*`, write `analytics/views/*`, read the access-log bucket's `site/*`, publish to the alert SNS topic, write the adoption table and put metrics in the `slay-my-stats` namespace. | A daily summary of uploads, feedback and page views, reported for trends (see [Page views](#page-views)). |
 | **Adoption table** `slay-my-stats-adoption` | DynamoDB, provisioned at 1 read and 1 write (inside the always-free 25), deletion protection, **retained**. Production only. One row a day, keyed by date. | The day's player, run and feedback counts, kept for trends. The digest also sends six of them as CloudWatch metrics for the dashboard; CloudWatch keeps those 15 months, the table keeps them for good. |
-| **Feedback table** `slay-my-stats-feedback` | DynamoDB, on-demand, point-in-time recovery, deletion protection, **retained**. Partition key `env` (`gamma`, `prod`), four indexes for the inbox's filters, TTL on the hourly throttle counters only. Its own stack, shared by both stages; IAM holds each Lambda to the `env` values it may read or write. | The feedback notes, their +1s and the FB-n counter. One table so a note keeps its number and history wherever it is read from. |
+| **Feedback table** `slay-my-stats-feedback` | DynamoDB, on-demand, point-in-time recovery, deletion protection, **retained**. Partition key `env` (`gamma`, `prod`), four indexes for the inbox's filters, TTL on the hourly throttle counters only. Its own stack, shared by both stages; IAM holds each Lambda to the `env` values it may read or write. | The feedback notes, their +1s and the FB-n counter, and the reactions on What's new posts (`react#`/`rcount#` items beside the notes, which every note query skips). One table so a note keeps its number and history wherever it is read from. |
 | **SSM parameter** `/slay-my-stats/session-key` | SecureString, imported by name, production only; the ingest Lambda gets read and `kms:Decrypt`. | Signs the session cookie. Kept out of the template and the Lambda's settings, since anyone holding it could sign in as anyone. Rotating it signs everyone out. |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
 | **Metric filters + alarms** `ModRequests`, `ModRefusals` | Production only. Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
@@ -257,13 +268,15 @@ scripts read).
 |------|---------------------|--------|---------|
 | `/u/*` | rewrite to `/index.html` | site bucket | optimized (`/index.html`'s cache entry) |
 | `/<page>`, `/<page>/` (one pair per `site/pages/` file) | rewrite to `/index.html` | site bucket | optimized |
+| `/whats-new/*` (a What's new post's own link) | rewrite to `/index.html` | site bucket | optimized |
 | `/users/*` | none | data bucket | **disabled**, so a profile shows an upload straight away |
 | everything else (`/`, `/app.<hash>.js`, `/catalog.<hash>.json`, art) | none | site bucket | optimized |
 
 `ids/*` in the data bucket has no behavior, so it's unreachable from outside.
 
 Inside the page, `site/boot.js` decides what to draw from `location.pathname`: the player finder and
-site-wide stats on `/`, a hand-written page on `/<page>` (fetched from `/page-<page>.html`), or a
+site-wide stats on `/`, a hand-written page on `/<page>` (fetched from `/page-<page>.html`; on `/whats-new/<id>`,
+What's new scrolled to that post), or a
 profile on `/u/<slug>`, which it loads by fetching the catalog (`/catalog.<hash>.json`), the profile summary
 `/users/<slug>.json.gz` and then all its month files at once, joining them into `window.DATA` and then loading
 `/app.<hash>.js`.
