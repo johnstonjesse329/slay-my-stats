@@ -23,8 +23,10 @@ group showing what feeds a payoff and what it pays off and the reason they conne
 relics show their art and rules text in place, since there is room beside the cards. Each run has its own
 link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
-A co-op run that the other players uploaded too names them on its **Party** line, each name a link to
-that player's own copy of the game, and **Played with** above the list narrows it to the runs with the
+A multiplayer run that the other players uploaded too names them on its **Party** line. Each name is a tab that
+shows that player's copy of the run in place, with a link to it on their profile, and **Everyone** puts the whole
+party side by side: a table of what each run added up to and a chart per measure with a line for each player.
+**Played with** above the list narrows it to the runs with the
 players you pick (see [Co-op links](#co-op-links)). A seed you played more than once numbers its attempts: a "#2" by
 the character in the list, the start time in place of the date for attempts on the same day, and "Attempt 2 of 3" in
 the run's header with links to the others.
@@ -471,8 +473,11 @@ off. What ties them together for certain is the party's Steam IDs, which a copy 
 - `tools/rebuild_profiles.py`, `remove_runs.py` and `remove_profile.py` keep the index and the links in step; a run
   or profile taken off the site takes its links with it.
 - **On the page**, `site/boot.js` fetches the links file with the profile (revalidated every visit, since a partner's
-  upload changes it) and the player list for the partners' current names. The run's header shows a Party line,
-  the profile's own player named and each partner a link to `/u/<partner>#detail/<their ts>`. **Played with** above the
+  upload changes it) and the player list for the partners' current names. The run's header shows a Party line:
+  a tab for the profile's own player, one for each partner and **Everyone**. A partner's tab fetches that partner's
+  copy (their profile summary, then the month file holding it) and shows it in place, with a link to
+  `/u/<partner>#detail/<their ts>`. The tab goes in the address (`#detail/<ts>/<partner>` or `#detail/<ts>/all`), so a
+  copied link or a reload keeps it. **Played with** above the
   run list (Runs page only, like the archetype tags) keeps the runs that every picked player is linked to; filtering is
   by name, since Steam IDs are never public.
 
