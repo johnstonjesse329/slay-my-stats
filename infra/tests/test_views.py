@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(REPO / "infra" / "lambda" / "ingest"), str(REPO / "infra" / "tests")]
+sys.path[:0] = [str(REPO), str(REPO / "infra" / "lambda" / "ingest"), str(REPO / "infra" / "tests")]  # the repo root holds run.py
 
 import handler  # noqa: E402
 import views  # noqa: E402
@@ -51,7 +51,7 @@ class CountViews(unittest.TestCase):
         c = count([
             ping("/"), ping("/about"),
             ping("/u/jesse", "overview"), ping("/u/jesse", "cards"),
-            ping("/u/jesse", "detail", "1731000000"), ping("/u/jesse", "detail", "1731000000", ip="5.6.7.8"),
+            ping("/u/jesse", "detail", "1731000000"), ping("/u/jesse", "detail", "1731000000", ip="192.0.2.8"),
             ping("/u/splitswigs-2", "detail", "1732000000"),
         ])
         self.assertEqual(c["views"], 7)
@@ -90,8 +90,8 @@ class CountViews(unittest.TestCase):
         self.assertEqual(c["sources"], {"reddit.com": 1, "?ref=discord": 1, "(direct)": 2})
 
     def test_nothing_identifying_is_kept(self):
-        c = count([ping("/u/jesse", "cards", ip="9.9.9.9")])
-        self.assertNotIn("9.9.9.9", repr(c))
+        c = count([ping("/u/jesse", "cards", ip="192.0.2.9")])
+        self.assertNotIn("192.0.2.9", repr(c))
 
 
 class ViewsSection(unittest.TestCase):
