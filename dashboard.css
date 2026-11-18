@@ -1329,6 +1329,14 @@ h1 {
 .detail-run-floor { font-size: var(--fs-sm); text-align: center; }
 .detail-run-read  { text-align: center; }
 .detail-run-date  { font-size: var(--fs-sm); text-align: center; }
+/* A seed this profile played more than once: each attempt's number by its character, and in the
+   header "Attempt 2 of 3" with the others as links. */
+.seed-try { margin-left: 0.35em; font-size: var(--fs-sm); font-weight: 600; color: var(--gold); }
+.rh-attempts { color: var(--text); font-size: var(--fs-sm); display: inline-flex; align-items: baseline; gap: 0.3em; }
+.rh-attempt-links { display: inline-flex; gap: 0.35em; margin-left: 0.4em; }
+.rh-attempt-here { color: var(--text-dim); }
+.rh-attempt-link { color: var(--gold); text-decoration: none; }
+.rh-attempt-link:hover, .rh-attempt-link:focus-visible { color: var(--gold-bright); text-decoration: underline; }
 
 /* How the whole run read: a round mark in the run list, a pill on the run's
    header. OP is the same green filled in, so it reads as more of ahead and

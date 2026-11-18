@@ -1284,7 +1284,9 @@ class CoopLinkTests(Uploads, unittest.TestCase):
     NAMES = {STEAM_ID: "Mr. Bean!", PAL_ID: "Pal", ATK_ID: "Atkins"}
 
     def upload(self, steam_id, *runs, now=NOW):
-        auth = handler.authorize(steam_id, "203.0.113.7", self.store, fake_presign, now=now)
+        # A fresh address each time: these tests are about links, not the per-IP limit.
+        self.ip = getattr(self, "ip", 0) + 1
+        auth = handler.authorize(steam_id, f"203.0.113.{self.ip}", self.store, fake_presign, now=now)
         key = auth["fields"]["key"]
         self.store.put(key, body_of(*runs), {}, None)
         return handler.process_upload(key, self.store, now=now, lookup_name=lambda s: self.NAMES[s])
@@ -1332,13 +1334,48 @@ class CoopLinkTests(Uploads, unittest.TestCase):
     def test_different_games_on_one_seed_dont_link(self):
         self.upload(STEAM_ID, coop_copy(1700000000), coop_copy(1700100000, seed="DAILY"),
                     coop_copy(1700200000, seed="SOLOISH"))
-        # Same seed and party, but hours later: a replay, not this game.
-        self.upload(PAL_ID, coop_copy(1700005000),
+        # Same seed, party and result, but seven hours later: past any clock difference.
+        self.upload(PAL_ID, coop_copy(1700025200),
                     # Another group on the same daily seed at the same moment.
                     coop_copy(1700100002, ids=(ATK_ID, PAL_ID), seed="DAILY"),
                     # The same people, different characters.
                     coop_copy(1700200001, chars=("SILENT", "IRONCLAD"), seed="SOLOISH"))
         self.assertEqual(self.links("mrbean"), {})
+
+    def test_a_clock_off_by_minutes_still_links(self):
+        self.upload(STEAM_ID, coop_copy(1700000000))
+        self.upload(PAL_ID, coop_copy(1700001500))  # pal's clock 25 minutes fast
+        self.assertIn("1700000000", self.links("mrbean"))
+
+    def test_repeat_attempts_pair_by_result(self):
+        self.upload(STEAM_ID, coop_copy(1700000000, win=False),
+                    coop_copy(1700003000, win=True))
+        self.upload(PAL_ID, coop_copy(1700000002, win=False),
+                    coop_copy(1700003001, win=True))
+        mine = self.links("mrbean")
+        self.assertEqual(mine["1700000000"]["with"][0]["ts"], 1700000002)
+        self.assertEqual(mine["1700003000"]["with"][0]["ts"], 1700003001)
+
+    def test_repeat_attempts_with_one_result_pair_by_corrected_time(self):
+        # Pal's clock runs 20 minutes fast, as their other games together show...
+        for n in range(3):
+            self.upload(STEAM_ID, coop_copy(1690000000 + n * 86400, seed=f"OTHER{n}"), now=NOW + 120 * n)
+            self.upload(PAL_ID, coop_copy(1690001200 + n * 86400, seed=f"OTHER{n}"), now=NOW + 120 * n)
+        # ...so two quick abandons 15 minutes apart pair up by the corrected times,
+        # where the raw ones would pair mrbean's second try with pal's first.
+        self.upload(STEAM_ID, coop_copy(1700000000, was_abandoned=True, win=False),
+                    coop_copy(1700000900, was_abandoned=True, win=False), now=NOW + 600)
+        self.upload(PAL_ID, coop_copy(1700001200, was_abandoned=True, win=False),
+                    coop_copy(1700002100, was_abandoned=True, win=False), now=NOW + 600)
+        mine = self.links("mrbean")
+        self.assertEqual(mine["1700000000"]["with"][0]["ts"], 1700001200)
+        self.assertEqual(mine["1700000900"]["with"][0]["ts"], 1700002100)
+
+    def test_unclear_repeat_attempts_stay_unlinked(self):
+        self.upload(STEAM_ID, coop_copy(1700000000, win=False), coop_copy(1700000030, win=False))
+        self.upload(PAL_ID, coop_copy(1700000015, win=False), coop_copy(1700000045, win=False))
+        self.assertEqual(self.links("mrbean"), {})
+        self.assertEqual(self.links("pal"), {})
 
     def test_rounded_ids_still_match(self):
         self.upload(STEAM_ID, coop_copy(1700000000))

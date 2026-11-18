@@ -25,7 +25,9 @@ link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 A co-op run that the other players uploaded too names them on its **Party** line, each name a link to
 that player's own copy of the game, and **Played with** above the list narrows it to the runs with the
-players you pick (see [Co-op links](#co-op-links)).
+players you pick (see [Co-op links](#co-op-links)). A seed you played more than once numbers its attempts: a "#2" by
+the character in the list, the start time in place of the date for attempts on the same day, and "Attempt 2 of 3" in
+the run's header with links to the others.
 
 ![Runs tab showing a run's rating and Keeping Up by Floor](images/site-run-detail.png)
 
@@ -442,15 +444,20 @@ and links a co-op run to the other players' copies only where both shared their 
 
 #### Co-op links
 
-Everyone in a co-op game saves their own copy of it. The copies share the seed and the party, in the same order,
-but each one's start time is that player's own clock, so they start a few seconds apart (up to about 30 seen so far).
-What ties them together for certain is the party's Steam IDs, which a copy carries only when its uploader shared them.
+Everyone in a co-op game saves their own copy of it. The copies share the seed, and since the party shares one map,
+the same characters in the same order, ascension, mode, result and floor. Each one's start time is that player's own
+PC clock, so they start seconds apart when the clocks agree (up to about 30 seen so far) and by anything when one is
+off. What ties them together for certain is the party's Steam IDs, which a copy carries only when its uploader shared them.
 
 - **At upload** the process Lambda lists each co-op run whose IDs were shared in the private `coop/<seed>.json.gz`,
-  with the party's Steam IDs (as compared after rounding through a float64, which some game builds write them as) and
-  the uploader's party slot. Two copies are the same game when their Steam IDs and characters match and they started
-  within five minutes (`COOP_TS_WINDOW`) of each other. A replay of the seed, another group on the same daily seed, or
-  the same friends on different characters don't match.
+  with the party's Steam IDs (as compared after rounding through a float64, which some game builds write them as), the
+  uploader's party slot and the shared fields above. Copies with the same Steam IDs, seed and shared fields are one game
+  when each player has one such copy, whatever their clocks say (within six hours). Another group on the same daily seed,
+  or the same friends on different characters, don't match.
+- **The same group on the same seed more than once.** Different results already tell those attempts apart. Ones that
+  ended the same way are paired by start time, corrected by how far apart the two players' clocks have been on their
+  other linked games (the median), and each pair has to be the nearest for both copies by at least a minute over the
+  runner-up. Anything less clear stays unlinked: a missing link is better than one to the wrong attempt.
 - It then rewrites the public `users/<slug>/_coop.json.gz` of everyone in those games, so whoever uploads last links
   every copy, and it doesn't matter who uploads first or whether the others had a profile yet. The public file names
   profiles and party slots only, never a Steam ID.

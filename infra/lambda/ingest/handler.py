@@ -781,26 +781,31 @@ def clean_telemetry_summary(obj) -> dict | None:
 # Co-op links: the same game, as each player in it uploaded it
 # ---------------------------------------------------------------------------
 #
-# Every player in a co-op game saves their own copy of it. The copies share the
-# seed and the party (in the same order), but each one's start time is that
-# player's own clock, a few seconds apart. What ties them together for certain is
-# the party's Steam IDs, which a run carries only when its uploader shared them
-# (the mod's shareMultiplayerIds), and which are never published. So:
+# Every player in a co-op game saves their own copy of it, on their own PC's clock,
+# so the copies' start times differ (by seconds when the clocks agree, by anything
+# when one is off). What ties them together for certain is the party's Steam IDs,
+# which a run carries only when its uploader shared them (the mod's
+# shareMultiplayerIds), and which are never published. So:
 #
-#   coop/<seed>.json.gz          private: {"v": 1, "runs": [{"slug", "ts", "party",
-#                                "i", "ids"}]}, one entry per uploaded copy whose
-#                                uploader shared the IDs
+#   coop/<seed>.json.gz          private: {"v": 1, "runs": [{"slug", "ts", "i", "ids",
+#                                "party", "asc", "mode", "won", "floor"}]}, one entry per
+#                                uploaded copy whose uploader shared the IDs
 #   users/<slug>/_coop.json.gz   public: {"v": 1, "runs": {"<ts>": {"i", "with":
 #                                [{"slug", "ts", "i"}]}}}, each of that profile's
 #                                co-op runs that another profile has a copy of
 #
-# Two copies are the same game when their party's Steam IDs and characters match
-# and they started within COOP_TS_WINDOW of each other. A link needs both copies
-# listed, so it only exists where both players shared their IDs. Whoever uploads
-# a copy refreshes the links of every profile in that game, so it doesn't matter
-# who uploads first, or whether the others had a profile yet.
+# Copies of one game have the same party Steam IDs and seed, and, since the party
+# shares one map, the same characters in the same order, ascension, mode, result
+# and floor (coop_bucket). One copy each in a bucket is one game. When a group played
+# the same seed more than once with the same outcome, copies are paired by start
+# time, corrected by how far apart the two players' clocks have been on their other
+# games, and left unlinked when the pairing isn't clear (_pair_copies). A link needs
+# both copies listed, so it only exists where both players shared their IDs. Whoever
+# uploads a copy refreshes the links of every profile in that game, so it doesn't
+# matter who uploads first, or whether the others had a profile yet.
 
-COOP_TS_WINDOW = 300  # seconds; copies of one game seen so far start up to ~30 s apart
+COOP_MAX_SKEW = 6 * 3600  # seconds; past this, after correcting for the clocks, not the same game
+COOP_CLEAR_MARGIN = 60    # seconds; how much nearer the chosen copy must be than the runner-up
 
 
 def coop_key(seed: str) -> str:
@@ -835,12 +840,48 @@ def coop_entry(data: dict, parsed: dict, steam_id: str) -> dict | None:
         return None
     if not (isinstance(seed, str) and seed and SAFE_STRING_RE.match(seed)):
         return None
-    return {"ts": parsed["ts"], "seed": seed, "party": list(parsed.get("party") or []),
-            "i": run.local_player_index(data, steam_id), "ids": sorted(set(ids))}
+    return {"ts": parsed["ts"], "seed": seed, "i": run.local_player_index(data, steam_id),
+            "ids": sorted(set(ids)), "party": list(parsed.get("party") or []),
+            "asc": parsed.get("asc"), "mode": parsed.get("mode"),
+            "won": bool(parsed.get("won")), "floor": parsed.get("floor")}
 
 
-def _same_game(a: dict, b: dict) -> bool:
-    return a["ids"] == b["ids"] and a["party"] == b["party"] and abs(a["ts"] - b["ts"]) <= COOP_TS_WINDOW
+def coop_bucket(e: dict) -> str:
+    """What every copy of one game shares (the seed is the file it's in)."""
+    return json.dumps([e["ids"], e.get("party"), e.get("asc"), e.get("mode"), e.get("won"), e.get("floor")])
+
+
+def _clock_offset(links: dict, other: str) -> float:
+    """How far `other`'s clock has run ahead of this profile's, from the games
+    they're already linked on (the median, so one odd pair doesn't move it)."""
+    gaps = sorted(w["ts"] - int(ts) for ts, link in links.items()
+                  for w in link.get("with", []) if w["slug"] == other)
+    return gaps[len(gaps) // 2] if gaps else 0
+
+
+def _pair_copies(mine: list[dict], theirs: list[dict], offset: float) -> dict:
+    """Which of `theirs` is the same game as each of `mine` (ts -> entry), all in
+    one bucket. One each is one game. Otherwise each pair has to be the nearest
+    for both copies, after correcting for the clocks, and clearly nearer than the
+    runner-up on either side; anything less clear stays unlinked."""
+    if len(mine) == 1 and len(theirs) == 1:
+        gap = abs(theirs[0]["ts"] - offset - mine[0]["ts"])
+        return {mine[0]["ts"]: theirs[0]} if gap <= COOP_MAX_SKEW else {}
+    def gap(m, t):
+        return abs(t["ts"] - offset - m["ts"])
+    pairs = {}
+    for m in mine:
+        near = sorted(theirs, key=lambda t: gap(m, t))
+        t = near[0]
+        back = sorted(mine, key=lambda x: gap(x, t))
+        if back[0] is not m or gap(m, t) > COOP_MAX_SKEW:
+            continue
+        if len(near) > 1 and gap(m, near[1]) - gap(m, t) < COOP_CLEAR_MARGIN:
+            continue
+        if len(back) > 1 and gap(back[1], t) - gap(m, t) < COOP_CLEAR_MARGIN:
+            continue
+        pairs[m["ts"]] = t
+    return pairs
 
 
 def _update_coop(store, slug: str, entries: list[dict], drop=()) -> None:
@@ -874,10 +915,10 @@ def _update_coop(store, slug: str, entries: list[dict], drop=()) -> None:
                 continue
         else:
             raise IngestError(503, "busy", "Co-op links are busy. Try again shortly.")
-        # Everyone who shared a game with these runs, before or after this change.
-        mine = [r for r in old + new if r["slug"] == slug and r["ts"] in replaced]
+        # Everyone who may have shared a game with these runs, before or after this change.
+        buckets = {coop_bucket(r) for r in old + new if r["slug"] == slug and r["ts"] in replaced}
         for r in old + new:
-            if r["slug"] != slug and any(_same_game(r, m) for m in mine):
+            if r["slug"] != slug and coop_bucket(r) in buckets:
                 refresh.setdefault(r["slug"], {}).setdefault(seed, set())
         refresh.setdefault(slug, {}).setdefault(seed, set()).update(gone)
     for member, seeds in sorted(refresh.items()):
@@ -899,16 +940,25 @@ def _refresh_links(store, member: str, seeds: dict) -> None:
                 runs.pop(str(ts), None)
             rec = store.get(coop_key(seed))
             listed = _unpack(rec[0])["runs"] if rec else []
+            by_bucket = {}
             for e in listed:
-                if e["slug"] != member:
-                    continue
-                others = [o for o in listed if o["slug"] != member and _same_game(e, o)]
-                if others:
-                    runs[str(e["ts"])] = {"i": e["i"], "with": [
-                        {"slug": o["slug"], "ts": o["ts"], "i": o["i"]}
-                        for o in sorted(others, key=lambda o: (o["i"], o["slug"]))]}
-                else:
-                    runs.pop(str(e["ts"]), None)
+                by_bucket.setdefault(coop_bucket(e), {}).setdefault(e["slug"], []).append(e)
+            for slugs in by_bucket.values():
+                mine = slugs.get(member, [])
+                found = {e["ts"]: [] for e in mine}
+                for other, theirs in slugs.items():
+                    if other == member:
+                        continue
+                    for ts, t in _pair_copies(mine, theirs, _clock_offset(before, other)).items():
+                        found[ts].append(t)
+                for e in mine:
+                    others = found[e["ts"]]
+                    if others:
+                        runs[str(e["ts"])] = {"i": e["i"], "with": [
+                            {"slug": o["slug"], "ts": o["ts"], "i": o["i"]}
+                            for o in sorted(others, key=lambda o: (o["i"], o["slug"]))]}
+                    else:
+                        runs.pop(str(e["ts"]), None)
         if runs == before and (got or not runs):
             return
         try:
