@@ -43,9 +43,25 @@ rebuild_profiles --all and rebuild_stats on that stage's data bucket, so runs he
 join their profiles. A failure there only warns; run the two by hand.
 
 Production only deploys a commit that gamma has already deployed and passed that check on. A
-successful gamma deploy of a clean checkout writes its commit to `slay-my-stats-gamma-ok` inside
-the git directory (shared by worktrees); a prod deploy of any other commit stops. `DEPLOY_SKIP_GAMMA=1`
-overrides it for a hotfix.
+successful gamma deploy of a commit writes it to `slay-my-stats-gamma-ok` inside the git directory
+(shared by worktrees); a prod deploy of any other commit stops. `DEPLOY_SKIP_GAMMA=1` overrides it for
+a hotfix.
+
+A push deploys the pushed commit, not whatever the checkout holds: the commit is exported with
+`git archive` to the main checkout's `local_data/deploy-build/` and built there, borrowing the main
+checkout's ignored inputs (the infra venv, `infra/cdk.context.json`, the game art and data). So a push
+can go from any worktree, and no checkout has to be clean or on that commit. By hand, `--ref <commit>`
+does the same; without `--ref` the working tree is deployed as it is, uncommitted changes and all.
+
+    infra\\.venv\\Scripts\\python.exe tools/deploy.py --stage gamma --ref origin/gamma
+
+Only one deploy runs at a time, of any stage or stack, across every checkout and worktree: each takes
+`slay-my-stats-deploy.lock` in the git directory first, and a second one stops, saying who holds it,
+from which commit and since when. A deploy that dies without releasing it (a closed terminal) leaves
+it behind; after checking nothing is still deploying:
+
+    infra\\.venv\\Scripts\\python.exe tools/deploy.py --lock-status
+    infra\\.venv\\Scripts\\python.exe tools/deploy.py --break-lock
 
 The feedback table both stages share (infra/slay_my_stats/feedback_stack.py) is its own stack, and
 no push touches it. Deploy it by hand, with its diff and a y/N, only when that file changes:
@@ -65,19 +81,29 @@ Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 `git push --no-verify`.
 """
 
+import contextlib
 import hashlib
+import io
 import json
 import re
 import os
 import shutil
+import socket
+import stat
 import subprocess
 import sys
+import tarfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent.parent
-_INFRA = _HERE / "infra"
+# SRC is where the code being deployed is built from; LOCAL holds the ignored inputs every build
+# needs (the infra venv, infra/cdk.context.json, the game art and data). main() points LOCAL at the
+# main checkout, and SRC at a fresh export when deploying a commit (see export_commit()).
+SRC = _HERE
+LOCAL = _HERE
 # Production's names; use_stage() swaps in another stage's. They mirror what
 # infra/slay_my_stats/slay_my_stats_stack.py names things per stage.
 SITE_BUCKET = "slay-my-stats-site"
@@ -96,6 +122,17 @@ EDGE_ALARMS_STACK = "SlayMyStatsEdgeAlarmsStack"
 DATA_BUCKETS = {"prod": "slay-my-stats-data", "gamma": "slay-my-stats-gamma-data"}
 # Pushing one of these branches deploys its stage (see check_pre_push).
 DEPLOY_BRANCHES = {"main": "prod", "gamma": "gamma"}
+# One deploy at a time, across every checkout and worktree: this file in the git directory they share.
+LOCK_NAME = "slay-my-stats-deploy.lock"
+# Past this, the holder has most likely died without releasing it. Still never taken over on its
+# own (a long cdk deploy is possible); the refusal just says so and points at --break-lock.
+LOCK_STALE_MINUTES = 60
+# A deployed commit is built here, under the main checkout (gitignored, and on its drive).
+EXPORT_DIR = Path("local_data") / "deploy-build"
+# Ignored top-level entries of the main checkout that an export does NOT borrow: outputs, caches
+# and scratch rather than inputs. Everything else ignored at the top (the art folders and the game
+# data JSONs) is linked or copied in, so a new data file needs no change here.
+NOT_INPUTS = {"dist", "local_data", "output", "__pycache__", ".playwright-mcp", "cdk.out"}
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
 ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images",
             "enchantment_images", "ui_icons", "thumbs"]
@@ -163,7 +200,7 @@ def use_stage(argv) -> str:
     return stage
 
 
-def run(args, *, cwd=_HERE, env=None, capture=False, stream=False) -> subprocess.CompletedProcess:
+def run(args, *, cwd=None, env=None, capture=False, stream=False) -> subprocess.CompletedProcess:
     """
     Run a command with stdin detached (in pre-push, stdin is git's ref list).
     capture: collect output silently (printed only on failure).
@@ -171,6 +208,7 @@ def run(args, *, cwd=_HERE, env=None, capture=False, stream=False) -> subprocess
     steps whose output the caller still needs (cdk diff, art syncs) so the
     push doesn't sit silent for minutes.
     """
+    cwd = SRC if cwd is None else cwd
     exe = shutil.which(args[0])
     if exe is None:
         raise DeployError(f"'{args[0]}' is not on PATH")
@@ -198,9 +236,9 @@ def run(args, *, cwd=_HERE, env=None, capture=False, stream=False) -> subprocess
     return result
 
 
-def git(*args) -> str:
+def git(*args, cwd=None) -> str:
     return subprocess.run(
-        ["git", *args], cwd=_HERE, stdin=subprocess.DEVNULL,
+        ["git", *args], cwd=cwd or _HERE, stdin=subprocess.DEVNULL,
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     ).stdout.strip()
 
@@ -222,11 +260,10 @@ def ask(question: str) -> bool:
 
 def check_pre_push(ref_lines) -> str | None:
     """
-    Decide from git's pre-push stdin which stage this push deploys: the one
-    DEPLOY_BRANCHES names for the branch being pushed, or None when it is
-    neither of them. Raises (aborting the push) when the checkout doesn't match
-    what's going up, since the build reads the working tree, not the pushed
-    commit.
+    Decide from git's pre-push stdin what this push deploys: the stage
+    DEPLOY_BRANCHES names for the branch being pushed and the commit going up,
+    or None when it is neither branch. The commit is built from an export, so
+    the checkout it is pushed from needn't be on it or clean.
     """
     pushed = {}
     for line in ref_lines:
@@ -239,13 +276,9 @@ def check_pre_push(ref_lines) -> str | None:
         return None
     if len(pushed) > 1:
         raise DeployError(f"pushing {' and '.join(pushed)} in one go -- push them one at a time, "
-                          "each from its own checkout, so each build matches")
+                          "since each push deploys its stage")
 
     (branch, (_, local_sha, _, remote_sha)), = pushed.items()
-    if local_sha != git("rev-parse", "HEAD"):
-        raise DeployError(f"pushing {branch} from a commit other than HEAD -- check it out first so the build matches")
-    if git("status", "--porcelain", "--untracked-files=no"):
-        raise DeployError("uncommitted changes -- commit or set them aside so the build matches the push")
     # gamma gets pointed at whatever is being tried next, so a forced push is
     # normal there, and the hook can't tell one from a push git will reject.
     if branch == "main" and remote_sha != ZERO_SHA:
@@ -253,13 +286,187 @@ def check_pre_push(ref_lines) -> str | None:
                             cwd=_HERE, stdin=subprocess.DEVNULL, capture_output=True)
         if ff.returncode != 0:
             raise DeployError("not a fast-forward of origin/main (fetch first) -- the push would be rejected after deploying")
-    return DEPLOY_BRANCHES[branch]
+    return DEPLOY_BRANCHES[branch], local_sha
+
+
+def use_ref(argv) -> str | None:
+    """The commit `--ref <commit, branch or tag>` names, or None to deploy the working tree."""
+    if "--ref" not in argv:
+        return None
+    i = argv.index("--ref")
+    if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+        raise DeployError("--ref takes a commit, branch or tag")
+    sha = git("rev-parse", "--verify", "--quiet", argv[i + 1] + "^{commit}")
+    if not sha:
+        raise DeployError(f"--ref {argv[i + 1]}: no such commit here (git fetch first?)")
+    return sha
+
+
+def _venv_bin() -> Path:
+    return LOCAL / "infra" / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+
+
+def _git_common() -> Path:
+    common = Path(git("rev-parse", "--git-common-dir"))
+    return common if common.is_absolute() else (_HERE / common).resolve()
+
+
+def main_checkout() -> Path:
+    """The checkout the git directory belongs to, where the ignored inputs live for every worktree."""
+    common = _git_common()
+    return common.parent if common.name == ".git" and common.parent.is_dir() else _HERE
+
+
+# ---- one deploy at a time ----
+
+_lock_held: Path | None = None
+
+
+def _read_lock(f: Path) -> dict:
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}  # gone, or its holder hasn't finished writing it
+
+
+def _lock_age_minutes(info: dict) -> float | None:
+    try:
+        return (time.time() - float(info["since"])) / 60
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def describe_lock(info: dict) -> str:
+    age = _lock_age_minutes(info)
+    commit = info.get("commit") or ""
+    return (f"{info.get('what', 'a deploy')} of {commit[:7] or 'a working tree'}, started "
+            f"{info.get('started', '?')}" + (f" ({age:.0f} min ago)" if age is not None else "")
+            + f", from {info.get('checkout', '?')} (pid {info.get('pid', '?')} on {info.get('host', '?')})")
+
+
+@contextlib.contextmanager
+def deploy_lock(what: str, commit: str | None):
+    """Hold the deploy lock for the block; a second deploy anywhere in the repo stops instead."""
+    global _lock_held
+    f = _git_common() / LOCK_NAME
+    info = {"what": what, "commit": commit, "started": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "since": time.time(), "checkout": str(_HERE), "pid": os.getpid(), "host": socket.gethostname()}
+    try:
+        fd = os.open(f, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        held = _read_lock(f)
+        age = _lock_age_minutes(held)
+        if age is not None and age > LOCK_STALE_MINUTES:
+            hint = (f"It has held the lock for over {LOCK_STALE_MINUTES} minutes, so it most likely died. "
+                    "Check nothing is still deploying, then: tools/deploy.py --break-lock")
+        else:
+            hint = "Wait for it to finish and try again (tools/deploy.py --lock-status shows it)."
+        raise DeployError(f"another deploy is running: {describe_lock(held)}. {hint}")
+    with os.fdopen(fd, "w", encoding="utf-8") as out:
+        json.dump(info, out)
+    _lock_held = f
+    try:
+        yield
+    finally:
+        held = _read_lock(f)
+        # Only ever remove our own lock, not one taken after a --break-lock.
+        if held.get("pid") == info["pid"] and held.get("since") == info["since"]:
+            with contextlib.suppress(FileNotFoundError):
+                f.unlink()
+        _lock_held = None
+
+
+def lock_status(break_it: bool) -> None:
+    f = _git_common() / LOCK_NAME
+    if not f.exists():
+        print("No deploy is running.")
+        return
+    print("Deploy lock held by: " + describe_lock(_read_lock(f)))
+    if break_it:
+        f.unlink()
+        print("Lock removed.")
+
+
+# ---- building a commit, not a checkout ----
+
+def _is_link(p: Path) -> bool:
+    """A symlink, or a Windows junction (which is_symlink() doesn't report before Python 3.12)."""
+    if p.is_symlink():
+        return True
+    attrs = getattr(os.lstat(p), "st_file_attributes", 0)
+    return bool(attrs & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
+def _link_dir(target: Path, link: Path) -> None:
+    if os.name == "nt":
+        # A junction needs neither admin rights nor developer mode, unlike a directory symlink.
+        r = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        if r.returncode:
+            raise DeployError(f"could not link {link} to {target}: {r.stdout}{r.stderr}".strip())
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
+def remove_export(out: Path) -> None:
+    """Delete an export, unlinking its borrowed folders first so nothing is deleted through them."""
+    if not out.exists():
+        return
+    assert out.name == EXPORT_DIR.name and out.parent.name == EXPORT_DIR.parent.name, out
+    for child in out.iterdir():
+        if _is_link(child):
+            os.rmdir(child) if os.name == "nt" else child.unlink()
+    shutil.rmtree(out)
+
+
+def export_commit(commit: str) -> Path:
+    """
+    Write `commit`'s tracked files to LOCAL/EXPORT_DIR and borrow the main checkout's ignored
+    inputs: folders as links (the art is thousands of files), files as copies, and
+    infra/cdk.context.json, which cdk reads from its own folder. Returns the export.
+    """
+    out = LOCAL / EXPORT_DIR
+    remove_export(out)  # a deploy that died part-way leaves one; the lock says no one is using it
+    out.mkdir(parents=True)
+    print(f"Build: exporting {commit[:7]} to {out}...", flush=True)
+    tar = subprocess.run(["git", "archive", "--format=tar", commit], cwd=_HERE,
+                         stdin=subprocess.DEVNULL, capture_output=True)
+    if tar.returncode:
+        raise DeployError("git archive failed: " + tar.stderr.decode(errors="replace").strip())
+    with tarfile.open(fileobj=io.BytesIO(tar.stdout)) as t:
+        t.extractall(out, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
+
+    listed = git("ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", cwd=LOCAL)
+    borrowed = []
+    for entry in filter(None, listed.split("\0")):
+        name = entry.rstrip("/")
+        if ("/" in name and name != "infra/cdk.context.json") or name in NOT_INPUTS:
+            continue
+        src, dst = LOCAL / name, out / name
+        if dst.exists() or not src.exists():
+            continue
+        if src.is_dir():
+            _link_dir(src, dst)
+        else:
+            shutil.copy2(src, dst)
+        borrowed.append(name)
+    print(f"Build: borrowed from {LOCAL}: {', '.join(sorted(borrowed)) or 'nothing'}")
+    return out
+
+
+def finish_export(out: Path) -> None:
+    """Keep anything cdk added to the export's cdk.context.json (context lookups), then delete the export."""
+    ctx, home = out / "infra" / "cdk.context.json", LOCAL / "infra" / "cdk.context.json"
+    if ctx.exists() and home.exists() and ctx.read_bytes() != home.read_bytes():
+        shutil.copy2(ctx, home)
+        print(f"Note: cdk updated cdk.context.json; copied it back to {home}.")
+    remove_export(out)
 
 
 def _cdk_env() -> dict:
     # cdk.json runs `python app.py`; put the infra venv first so that resolves
     # to the interpreter with aws_cdk installed.
-    venv_bin = _INFRA / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+    venv_bin = _venv_bin()
     return {**os.environ, "PATH": f"{venv_bin}{os.pathsep}{os.environ['PATH']}"}
 
 
@@ -268,7 +475,7 @@ def deploy_infra() -> bool:
     known-ID list, may have changed)."""
     env = _cdk_env()
     print("Infra: comparing the stack with AWS (cdk diff, usually a minute or two)...", flush=True)
-    output = run(["cdk", "diff", STACK_NAME], cwd=_INFRA, env=env, stream=True).stdout
+    output = run(["cdk", "diff", STACK_NAME], cwd=SRC / "infra", env=env, stream=True).stdout
     if "There were no differences" in output:
         print("Infra: no changes.")
         return False
@@ -280,7 +487,7 @@ def deploy_infra() -> bool:
         print(f"Infra: deploying these changes (DEPLOY_YES={yes}).")
     elif not ask("Deploy these infra changes?"):
         raise DeployError("infra deploy declined")
-    run(["cdk", "deploy", STACK_NAME, "--require-approval", "never"], cwd=_INFRA, env=env)
+    run(["cdk", "deploy", STACK_NAME, "--require-approval", "never"], cwd=SRC / "infra", env=env)
     return True
 
 
@@ -288,11 +495,11 @@ def rebuild_held_runs(stage: str) -> None:
     """Bring in runs the new known-ID list no longer holds back, then recount the site totals.
     Both are safe to repeat; a failure here leaves the deploy done, so it only warns."""
     bucket = DATA_BUCKETS[stage]
-    python = _INFRA / ".venv" / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
+    python = _venv_bin() / ("python.exe" if os.name == "nt" else "python")
     print(f"Runs: re-checking held uploads in {bucket} (rebuild_profiles --all, rebuild_stats)...", flush=True)
     for script, extra in (("rebuild_profiles.py", ["--all"]), ("rebuild_stats.py", [])):
         try:
-            run([str(python), str(_HERE / "tools" / script), *extra, "--bucket", bucket], stream=True)
+            run([str(python), str(SRC / "tools" / script), *extra, "--bucket", bucket], stream=True)
         except DeployError as e:
             print(f"Warning: {script} failed ({e}). Run it by hand: "
                   f"tools/{script} {' '.join(extra)} --bucket {bucket}", file=sys.stderr)
@@ -313,7 +520,7 @@ def upload_changed_dist() -> list[str]:
     ], capture=True).stdout
     remote = {key: etag.strip('"') for key, etag in (json.loads(listing) or [])}
 
-    dist = _HERE / "dist"
+    dist = SRC / "dist"
     uploaded = []
     for f in sorted(p for p in dist.rglob("*") if p.is_file()):
         key = f.relative_to(dist).as_posix()
@@ -423,23 +630,21 @@ def smoke_test_ingest(url: str) -> None:
 
 
 def _gamma_ok_file() -> Path:
-    common = Path(git("rev-parse", "--git-common-dir"))
-    return (common if common.is_absolute() else _HERE / common) / "slay-my-stats-gamma-ok"
+    return _git_common() / "slay-my-stats-gamma-ok"
 
 
-def record_gamma_ok() -> None:
+def record_gamma_ok(commit: str | None) -> None:
     """Remember the commit gamma just deployed and passed the check on. A dirty tree isn't a commit, so it records nothing."""
-    if git("status", "--porcelain", "--untracked-files=no"):
-        return
-    _gamma_ok_file().write_text(git("rev-parse", "HEAD"), encoding="utf-8")
+    if commit:
+        _gamma_ok_file().write_text(commit, encoding="utf-8")
 
 
-def require_gamma_ok() -> None:
+def require_gamma_ok(commit: str | None) -> None:
     """Production only takes a commit gamma has already deployed and passed. DEPLOY_SKIP_GAMMA=1 overrides."""
     if os.environ.get("DEPLOY_SKIP_GAMMA") == "1":
         print("Check: skipping the gamma gate (DEPLOY_SKIP_GAMMA=1).")
         return
-    head = git("rev-parse", "HEAD")
+    head = commit or git("rev-parse", "HEAD")
     f = _gamma_ok_file()
     ok = f.read_text(encoding="utf-8").strip() if f.exists() else ""
     if ok != head:
@@ -458,7 +663,7 @@ def deploy_feedback_table() -> None:
     since the table holds every note). Records the commit when the file is committed as deployed."""
     env = _cdk_env()
     print("Feedback table: comparing its stack with AWS (cdk diff)...", flush=True)
-    output = run(["cdk", "diff", FEEDBACK_STACK], cwd=_INFRA, env=env, stream=True).stdout
+    output = run(["cdk", "diff", FEEDBACK_STACK], cwd=SRC / "infra", env=env, stream=True).stdout
     if "There were no differences" in output:
         print("Feedback table: no changes.")
     else:
@@ -466,7 +671,7 @@ def deploy_feedback_table() -> None:
             print("Feedback table: deploying these changes (DEPLOY_YES=feedback).")
         elif not ask("Deploy these feedback table changes?"):
             raise DeployError("feedback table deploy declined")
-        run(["cdk", "deploy", FEEDBACK_STACK, "--exclusively", "--require-approval", "never"], cwd=_INFRA, env=env)
+        run(["cdk", "deploy", FEEDBACK_STACK, "--exclusively", "--require-approval", "never"], cwd=SRC / "infra", env=env)
     if git("status", "--porcelain", "--", FEEDBACK_STACK_FILE):
         print(f"Note: {FEEDBACK_STACK_FILE} has uncommitted changes, so no deploy is recorded; "
               "commit it and run --feedback-table again.")
@@ -480,7 +685,7 @@ def deploy_edge_alarms() -> None:
     gates a push on it: the alarms watch the site, the site never calls them."""
     env = _cdk_env()
     print("Edge alarms: comparing their stack with AWS (cdk diff)...", flush=True)
-    output = run(["cdk", "diff", EDGE_ALARMS_STACK], cwd=_INFRA, env=env, stream=True).stdout
+    output = run(["cdk", "diff", EDGE_ALARMS_STACK], cwd=SRC / "infra", env=env, stream=True).stdout
     if "There were no differences" in output:
         print("Edge alarms: no changes.")
         return
@@ -488,30 +693,30 @@ def deploy_edge_alarms() -> None:
         print("Edge alarms: deploying these changes (DEPLOY_YES=edge).")
     elif not ask("Deploy these edge alarm changes?"):
         raise DeployError("edge alarms deploy declined")
-    run(["cdk", "deploy", EDGE_ALARMS_STACK, "--exclusively", "--require-approval", "never"], cwd=_INFRA, env=env)
+    run(["cdk", "deploy", EDGE_ALARMS_STACK, "--exclusively", "--require-approval", "never"], cwd=SRC / "infra", env=env)
     print("Edge alarms: deployed. A first deploy emails a subscription link; confirm it.")
 
 
-def require_feedback_table() -> None:
-    """Stop a push while the feedback stack's file differs from its last --feedback-table deploy."""
+def require_feedback_table(commit: str | None) -> None:
+    """Stop a deploy while the feedback stack's file (in `commit`, or the working tree) differs from its last --feedback-table deploy."""
     f = _feedback_ok_file()
     done = f.read_text(encoding="utf-8").strip() if f.exists() else ""
     if not done:
         raise DeployError("the feedback table has no deploy recorded. "
                           "Run tools/deploy.py --feedback-table first.")
-    if git("diff", "--name-only", done, "--", FEEDBACK_STACK_FILE):
+    if git("diff", "--name-only", done, *([commit] if commit else []), "--", FEEDBACK_STACK_FILE):
         raise DeployError(f"{FEEDBACK_STACK_FILE} changed since the feedback table was last deployed "
                           f"({done[:7]}). Run tools/deploy.py --feedback-table first.")
 
 
 def deploy_site() -> None:
     print("Site: building dist/...", flush=True)
-    run([sys.executable, str(_HERE / "build_site.py")])
+    run([sys.executable, str(SRC / "build_site.py")])
     print("Site: uploading changed dist/ files...", flush=True)
     changed = upload_changed_dist()
     for d in ART_DIRS:
         print(f"Site: syncing {d}/ (each uploaded file is listed)...", flush=True)
-        out = run(["aws", "s3", "sync", str(_HERE / d), f"s3://{SITE_BUCKET}/{d}",
+        out = run(["aws", "s3", "sync", str(LOCAL / d), f"s3://{SITE_BUCKET}/{d}",
                    "--size-only", "--no-progress",
                    "--cache-control", ART_CACHE_CONTROL], stream=True).stdout
         # "upload: <local path> to s3://<bucket>/<key>"
@@ -543,11 +748,11 @@ def smoke_test_site() -> None:
         import hmac
         import hashlib
         import time
-        config = json.loads((_HERE / "infra" / "cdk.context.json").read_text())
+        config = json.loads((LOCAL / "infra" / "cdk.context.json").read_text())
         payload = config["gammaAllowedSteamIds"][0] + "." + str(int(time.time()) + 600)
         signature = hmac.new(config["gammaSessionSecret"].encode(), payload.encode(), hashlib.sha256).hexdigest()
         smoke_env["SMS_SMOKE_COOKIE"] = payload + "." + signature
-    r = subprocess.run([sys.executable, str(_HERE / "tools" / "smoke_site.py"), DOMAIN_NAME],
+    r = subprocess.run([sys.executable, str(SRC / "tools" / "smoke_site.py"), DOMAIN_NAME],
                        env=smoke_env, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode:
         raise DeployError("the deployed site fails its visitor check:\n" + (r.stderr or r.stdout))
@@ -556,7 +761,7 @@ def smoke_test_site() -> None:
 
 def check_site_pages() -> None:
     """Fail before cdk runs if a site/pages/ file name can't be a URL."""
-    sys.path.insert(0, str(_HERE))
+    sys.path.insert(0, str(SRC))
     import build_site
     try:
         build_site.site_pages()
@@ -565,50 +770,73 @@ def check_site_pages() -> None:
 
 
 def main() -> int:
+    global SRC, LOCAL
     # The cdk diff echoed below has ✨ and └─; a cp1252 console can't print them.
     sys.stdout.reconfigure(errors="replace")
     pre_push = "--pre-push" in sys.argv
     try:
+        if "--lock-status" in sys.argv or "--break-lock" in sys.argv:
+            lock_status(break_it="--break-lock" in sys.argv)
+            return 0
+        LOCAL = main_checkout()
         if "--feedback-table" in sys.argv:
-            deploy_feedback_table()
+            with deploy_lock("feedback table deploy", None):
+                deploy_feedback_table()
             return 0
         if "--edge-alarms" in sys.argv:
-            deploy_edge_alarms()
+            with deploy_lock("edge alarms deploy", None):
+                deploy_edge_alarms()
             return 0
         if pre_push:
-            stage = check_pre_push(sys.stdin.read().splitlines())
-            if stage is None:
+            pushed = check_pre_push(sys.stdin.read().splitlines())
+            if pushed is None:
                 return 0
+            stage, commit = pushed
             set_stage(stage)
         else:
             stage = use_stage(sys.argv)
+            commit = use_ref(sys.argv)
         if stage != "prod":
             print(f"Deploying to {stage}: {DOMAIN_NAME}")
         if "--reheader" in sys.argv:
-            reheader()
+            with deploy_lock(f"{stage} reheader", None):
+                reheader()
             print("Re-headed and invalidated. Browsers that already hold a copy "
                   "keep it until they next ask.")
             return 0
-        if not pre_push and git("status", "--porcelain", "--untracked-files=no"):
-            print("Note: deploying a working tree with uncommitted changes.")
-        check_site_pages()
-        require_feedback_table()
-        if stage == "prod":
-            require_gamma_ok()
-        infra_changed = deploy_infra()
-        smoke_test_ingest(ingest_function_url())
-        deploy_site()
-        smoke_test_site()
-        if infra_changed:
-            rebuild_held_runs(stage)
-        if stage == "gamma":
-            record_gamma_ok()
+        export = None
+        if commit is None:
+            # No --ref: the working tree as it is. Clean, it is HEAD's commit.
+            if git("status", "--porcelain", "--untracked-files=no"):
+                print("Note: deploying a working tree with uncommitted changes.")
+            else:
+                commit = git("rev-parse", "HEAD")
+        with deploy_lock(f"{stage} deploy", commit):
+            try:
+                if "--ref" in sys.argv or pre_push:
+                    SRC = export = export_commit(commit)
+                check_site_pages()
+                require_feedback_table(commit)
+                if stage == "prod":
+                    require_gamma_ok(commit)
+                infra_changed = deploy_infra()
+                smoke_test_ingest(ingest_function_url())
+                deploy_site()
+                smoke_test_site()
+                if infra_changed:
+                    rebuild_held_runs(stage)
+                if stage == "gamma":
+                    record_gamma_ok(commit)
+            finally:
+                if export:
+                    finish_export(export)
+                    SRC = _HERE
     except DeployError as e:
         print(f"Deploy failed: {e}", file=sys.stderr)
         if pre_push:
             print("Push aborted. Skip deploying with SKIP_DEPLOY=1 git push.", file=sys.stderr)
         return 1
-    print("Deployed.")
+    print(f"Deployed{' ' + commit[:7] if commit else ''}.")
     return 0
 
 
