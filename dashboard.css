@@ -271,6 +271,30 @@ h1 {
   .fav-table .fav-item { --fav-face-w: 34px; grid-template-columns: auto auto; column-gap: 0.4rem; min-height: 48px; }
   .fav-table .fav-name, .fav-table .fav-won, .fav-table .fav-count { display: none; }
 }
+/* All characters: one row per character (favByCharHtml), your pick above
+   everybody's in each cell, told apart by the same gold and blue as the panels. */
+.fav-panels.fav-panels-bychar { display: block; }
+.fav-bychar-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; margin-bottom: 0.6rem; }
+.fav-bychar-bar .fav-metric { margin: 0; }
+.fav-legend { display: flex; gap: 0.9rem; font-size: var(--fs-sm); color: var(--text-dim); }
+.fav-key { padding-left: 0.5rem; border-left: 3px solid; }
+.fav-key-you { border-color: var(--gold); color: var(--gold); }
+.fav-key-all { border-color: #9db8f0; color: #9db8f0; }
+.fav-bychar-wrap { max-height: none; }
+.pivot.fav-bychar-table { min-width: 760px; }
+.fav-bychar-table th:first-child { width: 8.5rem; }
+.fav-bychar-table thead th { text-align: left; padding-left: 0.6rem; }
+.fav-bychar-table tbody th { vertical-align: middle; }
+.fav-bychar-table .fav-runs { display: block; margin-top: 0.15rem; font-size: var(--fs-xs); font-weight: 400; color: var(--text-dim); }
+.fav-bychar-table td { vertical-align: top; }
+.fav-bychar-table .fav-item { min-height: 54px; padding: 0.15rem 0 0.15rem 0.5rem; border-left: 3px solid transparent; }
+.fav-bychar-table .fav-mine { border-left-color: rgba(224, 196, 104, 0.7); }
+.fav-bychar-table .fav-theirs { border-left-color: rgba(157, 184, 240, 0.7); margin-top: 0.3rem; background: rgba(157, 184, 240, 0.05); }
+.fav-bychar-table .fav-none { display: flex; align-items: center; color: var(--text-dim); min-height: 2rem; }
+@media (max-width: 700px) {
+  .fav-bychar-table th:first-child { width: 6rem; }
+  .pivot.fav-bychar-table { min-width: 520px; }
+}
 .fav-pic { width: 34px; height: 34px; object-fit: contain; border-radius: 4px; }
 .fav-icon { display: flex; align-items: center; justify-content: center; }
 .fav-item-face img { display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }

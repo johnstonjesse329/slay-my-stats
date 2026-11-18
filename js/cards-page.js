@@ -445,6 +445,12 @@ function favPicksFor(tallies, slot, chars) {
 // phone's page.
 function favCellHtml(kind, item, winPct, detail) {
   if (!item) return `<td class="fav-cell fav-empty">—</td>`;
+  return `<td class="fav-cell">${favItemHtml(kind, item, winPct, detail)}</td>`;
+}
+
+// The item itself, without its cell: favCellHtml wraps one, the by-character
+// grid stacks yours above everybody's in one cell.
+function favItemHtml(kind, item, winPct, detail, extraClass = "") {
   const isCard = kind === "cards";
   const label = isCard ? fmtCardLabel(item.id) : fmtRelicLabel(item.id);
   const src = isCard ? cardImgSrc(item.id) : relicImgSrc(item.id);
@@ -454,14 +460,14 @@ function favCellHtml(kind, item, winPct, detail) {
     ? `<span class="fav-item-face">${face}</span>`
     : src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="fav-pic">` : "";
   const rate = winPct == null ? "—" : `${Math.round(winPct)}%`;
-  return `<td class="fav-cell"><span class="fav-item" tabindex="0" data-fav-kind="${kind}" data-fav-id="${item.id}" aria-label="${label}, ${detail}, ${rate} won">
+  return `<span class="fav-item${extraClass}" tabindex="0" data-fav-kind="${kind}" data-fav-id="${item.id}" aria-label="${label}, ${detail}, ${rate} won">
     <span class="fav-icon">${pic}</span>
     <span class="fav-text">
       <span class="fav-name">${label}</span>
       <span class="fav-detail"><span class="fav-rate${winPct >= 50 ? " fav-hi" : ""}">${rate}</span><span class="fav-won"> won</span></span>
       <span class="fav-count">${detail}</span>
     </span>
-  </span></td>`;
+  </span>`;
 }
 
 function favPanelHtml(title, tallies, chars) {
@@ -484,12 +490,74 @@ function favPanelHtml(title, tallies, chars) {
   </div>`;
 }
 
+// With every character in view, one row per character instead of one pool
+// for all of them: the columns are the slots, and a switch picks which of the
+// three choices (most picked, best win %, most bought) fills them. Each cell
+// holds your pick above everybody's, so the two read as a pair.
+let favByCharMetric = "picked";
+const FAV_METRICS = [
+  { key: "picked", label: "Most picked" },
+  { key: "win",    label: "Best win %" },
+  { key: "bought", label: "Most bought" },
+];
+
+// The figures one metric shows for its item: the win rate and the count
+// behind it, as in the panels.
+function favMetricFigures(metric, it) {
+  if (!it) return [null, null];
+  const picks = n => `${n} pick${n !== 1 ? "s" : ""}`;
+  if (metric === "win")    return [it.winPct, `${it.wins} of ${it.picks}`];
+  if (metric === "bought") return [it.buyWins / it.buys * 100, `${it.buys} bought`];
+  return [it.wins / it.picks * 100, picks(it.picks)];
+}
+
+function favByCharHtml(you, all) {
+  // Characters with runs in either set, in the site's roster order.
+  const chars = DATA.characters.filter(c => you.runs[c] || (all && all.runs[c]));
+  const head = `<tr><th></th>${FAV_SLOTS.map(s => `<th>${s.label}</th>`).join("")}</tr>`;
+  const rows = chars.map(char => {
+    const n = you.runs[char] || 0;
+    const cells = FAV_SLOTS.map(slot => {
+      const one = (tallies, cls) => {
+        const it = tallies && favPicksFor(tallies, slot, [char])[favByCharMetric];
+        if (!it) return `<span class="fav-item fav-none${cls}">—</span>`;
+        const [rate, detail] = favMetricFigures(favByCharMetric, it);
+        return favItemHtml(slot.kind, it, rate, detail, cls);
+      };
+      return `<td class="fav-cell">${one(you, " fav-mine")}${all ? one(all, " fav-theirs") : ""}</td>`;
+    }).join("");
+    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${cells}</tr>`;
+  }).join("");
+  const switcher = `<div class="filter-group fav-metric">${FAV_METRICS.map(m =>
+    `<button class="toggle-btn${m.key === favByCharMetric ? " active" : ""}" data-fav-metric="${m.key}">${m.label}</button>`).join("")}</div>`;
+  const legend = `<span class="fav-legend"><span class="fav-key fav-key-you">You</span>${all ? `<span class="fav-key fav-key-all">All players</span>` : ""}</span>`;
+  return `<div class="fav-bychar">
+    <div class="fav-bychar-bar">${switcher}${legend}</div>
+    <div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table">
+      <thead>${head}</thead><tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+
 function renderCardFavorites() {
   loadSiteStatsForFavs();
-  const chars = sharedActiveChar === "ALL" ? DATA.characters : [sharedActiveChar];
   const all = favTalliesAll();
   const box = document.getElementById("cards-favorites");
-  box.innerHTML = favPanelHtml("You", favTalliesYou(), chars) + (all ? favPanelHtml("All players", all, chars) : "");
+  const caption = document.getElementById("cards-fav-caption");
+  if (sharedActiveChar === "ALL") {
+    box.classList.add("fav-panels-bychar");
+    box.innerHTML = favByCharHtml(favTalliesYou(), all);
+    if (caption) caption.textContent = `Each character's ${FAV_METRICS.find(m => m.key === favByCharMetric).label.toLowerCase()} card of each rarity and relic: yours on top${all ? ", all players' underneath" : ""}. Every card shows its win rate, with the count behind it underneath.`;
+    box.querySelectorAll("[data-fav-metric]").forEach(btn => btn.addEventListener("click", () => {
+      favByCharMetric = btn.dataset.favMetric;
+      renderCardFavorites();
+    }));
+  } else {
+    box.classList.remove("fav-panels-bychar");
+    const chars = [sharedActiveChar];
+    box.innerHTML = favPanelHtml("You", favTalliesYou(), chars) + (all ? favPanelHtml("All players", all, chars) : "");
+    if (caption) caption.textContent = "Your most-picked, best win rate and most-bought card of each rarity and relic, beside the same for all players. Every card shows its win rate, with the count behind it underneath.";
+  }
   box.querySelectorAll(".fav-item[data-fav-id]").forEach(el => {
     const show = () => showFloatingHtmlTooltip(el, el.dataset.favKind === "cards"
       ? buildCardTooltip(el.dataset.favId, 0) : buildRelicTooltip(el.dataset.favId));
