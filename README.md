@@ -413,7 +413,7 @@ A Custom Run (the game's `game_mode` of `custom`) carries `modifiers`, the ids o
 
 #### Upload config (what the mod uploads)
 
-The mod keeps a JSON file, `slay-my-stats-config.json`, in the game's user data folder (the folder the game keeps its saves in). The mod creates it with
+The mod keeps its settings in `config.json` in `%APPDATA%\SlayTheSpire2\SlayMyStats` (the same file that holds `carry_progress`). The mod creates it with
 the defaults below if it's missing, and re-reads it before every upload batch, so a change applies without restarting the game.
 
 - `uploadsEnabled` (default `true`): `false` stops all uploads. Turn it back on and the mod uploads whatever it skipped.
