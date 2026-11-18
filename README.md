@@ -26,9 +26,9 @@ bar or **Copy link** in the run's header), and opening one shows that run whatev
 
 ![Runs tab showing a run's rating and Keeping Up by Floor](images/site-run-detail.png)
 
-**Cards:** your most-picked, best win rate and most-bought card of each rarity beside every player's — each one showing its win rate — one row per character when every character is in view, with the cards only multiplayer runs offer in a Multi column of their own. Below, pick and win rates for every card, yours and every player's side by side (on a phone, a You / All players switch swaps which set the table shows).
+**Cards:** each character's most-picked, best win rate and most-bought card of each rarity, yours beside every player's, then pick and win rates for every card.
 
-**Relics:** each character's most-picked, best win rate and most-bought relic, yours beside every player's, and pick and win rates for every relic, yours and every player's (on a phone, a You / All players switch picks which set the favorites show).
+**Relics:** the same for relics.
 
 ![Cards tab with card pick rates](images/site-card-stats.png)
 
