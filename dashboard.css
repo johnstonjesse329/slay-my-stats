@@ -1545,27 +1545,12 @@ h1 {
 .party-profile-link:hover, .party-profile-link:focus-visible { color: var(--gold-bright); }
 .party-note { color: var(--loss); }
 #detail-content.party-loading > :not(#detail-run-header) { opacity: 0.45; transition: opacity 0.2s; }
-
-/* "Everyone": the header, the shared map and the party's own boxes; one player's charts and lists
-   are hidden (their boxes set display inline, hence !important). */
-#detail-content.party-all-view > :not(#detail-run-header):not(#detail-party):not(#detail-maps) { display: none !important; }
-#detail-party { margin-top: 16px; }
-.party-table-wrap { overflow-x: auto; }
-.party-table { border-collapse: collapse; font-size: var(--fs-sm); }
-@media (max-width: 600px) {
-  .party-table-wrap .party-table th, .party-table-wrap .party-table td { padding: 0.35rem 0.4rem; }
-  .party-table-wrap .party-table tbody th { white-space: normal; }
-}
-.party-table th, .party-table td { padding: 0.4rem 0.8rem; text-align: right; white-space: nowrap; border-bottom: 1px solid #2e3035; }
-.party-table thead th { vertical-align: bottom; }
-.party-table thead th > * { vertical-align: middle; }
-.party-table thead .party-name { margin-left: 0.35rem; }
-.party-table tbody th { text-align: left; color: var(--text-dim); font-weight: 400; }
-.party-table td { color: var(--text); font-variant-numeric: tabular-nums; }
-.party-legend { display: block; margin: 0 0 0.5rem; }
-.party-legend .fl-swatch, .floor-tip .fl-swatch { display: inline-block; width: 18px; }
-.party-chart-title { margin: 1rem 0 0.25rem; font-size: 1rem; color: var(--text-dim); font-weight: 600; }
-.party-chart-wrap { height: 260px; }
+/* "Everyone": the run page with every player on its floor charts. What belongs to one player is hidden; those boxes set display inline, hence !important. */
+#detail-content.party-on :is(#detail-timeline, #detail-deck-relics, #detail-deck-box, .detail-run-headline-stats, .detail-run-header-stats, #detail-keep-acts, #detail-keep-actpick, .keep-key, .party-hide) { display: none !important; }
+.floor-tip .fl-swatch, .floor-legend .fl-swatch[style*="border-top"] { display: inline-block; width: 18px; }
+.range-player { margin-top: 0.6rem; }
+.range-who { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; border-left: 3px solid; padding-left: 0.5rem; }
+.range-who-name { font-weight: 600; }
 #detail-partner-filter .tag-filter-chips { flex-direction: row; }
 .partner-filter-none { color: var(--text-dim); font-size: var(--fs-sm); }
 

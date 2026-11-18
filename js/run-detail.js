@@ -491,7 +491,9 @@ function renderDetailRun(run) {
     if (token !== detailRenderToken) return;
     content.classList.remove("party-loading");
     if (who === "all") {
-      renderPartyView(run, Object.fromEntries(wanted.map((p, i) => [p.slug, copies[i]])));
+      const byslug = Object.fromEntries(wanted.map((p, i) => [p.slug, copies[i]]));
+      const missing = wanted.filter((p, i) => !copies[i]).map(p => p.name);
+      showRunCopy(run, run, missing.length ? `Couldn't load ${missing.join(" and ")}'s copy of this run.` : "", partyPlayers(run, byslug));
     } else if (copies[0]) {
       showRunCopy(copies[0], run);
     } else {
@@ -563,8 +565,12 @@ const bindRunCopyLinks = owner =>
 // One player's copy of a run, the page as it always was: `run` is the copy on show, `owner` the
 // profile's own (the same run unless a partner's tab is picked), which the Party line, attempts
 // and link belong to.
-function showRunCopy(run, owner, note = "") {
+function showRunCopy(run, owner, note = "", players = null) {
   clearPartyView();
+  if (players) {
+    detailParty = players;
+    document.getElementById("detail-content").classList.add("party-on");
+  }
   detailShownRun = run;
   detailForeign = run !== owner;
   const { tl, totalRemoves, totalShopRemoves, totalPotionsBought, totalPotionsGained, totalRelicsBought,
@@ -697,7 +703,7 @@ function showRunCopy(run, owner, note = "") {
   }).join("");
 
   document.getElementById("detail-run-header").innerHTML = `
-    ${runHeaderBarHtml(run, owner)}
+    ${runHeaderBarHtml(run, owner, !!players)}
     ${partyLineHtml(owner, partyViewOf(owner.ts), note)}
     <div class="detail-run-headline-stats">
       ${headlineHtml}${ancientBoonsHtml}
@@ -733,16 +739,9 @@ function showRunCopy(run, owner, note = "") {
   // charts alone and only loses the span.
   clearRange();
   rangeNodes = run.timeline || [];
-  try {
-    rangeChanges = run.deckAdded || run.relicsAdded
-      ? floorChanges(rangeNodes,
-        heldItems(run.finalDeck || [], run.deckAdded || [], run.cardsLost || []),
-        heldItems(run.finalRelics || [], run.relicsAdded || [], run.relicsLost || []))
-      : null;
-  } catch (err) {
-    console.warn("range select: no floor changes for this run", err);
-    rangeChanges = null;
-  }
+  rangeChanges = runFloorChanges(run);
+  // Everyone: the drag adds up every player's changes, each from their own copy.
+  rangeParty = players ? players.map(p => ({ char: p.char, label: p.label, color: p.color, nodes: p.run.timeline || [], changes: runFloorChanges(p.run) })) : null;
 
   renderDetailTimeline(run);
   renderDetailMaps(run);
@@ -751,19 +750,46 @@ function showRunCopy(run, owner, note = "") {
   renderDetailDeckChart(run);
   renderDetailRelicChart(run);
   renderDetailKeepCharts(run);
+  if (players) renderPartyCharts(players);
   renderDetailDeckRelics(run);
+}
+
+// A run's floor-by-floor changes, or null when it has no deck history (or one that doesn't fit).
+function runFloorChanges(run) {
+  if (!run.deckAdded && !run.relicsAdded) return null;
+  try {
+    return floorChanges(run.timeline || [],
+      heldItems(run.finalDeck || [], run.deckAdded || [], run.cardsLost || []),
+      heldItems(run.finalRelics || [], run.relicsAdded || [], run.relicsLost || []));
+  } catch (err) {
+    console.warn("range select: no floor changes for this run", err);
+    return null;
+  }
 }
 
 // ---- The whole party ----
 
-let partyCharts = [];
+// "Everyone": the run page itself, with every player's copy drawn on its floor charts, one line
+// per player in their character's colour (dashed for a second player on the same character). A
+// drag still adds up what changed, one list per player. `copies` holds each partner's copy by
+// slug; one that couldn't be loaded is left out and named.
+let detailParty = null;   // the players on show while Everyone is on, else null
+function partyPlayers(owner, copies) {
+  const seen = {};
+  return coopParty(owner)
+    .map(p => ({ ...p, run: p.self ? owner : p.slug ? copies[p.slug] : null }))
+    .filter(p => p.run)
+    .map(p => {
+      const dash = seen[p.char] ? [6, 4] : [];
+      seen[p.char] = true;
+      return { ...p, dash, color: charColor(p.char), label: p.name || fmtCharName(p.char) };
+    });
+}
+
 function clearPartyView() {
-  partyCharts.forEach(c => c.destroy());
-  partyCharts = [];
-  const box = document.getElementById("detail-party");
-  box.hidden = true;
-  box.innerHTML = "";
-  document.getElementById("detail-content").classList.remove("party-all-view");
+  detailParty = null;
+  rangeParty = null;
+  document.getElementById("detail-content").classList.remove("party-on");
 }
 
 // How many of a run's cards (or relics) were held after each node, or null where the run
@@ -774,119 +800,80 @@ function heldCountsByNode(nodes, finalItems, added, lost) {
   return nodes.map(n => items.filter(it => it.added <= n.floor + 1 && it.removed > n.floor + 1).length);
 }
 
-// "Everyone": each player's copy of the run side by side, on one page. The party's shared map
-// stays; one player's charts and lists give way to a table of what each run added up to and one
-// chart per measure with a line for each player, in their character's colour (dashed for a second
-// player on the same character). `copies` holds each partner's copy by slug; a missing one is
-// left out and named.
-function renderPartyView(owner, copies) {
-  clearPartyView();
-  closeFloorTip();
-  clearRange();
-  detailShownRun = owner;
-  detailForeign = false;
-  const party = coopParty(owner);
-  const seen = {};
-  const players = party.map(p => ({ ...p, run: p.self ? owner : p.slug ? copies[p.slug] : null })).filter(p => p.run);
-  players.forEach(p => {
-    p.dash = seen[p.char] ? [6, 4] : [];
-    seen[p.char] = true;
-    p.color = charColor(p.char);
-    p.label = p.name || fmtCharName(p.char);
-    p.totals = runTotals(p.run);
-  });
-  const missing = party.filter(p => p.slug && !copies[p.slug]).map(p => p.name);
-
-  document.getElementById("detail-content").classList.add("party-all-view");
-  document.getElementById("detail-run-header").innerHTML = runHeaderBarHtml(owner, owner, true) +
-    partyLineHtml(owner, "all", missing.length ? `Couldn't load ${missing.join(" and ")}'s copy of this run.` : "");
-  bindRunCopyLinks(owner);
-  // The map is the same for the whole party, so any copy that carries it will do.
-  renderDetailMaps((players.find(p => (p.run.maps || []).length) || { run: owner }).run);
-
-  const who = p => `${charIconHtml(p.char)}<span class="party-name">${escapeHtml(p.label)}</span>`;
-  const rows = [
-    ["Keeping up", p => runReadingHtml(p.run) || null],
-    ["Cards", p => (p.run.finalDeck || []).length],
-    ["Relics", p => (p.run.finalRelics || []).length],
-    ["Gold", p => p.totals.totalGold],
-    ["Damage taken", p => p.totals.totalDmg],
-    ["HP healed", p => p.totals.totalHealed],
-    ["Potions", p => p.totals.totalPotionsGained],
-    ["Card removes", p => p.totals.totalRemoves],
-    ["Cards bought", p => p.totals.totalColorlessBought + p.totals.totalOtherCardsBought],
-    ["Relics bought", p => p.totals.totalRelicsBought],
-    ["Card rewards skipped", p => p.totals.totalRewardsSkipped],
-  ].filter(([, val]) => players.some(p => val(p) != null));
-  const table = `<div class="party-table-wrap"><table class="party-table"><thead><tr><th></th>` +
-    players.map(p => `<th scope="col">${who(p)}</th>`).join("") + `</tr></thead><tbody>` +
-    rows.map(([label, val]) => `<tr><th scope="row">${label}</th>${players.map(p => `<td>${val(p) ?? "–"}</td>`).join("")}</tr>`).join("") +
-    `</tbody></table></div>`;
-
-  // The longest copy sets the floors: a player who died early stops there.
-  const nodes = players.map(p => p.run.timeline || []).reduce((a, b) => b.length > a.length ? b : a, []);
-  const measures = [
-    { title: "HP", of: p => (p.run.timeline || []).map(n => n.hpAfter), tip: (p, i) => {
-      const n = (p.run.timeline || [])[i];
-      return n && n.hpAfter != null ? `${n.hpAfter}<small>/${n.maxHp}</small>` : null;
-    } },
-    { title: "Gold", of: p => (p.run.timeline || []).map(n => n.gold) },
-    { title: "Cards in deck", of: p => heldCountsByNode(p.run.timeline || [], p.run.finalDeck, p.run.deckAdded, p.run.cardsLost) },
-    { title: "Relics", of: p => heldCountsByNode(p.run.timeline || [], p.run.finalRelics, p.run.relicsAdded, p.run.relicsLost) },
-  ].map(m => ({ ...m, series: players.map(p => {
-    const v = m.of(p);
-    return v ? nodes.map((_, i) => v[i] ?? null) : null;
-  }) })).filter(m => m.series.some(v => v && v.some(x => x != null)));
-
+// One chart with a line for each player. A player with no figures for it is left out.
+function partyChart(id, nodes, players, series, cell, reverse = false) {
   const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
-  const legend = `<div class="floor-legend party-legend"><div class="fl-items">${players.map(p =>
-    `<span class="fl-item">${swatch(p)}${charIconHtml(p.char)}${escapeHtml(p.label)}</span>`).join("")}</div></div>`;
+  const tip = context => showFloorTip(context, i => nodes[i]
+    ? floorTipHead(nodes[i]) + `<table>${players.map((p, j) => series[j]
+        ? `<tr><td>${swatch(p)} ${escapeHtml(p.label)}</td><td>${cell(p, i, series[j][i])}</td></tr>` : "").join("")}</table>`
+    : "");
+  const base = iconAxis({ min: 0 });
+  const y = { ...base, stacked: false, reverse, ticks: { ...base.ticks, maxTicksLimit: 5 } };
+  const datasets = players.map((p, j) => series[j] ? {
+    label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color, borderDash: p.dash,
+    borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone",
+  } : null).filter(Boolean);
+  const chart = new Chart(document.getElementById(id).getContext("2d"),
+    floorChartConfig(nodes, [], tip, y, datasets, actWindow(nodes)));
+  bindRangeSelect(chart, nodes);
+  return chart;
+}
 
-  const box = document.getElementById("detail-party");
-  box.innerHTML = `<div class="chart-box"><h2>Side by side</h2>${table}</div>` +
-    `<div class="chart-box" style="margin-top:16px"><h2>By floor</h2>${legend}` +
-    measures.map((m, k) => `<h3 class="party-chart-title">${m.title}</h3><div class="chart-wrap party-chart-wrap"><canvas id="party-chart-${k}"></canvas></div>`).join("") +
-    `</div>`;
-  box.hidden = false;
+// Swap the page's own floor charts for the party's. The deck and relic stacks and the fight-by-fight
+// and energy charts belong to one player, so they give way (CSS hides their boxes).
+function renderPartyCharts(players) {
+  const nodes = players.map(p => p.run.timeline || []).reduce((a, b) => b.length > a.length ? b : a, []);
+  const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
+  const legend = `<div class="fl-items">${players.map(p =>
+    `<span class="fl-item">${swatch(p)}${charIconHtml(p.char)}${escapeHtml(p.label)}</span>`).join("")}</div>`;
+  const pad = v => v ? nodes.map((_, i) => v[i] ?? null) : null;
+  const tl = p => p.run.timeline || [];
+  const readings = players.map(p => fightReadings(p.run, tl(p), measuredStrengthByNode(p.run, tl(p))));
+  const perFight = pick => readings.map(r => r ? pad(r.map(x => {
+    const v = x ? pick(x) : null;
+    return v === undefined || Number.isNaN(v) ? null : v;
+  })) : null);
+  const has = series => series.some(v => v && v.some(x => x != null));
+  const turn = (p, i, v) => v == null ? "–" : v.toFixed(1);
+  const count = (p, i, v) => v ?? "–";
+  const dropCanvas = id => {
+    const old = floorCharts().find(c => c && c.canvas.id === id);
+    if (!old) return;
+    old.destroy();
+    detailKeepCharts = detailKeepCharts.filter(c => c !== old);
+    if (old === detailHpChart) detailHpChart = null;
+    if (old === detailGoldChart) detailGoldChart = null;
+    if (old === detailDeckChart) detailDeckChart = null;
+    if (old === detailRelicChart) detailRelicChart = null;
+  };
+  // Returns the new chart, or null (leaving the page's own) when nobody has figures for it.
+  const build = (id, legendId, series, cell, reverse) => {
+    if (!has(series)) return null;
+    dropCanvas(id);
+    document.getElementById(legendId).innerHTML = legend;
+    return partyChart(id, nodes, players, series, cell, reverse);
+  };
 
-  const labels = floorLabels(nodes);
-  measures.forEach((m, k) => {
-    const tipRow = (p, i, v) => `<tr><td>${swatch(p)} ${escapeHtml(p.label)}</td><td>${m.tip ? m.tip(p, i) ?? "–" : v ?? "–"}</td></tr>`;
-    partyCharts.push(new Chart(document.getElementById(`party-chart-${k}`).getContext("2d"), {
-      type: "line",
-      plugins: [makeActBoundaryPlugin(nodes), makeHoverDotPlugin()],
-      data: {
-        labels,
-        datasets: players.map((p, j) => ({
-          label: p.label,
-          data: m.series[j] || [],
-          borderColor: p.color,
-          backgroundColor: p.color,
-          borderDash: p.dash,
-          borderWidth: 2,
-          pointRadius: 0,
-          pointHoverRadius: 0,
-          cubicInterpolationMode: "monotone",
-        })),
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        layout: { padding: { top: ACT_BAND, right: 24 } },
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: false, external: context => showFloorTip(context, i => nodes[i]
-            ? floorTipHead(nodes[i]) + `<table>${players.map((p, j) => tipRow(p, i, (m.series[j] || [])[i])).join("")}</table>`
-            : "") },
-        },
-        scales: {
-          x: floorAxis({ grid: { color: "#2e3035" } }),
-          y: { min: 0, ticks: { color: "#ccc" }, grid: { color: "#2e3035" } },
-        },
-      },
-    }));
-  });
+  const hp = build("detail-hp-chart", "detail-hp-legend", players.map(p => pad(tl(p).map(n => n.hpAfter ?? null))),
+    (p, i, v) => v == null ? "–" : `${v}<small>/${(tl(p)[i] || {}).maxHp}</small>`);
+  if (hp) detailHpChart = hp;
+  const gold = build("detail-gold-chart", "detail-gold-legend", players.map(p => pad(tl(p).map(n => n.gold ?? null))), count);
+  if (gold) detailGoldChart = gold;
+  const relics = build("detail-relic-chart", "detail-relic-legend",
+    players.map(p => pad(heldCountsByNode(tl(p), p.run.finalRelics, p.run.relicsAdded, p.run.relicsLost))), count);
+  if (relics) detailRelicChart = relics;
+  const keep = [
+    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true),
+    build("detail-keep-damage-chart", "detail-keep-damage-legend", perFight(r => r.doing), turn),
+    build("detail-keep-deck-chart", "detail-keep-deck-legend",
+      players.map(p => pad(heldCountsByNode(tl(p), p.run.finalDeck, p.run.deckAdded, p.run.cardsLost))), count),
+  ];
+  detailKeepCharts.push(...keep.filter(Boolean));
+  // The HP chart lives in the keep box, which the owner's own copy may have hidden.
+  if (hp || keep.some(Boolean)) document.getElementById("detail-keep-box").style.display = "";
+  // What belongs to one player has no party version.
+  ["detail-keep-share-chart", "detail-keep-play-chart"].forEach(dropCanvas);
+  if (detailDeckChart) { detailDeckChart.destroy(); detailDeckChart = null; }
 }
 
 // ---- Timeline ----
@@ -2587,6 +2574,7 @@ function makeHoverDotPlugin() {
 let rangeSel = null;      // {from, to}: floor numbers, as the axis numbers them (1-based)
 let rangeChanges = null;  // the run's floorChanges(), or null when it has no deck history
 let rangeNodes = [];      // its timeline
+let rangeParty = null;    // Everyone: [{char, label, color, nodes, changes}], one per player, else null
 let rangeDrag = null;     // {chart, nodes, host, from, moved} while a pointer is down on a chart
 let rangePanels = [];     // one under every floor chart while a span is live
 const RANGE_HINT_KEY = "slay-my-stats:range-used:v2";          // the gesture has been used
@@ -2636,6 +2624,7 @@ function makeRangeBandPlugin() {
 // The floor under a pointer: the chart's own axis decides, so a span lands on the right floor
 // whatever that chart has filtered out of its own points.
 function floorAtPointer(chart, nodes, clientX) {
+  if (!chart.canvas) return null;   // a replaced chart's listeners are still on the canvas
   const idx = Math.round(chart.scales.x.getValueForPixel(clientX - chart.canvas.getBoundingClientRect().left));
   const node = nodes[Math.max(0, Math.min(nodes.length - 1, idx))];
   return node ? floorOf(node) : null;
@@ -2776,22 +2765,6 @@ document.addEventListener("pointerdown", e => {
 // twice, and a card that was upgraded wears an arrow instead of counting as one out and one in.
 function rangeSummaryHtml() {
   const { from, to } = rangeSel;
-  const floors = rangeNodes.filter(n => floorOf(n) >= from && floorOf(n) <= to);
-  const fights = floors.filter(n => n.turns).length;
-  const dmg = floors.reduce((s, n) => s + (n.dmg || 0), 0);
-  const gold = floors.reduce((s, n) => s + (n.goldGained || 0), 0);
-  // Where the span left the HP: the first floor's starting HP to the last one's, so a dip is
-  // read at a glance without counting the line.
-  const hp = floors.length && floors[0].hpBefore != null && floors[floors.length - 1].hpAfter != null
-    ? [floors[0].hpBefore, floors[floors.length - 1].hpAfter] : null;
-  const inPlay = { added: [], removed: [], upgraded: [], relicsIn: [], relicsOut: [] };
-  (rangeChanges || []).forEach((change, i) => {
-    const f = floorOf(rangeNodes[i]);
-    if (f < from || f > to) return;
-    change.cards.forEach(([id, up, dir]) =>
-      inPlay[dir > 0 ? "added" : dir < 0 ? "removed" : "upgraded"].push({ id, up }));
-    change.relics.forEach(([id, , dir]) => inPlay[dir > 0 ? "relicsIn" : "relicsOut"].push({ id }));
-  });
   const tally = list => {
     const counts = new Map();
     const ups = new Map();
@@ -2808,24 +2781,49 @@ function rangeSummaryHtml() {
     return `<div class="range-group"><span class="range-head">${head}</span>` +
       tally(list).map(({ id, n, up }) => chip(src(id), name(id), n, cls, id, `${kind}:${id}:${up > 0 || cls ? 1 : 0}`)).join("") + `</div>`;
   };
-  const groups = group("Cards in", inPlay.added, "card", cardName) +
-    group("Upgraded", inPlay.upgraded, "card", cardName, " up") +
-    group("Cards out", inPlay.removed, "card", cardName) +
-    group("Relics in", inPlay.relicsIn, "relic", relicName) +
-    group("Relics out", inPlay.relicsOut, "relic", relicName);
-  const meta = [
-    `${floors.length} ${floors.length === 1 ? "floor" : "floors"}`,
-    fights ? `${fights} ${fights === 1 ? "fight" : "fights"}` : "",
-    dmg ? `${dmg} damage taken` : "",
-    gold ? `${gold} gold gained` : "",
-    hp ? `HP ${hp[0]} → ${hp[1]}` : "",
-  ].filter(Boolean).join(" · ");
-  const empty = rangeChanges ? "Nothing changed in these floors." : "This run has no deck history to add up.";
-  return `<div class="range-top"><span class="range-title">${from === to ? `Floor ${from}` : `Floors ${from}–${to}`}</span>` +
-    `<span class="range-meta">${meta}</span>` +
-    `<button type="button" class="range-clear" data-range-clear aria-label="Clear the selected floors">✕</button></div>` +
-    `<div class="range-groups">${groups || `<span class="range-empty">${empty}</span>`}</div>` +
-    `<div class="range-hint">Drag across any floor chart to pick another span; Esc or a click clears it.</div>`;
+  // One copy of the run over the span: what its floors cost and what changed in its deck.
+  const section = (nodes, changes) => {
+    const floors = nodes.filter(n => floorOf(n) >= from && floorOf(n) <= to);
+    const fights = floors.filter(n => n.turns).length;
+    const dmg = floors.reduce((s, n) => s + (n.dmg || 0), 0);
+    const gold = floors.reduce((s, n) => s + (n.goldGained || 0), 0);
+    const hp = floors.length && floors[0].hpBefore != null && floors[floors.length - 1].hpAfter != null
+      ? [floors[0].hpBefore, floors[floors.length - 1].hpAfter] : null;
+    const inPlay = { added: [], removed: [], upgraded: [], relicsIn: [], relicsOut: [] };
+    (changes || []).forEach((change, i) => {
+      const f = floorOf(nodes[i]);
+      if (f < from || f > to) return;
+      change.cards.forEach(([id, up, dir]) =>
+        inPlay[dir > 0 ? "added" : dir < 0 ? "removed" : "upgraded"].push({ id, up }));
+      change.relics.forEach(([id, , dir]) => inPlay[dir > 0 ? "relicsIn" : "relicsOut"].push({ id }));
+    });
+    const groups = group("Cards in", inPlay.added, "card", cardName) +
+      group("Upgraded", inPlay.upgraded, "card", cardName, " up") +
+      group("Cards out", inPlay.removed, "card", cardName) +
+      group("Relics in", inPlay.relicsIn, "relic", relicName) +
+      group("Relics out", inPlay.relicsOut, "relic", relicName);
+    const meta = [
+      floors.length ? `${floors.length} ${floors.length === 1 ? "floor" : "floors"}` : "",
+      fights ? `${fights} ${fights === 1 ? "fight" : "fights"}` : "",
+      dmg ? `${dmg} damage taken` : "",
+      gold ? `${gold} gold gained` : "",
+      hp ? `HP ${hp[0]} → ${hp[1]}` : "",
+    ].filter(Boolean).join(" · ");
+    const empty = changes ? "Nothing changed in these floors." : "This run has no deck history to add up.";
+    return { meta, groups: `<div class="range-groups">${groups || `<span class="range-empty">${empty}</span>`}</div>` };
+  };
+  const title = `<span class="range-title">${from === to ? `Floor ${from}` : `Floors ${from}–${to}`}</span>`;
+  const clear = `<button type="button" class="range-clear" data-range-clear aria-label="Clear the selected floors">✕</button>`;
+  const hint = `<div class="range-hint">Drag across any floor chart to pick another span; Esc or a click clears it.</div>`;
+  if (rangeParty) {
+    return `<div class="range-top">${title}${clear}</div>` + rangeParty.map(p => {
+      const { meta, groups } = section(p.nodes, p.changes);
+      return `<div class="range-player"><div class="range-who" style="border-color:${p.color}">${charIconHtml(p.char)}` +
+        `<span class="range-who-name">${escapeHtml(p.label)}</span><span class="range-meta">${meta}</span></div>${groups}</div>`;
+    }).join("") + hint;
+  }
+  const { meta, groups } = section(rangeNodes, rangeChanges);
+  return `<div class="range-top">${title}<span class="range-meta">${meta}</span>${clear}</div>${groups}${hint}`;
 }
 
 function floorChartConfig(nodes, plugins, tip, y, datasets, view = {}) {
@@ -3513,12 +3511,13 @@ PHONE_MQ.addEventListener("change", () => {
   // full-size faces on a desktop, small ones that fit the floors on a phone.
   const run = detailShownRun;
   const content = document.getElementById("detail-content");
-  if (run && content.style.display !== "none" && !content.classList.contains("party-all-view")) {
+  if (run && content.style.display !== "none") {
     renderDetailHpChart(run);
     renderDetailGoldChart(run);
     renderDetailDeckChart(run);
     renderDetailRelicChart(run);
     renderDetailKeepCharts(run);
+    if (detailParty) renderPartyCharts(detailParty);
   } else if (keepActNodes.length) applyKeepAct();
 });
 
