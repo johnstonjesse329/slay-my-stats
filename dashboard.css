@@ -1255,7 +1255,7 @@ h1 {
   gap: 0.5rem;
   min-width: 0;
 }
-#detail-tag-filter {
+#detail-tag-filter, #detail-partner-filter {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -1283,9 +1283,9 @@ h1 {
 .tag-filter-text { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-filter-caret { color: var(--text-dim); transition: transform 0.15s; }
 .tag-filter-summary:hover .tag-filter-caret { color: var(--text); }
-#detail-tag-filter.expanded .tag-filter-caret { transform: rotate(180deg); }
+#detail-tag-filter.expanded .tag-filter-caret, #detail-partner-filter.expanded .tag-filter-caret { transform: rotate(180deg); }
 .tag-filter-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--hairline); }
-#detail-tag-filter:not(.expanded) .tag-filter-chips { display: none; }
+#detail-tag-filter:not(.expanded) .tag-filter-chips, #detail-partner-filter:not(.expanded) .tag-filter-chips { display: none; }
 .tag-filter-chips { flex-direction: column; flex-wrap: nowrap; gap: 0.4rem; }
 .tag-filter-group { display: grid; grid-template-columns: 8.5rem 1fr; align-items: start; gap: 0.3rem 0.6rem; }
 .tag-filter-char { display: flex; align-items: center; min-height: 1.7rem; white-space: nowrap; }
@@ -1404,6 +1404,14 @@ h1 {
 .detail-run-floor { font-size: var(--fs-sm); text-align: center; }
 .detail-run-read  { text-align: center; }
 .detail-run-date  { font-size: var(--fs-sm); text-align: center; }
+/* A seed this profile played more than once: each attempt's number by its character, and in the
+   header "Attempt 2 of 3" with the others as links. */
+.seed-try { margin-left: 0.35em; font-size: var(--fs-sm); font-weight: 600; color: var(--gold); }
+.rh-attempts { color: var(--text); font-size: var(--fs-sm); display: inline-flex; align-items: baseline; gap: 0.3em; }
+.rh-attempt-links { display: inline-flex; gap: 0.35em; margin-left: 0.4em; }
+.rh-attempt-here { color: var(--text-dim); }
+.rh-attempt-link { color: var(--gold); text-decoration: none; }
+.rh-attempt-link:hover, .rh-attempt-link:focus-visible { color: var(--gold-bright); text-decoration: underline; }
 
 /* How the whole run read: a round mark in the run list, a pill on the run's
    header. OP is the same green filled in, so it reads as more of ahead and
@@ -1503,6 +1511,27 @@ h1 {
 .rh-date { color:var(--text-dim); font-size: var(--fs-sm); }
 .rh-seed { color:var(--text); font-size: var(--fs-sm); font-family: monospace; }
 .rh-seed-label { margin-right: 0.4em; color: var(--text-dim); font-family: inherit; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
+
+/* A co-op run's party: each slot's character, with the player's name where the site has
+   their copy of the game; a partner's is a link to that copy on their profile. */
+.detail-run-party {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  padding-bottom: 0.6rem;
+  font-size: var(--fs-sm);
+}
+.party-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
+.party-member { display: inline-flex; align-items: center; gap: 0.35rem; }
+.party-name { color: var(--text); font-weight: 600; }
+.party-self .party-name { color: var(--text-dim); font-weight: 400; }
+.party-link { text-decoration: none; border-bottom: 1px solid transparent; }
+.party-link .party-name { color: var(--gold); }
+.party-link:hover .party-name, .party-link:focus-visible .party-name { color: var(--gold-bright); }
+.party-link:hover { border-bottom-color: var(--gold-glow); }
+#detail-partner-filter .tag-filter-chips { flex-direction: row; }
+.partner-filter-none { color: var(--text-dim); font-size: var(--fs-sm); }
 
 .detail-run-headline-stats {
   display: flex;

@@ -74,6 +74,9 @@ let detailHpChart     = null;
 let detailSortCol = "date";
 // Tags picked above the run list (see runTags); a run shows when it has all of them.
 const detailTags = new Set();
+// Players picked under "Played with" (profile slugs); a run shows when all of them have a
+// copy of it linked to this one (run.coop, from boot.js).
+const detailPartners = new Set();
 let detailSortAsc = false;
 const DETAIL_SORT_FNS = {
   char:  (a, b) => fmtCharName(a.char).localeCompare(fmtCharName(b.char)),
@@ -146,6 +149,132 @@ function copyRunLink(ts, btn) {
   });
 }
 
+// ---- Co-op party ----
+
+// A co-op run's party, slot by slot: each character, and who played it where the site knows.
+// run.coop (see boot.js's attachCoopLinks) names this profile's own slot and each partner whose
+// copy of the game is on the site; the other slots are just their character. Null for a run
+// with no linked copies, where which slot was this profile's isn't known.
+function coopParty(run) {
+  if (!run.mp || !run.coop) return null;
+  const party = run.party || [];
+  const owner = DATA.profile || {};
+  return party.map((char, i) => {
+    if (i === run.coop.i) return { char, name: owner.name || "", self: true };
+    const w = run.coop.with.find(p => p.i === i);
+    return w ? { char, name: w.name, slug: w.slug, ts: w.ts } : { char };
+  });
+}
+
+// The address of a partner's copy of a run, on their profile.
+const coopRunHref = p => `/u/${encodeURIComponent(p.slug)}#detail/${p.ts}`;
+
+// The header's Party line: every slot's head, with the player's name where it is known (the
+// character's name otherwise), each partner's a link to their own copy of the game.
+function partyLineHtml(run) {
+  const party = coopParty(run);
+  if (!party) return "";
+  const slots = party.map(p => {
+    if (!p.name) return `<span class="party-member">${charLabelHtml(p.char)}</span>`;
+    const inner = `${charIconHtml(p.char)}<span class="party-name">${escapeHtml(p.name)}</span>`;
+    const tip = escapeHtml(p.slug ? `${fmtCharName(p.char)}: ${p.name}'s copy of this run` : `${fmtCharName(p.char)}: ${p.name}`);
+    if (p.slug) return `<a class="party-member party-link" href="${coopRunHref(p)}" data-tip="${tip}">${inner}</a>`;
+    return `<span class="party-member party-self" data-tip="${tip}">${inner}</span>`;
+  }).join("");
+  return `<div class="detail-run-party"><span class="party-label">Party</span>${slots}</div>`;
+}
+
+// Everyone this profile has linked co-op runs with, most runs together first, as toggles
+// behind the "Played with" line. A picked player stays listed even when no run left has them.
+function renderDetailPartnerFilter(runs) {
+  const box = document.getElementById("detail-partner-filter");
+  if (!box) return;
+  const counts = {}, names = {};
+  const all = DATA.runsData.filter(r => r.coop);
+  all.forEach(r => r.coop.with.forEach(w => { names[w.slug] = w.name; }));
+  runs.forEach(r => (r.coop ? r.coop.with : []).forEach(w => { counts[w.slug] = (counts[w.slug] || 0) + 1; }));
+  const slugs = [...new Set([...Object.keys(counts), ...[...detailPartners].filter(s => names[s])])]
+    .sort((a, b) => (counts[b] || 0) - (counts[a] || 0) || names[a].localeCompare(names[b]));
+  box.style.display = all.length ? "" : "none";
+  box.querySelector(".tag-filter-text").textContent = detailPartners.size
+    ? [...detailPartners].map(s => names[s] || s).join(" + ") : "Anyone";
+  box.querySelector(".tag-filter-clear").hidden = detailPartners.size === 0;
+  const chips = box.querySelector(".tag-filter-chips");
+  chips.innerHTML = slugs.length
+    ? `<div class="tag-filter-tags">` + slugs.map(s => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailPartners.has(s)}" data-slug="${escapeHtml(s)}">${escapeHtml(names[s])} <span class="run-tag-n">${counts[s] || 0}</span></button>`).join("") + `</div>`
+    : `<span class="partner-filter-none">No linked co-op runs match the other filters.</span>`;
+  chips.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
+    const s = btn.dataset.slug;
+    if (detailPartners.has(s)) detailPartners.delete(s); else detailPartners.add(s);
+    renderDetailRunList();
+  }));
+}
+
+document.querySelector("#detail-partner-filter .tag-filter-summary")?.addEventListener("click", e => {
+  const open = document.getElementById("detail-partner-filter").classList.toggle("expanded");
+  e.currentTarget.setAttribute("aria-expanded", String(open));
+});
+
+document.querySelector("#detail-partner-filter .tag-filter-clear")?.addEventListener("click", () => {
+  detailPartners.clear();
+  renderDetailRunList();
+});
+
+const playedWithAll = run => !detailPartners.size
+  || (run.coop && [...detailPartners].every(s => run.coop.with.some(w => w.slug === s)));
+
+// ---- Repeat attempts on a seed ----
+
+// Every run on this profile by seed, oldest first, so a seed played more than once (a group
+// replaying a co-op seed, a custom seed retried) can number its attempts. Counted over all the
+// profile's runs, not the filtered list, so a run's number doesn't change with the filters.
+const SEED_RUNS = (() => {
+  const by = {};
+  DATA.runsData.forEach(r => { if (r.seed) (by[r.seed] = by[r.seed] || []).push(r); });
+  Object.values(by).forEach(list => list.sort((a, b) => a.ts - b.ts));
+  return by;
+})();
+
+// {n, of, runs} for a run on a seed this profile played more than once, else null.
+function seedAttempt(run) {
+  const runs = run.seed && SEED_RUNS[run.seed];
+  if (!runs || runs.length < 2) return null;
+  return { n: runs.indexOf(run) + 1, of: runs.length, runs };
+}
+
+const ordinal = n => n + ([, "st", "nd", "rd"][(n % 100 >> 3 ^ 1) && n % 10] || "th");
+const localDay = ts => new Date(ts * 1000).toDateString();
+// "8:41p": a start time short enough for the run list's date column.
+const fmtShortTime = ts => new Date(ts * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+  .replace(/\s?([AaPp])\.?[Mm]\.?$/, (_, x) => x.toLowerCase());
+
+// The run list's date cell: the date, or for a seed's attempts started on the same day, the
+// start time (the date is the same, so it can't tell them apart).
+function runDateCellHtml(run, fmtDate) {
+  const att = seedAttempt(run);
+  const sameDay = att && att.runs.some(r => r !== run && localDay(r.ts) === localDay(run.ts));
+  if (!sameDay) return fmtDate(run.ts).replace(/\/\d+$/, `<span class="detail-run-year">$&</span>`);
+  const full = new Date(run.ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  return `<span data-tip="${escapeHtml(full)}">${fmtShortTime(run.ts)}</span>`;
+}
+
+// The attempt's number, by the character in the run list (the first column takes what it
+// needs; the date column has no room to spare).
+function seedTryHtml(run) {
+  const att = seedAttempt(run);
+  return att ? `<span class="seed-try" data-tip="${ordinal(att.n)} of ${att.of} runs on this seed">#${att.n}</span>` : "";
+}
+
+// The run header's "Attempt 2 of 3", the other attempts as links to them.
+function attemptLineHtml(run) {
+  const att = seedAttempt(run);
+  if (!att) return "";
+  const others = att.runs.map((r, i) => r === run
+    ? `<span class="rh-attempt-here" aria-current="true">#${i + 1}</span>`
+    : `<a class="rh-attempt-link" href="#detail/${r.ts}" data-tip="${escapeHtml(`${new Date(r.ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}: ${r.won ? "Victory" : "Defeat"}, floor ${r.floor}`)}">#${i + 1}</a>`).join("");
+  return `<span class="rh-attempts"><span class="rh-seed-label">Attempt</span>${att.n} of ${att.of}<span class="rh-attempt-links">${others}</span></span>`;
+}
+
 // ---- Run list ----
 
 // The tags of the runs the other filters leave, most used first, as toggles
@@ -199,7 +328,8 @@ document.querySelector("#detail-tag-filter .tag-filter-clear")?.addEventListener
 function renderDetailRunList() {
   const filtered = getDetailRuns();
   renderDetailTagFilter(filtered);
-  const runs = filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t)));
+  renderDetailPartnerFilter(filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t))));
+  const runs = filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t)) && playedWithAll(r));
   const container = document.getElementById("detail-run-list");
 
   if (runs.length === 0) {
@@ -229,16 +359,17 @@ function renderDetailRunList() {
     const active = run.ts === detailSelectedTs;
     // A multiplayer run names its party's characters, so show their heads; a solo run is one head.
     const party = run.mp ? (run.party || []) : [run.char];
-    const partyLabel = run.mp ? (party.length ? `Party: ${party.map(fmtCharName).join(", ")}` : "Multiplayer") : `Solo: ${fmtCharName(run.char)}`;
+    const named = coopParty(run);
+    const partyLabel = run.mp ? (party.length ? `Party: ${(named || party.map(char => ({ char }))).map(p => fmtCharName(p.char) + (p.name ? ` (${p.name})` : "")).join(", ")}` : "Multiplayer") : `Solo: ${fmtCharName(run.char)}`;
     const partyHtml = party.length ? party.slice(0, 4).map(c => charIconHtml(c)).join("") : (run.mp ? "Multi" : "Solo");
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
-      <span class="detail-run-char">${charLabelHtml(run.char)}</span>
+      <span class="detail-run-char">${charLabelHtml(run.char)}${seedTryHtml(run)}</span>
       <span class="detail-run-asc" style="color:var(--text-dim)">${ascHtml(runAsc(run), "detail-run-dread", true)}</span>
       <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}"><span class="detail-run-party-heads">${partyHtml}</span><span class="detail-run-party-text" aria-hidden="true">${run.mp ? "Multi" : "Solo"}</span></span>
       <span class="detail-run-won" style="color:${won ? COLORS.win : COLORS.loss}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
-      <span class="detail-run-date" style="color:var(--text-dim)">${fmtDate(run.ts).replace(/\/\d+$/, `<span class="detail-run-year">$&</span>`)}</span>
+      <span class="detail-run-date" style="color:var(--text-dim)">${runDateCellHtml(run, fmtDate)}</span>
     </div>`;
   }).join("");
 
@@ -448,9 +579,11 @@ function renderDetailRun(run) {
       <span class="rh-meta">
         <span class="rh-date">${fmtDate(run.ts)}</span>
         ${run.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed</span>${run.seed}</span>` : ""}
+        ${attemptLineHtml(run)}
         ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
       </span>
     </div>
+    ${partyLineHtml(run)}
     <div class="detail-run-headline-stats">
       ${headlineHtml}${ancientBoonsHtml}
     </div>

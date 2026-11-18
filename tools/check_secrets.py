@@ -61,6 +61,7 @@ ALLOW_STEAM_IDS = {
     "76561198099999999",
     "76561198012345678",  # the fabricated float64-rounding example in run.py
     "76561198012345680",
+    "76561198087654321",  # fabricated co-op partner in test_ingest (ATK_ID)
     "76561197960287930",  # failure-Lambda test fixture
 }
 

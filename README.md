@@ -23,6 +23,11 @@ group showing what feeds a payoff and what it pays off and the reason they conne
 relics show their art and rules text in place, since there is room beside the cards. Each run has its own
 link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
+A co-op run that the other players uploaded too names them on its **Party** line, each name a link to
+that player's own copy of the game, and **Played with** above the list narrows it to the runs with the
+players you pick (see [Co-op links](#co-op-links)). A seed you played more than once numbers its attempts: a "#2" by
+the character in the list, the start time in place of the date for attempts on the same day, and "Attempt 2 of 3" in
+the run's header with links to the others.
 
 ![Runs tab showing a run's rating and Keeping Up by Floor](images/site-run-detail.png)
 
@@ -270,7 +275,9 @@ profile on `/u/<slug>`, which it loads by fetching the catalog (`/catalog.<hash>
 | `users/_index.json.gz` | yes | every player's slug, name, run count and last upload, for the home page's search |
 | `users/_stats.json.gz` | yes | site-wide running totals for the home page (see below) |
 | `users/_uploads/<id>.json.gz` | yes | one upload's result (counts, or why it failed), which the page that sent it polls. The id is random; expires after 7 days. |
+| `users/<slug>/_coop.json.gz` | yes | the profile's co-op runs that other profiles have a copy of: `{"v":1, "runs": {"<ts>": {"i", "with": [{"slug", "ts", "i"}]}}}`, `i` being the party slot (see [Co-op links](#co-op-links)) |
 | `ids/<steamid>.json.gz` | no | `{"slug"}`, so an upload finds its profile |
+| `coop/<seed>.json.gz` | no | every uploaded copy of a co-op game on that seed whose uploader shared the party's Steam IDs: `{"slug", "ts", "party", "i", "ids"}` |
 | `raw/<steamid>/<time>-<id>.ndjson.gz` | no | every upload exactly as sent, so profiles can be rebuilt after a parser fix |
 | `limits/` | no | when upload URLs were last handed out, per Steam account and per IP address |
 
@@ -436,7 +443,36 @@ it does: the mod shows a main-menu notice (where it can show UI), writes the exa
 once the config parses), and logs it.
 
 The site keeps each multiplayer run's `multiplayerIdsShared` (`true` when the upload doesn't say, as with a `.run` file from the Upload page) on the run itself,
-so a later feature can link a multiplayer run to the other players' copies only where both shared their IDs. Nothing reads it yet.
+and links a co-op run to the other players' copies only where both shared their IDs (below).
+
+#### Co-op links
+
+Everyone in a co-op game saves their own copy of it. The copies share the seed, and since the party shares one map,
+the same characters in the same order, ascension, mode, result and floor. Each one's start time is that player's own
+PC clock, so they start seconds apart when the clocks agree (up to about 30 seen so far) and by anything when one is
+off. What ties them together for certain is the party's Steam IDs, which a copy carries only when its uploader shared them.
+
+- **At upload** the process Lambda lists each co-op run whose IDs were shared in the private `coop/<seed>.json.gz`,
+  with the party's Steam IDs (as compared after rounding through a float64, which some game builds write them as), the
+  uploader's party slot and the shared fields above. Copies with the same Steam IDs, seed and shared fields are one game
+  when each player has one such copy, whatever their clocks say (within six hours). Another group on the same daily seed,
+  or the same friends on different characters, don't match.
+- **The same group on the same seed more than once.** Different results already tell those attempts apart. Ones that
+  ended the same way are paired by start time, corrected by how far apart the two players' clocks have been on their
+  other linked games (the median), and each pair has to be the nearest for both copies by at least a minute over the
+  runner-up. Anything less clear stays unlinked: a missing link is better than one to the wrong attempt.
+- It then rewrites the public `users/<slug>/_coop.json.gz` of everyone in those games, so whoever uploads last links
+  every copy, and it doesn't matter who uploads first or whether the others had a profile yet. The public file names
+  profiles and party slots only, never a Steam ID.
+- **No link without both.** A copy whose uploader turned `shareMultiplayerIds` off isn't listed (and one sent again with
+  it off is taken off), so neither side shows a link to it.
+- `tools/rebuild_profiles.py`, `remove_runs.py` and `remove_profile.py` keep the index and the links in step; a run
+  or profile taken off the site takes its links with it.
+- **On the page**, `site/boot.js` fetches the links file with the profile (revalidated every visit, since a partner's
+  upload changes it) and the player list for the partners' current names. The run's header shows a Party line,
+  the profile's own player named and each partner a link to `/u/<partner>#detail/<their ts>`. **Played with** above the
+  run list (Runs page only, like the archetype tags) keeps the runs that every picked player is linked to; filtering is
+  by name, since Steam IDs are never public.
 
 ### Held runs
 
