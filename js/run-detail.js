@@ -202,7 +202,7 @@ function renderDetailPartnerFilter(runs) {
   const chips = box.querySelector(".tag-filter-chips");
   chips.innerHTML = slugs.length
     ? `<div class="tag-filter-tags">` + slugs.map(s => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailPartners.has(s)}" data-slug="${escapeHtml(s)}">${escapeHtml(names[s])} <span class="run-tag-n">${counts[s] || 0}</span></button>`).join("") + `</div>`
-    : `<span class="partner-filter-none">No linked co-op runs match the other filters.</span>`;
+    : `<span class="partner-filter-none">No linked multiplayer runs match the other filters.</span>`;
   chips.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
     const s = btn.dataset.slug;
     if (detailPartners.has(s)) detailPartners.delete(s); else detailPartners.add(s);
