@@ -40,9 +40,12 @@ branches. Assume they are, even when nothing shows it.
 - Don't build on a local branch you didn't make. Re-fetch before merging or
   pushing: if `origin/gamma` moved, merge onto the new tip, and say what else
   is riding along before it goes to prod.
-- Deploys push from the main checkout (it holds the ignored `cdk.context.json`
-  and art). Only push from it when it is clean and on the commit you mean to
-  ship; if another session is mid-change there, wait or ask.
+- Push to deploy from your own worktree; leave the main checkout alone. The
+  push builds the pushed commit in an export that borrows the main checkout's
+  ignored inputs (`cdk.context.json`, art, venv), and only one deploy runs at
+  a time. If yours stops on the deploy lock, wait and push again; don't
+  `--break-lock` unless `tools/deploy.py --lock-status` shows it is over an
+  hour old and nothing is deploying.
 - Removing a worktree: unlink its junctions first (`cmd /c rmdir <junction>`).
   `git worktree remove` deletes through a junction into the main checkout's art.
 

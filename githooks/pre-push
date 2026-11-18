@@ -1,14 +1,19 @@
 #!/bin/sh
 # Deploys infra + site to AWS when main is pushed, or to the gamma site when
 # gamma is (see tools/deploy.py), after refusing to publish anything private
-# (see tools/check_secrets.py).
+# (see tools/check_secrets.py). The pushed commit is what gets built, from any
+# worktree, and one deploy runs at a time across all of them.
 # Enable once per clone:  git config core.hooksPath githooks
 # Skip the deploy for one push:  SKIP_DEPLOY=1 git push   (or git push --no-verify)
 # SKIP_DEPLOY still runs the secrets check: the point is not to publish a leak.
 
 root=$(git rev-parse --show-toplevel)
+# A worktree has no venv of its own; fall back to the main checkout's.
+main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 py="$root/infra/.venv/Scripts/python.exe"
 [ -x "$py" ] || py="$root/infra/.venv/bin/python"
+[ -x "$py" ] || py="$main/infra/.venv/Scripts/python.exe"
+[ -x "$py" ] || py="$main/infra/.venv/bin/python"
 if [ ! -x "$py" ]; then
     py=$(command -v python3 || command -v python || echo "")
 fi

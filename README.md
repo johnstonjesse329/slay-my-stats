@@ -123,6 +123,7 @@ slay-my-stats/
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
 │   ├── deploy.py            pre-push deploy (see "Deploying")
+│   ├── test_deploy.py       the deploy lock and commit export, on a throwaway repo
 │   ├── smoke_site.py        loads the deployed site as a visitor would; deploy.py runs it last
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
@@ -634,9 +635,9 @@ every push of `gamma` run it for [gamma](#gamma):
 ```mermaid
 flowchart TB
     push["git push (main or gamma)"] --> hook["githooks/pre-push"]
-    hook --> check{"HEAD is the pushed commit,<br/>tree clean, fast-forward (main)?"}
+    hook --> check{"fast-forward (main)?<br/>no other deploy holding the lock?"}
     check -- no --> abort["push aborted"]
-    check -- yes --> diff["cdk diff"]
+    check -- yes --> export["export the pushed commit<br/>to local_data/deploy-build/"] --> diff["cdk diff"]
     diff -- "changes" --> ask{"Deploy these<br/>infra changes? y/N"}
     ask -- N --> abort2["push aborted"]
     ask -- y --> deploy["cdk deploy"] --> smoke
@@ -667,8 +668,19 @@ request to another host left hanging and fails unless content is on screen withi
 slow CDN script looked like when Chart.js still came from jsdelivr. Without Playwright that step is skipped with
 a note. Run it by hand with `python tools/smoke_site.py [host] [--player slug] [--browser]`.
 Production only deploys a commit that gamma has already deployed and passed: a successful gamma deploy of a
-clean checkout records its commit inside the git directory, and a prod deploy of any other commit stops and
-says to push to gamma first. `DEPLOY_SKIP_GAMMA=1` overrides it for a hotfix.
+commit records it inside the git directory, and a prod deploy of any other commit stops and says to push to
+gamma first. `DEPLOY_SKIP_GAMMA=1` overrides it for a hotfix.
+
+A push builds the pushed commit, not the checkout it is pushed from: `git archive` exports it to the main
+checkout's `local_data/deploy-build/`, which borrows that checkout's ignored inputs (the infra venv,
+`infra/cdk.context.json`, the art folders and game data) and is deleted afterwards. So you can push from any
+worktree, and no checkout needs to be clean or on that commit. By hand, `tools/deploy.py --stage gamma --ref
+origin/gamma` does the same; without `--ref` it deploys the working tree as it is.
+
+One deploy runs at a time, of either stage or any stack, across every checkout and worktree: each takes
+`slay-my-stats-deploy.lock` in the git directory, and a second one stops and names the holder, its commit and
+when it started. `tools/deploy.py --lock-status` shows it. A deploy killed part-way (a closed terminal) leaves
+the lock behind; once nothing is still deploying, `tools/deploy.py --break-lock` clears it.
 
 Set up once, outside CDK:
 
