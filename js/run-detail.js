@@ -831,10 +831,11 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
     const stretch = y.afterDataLimits;
     y.afterDataLimits = scale => { if (stretch) stretch(scale); scale.min = Math.max(0, scale.min); };
   }
+  const iconJ = series.findIndex(Boolean);   // icons ride one player's line: the fights are the same for all
   const datasets = [...(extra.lines || []), ...players.map((p, j) => series[j] ? {
     label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color, borderDash: p.dash,
     borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone",
-    ...(icon ? nodePoints(nodes, () => chart, icon) : {}),
+    ...(icon && j === iconJ ? nodePoints(nodes, () => chart, icon) : {}),
   } : null)].filter(Boolean);
   chart = new Chart(document.getElementById(id).getContext("2d"),
     floorChartConfig(nodes, [], tip, y, datasets, actWindow(nodes)));
