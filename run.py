@@ -1638,6 +1638,10 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="chart-box">
   <h2>Favorites</h2>
   <p class="chart-caption" id="relics-fav-caption">Each character's most-picked, best win rate and most-bought relic.</p>
+  <div class="filter-group relics-who" id="relics-who" hidden>
+    <button class="toggle-btn active" id="relics-who-you">You</button>
+    <button class="toggle-btn" id="relics-who-all">All players</button>
+  </div>
   <div id="relics-favorites"></div>
 </div>
 

@@ -9,39 +9,53 @@ const RELIC_SLOT = { label: "Relic", kind: "relics", test: id => id in (DATA.rel
 let relicsNameFilter = "";
 let relicsSortKey    = "offered";
 let relicsSortDir    = -1; // -1 = descending
+let relicsShowAll    = false; // phones: which block of the favorites shows
+
+// You / All players: phones have room for one block of the favorites.
+["you", "all"].forEach(w => {
+  document.getElementById(`relics-who-${w}`).addEventListener("click", () => {
+    relicsShowAll = w === "all";
+    document.querySelector(".relics-fav-table")?.classList.toggle("show-all", relicsShowAll);
+    ["you", "all"].forEach(x =>
+      document.getElementById(`relics-who-${x}`).classList.toggle("active", (x === "all") === relicsShowAll));
+  });
+});
 
 document.getElementById("relics-name-filter").addEventListener("input", (e) => {
   relicsNameFilter = e.target.value.trim().toLowerCase();
   renderRelicsTable();
 });
 
-// One row per character in view, the three picks as columns: a relic is one
-// slot, so where the Cards page needs a switch between them, here they all fit.
+// One row per character in view, and the three picks as columns: yours as one
+// block, all players' as another beside it, as in the offer table below. A
+// relic is one slot, so where the Cards page needs a switch between the three,
+// here they all fit. Phones show one block at a time (#relics-who).
 function relicFavoritesHtml(you, all) {
   const chars = (sharedActiveChar === "ALL" ? DATA.characters : [sharedActiveChar])
     .filter(c => you.runs[c] || (all && all.runs[c]));
-  const one = (picks, metric, cls) => {
+  const cell = (picks, metric, cls) => {
     const it = picks && picks[metric];
-    if (!it) return `<span class="fav-item fav-none${cls}">—</span>`;
+    if (!it) return `<td class="fav-cell fav-empty${cls}">—</td>`;
     const [rate, detail] = favMetricFigures(metric, it);
-    return favItemHtml("relics", it, rate, detail, cls);
+    return `<td class="fav-cell${cls}">${favItemHtml("relics", it, rate, detail)}</td>`;
   };
+  const block = (picks, who) => FAV_METRICS.map((m, i) =>
+    cell(picks, m.key, ` fav-${who}${who === "all" && i === 0 ? " fav-all-start" : ""}`)).join("");
   const rows = chars.map(char => {
     const n = you.runs[char] || 0;
     const mine = favPicksFor(you, RELIC_SLOT, [char]);
     const theirs = all && favPicksFor(all, RELIC_SLOT, [char]);
-    const cells = FAV_METRICS.map(m =>
-      `<td class="fav-cell">${one(mine, m.key, " fav-mine")}${all ? one(theirs, m.key, " fav-theirs") : ""}</td>`).join("");
-    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${cells}</tr>`;
+    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${block(mine, "you")}${all ? block(theirs, "all") : ""}</tr>`;
   }).join("");
-  const legend = `<span class="fav-legend"><span class="fav-key fav-key-you">You</span>${all ? `<span class="fav-key fav-key-all">All players</span>` : ""}</span>`;
-  return `<div class="fav-bychar">
-    <div class="fav-bychar-bar">${legend}</div>
-    <div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table relics-fav-table">
-      <thead><tr><th></th>${FAV_METRICS.map(m => `<th>${m.label}</th>`).join("")}</tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>
-  </div>`;
+  const heads = who => FAV_METRICS.map((m, i) =>
+    `<th class="fav-${who}${who === "all" && i === 0 ? " fav-all-start" : ""}">${m.label}</th>`).join("");
+  const groups = all ? `<tr class="fav-groups"><th></th>
+    <th class="fav-group-you" colspan="${FAV_METRICS.length}">Your runs</th>
+    <th class="fav-group-all fav-all-start" colspan="${FAV_METRICS.length}">All players</th></tr>` : "";
+  return `<div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table relics-fav-table${relicsShowAll && all ? " show-all" : ""}">
+    <thead>${groups}<tr><th></th>${heads("you")}${all ? heads("all") : ""}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
 }
 
 // { id: {offered, picked, wonWhenPicked, skipped, wonWhenSkipped} } over the
@@ -187,7 +201,9 @@ function renderRelicsPage() {
   const box = document.getElementById("relics-favorites");
   box.innerHTML = relicFavoritesHtml(favTalliesYou(), all);
   bindRelicTips(box, ".fav-item[data-fav-id]", el => el.dataset.favId);
+  // The switch only exists when there is something to switch to.
+  document.getElementById("relics-who").hidden = !all;
   document.getElementById("relics-fav-caption").textContent =
-    `Each character's most-picked, best win rate and most-bought relic: yours on top${all ? ", all players' underneath" : ""}. Every relic shows its win rate, with the count behind it underneath.`;
+    `Each character's most-picked, best win rate and most-bought relic${all ? ", yours beside all players'" : ""}. Every relic shows its win rate, with the count behind it underneath.`;
   renderRelicsTable();
 }

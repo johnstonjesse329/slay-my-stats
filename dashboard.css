@@ -298,6 +298,10 @@ h1 {
   .fav-bychar-table tbody th .char-label { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; overflow-wrap: anywhere; }
   .pivot.fav-bychar-table { min-width: 460px; }
   .pivot.fav-bychar-table.relics-fav-table { min-width: 0; }
+  #relics-who:not([hidden]) { display: flex; }
+  .relics-fav-table .fav-groups { display: none; }
+  .relics-fav-table:not(.show-all) .fav-all, .relics-fav-table.show-all .fav-you { display: none; }
+  .relics-fav-table .fav-all-start { border-left: 0; }
   .fav-bychar-table .fav-item { padding-left: 0.3rem; column-gap: 0.25rem; }
   .fav-bychar-table .fav-pic { width: 28px; height: 28px; }
 }
@@ -340,7 +344,20 @@ h1 {
 #relics-table th.cards-all-col { background: #2e2a4c; }
 #relics-tbody td.cards-all { background: rgba(157, 184, 240, 0.06); }
 #relics-table .cards-all-start { border-left: 1px solid rgba(157, 184, 240, 0.35); }
-.pivot.relics-fav-table { min-width: 640px; }
+/* Relic favorites: your block of three beside all players', headed and
+   tinted like the offer table's two blocks. */
+.pivot.relics-fav-table { min-width: 1000px; }
+.relics-fav-table thead th { text-align: left; }
+.relics-fav-table .fav-groups th { padding: 0.5rem 0.6rem 0.15rem; font-size: var(--fs-sm); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.relics-fav-table .fav-group-you { color: var(--gold); }
+.relics-fav-table .fav-group-all { color: #9db8f0; }
+.relics-fav-table th.fav-all, .relics-fav-table .fav-group-all { background: #2e2a4c; }
+.relics-fav-table td.fav-all { background: rgba(157, 184, 240, 0.06); }
+.relics-fav-table .fav-all-start { border-left: 1px solid rgba(157, 184, 240, 0.35); }
+.relics-fav-table td.fav-cell { vertical-align: middle; }
+.relics-fav-table .fav-item { border-left: 0; padding-left: 0; }
+/* You / All players: phones only (the desktop shows both blocks). */
+#relics-who { display: none; margin-bottom: 0.6rem; }
 /* A co-op-only card's rarity carries a small Co-op tag (isCoopCard). */
 .cards-coop-tag { display: inline-block; margin-left: 0.4rem; padding: 0 0.35rem; border: 1px solid rgba(157, 184, 240, 0.45); border-radius: 4px; color: #9db8f0; font-size: var(--fs-xs); line-height: 1.4; vertical-align: 1px; }
 /* You / All players: phones only (the desktop table shows both). */
