@@ -3172,3 +3172,34 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .party-toggle button { font: inherit; color: var(--text-dim); background: none; border: 1px solid var(--border, #3a3c42); border-radius: 6px; padding: 0.2rem 0.7rem; cursor: pointer; }
 .party-toggle button:hover, .party-toggle button:focus-visible { color: var(--text); }
 .party-toggle button[aria-pressed="true"] { border-color: var(--gold); background: rgba(224, 196, 104, 0.12); color: var(--gold); }
+
+/* The player and act controls share a sticky row bounded by the floor charts. */
+#detail-keep-heading { margin: 16px 0 8px; }
+.detail-floor-controls { position: sticky; top: 0; z-index: 6; background: var(--panel); border: 1px solid var(--hairline); border-radius: 9px; padding: 7px 10px; margin-bottom: 8px; }
+.detail-floor-controls:has(.party-toggle:empty):not(:has(.keep-actpick button)) { display: none; }
+.detail-floor-controls .party-toggle { display: flex; flex-wrap: wrap; margin: 0; }
+.detail-floor-controls .party-toggle:empty { display: none; }
+.detail-floor-controls .party-toggle button { min-height: 30px; white-space: nowrap; }
+.detail-floor-controls .keep-actpick { position: static; padding: 0; margin: 4px 0 0; }
+.party-floor-active > .chart-wrap, .party-floor-active > .floor-legend { display: none; }
+.party-floor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.party-floor-player { border: 1px solid var(--hairline); min-width: 0; padding: 8px 10px; border-radius: 8px; }
+.party-floor-player h4 { display: flex; gap: 5px; align-items: center; border-inline-start: 3px solid var(--player-color); margin: 0 0 4px; padding-inline-start: 7px; }
+.party-floor-player .chart-wrap { height: 218px; min-height: 0; }
+.party-floor-player .floor-legend { margin: 2px 0 0; padding: 0; font-size: 0.82em; }
+.party-floor-player .floor-legend .fl-items { gap: 3px 10px; }
+.party-floor-focus { display: none; }
+@media (min-width: 761px) {
+  .detail-floor-controls:has(.party-toggle:empty) { display: none; }
+}
+@media (max-width: 760px) {
+  .party-floor-grid { grid-template-columns: minmax(0, 1fr); }
+  .party-floor-player .chart-wrap { height: 210px; }
+  .party-floor-focus { display: block; margin-bottom: 6px; }
+  .party-floor-focus select { font: inherit; margin-left: 8px; padding: 4px 8px; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 6px; }
+  .party-floor-player[data-inactive] { display: none; }
+}
+@media (max-height: 430px) and (orientation: landscape) {
+  .detail-floor-controls { padding-block: 4px; }
+  .party-floor-player .chart-wrap { height: 153px; }
+}
