@@ -1474,16 +1474,11 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <h2 class="group-head">Run statistics</h2>
 <div class="chart-box" id="personal-bests-cards"></div>
 
-<div class="grid-2 grid-stretch">
+<div class="grid-1">
   <div class="chart-box">
-    <h3>Win % by ascension</h3>
-    <p class="chart-caption">Share of runs won at each ascension, by character.</p>
-    <div class="chart-wrap"><canvas id="ascWinChart"></canvas></div>
-  </div>
-  <div class="chart-box">
-    <h3>Final boss win %</h3>
-    <p class="chart-caption">Of the runs that reached the final boss, the share that beat it.<span id="final-boss-a10-note"> Ascension 10's two Act 3 bosses are shown separately.</span></p>
-    <div class="pivot-wrap"><table class="pivot" id="final-boss-win-table"></table></div>
+    <h3>Time played</h3>
+    <p class="chart-caption">Hours on each character and its share of your total, and median run length in runs you lost and runs you won.</p>
+    <div id="time-lanes"></div>
   </div>
 </div>
 
@@ -1496,12 +1491,16 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </div>
 
-<h2 class="group-head">Time</h2>
-<div class="grid-1">
+<div class="grid-2 grid-stretch">
   <div class="chart-box">
-    <h3>Time played</h3>
-    <p class="chart-caption">Hours on each character and its share of your total, and median run length in runs you lost and runs you won.</p>
-    <div id="time-lanes"></div>
+    <h3>Win % by ascension</h3>
+    <p class="chart-caption">Share of runs won at each ascension, by character.</p>
+    <div class="chart-wrap"><canvas id="ascWinChart"></canvas></div>
+  </div>
+  <div class="chart-box">
+    <h3>Final boss win %</h3>
+    <p class="chart-caption">Of the runs that reached the final boss, the share that beat it.<span id="final-boss-a10-note"> Ascension 10's two Act 3 bosses are shown separately.</span></p>
+    <div class="pivot-wrap"><table class="pivot" id="final-boss-win-table"></table></div>
   </div>
 </div>
 
