@@ -1512,24 +1512,60 @@ h1 {
 .rh-seed { color:var(--text); font-size: var(--fs-sm); font-family: monospace; }
 .rh-seed-label { margin-right: 0.4em; color: var(--text-dim); font-family: inherit; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
 
-/* A co-op run's party: each slot's character, with the player's name where the site has
-   their copy of the game; a partner's is a link to that copy on their profile. */
+/* A multiplayer run's party: each slot's character, with the player's name where the site has
+   their copy of the game. The profile's own slot, each partner's and "Everyone" are tabs: the one
+   pressed is the copy on show. */
 .detail-run-party {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem 1rem;
+  gap: 0.35rem 0.5rem;
   padding-bottom: 0.6rem;
   font-size: var(--fs-sm);
 }
-.party-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
+.party-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; margin-right: 0.25rem; }
 .party-member { display: inline-flex; align-items: center; gap: 0.35rem; }
+.party-none { padding: 0.2rem 0.4rem; color: var(--text-dim); }
 .party-name { color: var(--text); font-weight: 600; }
-.party-self .party-name { color: var(--text-dim); font-weight: 400; }
-.party-link { text-decoration: none; border-bottom: 1px solid transparent; }
-.party-link .party-name { color: var(--gold); }
-.party-link:hover .party-name, .party-link:focus-visible .party-name { color: var(--gold-bright); }
-.party-link:hover { border-bottom-color: var(--gold-glow); }
+.party-tab {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem 0.2rem 0.35rem;
+  cursor: pointer;
+}
+.party-tab.party-all { padding-left: 0.7rem; }
+.party-tab .party-name { color: var(--text-dim); font-weight: 600; }
+.party-tab:hover .party-name, .party-tab:focus-visible .party-name { color: var(--text); }
+.party-tab[aria-pressed="true"] { border-color: var(--gold); background: rgba(224, 196, 104, 0.12); }
+.party-tab[aria-pressed="true"] .party-name { color: var(--gold); }
+.party-profile-link { display: inline-flex; color: var(--text-dim); margin-left: -0.2rem; padding: 0.2rem; }
+.party-profile-link:hover, .party-profile-link:focus-visible { color: var(--gold-bright); }
+.party-note { color: var(--loss); }
+#detail-content.party-loading > :not(#detail-run-header) { opacity: 0.45; transition: opacity 0.2s; }
+
+/* "Everyone": the header, the shared map and the party's own boxes; one player's charts and lists
+   are hidden (their boxes set display inline, hence !important). */
+#detail-content.party-all-view > :not(#detail-run-header):not(#detail-party):not(#detail-maps) { display: none !important; }
+#detail-party { margin-top: 16px; }
+.party-table-wrap { overflow-x: auto; }
+.party-table { border-collapse: collapse; font-size: var(--fs-sm); }
+@media (max-width: 600px) {
+  .party-table-wrap .party-table th, .party-table-wrap .party-table td { padding: 0.35rem 0.4rem; }
+  .party-table-wrap .party-table tbody th { white-space: normal; }
+}
+.party-table th, .party-table td { padding: 0.4rem 0.8rem; text-align: right; white-space: nowrap; border-bottom: 1px solid #2e3035; }
+.party-table thead th { vertical-align: bottom; }
+.party-table thead th > * { vertical-align: middle; }
+.party-table thead .party-name { margin-left: 0.35rem; }
+.party-table tbody th { text-align: left; color: var(--text-dim); font-weight: 400; }
+.party-table td { color: var(--text); font-variant-numeric: tabular-nums; }
+.party-legend { display: block; margin: 0 0 0.5rem; }
+.party-legend .fl-swatch, .floor-tip .fl-swatch { display: inline-block; width: 18px; }
+.party-chart-title { margin: 1rem 0 0.25rem; font-size: 1rem; color: var(--text-dim); font-weight: 600; }
+.party-chart-wrap { height: 260px; }
 #detail-partner-filter .tag-filter-chips { flex-direction: row; }
 .partner-filter-none { color: var(--text-dim); font-size: var(--fs-sm); }
 

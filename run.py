@@ -1750,6 +1750,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <div id="detail-placeholder" class="detail-placeholder">Select a run from the list to view its timeline.</div>
     <div id="detail-content" style="display:none">
       <div id="detail-run-header"></div>
+      <div id="detail-party" hidden></div>
       <div id="detail-deck-relics"></div>
       <div id="detail-timeline"></div>
       <div id="detail-maps"></div>

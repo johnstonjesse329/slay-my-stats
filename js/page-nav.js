@@ -6,14 +6,18 @@ const PAGES = ["overview", "detail", "cards", "relics", "seeds"];
 let currentPage = "overview";
 
 // The URL hash names the tab, and on Run Detail the run as well:
-// #detail/<run ts>, so the address opens the same run for anyone.
+// #detail/<run ts>, so the address opens the same run for anyone. A multiplayer
+// run's party tab follows it: #detail/<ts>/<partner's slug, or "all">.
 function parsePageHash() {
-  const [page, ts] = location.hash.replace("#", "").split("/");
-  return { page, runTs: page === "detail" && /^\d+$/.test(ts || "") ? +ts : null };
+  const [page, ts, view] = location.hash.replace("#", "").split("/");
+  const runTs = page === "detail" && /^\d+$/.test(ts || "") ? +ts : null;
+  return { page, runTs, view: runTs != null && /^[a-z0-9_-]+$/i.test(view || "") ? view : "" };
 }
 
 function pageHash(page) {
-  return page === "detail" && detailSelectedTs != null ? `detail/${detailSelectedTs}` : page;
+  if (page !== "detail" || detailSelectedTs == null) return page;
+  const view = partyViewOf(detailSelectedTs);
+  return `detail/${detailSelectedTs}${view ? "/" + view : ""}`;
 }
 
 const PAGE_RENDERERS = {
@@ -160,8 +164,8 @@ function jumpToRun(ts) {
 // Open the run a #detail/<ts> link names. A link has to work for whoever
 // opens it, so any filter that would hide the run is widened first; the
 // viewer's other filters stay as they were. A ts this profile has no run
-// for lands on Run Detail's usual first run.
-function openRunLink(ts) {
+// for lands on Run Detail's usual first run. `view` is the party tab to open on.
+function openRunLink(ts, view = "") {
   const run = DATA.runsData.find(r => r.ts === ts);
   const changed = [];
   if (run) {
@@ -187,6 +191,7 @@ function openRunLink(ts) {
       updateFilterSummary();
     }
   }
+  detailView = { ts, who: view };
   jumpToRun(ts);
   const notice = document.getElementById("detail-jump-notice");
   notice.textContent = changed.length ? `Filters adjusted to show this run: ${changed.join(", ")}.` : "";
@@ -197,9 +202,9 @@ function openRunLink(ts) {
 // changes the hash, so nothing reloads. Follow it. The hash this page sets
 // itself (showPage) arrives here too, already matching, and does nothing.
 window.addEventListener("hashchange", () => {
-  const { page, runTs } = parsePageHash();
+  const { page, runTs, view } = parsePageHash();
   if (!PAGES.includes(page)) return;
-  if (runTs != null && runTs !== detailSelectedTs) openRunLink(runTs);
+  if (runTs != null && (runTs !== detailSelectedTs || view !== partyViewOf(runTs))) openRunLink(runTs, view);
   else if (page !== currentPage) showPage(page);
 });
 
