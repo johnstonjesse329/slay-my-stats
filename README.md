@@ -114,7 +114,8 @@ slay-my-stats/
 │   ├── lambda/ingest/measured.py              per-floor energy and card numbers, read from a run's event log at upload
 │   ├── lambda/ingest/feedback.py              the gamma feedback inbox (session check, notes, resolve)
 │   ├── lambda/ingest/reactions.py             What's new reactions and who asked for a post, kept in the feedback table
-│   ├── tests/test_ingest.py, test_measured.py, test_feedback.py, test_gamma_auth.py, test_whats_new.py
+│   ├── lambda/ingest/views.py                 page views, counted from CloudFront's access logs for the morning digest
+│   ├── tests/test_ingest.py, test_measured.py, test_feedback.py, test_gamma_auth.py, test_views.py, test_whats_new.py
 │   └── requirements.txt     CDK, boto3
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
@@ -243,7 +244,7 @@ own, `SlayMyStatsFeedbackStack` (`infra/slay_my_stats/feedback_stack.py`), which
 | **Mod Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Same code as the ingest Lambda, answering only `/mod` and `/mod/runs`. Public Function URL, no CORS. | The game mod's door (see "Mod uploads"). Its own function so it can be shut off alone. |
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
-| **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*`, publish to the alert SNS topic, write the adoption table and put metrics in the `slay-my-stats` namespace. | A daily summary of uploads and feedback, reported for trends. |
+| **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*`, write `analytics/views/*`, read the access-log bucket's `site/*`, publish to the alert SNS topic, write the adoption table and put metrics in the `slay-my-stats` namespace. | A daily summary of uploads, feedback and page views, reported for trends (see [Page views](#page-views)). |
 | **Adoption table** `slay-my-stats-adoption` | DynamoDB, provisioned at 1 read and 1 write (inside the always-free 25), deletion protection, **retained**. Production only. One row a day, keyed by date. | The day's player, run and feedback counts, kept for trends. The digest also sends six of them as CloudWatch metrics for the dashboard; CloudWatch keeps those 15 months, the table keeps them for good. |
 | **Feedback table** `slay-my-stats-feedback` | DynamoDB, on-demand, point-in-time recovery, deletion protection, **retained**. Partition key `env` (`gamma`, `prod`), four indexes for the inbox's filters, TTL on the hourly throttle counters only. Its own stack, shared by both stages; IAM holds each Lambda to the `env` values it may read or write. | The feedback notes, their +1s and the FB-n counter, and the reactions on What's new posts (`react#`/`rcount#` items beside the notes, which every note query skips). One table so a note keeps its number and history wherever it is read from. |
 | **SSM parameter** `/slay-my-stats/session-key` | SecureString, imported by name, production only; the ingest Lambda gets read and `kms:Decrypt`. | Signs the session cookie. Kept out of the template and the Lambda's settings, since anyone holding it could sign in as anyone. Rotating it signs everyone out. |
@@ -293,6 +294,7 @@ profile on `/u/<slug>`, which it loads by fetching the catalog (`/catalog.<hash>
 | `coop/<seed>.json.gz` | no | every uploaded copy of a co-op game on that seed whose uploader shared the party's Steam IDs: `{"slug", "ts", "party", "i", "ids"}` |
 | `raw/<steamid>/<time>-<id>.ndjson.gz` | no | every upload exactly as sent, so profiles can be rebuilt after a parser fix |
 | `limits/` | no | when upload URLs were last handed out, per Steam account and per IP address |
+| `analytics/views/<day>.json.gz` | no | one day's page views (see [Page views](#page-views)): views by page, player-page tab, player and run, visitors, and page loads by source. Counts only. |
 
 A profile is split by month so an upload only reads and writes the months it adds to, and costs the same however
 big the profile gets. The page fetches every month and joins them, so it still reads as one history. `noRaw`
@@ -534,6 +536,22 @@ The update is best effort, like the player list. `tools/rebuild_stats.py` recoun
 profiles: run it by hand after adding a new figure, removing or rebuilding a profile, or if an update was
 missed.
 
+### Page views
+
+Each page, tab and run the site shows asks for `/seen.txt` once, its query naming what was shown:
+`?p=/u/<slug>&t=cards`, or `&t=detail&r=<run ts>` on Run Detail (`noteView` in `site/boot.js`, called from
+`showPage` and `syncRunHash`). Nothing reads the reply and the browser keeps nothing; the request is only there so
+CloudFront's access logs record it. The 8 AM digest then counts the day's requests
+(`infra/lambda/ingest/views.py`), keeps the counts in `analytics/views/<day>.json.gz`, and adds a **Page views**
+section to its email: views by page and by tab, yesterday and over the last week, the top player pages and runs,
+and where page loads came from. The paths and tab names come from the requests themselves, so a new page in
+`site/pages/` or a new tab in `PAGES` is counted from the day it ships; anything that doesn't look like a path or
+a name is dropped. No addresses or user agents are kept, and the owner's own visits count like anyone's.
+
+It costs nothing beyond what was already running: the pings are cached at the edge, the logs were already kept,
+and nothing goes to CloudWatch. The numbers are a day old, and standard logs are best-effort, so a few requests
+can be missing. `tools/visit_sources.py` reads the same logs by hand, for page-load sources over a longer span.
+
 ### Maintenance tools
 
 These work on `local_data/` (the dev server's store), or on the live bucket with `--bucket slay-my-stats-data`
@@ -551,8 +569,9 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
   month files, kept raw uploads and telemetry, so a rebuild can't bring them back. `--dry-run` lists first. Delete the
   `.run` file from the game's history folder too, or the next upload sends it again.
 - `tools/rebuild_stats.py` recounts the site-wide stats and rewrites every player's seed file. Run it after any of the above.
-- `tools/seed_gamma.py` copies prod's run data into gamma's bucket (adds only, never deletes) and rebuilds gamma's
-  profiles and stats from it with the checkout's own code, so a change can be checked on gamma against real data.
+- `tools/seed_gamma.py` copies prod's run data into gamma's bucket as prod built it (adds only, never deletes). The
+  process Lambda fires on uploads only, so the copied raw uploads aren't processed again. `--rebuild` then rebuilds
+  gamma's profiles and stats with the checkout's own code, so a change can be checked on gamma against real data;
   `--no-copy` only rebuilds.
 
 ## Development

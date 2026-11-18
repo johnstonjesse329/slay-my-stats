@@ -142,6 +142,8 @@ function showPage(page) {
   }
   location.hash = pageHash(page);
   updateFilterSummary();
+  // Counted by the morning digest (site/boot.js); run.py's local file has no noteView.
+  if (window.noteView) noteView(page, page === "detail" ? detailSelectedTs : null);
 }
 
 // Jump to a specific run in Run Detail from anywhere else in the app

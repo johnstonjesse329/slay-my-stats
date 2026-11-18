@@ -712,11 +712,32 @@
     if (title) document.title = title.includes("Slay My Stats") ? title : `${title} — Slay My Stats`;
     main.textContent = "";
     main.append(section);
+    window.noteView();
     // The Upload page's signed-in panel goes into this page (site/upload.js).
     if (window.placeUploadPanel) window.placeUploadPanel();
     // What's new: reactions, requests, and the post a /whats-new/<id> link names (site/whats-new.js).
     if (name === "whats-new" && window.placeWhatsNew) window.placeWhatsNew(section, postId);
   }
+
+  // ---- Page views ------------------------------------------------------------
+  //
+  // One tiny GET of /seen.txt for each page or tab shown, its query naming which:
+  // p (the path), t (a player page's tab), r (Run Detail's run). Nothing reads the
+  // reply: CloudFront's access logs keep the request, and the morning digest counts
+  // them (infra/lambda/ingest/views.py). It sends nothing else and stores nothing in
+  // the browser. no-store so a repeat view isn't answered from the browser's cache,
+  // which would leave no log line. The one global boot.js adds besides DATA, since
+  // app.js calls it on every tab switch (showPage) and run shown (syncRunHash).
+  let lastView = "";
+  window.noteView = function (tab, run) {
+    const q = new URLSearchParams({ p: location.pathname.replace(/(.)\/$/, "$1") });
+    if (tab) q.set("t", tab);
+    if (run != null) q.set("r", String(run));
+    const key = q.toString();
+    if (key === lastView) return;  // the same view reported twice in a row
+    lastView = key;
+    fetch(`/seen.txt?${key}`, { cache: "no-store", keepalive: true }).catch(() => {});
+  };
 
   // ---- Entry point ---------------------------------------------------------
 
@@ -726,6 +747,7 @@
     showNavSearch();
     if (location.pathname === "/" || location.pathname === "/index.html") {
       showFinder();
+      window.noteView();
       return;
     }
     // A What's new post's own link, /whats-new/<post id>: the page, at that post.

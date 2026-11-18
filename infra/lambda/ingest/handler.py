@@ -100,6 +100,7 @@ from pathlib import Path
 # Bundled next to this file in the Lambda asset (see the stack's bundling);
 # on the dev server the repo root is on sys.path instead.
 import measured
+import views
 import run
 
 STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login"
@@ -2281,9 +2282,41 @@ def record_adoption(tally: dict, at: float, table: str | None = None, put_item=N
         print(json.dumps({"adoption_failed": type(e).__name__, "detail": str(e)[:200]}))
 
 
+VIEWS_KEY = "analytics/views/{day}.json.gz"
+
+
+def views_section(store, day: str, logs=None, log_prefix: str | None = None) -> tuple[str, str]:
+    """The morning email's page views: the view pings and page loads in the access logs for
+    `day` (UTC, YYYY-MM-DD), counted (views.py) and kept as analytics/views/<day>.json.gz,
+    then shown next to the six days before it that were kept. `logs` is a store over the
+    access-log bucket; CloudFront names each file <prefix><distribution>.<day>-<hour>...,
+    so one listing finds the day's."""
+    if logs is None:
+        logs = S3Store(os.environ["ACCESS_LOG_BUCKET"])
+    prefix = (log_prefix if log_prefix is not None else os.environ.get("ACCESS_LOG_PREFIX", "")) + day
+
+    def rows():
+        for key in logs.list(prefix):
+            got = logs.get(key)
+            if got:
+                yield from views.read_log(got[0])
+
+    today = views.count_views(rows(), day)
+    _put_over(store, VIEWS_KEY.format(day=day), _pack(today))
+    earlier = []
+    start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
+    for back in range(1, 7):
+        d = datetime.fromtimestamp(start - back * DIGEST_WINDOW_S, timezone.utc).strftime("%Y-%m-%d")
+        got = store.get(VIEWS_KEY.format(day=d))
+        if got:
+            earlier.append(_unpack(got[0]))
+    return views.format_views(today, earlier, SITE_DOMAIN)
+
+
 def digest_handler(event, context):
     """Run by EventBridge Scheduler each morning (prod only): yesterday's uploads, then the
-    feedback from both sites, in one email; and the day's adoption numbers, kept.
+    feedback from both sites, then the page views, in one email; and the day's adoption
+    numbers and page views, kept.
     Invoked by hand with {"adoptionBackfill": n}, it instead records the n days before
     yesterday (at most 6: upload results are kept a week), sends no email, and leaves out
     the site totals, which are only known for today."""
@@ -2307,5 +2340,12 @@ def digest_handler(event, context):
     if sections:
         subject = " | ".join([subject] + [headline for headline, _ in sections])
         body += "".join(f"\n\n{headline}\n{'-' * len(headline)}\n{text}" for headline, text in sections)
+    # Page views go last and stay out of the subject. Best effort: the email still goes.
+    if os.environ.get("ACCESS_LOG_BUCKET"):
+        try:
+            headline, text = views_section(store, tally["day"])
+            body += f"\n\n{headline}\n{'-' * len(headline)}\n{text}"
+        except Exception as e:  # noqa: BLE001
+            print(json.dumps({"views_failed": type(e).__name__, "detail": str(e)[:200]}))
     print(json.dumps({"digest": subject}))
     _alert(subject, body)

@@ -665,6 +665,9 @@ def main():
     # Page bodies, fetched by boot.js. Flat names (not a pages/ folder) so
     # tools/deploy.py's top-level ETag check covers them.
     write("home-intro.html", HOME_INTRO.read_text(encoding="utf-8"))
+    # What site/boot.js requests for each page view, so CloudFront logs it (see
+    # infra/lambda/ingest/views.py). Its content is never read.
+    write("seen.txt", "ok\n")
     for name, f, _ in site_pages():
         write(f"page-{name}.html", page_body(name, f))
 

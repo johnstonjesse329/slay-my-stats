@@ -127,7 +127,7 @@ HTML_CACHE_CONTROL = "public, max-age=0, must-revalidate, s-maxage=86400"
 # to dist/, and the two image types the art folders hold.
 CONTENT_TYPES = {
     ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
-    ".png": "image/png", ".webp": "image/webp", ".woff2": "font/woff2",
+    ".png": "image/png", ".webp": "image/webp", ".woff2": "font/woff2", ".txt": "text/plain",
 }
 ART_EXTENSIONS = [".png", ".webp"]
 
