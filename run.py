@@ -1750,7 +1750,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <div id="detail-placeholder" class="detail-placeholder">Select a run from the list to view its timeline.</div>
     <div id="detail-content" style="display:none">
       <div id="detail-run-header"></div>
-      <div id="detail-party" hidden></div>
       <div id="detail-deck-relics"></div>
       <div id="detail-timeline"></div>
       <div id="detail-maps"></div>
@@ -1765,10 +1764,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         </dl>
         <div class="keep-acts" id="detail-keep-acts"></div>
         <div class="keep-actpick" id="detail-keep-actpick"></div>
+        <div id="detail-keep-share" class="party-hide">
         <h3 class="strength-label">Keeping up, fight by fight</h3>
         <p class="chart-caption">Damage taken and turns on each fight as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">Ticks mark recent deck changes to line up against the fights that followed; hover for the change, and a fight with more than one enemy wears one icon for each.</span> Breadcrumbs for troubleshooting, not proof.</p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-share-legend"></div>
+        </div>
         <div id="detail-hp-box">
           <h3 class="strength-label">HP by floor</h3>
           <p class="chart-caption">Your HP after each floor, against your max HP.</p>
@@ -1789,18 +1790,19 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
           <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-deck-chart"></canvas></div>
           <div class="floor-legend" id="detail-keep-deck-legend"></div>
         </div>
-        <h3 class="strength-label">Energy and cards per turn</h3>
-        <div id="detail-keep-play">
+        <h3 class="strength-label party-hide">Energy and cards per turn</h3>
+        <div id="detail-keep-play" class="party-hide">
           <p class="chart-caption">Cards drawn, cards played and the printed cost of those played, each turn.</p>
           <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-play-chart"></canvas></div>
           <div class="floor-legend" id="detail-keep-play-legend"></div>
         </div>
-        <p class="chart-caption" id="detail-keep-play-none">No per-turn log for this run. Runs played with the mod and uploaded through it have one.</p>
+        <p class="chart-caption party-hide" id="detail-keep-play-none">No per-turn log for this run. Runs played with the mod and uploaded through it have one.</p>
       </div>
       <div class="chart-box" id="detail-gold-box" style="margin-top:16px">
         <h2>Gold by Floor</h2>
         <p class="chart-caption">Your gold after each floor.</p>
         <div class="chart-wrap"><canvas id="detail-gold-chart"></canvas></div>
+        <div class="floor-legend" id="detail-gold-legend"></div>
       </div>
       <div class="chart-box" id="detail-deck-box" style="margin-top:16px">
         <h2>Deck by Floor</h2>
