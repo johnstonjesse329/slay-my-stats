@@ -1753,9 +1753,13 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="detail-deck-relics"></div>
       <div id="detail-timeline"></div>
       <div id="detail-maps"></div>
-      <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
-        <h2>Keeping Up by Floor</h2>
+      <section id="detail-floor-charts" aria-label="Floor charts">
+      <h2 id="detail-keep-heading">Keeping Up by Floor</h2>
+      <div class="detail-floor-controls">
         <div id="detail-party-toggle" class="party-toggle" role="group" aria-label="Charts show"></div>
+        <div class="keep-actpick" id="detail-keep-actpick"></div>
+      </div>
+      <div class="chart-box" id="detail-keep-box">
         <p class="chart-caption">This data highlights how your deck is performing per act against broad buckets of effectiveness: how much damage you put out and how much you mitigate. Slower decks with more turns per fight aren't penalized if damage taken is low.</p>
         <dl class="chart-caption keep-key">
           <dt>Graded on</dt><dd>Damage taken after healing, against wins on the same fights at <span id="detail-keep-tier"></span>. Energy and draw aren't graded</dd>
@@ -1764,7 +1768,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
           <dt><span class="keep-signal behind"></span> Rough</dt><dd>More damage taken than 3 in 4 wins</dd>
         </dl>
         <div class="keep-acts" id="detail-keep-acts"></div>
-        <div class="keep-actpick" id="detail-keep-actpick"></div>
         <div id="detail-keep-share">
         <h3 class="strength-label">Keeping up, fight by fight</h3>
         <p class="chart-caption">Damage taken and turns on each fight as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">Ticks mark recent deck changes to line up against the fights that followed; hover for the change, and a fight with more than one enemy wears one icon for each.</span> Breadcrumbs for troubleshooting, not proof.</p>
@@ -1817,6 +1820,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="chart-wrap"><canvas id="detail-relic-chart"></canvas></div>
         <div class="floor-legend" id="detail-relic-legend"></div>
       </div>
+      </section>
     </div>
   </div>
 </div>
