@@ -152,27 +152,27 @@ class ReactionsTest(unittest.TestCase):
     def test_signed_out_reads_but_cannot_react(self):
         status, data = self.call(query='posts=launch', steam=None)
         self.assertEqual((status, data), (200, {'signedIn': False, 'posts': {'launch': {'counts': {}, 'mine': []}}}))
-        self.assertEqual(self.react('launch', 'plus', steam=None)[0], 401)
+        self.assertEqual(self.react('launch', 'flame', steam=None)[0], 401)
 
     def test_one_of_each_per_player_and_exact_counts(self):
-        self.react('launch', 'plus')
-        self.react('launch', 'plus')            # a double click changes nothing
+        self.react('launch', 'flame')
+        self.react('launch', 'flame')            # a double click changes nothing
         self.react('launch', 'skull')
-        status, data = self.react('launch', 'plus', steam=OTHER)
+        status, data = self.react('launch', 'flame', steam=OTHER)
         self.assertEqual(status, 200)
-        self.assertEqual(data['posts']['launch'], {'counts': {'plus': 2, 'skull': 1}, 'mine': ['plus']})
-        self.react('launch', 'plus', on=False)
-        self.react('launch', 'plus', on=False)  # taking it back twice takes one
+        self.assertEqual(data['posts']['launch'], {'counts': {'flame': 2, 'skull': 1}, 'mine': ['flame']})
+        self.react('launch', 'flame', on=False)
+        self.react('launch', 'flame', on=False)  # taking it back twice takes one
         status, data = self.call(query='posts=launch,other')
-        self.assertEqual(data['posts']['launch'], {'counts': {'plus': 1, 'skull': 1}, 'mine': ['skull']})
+        self.assertEqual(data['posts']['launch'], {'counts': {'flame': 1, 'skull': 1}, 'mine': ['skull']})
         self.assertEqual(data['posts']['other'], {'counts': {}, 'mine': []})
         self.assertTrue(data['signedIn'])
 
     def test_bad_requests(self):
         self.assertEqual(self.react('launch', 'heart')[0], 400)                 # not a kind
-        self.assertEqual(self.react('Launch!', 'plus')[0], 400)                 # not a post id
-        self.assertEqual(self.react('x' * 61, 'plus')[0], 400)
-        self.assertEqual(self.react('launch', 'plus', origin='https://evil.test')[0], 403)
+        self.assertEqual(self.react('Launch!', 'flame')[0], 400)                 # not a post id
+        self.assertEqual(self.react('x' * 61, 'flame')[0], 400)
+        self.assertEqual(self.react('launch', 'flame', origin='https://evil.test')[0], 403)
         self.assertEqual(self.call(query='')[0], 400)
         self.assertEqual(self.call(query='posts=a&fixes=b:12')[0], 400)          # fixes for a post not asked
         self.assertEqual(self.call(query='posts=a&fixes=a:FB-12')[0], 400)
@@ -186,7 +186,7 @@ class ReactionsTest(unittest.TestCase):
         self.assertIn('reactions', data['message'])
 
     def test_reactions_stay_out_of_the_feedback_inbox(self):
-        self.react('launch', 'plus')
+        self.react('launch', 'flame')
         self.assertEqual(self.feedback.all_notes(self.db, self.table, 'gamma'), [])
 
     def note(self, env, seq, voters):
