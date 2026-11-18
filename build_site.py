@@ -418,7 +418,7 @@ def build_catalog() -> dict:
         "cardData":           card_data,
         "cardChar":           run.build_card_char(card_data),
         # Multiplayer-only cards, bucketed apart on the Cards page (run.build_card_coop()).
-        "cardCoop":           run.build_card_coop(),
+        "cardCoop":           run.build_card_coop(card_data),
         "cardVariants":       card_variants,
         # What the runs that carry an event log actually did, floor by floor
         # (tools/power_curve/export_measured.py); null for runs with no telemetry.

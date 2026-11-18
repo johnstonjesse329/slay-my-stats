@@ -1241,16 +1241,22 @@ def build_card_char(card_data: dict) -> dict[str, str]:
     """
     return {cid: meta["pool"] for cid, meta in card_data.items() if "pool" in meta}
 
-def build_card_coop() -> list[str]:
+def build_card_coop(card_data: dict) -> list[str]:
     """
     Ids of the cards that only appear in multiplayer runs (the game's
-    CardMultiplayerConstraint.MultiplayerOnly, read by tools/extract_power_data.py
-    into power_data.json). The Cards page gives them a Co-op bucket of their own
-    beside the rarities. Empty when power_data.json hasn't been generated (it is
-    gitignored), which hides that bucket.
+    CardMultiplayerConstraint.MultiplayerOnly). The Cards page gives them a Co-op
+    bucket of their own beside the rarities.
+
+    card_data's multiplayerOnly, from the game's own exporter (tools/ExportCards.cs
+    via tools/import_game_data.py), is the source. Until card_data.json has been
+    refreshed with it, fall back to power_data.json (tools/extract_power_data.py's
+    read of the decompiled code), which only knows the cards that existed when it
+    was last run -- it has none of the Fool's. Empty when neither has any, which
+    hides the bucket.
     """
-    if not _POWER_DATA_FILE.exists():
-        return []
+    ids = sorted(cid for cid, meta in card_data.items() if meta.get("multiplayerOnly"))
+    if ids or not _POWER_DATA_FILE.exists():
+        return ids
     cards = json.loads(_POWER_DATA_FILE.read_text(encoding="utf-8")).get("cards", {})
     return sorted(cid for cid, e in cards.items() if e.get("multiplayerOnly"))
 
@@ -1903,7 +1909,7 @@ def build_html(runs: list[dict]) -> str:
         "cardImageOverrides": _PORTRAIT_OVERRIDES,
         "cardData":           card_data,
         "cardChar":           card_char,
-        "cardCoop":           build_card_coop(),
+        "cardCoop":           build_card_coop(card_data),
         "cardVariants":       card_variants,
     "enchantmentData":    enchantment_data,
         "measuredRuns":       measured_runs,
