@@ -297,11 +297,6 @@ h1 {
   .fav-bychar-table th:first-child { width: 4.6rem; }
   .fav-bychar-table tbody th .char-label { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; overflow-wrap: anywhere; }
   .pivot.fav-bychar-table { min-width: 460px; }
-  .pivot.fav-bychar-table.relics-fav-table { min-width: 0; }
-  #relics-who:not([hidden]) { display: flex; }
-  .relics-fav-table .fav-groups { display: none; }
-  .relics-fav-table:not(.show-all) .fav-all, .relics-fav-table.show-all .fav-you { display: none; }
-  .relics-fav-table .fav-all-start { border-left: 0; }
   .fav-bychar-table .fav-item { padding-left: 0.3rem; column-gap: 0.25rem; }
   .fav-bychar-table .fav-pic { width: 28px; height: 28px; }
 }
@@ -358,6 +353,15 @@ h1 {
 .relics-fav-table .fav-item { border-left: 0; padding-left: 0; }
 /* You / All players: phones only (the desktop shows both blocks). */
 #relics-who { display: none; margin-bottom: 0.6rem; }
+/* Both blocks need 1000px; below that (phones either way up, small tablets)
+   show one at a time behind the You / All players switch. */
+@media (max-width: 1000px) {
+  .pivot.fav-bychar-table.relics-fav-table { min-width: 0; }
+  #relics-who:not([hidden]) { display: flex; }
+  .relics-fav-table .fav-groups { display: none; }
+  .relics-fav-table:not(.show-all) .fav-all, .relics-fav-table.show-all .fav-you { display: none; }
+  .relics-fav-table .fav-all-start { border-left: 0; }
+}
 /* A co-op-only card's rarity carries a small Co-op tag (isCoopCard). */
 .cards-coop-tag { display: inline-block; margin-left: 0.4rem; padding: 0 0.35rem; border: 1px solid rgba(157, 184, 240, 0.45); border-radius: 4px; color: #9db8f0; font-size: var(--fs-xs); line-height: 1.4; vertical-align: 1px; }
 /* You / All players: phones only (the desktop table shows both). */
