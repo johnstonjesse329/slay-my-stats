@@ -121,6 +121,13 @@ class ViewsSection(unittest.TestCase):
         handler.views_section(self.store, "2026-11-17", self.logs, "site/EDIST.")
         self.assertEqual(self.store.json("analytics/views/2026-11-17.json.gz")["views"], 1)
 
+    def test_the_day_totals_go_into_the_tally(self):
+        self.log("site/EDIST.2026-11-17-12.abc.gz", [ping("/u/jesse", "cards"), ping("/")])
+        tally = {}
+        handler.views_section(self.store, "2026-11-17", self.logs, "site/EDIST.", tally=tally)
+        self.assertEqual(tally["PageViews"], 2)
+        self.assertIn("Visitors", tally)
+
     def test_a_day_with_no_logs_is_zero(self):
         headline, _ = handler.views_section(self.store, "2026-11-17", self.logs, "site/EDIST.")
         self.assertEqual(headline, "Page views: 0 yesterday, 0 in 1 day")
@@ -138,13 +145,22 @@ class DigestEmail(unittest.TestCase):
         return sent[0]
 
     def test_views_go_last_and_stay_out_of_the_subject(self):
-        subject, body = self.run_digest(lambda store, day: ("Page views: 5 yesterday, 5 in 1 day", "By page"))
+        subject, body = self.run_digest(lambda store, day, **kw: ("Page views: 5 yesterday, 5 in 1 day", "By page"))
         self.assertNotIn("Page views", subject)
         self.assertTrue(body.endswith("Page views: 5 yesterday, 5 in 1 day\n"
                                       "-----------------------------------\nBy page"))
 
+    def test_views_are_kept_with_the_adoption_numbers(self):
+        kept = []
+        def counted(store, day, tally=None):
+            tally.update(PageViews=5, Visitors=2)
+            return "Page views: 5 yesterday, 5 in 1 day", ""
+        with patch.object(handler, "record_adoption", lambda tally, at: kept.append(dict(tally))):
+            self.run_digest(counted)
+        self.assertEqual((kept[0]["PageViews"], kept[0]["Visitors"]), (5, 2))
+
     def test_a_views_failure_still_sends_the_email(self):
-        def broken(store, day):
+        def broken(store, day, **kw):
             raise RuntimeError("logs unreadable")
         subject, body = self.run_digest(broken)
         self.assertIn("no uploads yesterday", subject)
