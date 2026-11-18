@@ -52,7 +52,7 @@ function relicFavoritesHtml(you, all) {
   const groups = all ? `<tr class="fav-groups"><th></th>
     <th class="fav-group-you" colspan="${FAV_METRICS.length}">Your runs</th>
     <th class="fav-group-all fav-all-start" colspan="${FAV_METRICS.length}">All players</th></tr>` : "";
-  return `<div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table relics-fav-table${relicsShowAll && all ? " show-all" : ""}">
+  return `<div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-blocks-table relics-fav-table${relicsShowAll && all ? " show-all" : ""}">
     <thead>${groups}<tr><th></th>${heads("you")}${all ? heads("all") : ""}</tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;

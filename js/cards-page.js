@@ -507,10 +507,10 @@ function favPanelHtml(title, tallies, chars) {
 }
 
 // With every character in view, one row per character instead of one pool
-// for all of them: the columns are the slots (the rarities, and Co-op), and a
-// switch picks which of the
-// three choices (most picked, best win %, most bought) fills them. Each cell
-// holds your pick above everybody's, so the two read as a pair.
+// for all of them: the columns are the slots (the rarities, and Multi), and a
+// switch picks which of the three choices (most picked, best win %, most
+// bought) fills them. Your block of slots sits beside all players', as on
+// the Relics tab; below 1500px a You / All players switch shows one at a time.
 let favByCharMetric = "picked";
 const FAV_METRICS = [
   { key: "picked", label: "Most picked" },
@@ -532,30 +532,33 @@ function favByCharHtml(you, all) {
   // Characters with runs in either set, in the site's roster order.
   const chars = DATA.characters.filter(c => you.runs[c] || (all && all.runs[c]));
   const slots = favSlots();
-  const head = `<tr><th></th>${slots.map(s => `<th>${s.label}</th>`).join("")}</tr>`;
+  const cls = (who, i) => ` fav-${who}${who === "all" && i === 0 ? " fav-all-start" : ""}`;
+  const block = (tallies, char, who) => slots.map((slot, i) => {
+    const it = tallies && favPicksFor(tallies, slot, [char])[favByCharMetric];
+    if (!it) return `<td class="fav-cell fav-empty${cls(who, i)}">—</td>`;
+    const [rate, detail] = favMetricFigures(favByCharMetric, it);
+    return `<td class="fav-cell${cls(who, i)}">${favItemHtml(slot.kind, it, rate, detail)}</td>`;
+  }).join("");
+  const heads = who => slots.map((s, i) => `<th class="${cls(who, i).trim()}">${s.label}</th>`).join("");
+  const groups = all ? `<tr class="fav-groups"><th></th>
+    <th class="fav-group-you" colspan="${slots.length}">Your runs</th>
+    <th class="fav-group-all fav-all-start" colspan="${slots.length}">All players</th></tr>` : "";
   const rows = chars.map(char => {
     const n = you.runs[char] || 0;
-    const cells = slots.map(slot => {
-      const one = (tallies, cls) => {
-        const it = tallies && favPicksFor(tallies, slot, [char])[favByCharMetric];
-        if (!it) return `<span class="fav-item fav-none${cls}">—</span>`;
-        const [rate, detail] = favMetricFigures(favByCharMetric, it);
-        return favItemHtml(slot.kind, it, rate, detail, cls);
-      };
-      return `<td class="fav-cell">${one(you, " fav-mine")}${all ? one(all, " fav-theirs") : ""}</td>`;
-    }).join("");
-    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${cells}</tr>`;
+    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${block(you, char, "you")}${all ? block(all, char, "all") : ""}</tr>`;
   }).join("");
   const switcher = `<div class="filter-group fav-metric">${FAV_METRICS.map(m =>
     `<button class="toggle-btn${m.key === favByCharMetric ? " active" : ""}" data-fav-metric="${m.key}">${m.label}</button>`).join("")}</div>`;
-  const legend = `<span class="fav-legend"><span class="fav-key fav-key-you">You</span>${all ? `<span class="fav-key fav-key-all">All players</span>` : ""}</span>`;
+  const who = all ? `<div class="filter-group fav-who">${["you", "all"].map(w =>
+    `<button class="toggle-btn${(w === "all") === favByCharShowAll ? " active" : ""}" data-fav-who="${w}">${w === "all" ? "All players" : "You"}</button>`).join("")}</div>` : "";
   return `<div class="fav-bychar">
-    <div class="fav-bychar-bar">${switcher}${legend}</div>
-    <div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table">
-      <thead>${head}</thead><tbody>${rows}</tbody>
+    <div class="fav-bychar-bar">${switcher}${who}</div>
+    <div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-blocks-table${favByCharShowAll && all ? " show-all" : ""}${slots.length > 3 ? " fav-wide" : ""}">
+      <thead>${groups}<tr><th></th>${heads("you")}${all ? heads("all") : ""}</tr></thead><tbody>${rows}</tbody>
     </table></div>
   </div>`;
 }
+let favByCharShowAll = false; // below 1000px: which block shows
 
 const favCoopNote = () => favSlots().some(s => s.coop) ? ", and of the cards only multiplayer runs offer (Multi)" : "";
 
@@ -567,9 +570,13 @@ function renderCardFavorites() {
   if (sharedActiveChar === "ALL") {
     box.classList.add("fav-panels-bychar");
     box.innerHTML = favByCharHtml(favTalliesYou(), all);
-    if (caption) caption.textContent = `Each character's ${FAV_METRICS.find(m => m.key === favByCharMetric).label.toLowerCase()} card of each rarity${favCoopNote()}: yours on top${all ? ", all players' underneath" : ""}. Every card shows its win rate, with the count behind it underneath.`;
+    if (caption) caption.textContent = `Each character's ${FAV_METRICS.find(m => m.key === favByCharMetric).label.toLowerCase()} card of each rarity${favCoopNote()}${all ? ", yours beside all players'" : ""}. Every card shows its win rate, with the count behind it underneath.`;
     box.querySelectorAll("[data-fav-metric]").forEach(btn => btn.addEventListener("click", () => {
       favByCharMetric = btn.dataset.favMetric;
+      renderCardFavorites();
+    }));
+    box.querySelectorAll("[data-fav-who]").forEach(btn => btn.addEventListener("click", () => {
+      favByCharShowAll = btn.dataset.favWho === "all";
       renderCardFavorites();
     }));
   } else {
