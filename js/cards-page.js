@@ -277,7 +277,7 @@ function renderCardsPage() {
     <td style="padding:0.45rem 0.6rem;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
     <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:var(--text-dim)">${r.pool === "colorless" ? `${charIconHtml(r.pool)}${r.owner}` : charLabelHtml(r.pool)}</td>
     <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
-    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}${isCoopCard(r.id) ? `<span class="cards-coop-tag">Co-op</span>` : ""}</td>
+    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}${isCoopCard(r.id) ? `<span class="cards-coop-tag">Multi</span>` : ""}</td>
     <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.offered}</td>
     <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.pickRate, "#ccc")}</td>
     <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.winPicked,  "#ccc")}</td>
@@ -367,7 +367,7 @@ const FAV_SLOTS = [
   { label: "Common",   kind: "cards", test: favRarity("Common") },
   { label: "Uncommon", kind: "cards", test: favRarity("Uncommon") },
   { label: "Rare",     kind: "cards", test: favRarity("Rare") },
-  { label: "Co-op",    kind: "cards", coop: true, test: isCoopCard },
+  { label: "Multi",    kind: "cards", coop: true, test: isCoopCard },
 ];
 // The Co-op bucket only while multiplayer runs are in view (and the build
 // knew which cards those are). Relics have a page of their own (relics-page.js).
@@ -557,7 +557,7 @@ function favByCharHtml(you, all) {
   </div>`;
 }
 
-const favCoopNote = () => favSlots().some(s => s.coop) ? ", and of the cards only multiplayer runs offer (Co-op)" : "";
+const favCoopNote = () => favSlots().some(s => s.coop) ? ", and of the cards only multiplayer runs offer (Multi)" : "";
 
 function renderCardFavorites() {
   loadSiteStatsForFavs();
