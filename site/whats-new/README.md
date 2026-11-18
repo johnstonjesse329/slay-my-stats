@@ -5,6 +5,9 @@ Each `.html` file here is one post on the [What's new](/whats-new) page, newest 
 `slay-my-stats.com/whats-new/<id>` (lowercase letters, digits and dashes, at most 60 characters,
 used once). Keep the id once a post is up: its reactions are stored under it.
 
+The wording is the owner's: draft or suggest edits if asked, but keep their voice and don't invent
+detail (see `CLAUDE.md`).
+
 Start the file with a comment that names the post, then write plain HTML, as for a site page
 (`site/pages/README.md`): `<p>`, `<ul>`, `<a href>`, `<img src>`.
 
