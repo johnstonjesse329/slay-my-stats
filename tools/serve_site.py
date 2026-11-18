@@ -5,9 +5,11 @@ stdlib-only (http.server), so no extra install is needed to preview the
 built site. Routing mirrors what CloudFront will be configured to do against
 the site bucket:
 
-    /, /u/<anything>, /<page> -> index.html, built fresh (client-side router)
+    /, /u/<anything>, /<page>, /whats-new/<post>
+                         -> index.html, built fresh (client-side router)
     /page-<page>.html    -> site/pages/<page>.html      (read live, so edits
-    /home-intro.html     -> site/home-intro.html         show on refresh)
+                            show on refresh; What's new with site/whats-new/'s posts)
+    /home-intro.html     -> site/home-intro.html
     /users/<name>        -> local_data/users/<name>     (gzip'd profile summaries,
                                                          index, site stats)
     /users/<slug>/<month> -> local_data/users/<slug>/<month>  (a profile's runs, by month)
@@ -137,7 +139,8 @@ class Handler(BaseHTTPRequestHandler):
         # The SPA shell, built per request so a new site/pages/ file shows up
         # in the site bar without a rebuild.
         if (not parts or parts == ["index.html"] or parts[0] == "u"
-                or (len(parts) == 1 and (build_site.PAGES_DIR / f"{parts[0]}.html").is_file())):
+                or (len(parts) == 1 and (build_site.PAGES_DIR / f"{parts[0]}.html").is_file())
+                or (len(parts) == 2 and parts[0] == build_site.POSTS_PAGE)):
             self._send_body(build_site.build_index_html().encode("utf-8"), _CONTENT_TYPES[".html"])
             return
 
@@ -146,7 +149,11 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_file(build_site.HOME_INTRO)
             return
         if len(parts) == 1 and parts[0].startswith("page-") and parts[0].endswith(".html"):
-            self._serve_file(_safe_join(build_site.PAGES_DIR, [parts[0][len("page-"):]]))
+            page = _safe_join(build_site.PAGES_DIR, [parts[0][len("page-"):]])
+            if page is None or not page.is_file():
+                self.send_error(404)
+                return
+            self._send_body(build_site.page_body(page.stem, page).encode("utf-8"), _CONTENT_TYPES[".html"])
             return
 
         # /users/<name> -> a gzip'd per-user data blob; 403 if it's not there,
@@ -186,10 +193,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _auth(self, method: str):
         # session.handle, as CloudFront sends /auth/* to the Lambda. The site's origin is whichever
-        # local name the browser used. Feedback lives in DynamoDB and isn't served here.
+        # local name the browser used. Feedback and What's new reactions live in DynamoDB and
+        # aren't served here.
         split = urlsplit(self.path)
         host = self.headers.get("Host", "")
-        if split.path.rstrip("/") == "/auth/feedback" or not re.fullmatch(r"(localhost|127\.0\.0\.1):\d+", host):
+        if split.path.rstrip("/") in ("/auth/feedback", "/auth/reactions") or not re.fullmatch(r"(localhost|127\.0\.0\.1):\d+", host):
             self.send_error(404)
             return
         os.environ["SITE_ORIGIN"] = f"http://{host}"

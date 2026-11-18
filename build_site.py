@@ -22,8 +22,11 @@ Usage:
         potion_data.json, dashboard.css, js/*.js, and site/ (boot.js and
         the upload button/panel, the player finder's CSS, the hand-written
         pages in site/pages/, site/home-intro.html and its fonts and pictures).
+        The What's new page (site/pages/whats-new.html) gets its posts from
+        site/whats-new/, one file each (see posts()).
 """
 
+import datetime
 import hashlib
 import html
 import json
@@ -65,6 +68,18 @@ _RESERVED_PAGES = {"u", "users", "ids", "api", "index", "card_final", "card_port
                    "card_chrome"}
 _NAV_LABEL = re.compile(r"^\s*<!--\s*nav:\s*(.+?)\s*-->")
 
+# What's new: site/whats-new/<YYYY-MM-DD>-<id>.html is one post, served on the What's new
+# page (site/pages/whats-new.html) where that page says <!-- posts -->, newest first, and
+# linked on its own at /whats-new/<id>. See site/whats-new/README.md.
+POSTS_DIR = _HERE / "site" / "whats-new"
+POSTS_PAGE = "whats-new"
+POSTS_MARK = "<!-- posts -->"
+_POST_FILE = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)$")
+_POST_HEAD = re.compile(r"^\s*<!--(.*?)-->", re.S)
+_POST_FIXES = re.compile(r"^(?:FB-\d+(?:\s*,\s*|\s+|$))+$")
+# The longest post id: the reactions endpoint (infra/lambda/ingest/reactions.py) takes the same.
+POST_ID_MAX = 60
+
 
 class PageError(Exception):
     pass
@@ -84,6 +99,91 @@ def site_pages() -> list[tuple[str, Path, str | None]]:
         pages.append((name, f, label.group(1) if label else None))
     return pages
 
+
+def posts() -> list[dict]:
+    """Every What's new post, newest first: {id, date, title, fixes, body}.
+
+    A post is plain HTML, like a site page, under a comment that names it:
+
+        <!--
+        title: Drag across a run's charts to add up a stretch
+        fixes: FB-12, FB-31
+        -->
+        <p>...</p>
+
+    title is required; fixes (optional) lists the feedback notes it closes, which the page shows
+    as "Requested by N players" and a banner for the players who asked. The file name gives the
+    date and the id: 2026-11-18-span-panel.html is /whats-new/span-panel. Raises PageError for a
+    name, header or date the page can't use.
+    """
+    out, seen = [], set()
+    for f in sorted(POSTS_DIR.glob("*.html"), reverse=True):
+        where = f"site/whats-new/{f.name}"
+        m = _POST_FILE.match(f.stem)
+        if not m:
+            raise PageError(f"{where}: post files are named <YYYY-MM-DD>-<id>.html, the id in lowercase "
+                            "letters, digits and dashes")
+        date, post_id = m.groups()
+        try:
+            datetime.date.fromisoformat(date)
+        except ValueError:
+            raise PageError(f"{where}: {date} isn't a date") from None
+        if len(post_id) > POST_ID_MAX or post_id in seen:
+            raise PageError(f"{where}: the id {post_id!r} is used twice or is over {POST_ID_MAX} characters")
+        seen.add(post_id)
+        text = f.read_text(encoding="utf-8")
+        head = _POST_HEAD.match(text)
+        fields = {}
+        for line in (head.group(1).splitlines() if head else []):
+            key, sep, value = line.partition(":")
+            if sep:
+                fields[key.strip().lower()] = value.strip()
+        if not fields.get("title"):
+            raise PageError(f"{where}: start the file with a <!-- title: ... --> comment")
+        fixes = fields.get("fixes", "")
+        if fixes and not _POST_FIXES.match(fixes):
+            raise PageError(f"{where}: fixes is a list of feedback numbers, like FB-12, FB-31")
+        out.append({"id": post_id, "date": date, "title": fields["title"],
+                    "fixes": [int(n) for n in re.findall(r"\d+", fixes)],
+                    "body": (text[head.end():] if head else text).strip()})
+    return out
+
+
+def render_post(post: dict) -> str:
+    """One post as the What's new page shows it. site/whats-new.js finds the article by its
+    data-post and fills .post-reactions (and, for data-fixes, the request line)."""
+    day = datetime.date.fromisoformat(post["date"])
+    fixes = f' data-fixes="{",".join(map(str, post["fixes"]))}"' if post["fixes"] else ""
+    return (f'<article class="post" id="{post["id"]}" data-post="{post["id"]}"{fixes}>\n'
+            f'<header class="post-head"><h2><a href="/{POSTS_PAGE}/{post["id"]}">{html.escape(post["title"])}</a></h2>\n'
+            f'<time datetime="{post["date"]}">{day:%B} {day.day}, {day.year}</time></header>\n'
+            f'{post["body"]}\n'
+            f'<div class="post-reactions"></div>\n'
+            f'</article>')
+
+
+def page_body(name: str, f: Path) -> str:
+    """A site page's HTML as published at /page-<name>.html: the file itself, with the What's
+    new posts in place of its <!-- posts --> mark."""
+    text = f.read_text(encoding="utf-8")
+    if name == POSTS_PAGE:
+        if POSTS_MARK not in text:
+            raise PageError(f"site/pages/{f.name}: the posts go where it says {POSTS_MARK}")
+        text = text.replace(POSTS_MARK, "\n".join(render_post(p) for p in posts())
+                            or '<p class="posts-empty">Nothing here yet.</p>')
+    return text
+
+
+def site_link_label(name: str, label: str) -> str:
+    """A site bar label as HTML. What's new carries the newest post's date and id, so boot.js
+    can mark the link until this browser has seen that post."""
+    out = html.escape(label)
+    if name == POSTS_PAGE:
+        newest = posts()[:1]
+        if newest:
+            out += (f'<span class="new-dot" data-latest="{newest[0]["date"]}-{newest[0]["id"]}" hidden>'
+                    f'<span class="new-dot-text"> (new)</span></span>')
+    return out
 
 
 def repo_url(p: Path) -> str:
@@ -479,7 +579,9 @@ def build_index_html() -> str:
     itself (vendor/chart.umd.js): a blocking script from a CDN that hangs
     leaves the whole page blank.
     """
-    links = [(f"/{name}", html.escape(label)) for name, _, label in site_pages() if label]
+    links = [(f"/{name}", site_link_label(name, label)) for name, _, label in site_pages() if label]
+    # Pages go in name order, but Upload, drawn as a button (upload.css), stays at the end.
+    links.sort(key=lambda link: link[0] == "/upload")
     body = run.dashboard_body_html(site_links=links)
     shared_scripts = "\n".join(f'<script src="{asset(name)}"></script>' for name in SHARED_JS)
     # Every URL serves this same file, so a shared link says what the site is
@@ -509,13 +611,15 @@ def build_index_html() -> str:
 <script src="{asset("boot.js")}"></script>
 <script src="{asset("upload.js")}"></script>
 <script src="{asset("feedback.js")}"></script>
+<script src="{asset("whats-new.js")}"></script>
 </body>
 </html>"""
 
 
 def main():
     try:
-        site_pages()
+        for name, f, _ in site_pages():
+            page_body(name, f)
     except PageError as e:
         sys.exit(f"ERROR: {e}")
     if _DIST.exists():
@@ -554,7 +658,7 @@ def main():
         write_hashed("boot.js", boot)
     else:
         print(f"WARNING: {_SITE_BOOT_JS} does not exist yet — dist/boot.js not written.")
-    for name in ("upload.js", "upload.css", "players.css", "feedback.js"):
+    for name in ("upload.js", "upload.css", "players.css", "feedback.js", "whats-new.js"):
         write_hashed(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
     for f in SITE_FILES:
         write(f.name, f.read_bytes())
@@ -562,7 +666,7 @@ def main():
     # tools/deploy.py's top-level ETag check covers them.
     write("home-intro.html", HOME_INTRO.read_text(encoding="utf-8"))
     for name, f, _ in site_pages():
-        write(f"page-{name}.html", f.read_text(encoding="utf-8"))
+        write(f"page-{name}.html", page_body(name, f))
 
     write(MANIFEST, json.dumps(HASHED))
     write("index.html", build_index_html())

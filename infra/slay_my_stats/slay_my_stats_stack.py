@@ -57,12 +57,14 @@ RETIRED_IDS = Path(__file__).resolve().parents[2] / "tools" / "retired_ids.json"
 # tools/deploy.py checks the names (build_site.site_pages()) before cdk
 # runs; each page gets its own CloudFront behavior below.
 SITE_PAGES = sorted(f.stem for f in (Path(__file__).resolve().parents[2] / "site" / "pages").glob("*.html"))
+# Pages with a link per post under them: /whats-new/<post id> (build_site.POSTS_PAGE).
+POST_PAGES = [name for name in ("whats-new",) if name in SITE_PAGES]
 
 
 @jsii.implements(ILocalBundling)
 class _CopyIngestSources:
     def try_bundle(self, output_dir: str, *, image=None, **_kwargs) -> bool:
-        for name in ("handler.py", "measured.py", "feedback.py", "session.py"):
+        for name in ("handler.py", "measured.py", "feedback.py", "reactions.py", "session.py"):
             shutil.copy(INGEST_DIR / name, output_dir)
         shutil.copy(RUN_PY, output_dir)
         shutil.copy(DERIVE_PY, output_dir)
@@ -88,7 +90,7 @@ def _ingest_asset_hash() -> str:
     import hashlib
     h = hashlib.sha256()
     for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", INGEST_DIR / "feedback.py",
-              INGEST_DIR / "session.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
+              INGEST_DIR / "reactions.py", INGEST_DIR / "session.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
               IDS_PY, RELIC_DATA, RETIRED_IDS):
         if p.exists():
             h.update(p.read_bytes())
@@ -383,6 +385,8 @@ class SlayMyStatsStack(Stack):
                 # Exact paths, not "<name>*", so a page can't catch an asset
                 # that starts with the same letters; the second is /<name>/.
                 **{pattern: page_behavior for name in SITE_PAGES for pattern in (name, f"{name}/")},
+                # Each What's new post's own link; boot.js shows the page at that post.
+                **{f"{name}/*": page_behavior for name in POST_PAGES},
             },
         )
 
