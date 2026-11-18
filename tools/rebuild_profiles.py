@@ -5,7 +5,8 @@ Every upload is kept as sent under raw/<steamid>/, so after a fix to run.py's
 parser (with run.PARSER_VERSION bumped) the profiles it built can be rebuilt
 from them. A profile's runs with no raw copy (listed in its noRaw: ones
 uploaded before raw copies were kept) are left as they are; they get a raw
-copy, and the fresh parse, the next time the player uploads.
+copy, and the fresh parse, the next time the player uploads. Runs ending
+before floor 3 are omitted from the rebuilt profiles, including legacy runs.
 
 Site-wide stats aren't touched: run tools/rebuild_stats.py afterwards.
 

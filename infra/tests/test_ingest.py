@@ -116,7 +116,7 @@ def minimal_run(start_time, **extra):
         "was_abandoned": False, "killed_by_encounter": "NONE.NONE", "seed": "ABC123",
         "build_id": "v0.99.1", "game_mode": "standard",
         "players": [{"character": "CHARACTER.IRONCLAD", "deck": [], "relics": []}],
-        "map_point_history": [],
+        "map_point_history": [[{}, {}, {}]],
     }
     r.update(extra)
     return r
@@ -158,7 +158,7 @@ def multiplayer_run(start_time, round_ids=False):
     }
     players = [player(ident(other_id), "CHARACTER.IRONCLAD"),
                player(ident(STEAM_ID), "CHARACTER.SILENT")]
-    return minimal_run(start_time, players=players, map_point_history=[[node]])
+    return minimal_run(start_time, players=players, map_point_history=[[node, {}, {}]])
 
 
 def shop_run(start_time, bought=("CARD.SNAKEBITE",), shelf=("CARD.ANGER",)):
@@ -177,7 +177,7 @@ def shop_run(start_time, bought=("CARD.SNAKEBITE",), shelf=("CARD.ANGER",)):
             "cards_gained": [{"id": cid} for cid in bought],
         }],
     }
-    return minimal_run(start_time, map_point_history=[[node]])
+    return minimal_run(start_time, map_point_history=[[node, {}, {}]])
 
 
 def nonoffer_run(start_time):
@@ -207,7 +207,7 @@ def nonoffer_run(start_time):
             "cards_gained": [{"id": "CARD.POMMEL_STRIKE"}, {"id": "CARD.POMMEL_STRIKE"}],
         }],
     }
-    return minimal_run(start_time, map_point_history=[[event, rest]])
+    return minimal_run(start_time, map_point_history=[[event, rest, {}]])
 
 
 class VerifyOpenIdTests(unittest.TestCase):
@@ -907,6 +907,18 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.assertEqual(solo["records"]["fastestWin"]["mins"], 15)
         self.assertEqual(solo["records"]["fastestWin"]["slug"], "mrbean")
 
+    def test_runs_below_floor_three_are_omitted_from_history_and_stats(self):
+        node = {"map_point_type": "monster", "rooms": []}
+        result = self.ingest(body_of(*[
+            minimal_run(1700000000 + floor, win=False, was_abandoned=floor < 3,
+                        map_point_history=[[node] * floor])
+            for floor in (0, 1, 2, 3)
+        ]))
+        self.assertEqual((result["added"], result["skippedEarly"]), (1, 3))
+        self.assertEqual([r["floor"] for r in self.store.runs()], [3])
+        stats = self.stats()
+        self.assertEqual((stats["allRuns"], stats["solo"]["runs"], stats["solo"]["wins"]), (1, 1, 0))
+
     def test_stats_count_picks_and_buys_per_character(self):
         def stored(won, cards, relics=None):
             return {"char": "IRONCLAD", "won": won, "mins": 20,
@@ -976,7 +988,7 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.assertTrue(run_doc["mp"])
         self.assertEqual(run_doc["char"], "SILENT")
         self.assertEqual(list(run_doc["cardsOffered"]), ["CARD.SNAKEBITE"])
-        self.assertEqual([n["cardPicked"] for n in run_doc["timeline"]], ["CARD.SNAKEBITE"])
+        self.assertEqual([n["cardPicked"] for n in run_doc["timeline"] if n["cardPicked"]], ["CARD.SNAKEBITE"])
         self.assertEqual(run_doc["timeline"][0]["hpAfter"], 70)
         self.assertEqual(run_doc["timeline"][0]["goldGained"], 100)
         # The party's characters, in the save's slot order, never their Steam IDs.
@@ -1019,7 +1031,7 @@ class ProcessTests(Uploads, unittest.TestCase):
         self.ingest(body_of(nonoffer_run(1700000001)))
         run_doc = self.store.runs()[0]
         self.assertEqual(run_doc["cardsOffered"], {})
-        event_node, rest_node = run_doc["timeline"]
+        event_node, rest_node = run_doc["timeline"][:2]
         for node in (event_node, rest_node):
             self.assertEqual((node["cardPicked"], node["cardsBought"], node["cardsRewarded"]),
                              (None, [], []))
@@ -1102,6 +1114,25 @@ class RebuildTests(Uploads, unittest.TestCase):
         self.assertEqual((summary["runs"], summary["dropped"]), (1, 1))
         self.assertEqual(self.store.months(), ["2023-11"])
         self.assertEqual(self.store.profile()["months"], {"2023-11": [1700000000]})
+
+    def test_rebuild_removes_early_runs_from_raw_and_legacy_profiles(self):
+        legacy = handler.run.parse_run_data(minimal_run(1600000000, map_point_history=[]), steam_id=STEAM_ID)
+        early = minimal_run(1700000001, map_point_history=[[{}, {}]])
+        full = minimal_run(1700000002)
+        handler.save_profile(self.store, STEAM_ID, None, None, "Mr. Bean!", [legacy], {}, NOW)
+        self.ingest(body_of(early, full))
+        slug, etag, doc = handler._read_profile(self.store, STEAM_ID)
+        processed = self.store.runs() + [handler.run.parse_run_data(early, steam_id=STEAM_ID)]
+        handler.save_profile(self.store, STEAM_ID, slug, etag, doc["name"], processed, {}, NOW,
+                             no_raw=doc["noRaw"])
+        raw = self.store.get(self.last_key)
+
+        summary = handler.rebuild_profile(self.store, STEAM_ID, now=NOW)
+
+        self.assertEqual((summary["runs"], summary["dropped"], summary["noRaw"]), (1, 2, 0))
+        self.assertEqual([r["ts"] for r in self.store.runs()], [1700000002])
+        self.assertEqual(handler._read_index(self.store)[0][0]["runs"], 1)
+        self.assertEqual(self.store.get(self.last_key), raw)
 
     def test_remove_profile(self):
         self.ingest(body_of(minimal_run(1690000000), minimal_run(1700000000)))
@@ -1646,7 +1677,7 @@ class ValidatorTests(unittest.TestCase):
 
 
 class RealHistoryTests(unittest.TestCase):
-    """Uploading real .run files must store everything the ingest path computes.
+    """Uploading real .run files must store the parsed runs eligible for profiles.
 
     NOTE: this compares the Lambda's output against run.parse_run() -- the same
     parse_run_data on both sides -- so it proves the plumbing is faithful, NOT
@@ -1668,7 +1699,8 @@ class RealHistoryTests(unittest.TestCase):
         store.put(key, body, {}, None)
         res = handler.process_upload(key, store, now=NOW, lookup_name=named("Me"))
         self.assertEqual(res["rejected"], 0, res)
-        expected = sorted((run.parse_run(f) for f in files), key=lambda r: r["ts"])
+        parsed = (run.parse_run(f) for f in files)
+        expected = sorted((r for r in parsed if r["floor"] >= 3), key=lambda r: r["ts"])
         # Ingest adds multiplayerIdsShared to co-op runs (the mod's upload setting); a .run file has no such field.
         stored = [{k: v for k, v in r.items() if k != "multiplayerIdsShared"} for r in store.runs(steam_id)]
         self.assertEqual(stored, json.loads(json.dumps(expected)))

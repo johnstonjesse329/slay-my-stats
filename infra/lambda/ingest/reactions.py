@@ -85,6 +85,13 @@ def _counts(db, table, env, posts):
     return out
 
 
+def total_reactions(db, table, env):
+    """Count reactions currently on posts using the transactionally maintained totals."""
+    return sum(int(item[f"n_{kind}"]["N"])
+               for item in _prefixed(db, table, env, "rcount#")
+               for kind in KINDS if f"n_{kind}" in item)
+
+
 def _mine(db, table, env, steam, posts):
     """{post: [kinds]} this player has given, in KINDS order."""
     wanted, out = set(posts), {p: [] for p in posts}

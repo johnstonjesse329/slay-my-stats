@@ -552,16 +552,20 @@ def unknown_ids(data: dict, known: frozenset | None = None) -> set[str]:
     return {m for m in _GAME_ID_RE.findall(json.dumps(data.get("players") or [])) if m not in known}
 
 
-def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = None) -> tuple[int, int, int]:
+def _ends_before_floor_three(parsed: dict) -> bool:
+    return parsed.get("floor") in (0, 1, 2)
+
+
+def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = None) -> tuple[int, int, int, int]:
     """Parse every run in the upload into the spool; returns (count good,
     count rejected, count that looked like .run files at all -- rejected ones
     included, since a run the parser can't handle yet may be the parser's
     fault). A run naming a character, card or relic the game data doesn't know
     is held: left out, counted in `held` ({"runs": n, "ids": {id: runs}}), and
     kept in raw/ for a rebuild once the game data has it."""
-    good, rejected, run_shaped, held_n = 0, 0, 0, 0
-    for line in iter_upload_lines(body):
-        if good + rejected + held_n >= MAX_RUNS_PER_UPLOAD:
+    good, rejected, run_shaped, held_n, skipped_early = 0, 0, 0, 0, 0
+    for line_number, line in enumerate(iter_upload_lines(body), start=1):
+        if line_number > MAX_RUNS_PER_UPLOAD:
             raise IngestError(413, "too_many_runs", f"At most {MAX_RUNS_PER_UPLOAD} runs per upload.")
         try:
             data = json.loads(line, parse_constant=lambda c: None)
@@ -587,6 +591,9 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = N
                   and len(json.dumps(parsed, separators=(",", ":"))) <= MAX_PARSED_RUN_BYTES)
         except (ValueError, TypeError, KeyError, AttributeError, IndexError, RecursionError):
             ok = False
+        if ok and _ends_before_floor_three(parsed):
+            skipped_early += 1
+            continue
         unknown = unknown_ids(data) if ok else set()
         if unknown:
             held_n += 1
@@ -615,7 +622,7 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = N
             good += 1
         else:
             rejected += 1
-    return good, rejected, run_shaped
+    return good, rejected, run_shaped, skipped_early
 
 
 # ---------------------------------------------------------------------------
@@ -1127,6 +1134,9 @@ def _offer_fastest(records: dict, rec: dict) -> None:
 def tally(runs: list[dict], slug: str) -> dict:
     stats = empty_stats()
     for r in runs:
+        # Runs that stop this early are abandoned and should not count as losses.
+        if _ends_before_floor_three(r):
+            continue
         stats["allRuns"] += 1
         if r.get("mode") in ("daily", "blitz", "custom"):
             continue
@@ -1235,7 +1245,7 @@ def seed_entry(r: dict) -> dict | None:
 
 
 def seed_entries(runs: list[dict]) -> list[dict]:
-    return [e for e in map(seed_entry, runs) if e]
+    return [entry for r in runs if not _ends_before_floor_three(r) and (entry := seed_entry(r))]
 
 
 def merge_seeds(have: list[dict], new: list[dict]) -> list[dict]:
@@ -1469,7 +1479,7 @@ def migrate_profile(store, slug: str) -> bool:
 def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) -> dict:
     with Spool() as spool:
         held = {}
-        good, rejected, run_shaped = spool_upload(body, steam_id, spool, held)
+        good, rejected, run_shaped, skipped_early = spool_upload(body, steam_id, spool, held)
         if not run_shaped:
             raise IngestError(400, "no_runs", "None of those files could be read as runs.")
         slug, etag, doc = _read_profile(store, steam_id)
@@ -1478,6 +1488,8 @@ def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) ->
             slug, etag, doc = _read_profile(store, steam_id)
         result = {"status": "done", "slug": slug, "name": doc.get("name") if doc else None, "added": 0,
                   "duplicates": 0, "rejected": rejected, "total": _total(doc) if doc else 0}
+        if skipped_early:
+            result["skippedEarly"] = skipped_early
         if held:
             # Held, not refused: raw/ keeps them, and tools/rebuild_profiles.py adds
             # them once the game data has what they name (see known_ids()).
@@ -1665,9 +1677,13 @@ def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: boo
             for m in sorted(fresh_months):
                 yield m, []
 
-        months, dropped = {}, 0
+        months, dropped, early_coop = {}, 0, []
         for m, old in every_month():
+            early = [r for r in old if _ends_before_floor_three(r)]
+            no_raw.difference_update(r["ts"] for r in early)
             runs = merge_runs([r for r in old if r["ts"] in no_raw], spool.runs(m))[0]
+            retained = {r["ts"] for r in runs}
+            early_coop.extend(_coop_runs(r for r in early if r["ts"] not in retained))
             dropped += len({r["ts"] for r in old} - {r["ts"] for r in runs})
             if runs:
                 months[m] = [r["ts"] for r in runs]
@@ -1683,11 +1699,13 @@ def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: boo
         if dry_run:
             return summary
         coop, coop_drop = spool.coop()
-        _update_coop(store, slug, coop, coop_drop)
+        _update_coop(store, slug, coop, [*coop_drop, *early_coop])
     try:
         store.put(blob_key(slug), _pack(_summary(doc["name"], months, no_raw, run.PARSER_VERSION)), {}, etag)
     except StoreConflict:
         raise IngestError(503, "busy", "The profile changed during the rebuild; run it again.")
+    if dropped:
+        _update_index(store, slug, doc["name"], summary["runs"], time.time() if now is None else now)
     return summary
 
 
@@ -2252,15 +2270,15 @@ def feedback_sections(now: float, query=None, tally: dict | None = None) -> list
     return sections
 
 
-# Sent to CloudWatch for the dashboard: eight of the free ten custom metrics (each past ten
+# Sent to CloudWatch for the dashboard: nine of the free ten custom metrics (each past ten
 # costs about $0.30 a month). The table keeps every field for good; CloudWatch drops daily
 # points after 15 months. PageViews and Visitors come from views_section.
 ADOPTION_METRICS = ("TotalPlayers", "ActivePlayersSite", "ActivePlayersMod", "NewPlayers", "RunsAdded",
-                    "FeedbackFiled", "PageViews", "Visitors")
+                    "FeedbackFiled", "PageViews", "Visitors", "WhatsNewReactions")
 
 
 def record_adoption(tally: dict, at: float, table: str | None = None, put_item=None,
-                    put_metrics=None) -> None:
+                    put_metrics=None, reaction_snapshot_at: float | None = None) -> None:
     """Keep a day's adoption numbers: a row in the adoption table (kept for good) and
     the same numbers as CloudWatch metrics for the dashboard, stamped `at`. Best effort:
     the digest email still goes if this fails."""
@@ -2276,8 +2294,11 @@ def record_adoption(tally: dict, at: float, table: str | None = None, put_item=N
         item.update({k: {"N": str(v)} for k, v in tally.items() if k != "day"})
         put_item(TableName=table, Item=item)
         stamp = datetime.fromtimestamp(at, timezone.utc)
+        reaction_stamp = (datetime.fromtimestamp(reaction_snapshot_at, timezone.utc)
+                          if reaction_snapshot_at is not None else stamp)
         put_metrics(Namespace="slay-my-stats", MetricData=[
-            {"MetricName": k, "Value": float(tally[k]), "Unit": "Count", "Timestamp": stamp}
+            {"MetricName": k, "Value": float(tally[k]), "Unit": "Count",
+             "Timestamp": reaction_stamp if k == "WhatsNewReactions" else stamp}
             for k in ADOPTION_METRICS if k in tally])
     except Exception as e:  # noqa: BLE001
         print(json.dumps({"adoption_failed": type(e).__name__, "detail": str(e)[:200]}))
@@ -2349,8 +2370,16 @@ def digest_handler(event, context):
             views_part = f"\n\n{headline}\n{'-' * len(headline)}\n{text}"
         except Exception as e:  # noqa: BLE001
             print(json.dumps({"views_failed": type(e).__name__, "detail": str(e)[:200]}))
-    # Stamped mid-day, inside the day the numbers cover.
-    record_adoption(tally, now - DIGEST_WINDOW_S / 2)
+    if os.environ.get("ADOPTION_TABLE") and os.environ.get("FEEDBACK_TABLE"):
+        try:
+            import boto3
+            from reactions import total_reactions
+            tally["WhatsNewReactions"] = total_reactions(
+                boto3.client("dynamodb"), os.environ["FEEDBACK_TABLE"], "prod")
+        except Exception as e:  # noqa: BLE001
+            print(json.dumps({"reaction_snapshot_failed": type(e).__name__, "detail": str(e)[:200]}))
+    # Daily activity is stamped inside the day it covers. The reaction total is a current snapshot.
+    record_adoption(tally, now - DIGEST_WINDOW_S / 2, reaction_snapshot_at=now)
     if sections:
         subject = " | ".join([subject] + [headline for headline, _ in sections])
         body += "".join(f"\n\n{headline}\n{'-' * len(headline)}\n{text}" for headline, text in sections)

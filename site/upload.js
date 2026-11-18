@@ -479,12 +479,15 @@
     const held = result.held
       ? `${result.held} run(s) use content from a mod or a newer patch. We kept them and will add them if the site supports it.`
       : "";
+    const early = result.skippedEarly
+      ? `Skipped ${runCount(result.skippedEarly)} that ended before floor 3.`
+      : "";
     if (!result.added) {
       if (result.duplicates) {
         stepsDone(status, "0 new");
-        finishAtProfile(status, [alreadyThere(result.duplicates), held].filter(Boolean).join(" "), result.slug || slug);
-      } else if (held) {
-        setStatus(status, held, profileLink);
+        finishAtProfile(status, [alreadyThere(result.duplicates), held, early].filter(Boolean).join(" "), result.slug || slug);
+      } else if (held || early) {
+        setStatus(status, [held, early].filter(Boolean).join(" "), profileLink);
       } else {
         setStatus(status, "None of those files could be read as runs.", profileLink);
       }
@@ -493,6 +496,7 @@
     stepsDone(status, runCount(result.added));
     const parts = [`Your profile now has ${result.total}.`];
     if (held) parts.push(held);
+    if (early) parts.push(early);
     if (result.rejected + unreadable) parts.push(`${result.rejected + unreadable} file(s) couldn't be read as runs and were skipped.`);
     finishAtProfile(status, parts.join(" "), result.slug || slug);
   }

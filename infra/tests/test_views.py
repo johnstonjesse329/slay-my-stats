@@ -155,7 +155,7 @@ class DigestEmail(unittest.TestCase):
         def counted(store, day, tally=None):
             tally.update(PageViews=5, Visitors=2)
             return "Page views: 5 yesterday, 5 in 1 day", ""
-        with patch.object(handler, "record_adoption", lambda tally, at: kept.append(dict(tally))):
+        with patch.object(handler, "record_adoption", lambda tally, at, **kw: kept.append(dict(tally))):
             self.run_digest(counted)
         self.assertEqual((kept[0]["PageViews"], kept[0]["Visitors"]), (5, 2))
 

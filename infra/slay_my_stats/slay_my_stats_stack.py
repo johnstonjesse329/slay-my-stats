@@ -850,7 +850,9 @@ class SlayMyStatsStack(Stack):
                      cloudwatch.GraphWidget(title="Runs added (per day)", left=[ours("RunsAdded")], **graph),
                      cloudwatch.GraphWidget(title="Feedback filed (per day)", left=[ours("FeedbackFiled")], **graph)],
                     [cloudwatch.GraphWidget(title="Page views and visitors (per day)", left=[
-                        ours("PageViews"), ours("Visitors")], **graph)],
+                        ours("PageViews"), ours("Visitors")], **graph),
+                     cloudwatch.GraphWidget(title="What's New reactions (daily snapshot)", left=[
+                         ours("WhatsNewReactions")], **graph)],
                     [cloudwatch.GraphWidget(title="Lambda invocations, all functions (per hour)", left=[
                         cloudwatch.Metric(namespace="AWS/Lambda", metric_name="Invocations",
                                           statistic="Sum", period=hour)], **graph),

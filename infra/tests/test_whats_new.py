@@ -189,6 +189,15 @@ class ReactionsTest(unittest.TestCase):
         self.react('launch', 'flame')
         self.assertEqual(self.feedback.all_notes(self.db, self.table, 'gamma'), [])
 
+    def test_reaction_snapshot_counts_current_reactions_for_one_environment(self):
+        self.react('launch', 'flame')
+        self.react('launch', 'eye')
+        self.react('updates', 'flower')
+        self.react('launch', 'flame', on=False)
+        self.reactions._react(self.db, self.table, 'prod', ME, 'launch', 'flame', True)
+        self.assertEqual(self.reactions.total_reactions(self.db, self.table, 'prod'), 1)
+        self.assertEqual(self.reactions.total_reactions(self.db, self.table, 'gamma'), 2)
+
     def note(self, env, seq, voters):
         """A feedback note with its +1s, as feedback._create and _plus leave them."""
         note_id = f'feedback/{9999999999 - seq:010d}-{seq:032x}.json'

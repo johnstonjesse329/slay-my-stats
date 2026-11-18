@@ -76,7 +76,7 @@ class ParityWithTheLocalExport(unittest.TestCase):
         sid, ts, log, raw = LOCAL[0]
         line = json.dumps({**raw, "telemetry": log}).encode()
         with handler.Spool() as spool:
-            good, rejected, _ = handler.spool_upload(gzip.compress(line), sid, spool)
+            good, rejected, _, _ = handler.spool_upload(gzip.compress(line), sid, spool)
             (month,) = spool.months()
             (parsed,) = spool.runs(month)
         self.assertEqual((good, rejected), (1, 0))
