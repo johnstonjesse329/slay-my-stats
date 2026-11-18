@@ -277,7 +277,7 @@ function renderCardsPage() {
     <td style="padding:0.45rem 0.6rem;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
     <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:var(--text-dim)">${r.pool === "colorless" ? `${charIconHtml(r.pool)}${r.owner}` : charLabelHtml(r.pool)}</td>
     <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
-    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}</td>
+    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}${isCoopCard(r.id) ? `<span class="cards-coop-tag">Multi</span>` : ""}</td>
     <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.offered}</td>
     <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.pickRate, "#ccc")}</td>
     <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.winPicked,  "#ccc")}</td>
@@ -349,18 +349,31 @@ function loadSiteStatsForFavs() {
       // loading (the idle pre-render of the page does exactly that), so keep it
       // dirty when it is not on screen: the next visit then draws the "All"
       // columns instead of the stale table without them.
-      if (currentPage === "cards") renderCardsPage();
-      else pageDirty.cards = true;
+      ["cards", "relics"].forEach(page => {
+        if (currentPage === page) PAGE_RENDERERS[page]();
+        else pageDirty[page] = true;
+      });
     })
     .catch(() => {});
 }
 
+// Cards that only turn up in multiplayer runs (DATA.cardCoop, run.py's
+// build_card_coop()). They get a bucket of their own, so a co-op card doesn't
+// take a rarity's spot from the cards a solo run can offer.
+let favCoopIds = null;
+const isCoopCard = id => (favCoopIds || (favCoopIds = new Set(DATA.cardCoop || []))).has(id);
+const favRarity = r => id => (DATA.cardData[id] || {}).rarity === r && !isCoopCard(id);
 const FAV_SLOTS = [
-  { label: "Common",   kind: "cards",  test: id => (DATA.cardData[id] || {}).rarity === "Common" },
-  { label: "Uncommon", kind: "cards",  test: id => (DATA.cardData[id] || {}).rarity === "Uncommon" },
-  { label: "Rare",     kind: "cards",  test: id => (DATA.cardData[id] || {}).rarity === "Rare" },
-  { label: "Relic",    kind: "relics", test: id => id in (DATA.relicData || {}) },
+  { label: "Common",   kind: "cards", test: favRarity("Common") },
+  { label: "Uncommon", kind: "cards", test: favRarity("Uncommon") },
+  { label: "Rare",     kind: "cards", test: favRarity("Rare") },
+  { label: "Multi",    kind: "cards", coop: true, test: isCoopCard },
 ];
+// The Co-op bucket only while multiplayer runs are in view (and the build
+// knew which cards those are). Relics have a page of their own (relics-page.js).
+function favSlots() {
+  return FAV_SLOTS.filter(s => !s.coop || ((DATA.cardCoop || []).length && sharedActivePlayers !== "solo"));
+}
 // A win rate needs the item picked in at least this share of the runs, so a
 // card taken twice and won twice doesn't top the list.
 const FAV_MIN_SHARE = 0.10;
@@ -427,7 +440,10 @@ function favPicksFor(tallies, slot, chars) {
       if (slot.kind === "relics" || favBuyCounts(id, char)) { b[2] += q[2]; b[3] += q[3]; }
     });
   });
-  const items = Object.entries(byId).map(([id, q]) => ({ id, picks: q[0], wins: q[1], buys: q[2], buyWins: q[3], runs: q[4] }));
+  // The site totals also count offers, so an item offered but never taken is
+  // in there with no picks: it can't be anyone's favorite.
+  const items = Object.entries(byId).map(([id, q]) => ({ id, picks: q[0], wins: q[1], buys: q[2], buyWins: q[3], runs: q[4] }))
+    .filter(it => it.picks > 0);
   const top = (list, key) => list.reduce((best, it) => !best || it[key] > best[key] ? it : best, null);
   const rated = items.filter(it => it.picks >= Math.max(1, Math.ceil(it.runs * FAV_MIN_SHARE))).map(it => ({ ...it, winPct: it.wins / it.picks * 100 }));
   return {
@@ -445,6 +461,12 @@ function favPicksFor(tallies, slot, chars) {
 // phone's page.
 function favCellHtml(kind, item, winPct, detail) {
   if (!item) return `<td class="fav-cell fav-empty">—</td>`;
+  return `<td class="fav-cell">${favItemHtml(kind, item, winPct, detail)}</td>`;
+}
+
+// The item itself, without its cell: favCellHtml wraps one, the by-character
+// grid stacks yours above everybody's in one cell.
+function favItemHtml(kind, item, winPct, detail, extraClass = "") {
   const isCard = kind === "cards";
   const label = isCard ? fmtCardLabel(item.id) : fmtRelicLabel(item.id);
   const src = isCard ? cardImgSrc(item.id) : relicImgSrc(item.id);
@@ -454,19 +476,19 @@ function favCellHtml(kind, item, winPct, detail) {
     ? `<span class="fav-item-face">${face}</span>`
     : src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="fav-pic">` : "";
   const rate = winPct == null ? "—" : `${Math.round(winPct)}%`;
-  return `<td class="fav-cell"><span class="fav-item" tabindex="0" data-fav-kind="${kind}" data-fav-id="${item.id}" aria-label="${label}, ${detail}, ${rate} won">
+  return `<span class="fav-item${extraClass}" tabindex="0" data-fav-kind="${kind}" data-fav-id="${item.id}" aria-label="${label}, ${detail}, ${rate} won">
     <span class="fav-icon">${pic}</span>
     <span class="fav-text">
       <span class="fav-name">${label}</span>
       <span class="fav-detail"><span class="fav-rate${winPct >= 50 ? " fav-hi" : ""}">${rate}</span><span class="fav-won"> won</span></span>
       <span class="fav-count">${detail}</span>
     </span>
-  </span></td>`;
+  </span>`;
 }
 
 function favPanelHtml(title, tallies, chars) {
   const picks = n => `${n} pick${n !== 1 ? "s" : ""}`;
-  const rows = FAV_SLOTS.map(slot => {
+  const rows = favSlots().map(slot => {
     const f = favPicksFor(tallies, slot, chars);
     const p = f.picked, w = f.win, b = f.bought;
     return `<tr><th>${slot.label}</th>
@@ -484,12 +506,85 @@ function favPanelHtml(title, tallies, chars) {
   </div>`;
 }
 
+// With every character in view, one row per character instead of one pool
+// for all of them: the columns are the slots (the rarities, and Multi), and a
+// switch picks which of the three choices (most picked, best win %, most
+// bought) fills them. Your block of slots sits beside all players', as on
+// the Relics tab; below 1620px a You / All players switch shows one at a time.
+let favByCharMetric = "picked";
+const FAV_METRICS = [
+  { key: "picked", label: "Most picked" },
+  { key: "win",    label: "Best win %" },
+  { key: "bought", label: "Most bought" },
+];
+
+// The figures one metric shows for its item: the win rate and the count
+// behind it, as in the panels.
+function favMetricFigures(metric, it) {
+  if (!it) return [null, null];
+  const picks = n => `${n} pick${n !== 1 ? "s" : ""}`;
+  if (metric === "win")    return [it.winPct, `${it.wins} of ${it.picks}`];
+  if (metric === "bought") return [it.buyWins / it.buys * 100, `${it.buys} bought`];
+  return [it.wins / it.picks * 100, picks(it.picks)];
+}
+
+function favByCharHtml(you, all) {
+  // Characters with runs in either set, in the site's roster order.
+  const chars = DATA.characters.filter(c => you.runs[c] || (all && all.runs[c]));
+  const slots = favSlots();
+  const cls = (who, i) => ` fav-${who}${who === "all" && i === 0 ? " fav-all-start" : ""}`;
+  const block = (tallies, char, who) => slots.map((slot, i) => {
+    const it = tallies && favPicksFor(tallies, slot, [char])[favByCharMetric];
+    if (!it) return `<td class="fav-cell fav-empty${cls(who, i)}">—</td>`;
+    const [rate, detail] = favMetricFigures(favByCharMetric, it);
+    return `<td class="fav-cell${cls(who, i)}">${favItemHtml(slot.kind, it, rate, detail)}</td>`;
+  }).join("");
+  const heads = who => slots.map((s, i) => `<th class="${cls(who, i).trim()}">${s.label}</th>`).join("");
+  const groups = all ? `<tr class="fav-groups"><th></th>
+    <th class="fav-group-you" colspan="${slots.length}">Your runs</th>
+    <th class="fav-group-all fav-all-start" colspan="${slots.length}">All players</th></tr>` : "";
+  const rows = chars.map(char => {
+    const n = you.runs[char] || 0;
+    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${block(you, char, "you")}${all ? block(all, char, "all") : ""}</tr>`;
+  }).join("");
+  const switcher = `<div class="filter-group fav-metric">${FAV_METRICS.map(m =>
+    `<button class="toggle-btn${m.key === favByCharMetric ? " active" : ""}" data-fav-metric="${m.key}">${m.label}</button>`).join("")}</div>`;
+  const who = all ? `<div class="filter-group fav-who">${["you", "all"].map(w =>
+    `<button class="toggle-btn${(w === "all") === favByCharShowAll ? " active" : ""}" data-fav-who="${w}">${w === "all" ? "All players" : "You"}</button>`).join("")}</div>` : "";
+  return `<div class="fav-bychar">
+    <div class="fav-bychar-bar">${switcher}${who}</div>
+    <div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-blocks-table${favByCharShowAll && all ? " show-all" : ""}${slots.length > 3 ? " fav-wide" : ""}">
+      <thead>${groups}<tr><th></th>${heads("you")}${all ? heads("all") : ""}</tr></thead><tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+let favByCharShowAll = false; // once the blocks don't fit side by side: which one shows
+
+const favCoopNote = () => favSlots().some(s => s.coop) ? ", and of the cards only multiplayer runs offer (Multi)" : "";
+
 function renderCardFavorites() {
   loadSiteStatsForFavs();
-  const chars = sharedActiveChar === "ALL" ? DATA.characters : [sharedActiveChar];
   const all = favTalliesAll();
   const box = document.getElementById("cards-favorites");
-  box.innerHTML = favPanelHtml("You", favTalliesYou(), chars) + (all ? favPanelHtml("All players", all, chars) : "");
+  const caption = document.getElementById("cards-fav-caption");
+  if (sharedActiveChar === "ALL") {
+    box.classList.add("fav-panels-bychar");
+    box.innerHTML = favByCharHtml(favTalliesYou(), all);
+    if (caption) caption.textContent = `Each character's ${FAV_METRICS.find(m => m.key === favByCharMetric).label.toLowerCase()} card of each rarity${favCoopNote()}${all ? ", yours beside all players'" : ""}. Every card shows its win rate, with the count behind it underneath.`;
+    box.querySelectorAll("[data-fav-metric]").forEach(btn => btn.addEventListener("click", () => {
+      favByCharMetric = btn.dataset.favMetric;
+      renderCardFavorites();
+    }));
+    box.querySelectorAll("[data-fav-who]").forEach(btn => btn.addEventListener("click", () => {
+      favByCharShowAll = btn.dataset.favWho === "all";
+      renderCardFavorites();
+    }));
+  } else {
+    box.classList.remove("fav-panels-bychar");
+    const chars = [sharedActiveChar];
+    box.innerHTML = favPanelHtml("You", favTalliesYou(), chars) + (all ? favPanelHtml("All players", all, chars) : "");
+    if (caption) caption.textContent = `Your most-picked, best win rate and most-bought card of each rarity${favCoopNote()}, beside the same for all players. Every card shows its win rate, with the count behind it underneath.`;
+  }
   box.querySelectorAll(".fav-item[data-fav-id]").forEach(el => {
     const show = () => showFloatingHtmlTooltip(el, el.dataset.favKind === "cards"
       ? buildCardTooltip(el.dataset.favId, 0) : buildRelicTooltip(el.dataset.favId));

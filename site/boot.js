@@ -187,6 +187,7 @@
       cardImageOverrides: catalog.cardImageOverrides,
       cardData: catalog.cardData,
       cardChar: catalog.cardChar,
+      cardCoop: catalog.cardCoop || [],
       cardVariants: catalog.cardVariants,
       measuredRuns: catalog.measuredRuns,
       fightDemand: catalog.fightDemand,
