@@ -11,10 +11,10 @@ pre-commit hook runs it whenever infra, docs or the README are in a commit.
 ## What's new copy comes from the owner
 
 The What's new page intro and every post in `site/whats-new/` are the owner's words, not ours.
-Draft one when asked and suggest edits to theirs, but never rewrite, trim or swap out their
-wording, and never add claims, features or detail they didn't write. When they send text, it goes
-in as written (fix only an obvious typo, and say so). Show the exact before and after in the
-message that asks for approval, as for any public text.
+Draft one when asked and suggest edits to theirs. Trimming, organizing and tightening are fine,
+but keep their voice: don't swap in different phrasing or tone, and never add claims, features or
+detail they didn't write. Show the exact before and after in the message that asks for approval,
+as for any public text.
 
 Open: a way to suggest flagship changes worth a post (so the owner can pick what to write up).
 Not built; ask before inventing one.
