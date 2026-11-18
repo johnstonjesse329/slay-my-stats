@@ -411,6 +411,30 @@ run without the tag isn't known to be unmodded.
 
 A Custom Run (the game's `game_mode` of `custom`) carries `modifiers`, the ids of its rule changes (Sealed Deck, Hoarder, ...), kept as plain ids. Its header shows a gold "Custom" tag listing them on hover, and the shared filter bar's Modes checkboxes (Standard, Daily, Blitz, Dread, Custom) have a Custom box, unticked by default like Blitz; a box shows only once you have a run in that mode, and the Players buttons (All / Solo / Multi) split by party size. Saved filters from before the split map onto the new pair. Dread is on by default beside Standard, and a Dread run shows the game's Dread gem in the run list's Asc column in place of "A10", and the run header spells it out with a Dread tag instead. In the Ascension filter and the per-ascension tables Dread is its own rung after A10 (the gem beside its checkbox), so A10 no longer includes Dread runs. Custom runs stay on their own page of the run list and out of every site-wide pool (the home-page totals and the fight-demand cuts), since their rules make them poor comparisons to normal games.
 
+#### Upload config (what the mod uploads)
+
+The mod keeps a JSON file, `slay-my-stats-config.json`, in the game's user data folder (the folder the game keeps its saves in). The mod creates it with
+the defaults below if it's missing, and re-reads it before every upload batch, so a change applies without restarting the game.
+
+- `uploadsEnabled` (default `true`): `false` stops all uploads. Turn it back on and the mod uploads whatever it skipped.
+- `profiles` (default `"all"`): `"all"`, or a list of profiles; only runs from these upload.
+- `shareMultiplayerIds` (default `true`): `false` strips co-op partners' Steam IDs from a run before it's sent (your own stays, so the site can tell which player you are) and sends `multiplayerIdsShared: false` with it.
+
+```json
+{
+  "uploadsEnabled": true,
+  "profiles": ["profile1"],
+  "shareMultiplayerIds": true
+}
+```
+
+A run the config skips isn't marked as uploaded, so the next backfill sends it once the config allows it. If the file doesn't parse, **nothing uploads** until
+it does: the mod shows a main-menu notice (where it can show UI), writes the exact error to `slay-my-stats-config-error.txt` next to the config (deleted
+once the config parses), and logs it.
+
+The site keeps each co-op run's `multiplayerIdsShared` (`true` when the upload doesn't say, as with a `.run` file from the Upload page) on the run itself,
+so a later feature can link a co-op run to the other players' copies only where both shared their IDs. Nothing reads it yet.
+
 ### Held runs
 
 A reference for investigated missing IDs is kept in [tools/held-run-sources.md](tools/held-run-sources.md).
