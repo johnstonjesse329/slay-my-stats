@@ -132,6 +132,8 @@ function syncRunHash() {
   if (parsePageHash().page !== "detail") return;
   const hash = "#" + pageHash("detail");
   if (location.hash !== hash) history.replaceState(null, "", hash);
+  // Each run shown counts as a view of it (site/boot.js); a repeat is dropped there.
+  if (window.noteView) noteView("detail", detailSelectedTs);
 }
 
 // The header's "Copy link" button: this page's own address with the run in
