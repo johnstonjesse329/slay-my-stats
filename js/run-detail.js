@@ -815,29 +815,35 @@ function heldCountsByNode(nodes, finalItems, added, lost) {
   return nodes.map(n => items.filter(it => it.added <= n.floor + 1 && it.removed > n.floor + 1).length);
 }
 
-// One chart with a line for each player. A player with no figures for it is left out.
-function partyChart(id, nodes, players, series, cell, reverse = false, icon = null) {
+// One chart with a line for each player. A player with no figures for it is left out. `extra` adds
+// what every player shares: `lines` (datasets drawn first), `rows(i)` (hover rows under the players')
+// and `floorAtZero` (a ratio axis has no below-zero).
+function partyChart(id, nodes, players, series, cell, reverse = false, icon = null, extra = {}) {
   let chart = null;
   const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
   const tip = context => showFloorTip(context, i => nodes[i]
     ? floorTipHead(nodes[i]) + `<table>${players.map((p, j) => series[j]
-        ? `<tr><td>${swatch(p)} ${escapeHtml(p.label)}</td><td>${cell(p, i, series[j][i])}</td></tr>` : "").join("")}</table>`
+        ? `<tr><td>${swatch(p)} ${escapeHtml(p.label)}</td><td>${cell(p, i, series[j][i])}</td></tr>` : "").join("")}${extra.rows ? extra.rows(i) : ""}</table>`
     : "");
   const base = iconAxis({ min: 0 });
   const y = { ...base, stacked: false, reverse, ticks: { ...base.ticks, maxTicksLimit: 5 } };
-  const datasets = players.map((p, j) => series[j] ? {
+  if (extra.floorAtZero) {
+    const stretch = y.afterDataLimits;
+    y.afterDataLimits = scale => { if (stretch) stretch(scale); scale.min = Math.max(0, scale.min); };
+  }
+  const datasets = [...(extra.lines || []), ...players.map((p, j) => series[j] ? {
     label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color, borderDash: p.dash,
     borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone",
     ...(icon ? nodePoints(nodes, () => chart, icon) : {}),
-  } : null).filter(Boolean);
+  } : null)].filter(Boolean);
   chart = new Chart(document.getElementById(id).getContext("2d"),
     floorChartConfig(nodes, [], tip, y, datasets, actWindow(nodes)));
   bindRangeSelect(chart, nodes);
   return chart;
 }
 
-// Swap the page's own floor charts for the party's. The deck and relic stacks and the fight-by-fight
-// and energy charts belong to one player, so they give way (CSS hides their boxes).
+// Swap the page's own floor charts for the party's: one line per player, and on "Keeping up, fight by
+// fight" one shared 1x line and fight-turns line, since the fight is the same for everyone.
 function renderPartyCharts(players) {
   const nodes = players.map(p => p.run.timeline || []).reduce((a, b) => b.length > a.length ? b : a, []);
   const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
@@ -864,11 +870,13 @@ function renderPartyCharts(players) {
     if (old === detailRelicChart) detailRelicChart = null;
   };
   // Returns the new chart, or null (leaving the page's own) when nobody has figures for it.
-  const build = (id, legendId, series, cell, reverse, icon = null) => {
+  const build = (id, legendId, series, cell, reverse, icon = null, extra = {}) => {
     if (!has(series)) return null;
     dropCanvas(id);
-    document.getElementById(legendId).innerHTML = legend;
-    return partyChart(id, nodes, players, series, cell, reverse, icon);
+    const shared = (extra.lines || []).map(l =>
+      `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, ${l.borderColor} 0 4px, transparent 4px 7px)"></span>${l.label}</span>`).join("");
+    document.getElementById(legendId).innerHTML = shared ? legend.slice(0, -"</div>".length) + shared + "</div>" : legend;
+    return partyChart(id, nodes, players, series, cell, reverse, icon, extra);
   };
 
   const hp = build("detail-hp-chart", "detail-hp-legend", players.map(p => pad(tl(p).map(n => n.hpAfter ?? null))),
@@ -881,7 +889,29 @@ function renderPartyCharts(players) {
   const relics = build("detail-relic-chart", "detail-relic-legend",
     players.map(p => pad(heldCountsByNode(tl(p), p.run.finalRelics, p.run.relicsAdded, p.run.relicsLost))), count);
   if (relics) detailRelicChart = relics;
+  // Keeping up, fight by fight: each player's damage taken as a multiple of the average win. The
+  // fight is the same for all of them, so its turns and the 1x line are drawn once.
+  const fightIcon = (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc);
+  const turnsShare = nodes.map((_, i) => {
+    for (const r of readings) { const x = r && r[i]; if (x && x.winTurns !== undefined) return x.turns / x.winTurns; }
+    return null;
+  });
+  const times = v => v == null ? "–" : `${v.toFixed(2)}×`;
+  const share = build("detail-keep-share-chart", "detail-keep-share-legend",
+    perFight(r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1)), (p, i, v) => times(v), false, fightIcon, {
+      floorAtZero: true,
+      lines: [
+        { label: "Average win", data: nodes.map(() => 1), borderColor: "#b9b9c4", backgroundColor: "#b9b9c4", borderWidth: 1.5,
+          borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 0 },
+        { label: "Fight turns", data: turnsShare, borderColor: KEEP_TURN_COLOR, backgroundColor: KEEP_TURN_COLOR, borderWidth: 2,
+          borderDash: [6, 3], pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone" },
+      ],
+      rows: i => turnsShare[i] == null ? "" :
+        `<tr><td><span class="fl-swatch" style="border-top:3px dashed ${KEEP_TURN_COLOR};height:0"></span> Fight turns</td><td>${times(turnsShare[i])}</td></tr>`,
+    });
+  if (share) document.getElementById("detail-keep-share-picks").style.display = "none";
   const keep = [
+    share,
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
       (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc)),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", perFight(r => r.doing), turn, false,
