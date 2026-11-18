@@ -504,11 +504,15 @@ class SlayMyStatsStack(Stack):
             on_failure=lambda_destinations.LambdaDestination(failure_fn),
         )
         data_bucket.grant_read_write(process_fn)  # and delete: junk uploads aren't kept
-        data_bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            s3n.LambdaDestination(process_fn),
-            s3.NotificationKeyFilter(prefix="raw/"),
-        )
+        # Uploads arrive as form POSTs (presign_post); PUT is kept for writing
+        # one by hand. A bucket-to-bucket copy (tools/seed_gamma.py) is neither,
+        # so copying uploads that were already processed doesn't run them again.
+        for event in (s3.EventType.OBJECT_CREATED_POST, s3.EventType.OBJECT_CREATED_PUT):
+            data_bucket.add_event_notification(
+                event,
+                s3n.LambdaDestination(process_fn),
+                s3.NotificationKeyFilter(prefix="raw/"),
+            )
 
         # CloudFormation can't create a SecureString with a real value baked
         # into the template, so the parameter itself is created out-of-band
