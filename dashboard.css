@@ -292,8 +292,14 @@ h1 {
 .fav-bychar-table .fav-theirs { border-left-color: rgba(157, 184, 240, 0.7); margin-top: 0.3rem; background: rgba(157, 184, 240, 0.05); }
 .fav-bychar-table .fav-none { display: flex; align-items: center; color: var(--text-dim); min-height: 2rem; }
 @media (max-width: 700px) {
-  .fav-bychar-table th:first-child { width: 6rem; }
-  .pivot.fav-bychar-table { min-width: 520px; }
+  /* Phones: a narrow name column, so the relics' three columns fit the screen
+     and the cards' four scroll only a little. */
+  .fav-bychar-table th:first-child { width: 4.6rem; }
+  .fav-bychar-table tbody th .char-label { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; overflow-wrap: anywhere; }
+  .pivot.fav-bychar-table { min-width: 460px; }
+  .pivot.fav-bychar-table.relics-fav-table { min-width: 0; }
+  .fav-bychar-table .fav-item { padding-left: 0.3rem; column-gap: 0.25rem; }
+  .fav-bychar-table .fav-pic { width: 28px; height: 28px; }
 }
 .fav-pic { width: 34px; height: 34px; object-fit: contain; border-radius: 4px; }
 .fav-icon { display: flex; align-items: center; justify-content: center; }
@@ -324,6 +330,19 @@ h1 {
 /* Card Stats: the table at a snug width, and on wide screens the full card of
    the row under the pointer in the space beside it (previewCard). */
 .cards-split { display: flex; gap: 1.5rem; align-items: stretch; }
+/* Relics page: the offer table (renderRelicsTable), snug like the cards one. */
+.relics-list { max-height: min(70vh, 720px); overflow-y: auto; }
+#relics-table { table-layout: auto; min-width: 760px; width: 100%; }
+#relics-table th { cursor: pointer; user-select: none; white-space: nowrap; padding: 0.45rem 0.6rem; font-size: var(--fs-sm); }
+#relics-table td { padding: 0.35rem 0.6rem; font-size: var(--fs-sm); }
+#relics-table td.relics-num { text-align: center; font-size: var(--fs-md); }
+#relics-table .relics-name { display: inline-flex; align-items: center; gap: 0.5rem; font-size: var(--fs-md); color: #ccc; cursor: pointer; }
+#relics-table th.cards-all-col { background: #2e2a4c; }
+#relics-tbody td.cards-all { background: rgba(157, 184, 240, 0.06); }
+#relics-table .cards-all-start { border-left: 1px solid rgba(157, 184, 240, 0.35); }
+.pivot.relics-fav-table { min-width: 640px; }
+/* A co-op-only card's rarity carries a small Co-op tag (isCoopCard). */
+.cards-coop-tag { display: inline-block; margin-left: 0.4rem; padding: 0 0.35rem; border: 1px solid rgba(157, 184, 240, 0.45); border-radius: 4px; color: #9db8f0; font-size: var(--fs-xs); line-height: 1.4; vertical-align: 1px; }
 /* You / All players: phones only (the desktop table shows both). */
 #cards-who { display: none; margin-bottom: 0.6rem; }
 .cards-list { flex: 0 1 1500px; min-width: 0; max-height: min(70vh, 720px); overflow-y: auto; }
@@ -354,12 +373,12 @@ h1 {
 .cards-thumb { width: var(--cards-thumb-w); height: calc(var(--cards-thumb-w) * 0.75); object-fit: contain; border-radius: 4px; vertical-align: middle; }
 /* The table's two blocks of four figures carry their own heading and tint, so
    "whose number is this" is read from the block, not from every column title. */
-#cards-thead .cards-groups th {
+#cards-thead .cards-groups th, #relics-thead .cards-groups th {
   padding: 0.6rem 0.6rem 0.15rem; font-size: var(--fs-sm); font-weight: 800;
   letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
 }
-#cards-thead .cards-group-you { text-align: left; color: var(--gold); }
-#cards-thead .cards-group-all {
+#cards-thead .cards-group-you, #relics-thead .cards-group-you { text-align: left; color: var(--gold); }
+#cards-thead .cards-group-all, #relics-thead .cards-group-all {
   text-align: center; color: #9db8f0; background: #2e2a4c;
   border-left: 1px solid rgba(157, 184, 240, 0.35);
 }

@@ -2,7 +2,7 @@
 // Page navigation
 // =========================================================================
 
-const PAGES = ["overview", "detail", "cards", "seeds"];
+const PAGES = ["overview", "detail", "cards", "relics", "seeds"];
 let currentPage = "overview";
 
 // The URL hash names the tab, and on Run Detail the run as well:
@@ -20,6 +20,7 @@ const PAGE_RENDERERS = {
   overview:  updateAll,
   detail:    renderDetailRunList,
   cards:     renderCardsPage,
+  relics:    renderRelicsPage,
   seeds:     renderSeeds,
 };
 

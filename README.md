@@ -26,11 +26,13 @@ bar or **Copy link** in the run's header), and opening one shows that run whatev
 
 ![Runs tab showing a run's rating and Keeping Up by Floor](images/site-run-detail.png)
 
-**Cards:** your most-picked, best win rate and most-bought cards and relics beside every player's — each one showing its win rate — with pick and win rates for every card, yours and every player's side by side (on a phone, a You / All players switch swaps which set the table shows).
+**Cards:** your most-picked, best win rate and most-bought card of each rarity beside every player's — each one showing its win rate — one row per character when every character is in view, with the cards only multiplayer runs offer in a Co-op column of their own. Below, pick and win rates for every card, yours and every player's side by side (on a phone, a You / All players switch swaps which set the table shows).
+
+**Relics:** the same favorites for relics, one row per character, and pick and win rates for every relic, yours and every player's.
 
 ![Cards tab with card pick rates](images/site-card-stats.png)
 
-The dashboard has four pages: Overview, Runs, Cards and Seeds. They cover win
+The dashboard has five pages: Overview, Runs, Cards, Relics and Seeds. They cover win
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup, among your own runs or everyone's.
 
@@ -38,7 +40,7 @@ Overview always shows the full history, ignoring saved filters and filter links.
 statistics and charts cover Standard and Dread runs across all characters, builds, dates,
 mods and party sizes; a mode breakdown separately counts Daily, Custom and Blitz runs.
 The filter bar stays visible and locked on Overview. Filters can be changed on Runs,
-Cards and Seeds, and survive a visit to Overview. The normal bar says Default filters
+Cards, Relics and Seeds, and survive a visit to Overview. The normal bar says Default filters
 applied. Selections that differ from the built-in defaults highlight the bar and say
 Filters applied, with the matching run count and selections.
 Reset filters also clears the saved default in
@@ -69,7 +71,8 @@ slay-my-stats/
 │   ├── page-nav.js          tabs and the shared filter bar
 │   ├── fight-tables.js      Overview page: per-boss and per-elite fight lanes
 │   ├── run-detail.js        Runs page
-│   ├── cards-page.js        Cards page
+│   ├── cards-page.js        Cards page (and the favorites tallies the Relics page shares)
+│   ├── relics-page.js       Relics page
 │   ├── seeds.js             Seeds page
 │   ├── charts.js            Chart.js setup
 │   ├── card-face.js         card rendering
@@ -469,8 +472,8 @@ Lambda tallies just the runs an upload added and adds that onto `users/_stats.js
 write. No one's history is ever reread, and a duplicate run is never counted twice. The file holds raw
 counts for every card and relic, around 11 KB for 660 runs, so the page does the ranking and its thresholds
 can change without recounting. It also counts each character's card and relic picks, and how many were shop
-buys, for the All players favorites on the Cards page, plus how often each was offered and how often a skipped
-offer went on to win, for the "All" columns of the card pick rate table (the file's `pickSlots` says which layout
+buys, for the All players favorites on the Cards and Relics pages, plus how often each was offered and how often a skipped
+offer went on to win, for the "All" columns of the card and relic pick rate tables (the file's `pickSlots` says which layout
 it has; a file counted before offers were kept has none, and the page then leaves those columns out until
 `tools/rebuild_stats.py` recounts it).
 
