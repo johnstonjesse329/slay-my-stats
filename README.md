@@ -24,9 +24,9 @@ relics show their art and rules text in place, since there is room beside the ca
 link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 A multiplayer run that the other players uploaded too names them on its **Party** line. Each name is a tab that
-shows that player's copy of the run in place, with a link to it on their profile, and **Everyone** draws every
-player on the run's own charts (HP, damage taken, damage done, deck, gold and relics), one line each. Dragging across
-a chart lists each player's card and relic changes over those floors.
+shows that player's copy of the run in place, with a link to it on their profile. **Everyone**, above the floor
+charts, draws every player on them (HP, damage taken, damage done, deck, gold and relics), one line each. Dragging
+across a chart lists each player's card and relic changes over those floors.
 **Played with** above the list narrows it to the runs with the
 players you pick (see [Co-op links](#co-op-links)). A seed you played more than once numbers its attempts: a "#2" by
 the character in the list, the start time in place of the date for attempts on the same day, and "Attempt 2 of 3" in
@@ -488,7 +488,7 @@ off. What ties them together for certain is the party's Steam IDs, which a copy 
   or profile taken off the site takes its links with it.
 - **On the page**, `site/boot.js` fetches the links file with the profile (revalidated every visit, since a partner's
   upload changes it) and the player list for the partners' current names. The run's header shows a Party line:
-  a tab for the profile's own player, one for each partner and **Everyone**. A partner's tab fetches that partner's
+  a tab for the profile's own player and one for each partner. A partner's tab fetches that partner's
   copy (their profile summary, then the month file holding it) and shows it in place, with a link to
   `/u/<partner>#detail/<their ts>`. The tab goes in the address (`#detail/<ts>/<partner>` or `#detail/<ts>/all`), so a
   copied link or a reload keeps it. **Played with** above the

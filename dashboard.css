@@ -1545,8 +1545,6 @@ h1 {
 .party-profile-link:hover, .party-profile-link:focus-visible { color: var(--gold-bright); }
 .party-note { color: var(--loss); }
 #detail-content.party-loading > :not(#detail-run-header) { opacity: 0.45; transition: opacity 0.2s; }
-/* "Everyone": the run page with every player on its floor charts. What belongs to one player is hidden; those boxes set display inline, hence !important. */
-#detail-content.party-on :is(#detail-timeline, #detail-deck-relics, #detail-deck-box, .detail-run-headline-stats, .detail-run-header-stats, #detail-keep-acts, #detail-keep-actpick, .keep-key, .party-hide) { display: none !important; }
 .floor-tip .fl-swatch, .floor-legend .fl-swatch[style*="border-top"] { display: inline-block; width: 18px; }
 .range-player { margin-top: 0.6rem; }
 .range-who { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; border-left: 3px solid; padding-left: 0.5rem; }
@@ -3167,3 +3165,10 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .detail-run-party-heads { display: none; }
   .detail-run-party-text { display: inline; font-size: var(--fs-sm); }
 }
+
+/* The charts' own toggle, in the Keeping Up by Floor heading: just you, or every player. */
+.party-toggle { display: inline-flex; gap: 0.3rem; margin: 0 0 0.6rem; }
+.party-toggle:empty { display: none; }
+.party-toggle button { font: inherit; color: var(--text-dim); background: none; border: 1px solid var(--border, #3a3c42); border-radius: 6px; padding: 0.2rem 0.7rem; cursor: pointer; }
+.party-toggle button:hover, .party-toggle button:focus-visible { color: var(--text); }
+.party-toggle button[aria-pressed="true"] { border-color: var(--gold); background: rgba(224, 196, 104, 0.12); color: var(--gold); }

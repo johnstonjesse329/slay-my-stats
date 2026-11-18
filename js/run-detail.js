@@ -227,12 +227,30 @@ function partyLineHtml(run, who = "", note = "") {
         `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>`
       : "");
   }).join("");
-  const all = tab("all", `<span class="party-name">Everyone</span>`, "The whole party side by side", " party-all");
-  return `<div class="detail-run-party" role="group" aria-label="Party"><span class="party-label">Party</span>${slots}${all}` +
+  return `<div class="detail-run-party" role="group" aria-label="Party"><span class="party-label">Party</span>${slots}` +
     `${note ? `<span class="party-note" role="status">${escapeHtml(note)}</span>` : ""}</div>`;
 }
 
+// The charts' toggle: just the profile's own player, or every player on the same charts.
+function partyToggleHtml(owner, all) {
+  const party = coopParty(owner);
+  if (!party) return "";
+  const me = party.find(p => p.self);
+  const mine = me ? (me.name || fmtCharName(me.char)) : "You";
+  const b = (who, label) => `<button type="button" data-who="${who}" aria-pressed="${all === (who === "all")}">${escapeHtml(label)}</button>`;
+  return b("", `Just ${mine}`) + b("all", "Everyone");
+}
+
 document.addEventListener("click", e => {
+  const t = e.target.closest("#detail-party-toggle button");
+  if (t) {
+    const owner = DATA.runsData.find(r => r.ts === detailSelectedTs);
+    if (!owner || t.dataset.who === (detailView.who === "all" ? "all" : "")) return;
+    detailView = { ts: owner.ts, who: t.dataset.who };
+    syncRunHash();
+    renderDetailRun(owner);
+    return;
+  }
   const b = e.target.closest("#detail-run-header .party-tab");
   if (!b) return;
   const owner = DATA.runsData.find(r => r.ts === detailSelectedTs);
@@ -567,10 +585,8 @@ const bindRunCopyLinks = owner =>
 // and link belong to.
 function showRunCopy(run, owner, note = "", players = null) {
   clearPartyView();
-  if (players) {
-    detailParty = players;
-    document.getElementById("detail-content").classList.add("party-on");
-  }
+  if (players) detailParty = players;
+  document.getElementById("detail-party-toggle").innerHTML = partyToggleHtml(owner, !!players);
   detailShownRun = run;
   detailForeign = run !== owner;
   const { tl, totalRemoves, totalShopRemoves, totalPotionsBought, totalPotionsGained, totalRelicsBought,
@@ -703,7 +719,7 @@ function showRunCopy(run, owner, note = "", players = null) {
   }).join("");
 
   document.getElementById("detail-run-header").innerHTML = `
-    ${runHeaderBarHtml(run, owner, !!players)}
+    ${runHeaderBarHtml(run, owner)}
     ${partyLineHtml(owner, partyViewOf(owner.ts), note)}
     <div class="detail-run-headline-stats">
       ${headlineHtml}${ancientBoonsHtml}
@@ -789,7 +805,6 @@ function partyPlayers(owner, copies) {
 function clearPartyView() {
   detailParty = null;
   rangeParty = null;
-  document.getElementById("detail-content").classList.remove("party-on");
 }
 
 // How many of a run's cards (or relics) were held after each node, or null where the run
@@ -801,7 +816,8 @@ function heldCountsByNode(nodes, finalItems, added, lost) {
 }
 
 // One chart with a line for each player. A player with no figures for it is left out.
-function partyChart(id, nodes, players, series, cell, reverse = false) {
+function partyChart(id, nodes, players, series, cell, reverse = false, icon = null) {
+  let chart = null;
   const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
   const tip = context => showFloorTip(context, i => nodes[i]
     ? floorTipHead(nodes[i]) + `<table>${players.map((p, j) => series[j]
@@ -812,8 +828,9 @@ function partyChart(id, nodes, players, series, cell, reverse = false) {
   const datasets = players.map((p, j) => series[j] ? {
     label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color, borderDash: p.dash,
     borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone",
+    ...(icon ? nodePoints(nodes, () => chart, icon) : {}),
   } : null).filter(Boolean);
-  const chart = new Chart(document.getElementById(id).getContext("2d"),
+  chart = new Chart(document.getElementById(id).getContext("2d"),
     floorChartConfig(nodes, [], tip, y, datasets, actWindow(nodes)));
   bindRangeSelect(chart, nodes);
   return chart;
@@ -847,33 +864,34 @@ function renderPartyCharts(players) {
     if (old === detailRelicChart) detailRelicChart = null;
   };
   // Returns the new chart, or null (leaving the page's own) when nobody has figures for it.
-  const build = (id, legendId, series, cell, reverse) => {
+  const build = (id, legendId, series, cell, reverse, icon = null) => {
     if (!has(series)) return null;
     dropCanvas(id);
     document.getElementById(legendId).innerHTML = legend;
-    return partyChart(id, nodes, players, series, cell, reverse);
+    return partyChart(id, nodes, players, series, cell, reverse, icon);
   };
 
   const hp = build("detail-hp-chart", "detail-hp-legend", players.map(p => pad(tl(p).map(n => n.hpAfter ?? null))),
-    (p, i, v) => v == null ? "–" : `${v}<small>/${(tl(p)[i] || {}).maxHp}</small>`);
+    (p, i, v) => v == null ? "–" : `${v}<small>/${(tl(p)[i] || {}).maxHp}</small>`, false,
+    (n, key) => n.type === "boss" || HP_ICON_KEYS.has(key) || (key === "unknown" && !!n.enc));
   if (hp) detailHpChart = hp;
-  const gold = build("detail-gold-chart", "detail-gold-legend", players.map(p => pad(tl(p).map(n => n.gold ?? null))), count);
+  const gold = build("detail-gold-chart", "detail-gold-legend", players.map(p => pad(tl(p).map(n => n.gold ?? null))), count, false,
+    (n, key) => GOLD_ICON_KEYS.has(key));
   if (gold) detailGoldChart = gold;
   const relics = build("detail-relic-chart", "detail-relic-legend",
     players.map(p => pad(heldCountsByNode(tl(p), p.run.finalRelics, p.run.relicsAdded, p.run.relicsLost))), count);
   if (relics) detailRelicChart = relics;
   const keep = [
-    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true),
-    build("detail-keep-damage-chart", "detail-keep-damage-legend", perFight(r => r.doing), turn),
+    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
+      (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc)),
+    build("detail-keep-damage-chart", "detail-keep-damage-legend", perFight(r => r.doing), turn, false,
+      (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc)),
     build("detail-keep-deck-chart", "detail-keep-deck-legend",
       players.map(p => pad(heldCountsByNode(tl(p), p.run.finalDeck, p.run.deckAdded, p.run.cardsLost))), count),
   ];
   detailKeepCharts.push(...keep.filter(Boolean));
   // The HP chart lives in the keep box, which the owner's own copy may have hidden.
   if (hp || keep.some(Boolean)) document.getElementById("detail-keep-box").style.display = "";
-  // What belongs to one player has no party version.
-  ["detail-keep-share-chart", "detail-keep-play-chart"].forEach(dropCanvas);
-  if (detailDeckChart) { detailDeckChart.destroy(); detailDeckChart = null; }
 }
 
 // ---- Timeline ----
