@@ -418,22 +418,17 @@ the defaults below if it's missing, and re-reads it before every upload batch, s
 
 - `uploadsEnabled` (default `true`): `false` stops all uploads. Turn it back on and the mod uploads whatever it skipped.
 - `profiles` (default `"all"`): `"all"`, or a list of profiles; only runs from these upload.
-- `shareMultiplayerIds` (default `true`): `false` strips co-op partners' Steam IDs from a run before it's sent (your own stays, so the site can tell which player you are) and sends `multiplayerIdsShared: false` with it.
 
 ```json
 {
   "uploadsEnabled": true,
-  "profiles": ["profile1"],
-  "shareMultiplayerIds": true
+  "profiles": ["profile1"]
 }
 ```
 
 A run the config skips isn't marked as uploaded, so the next backfill sends it once the config allows it. If the file doesn't parse, **nothing uploads** until
 it does: the mod shows a main-menu notice (where it can show UI), writes the exact error to `slay-my-stats-config-error.txt` next to the config (deleted
 once the config parses), and logs it.
-
-The site keeps each co-op run's `multiplayerIdsShared` (`true` when the upload doesn't say, as with a `.run` file from the Upload page) on the run itself,
-so a later feature can link a co-op run to the other players' copies only where both shared their IDs. Nothing reads it yet.
 
 ### Held runs
 

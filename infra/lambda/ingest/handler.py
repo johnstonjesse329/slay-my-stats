@@ -552,17 +552,9 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = N
             # The mod's own account of the run, kept apart from the history the
             # parser rebuilds: never merged into a profile, never counted.
             telemetry = data.pop("telemetry", None)
-            # Whether the mod left co-op partners' Steam IDs in the run: false when
-            # the player's upload config strips them. Not part of a .run file, so
-            # it is read here and put on the parsed run below.
-            ids_shared = data.pop("multiplayerIdsShared", None)
             if "start_time" in data and "players" in data:
                 run_shaped += 1
             parsed = run.parse_run_data(data, steam_id=steam_id)
-            # Only co-op runs have partners; absent means shared (a .run file from
-            # the site, or a mod from before the setting, always carried the IDs).
-            if parsed.get("mp"):
-                parsed["multiplayerIdsShared"] = ids_shared is not False
             ts = parsed.get("ts")
             ok = (isinstance(ts, int) and not isinstance(ts, bool) and TS_MIN <= ts <= TS_MAX
                   and check_safe(parsed)

@@ -982,17 +982,6 @@ class ProcessTests(Uploads, unittest.TestCase):
         # The party's characters, in the save's slot order, never their Steam IDs.
         self.assertEqual(run_doc["party"], ["IRONCLAD", "SILENT"])
 
-    def test_multiplayer_ids_shared_is_kept_per_co_op_run(self):
-        self.ingest(body_of(minimal_run(1700000001, multiplayerIdsShared=False),
-                            multiplayer_run(1700000002),
-                            {**multiplayer_run(1700000003), "multiplayerIdsShared": False},
-                            {**multiplayer_run(1700000004), "multiplayerIdsShared": True}))
-        by_ts = {r["ts"]: r for r in self.store.runs()}
-        self.assertNotIn("multiplayerIdsShared", by_ts[1700000001])      # solo: no partners
-        self.assertIs(by_ts[1700000002]["multiplayerIdsShared"], True)   # absent = shared
-        self.assertIs(by_ts[1700000003]["multiplayerIdsShared"], False)
-        self.assertIs(by_ts[1700000004]["multiplayerIdsShared"], True)
-
     def test_party_is_kept_for_multiplayer_runs_only(self):
         self.ingest(body_of(minimal_run(1700000001)))
         self.assertNotIn("party", self.store.runs()[0])
