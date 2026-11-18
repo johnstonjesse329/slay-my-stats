@@ -351,12 +351,13 @@ h1 {
 .fav-blocks-table td.fav-cell { vertical-align: middle; }
 .fav-blocks-table td.fav-empty { color: var(--text-dim); }
 .fav-blocks-table .fav-item { border-left: 0; padding-left: 0; }
-/* The You / All players switch: only once both blocks no longer fit (1000px
-   for the relics' three columns, 1500px for the cards' four); then one block
-   shows at a time. */
+/* The You / All players switch: only once both blocks no longer fit in the
+   panel (a 1000px table for the relics' three columns, 1500px for the cards'
+   four, plus about 120px of page and panel padding); then one block shows at
+   a time. */
 #relics-who, .fav-bychar-bar .fav-who { display: none; margin-bottom: 0.6rem; }
 .fav-bychar-bar .fav-who { margin: 0; }
-@media (max-width: 1500px) {
+@media (max-width: 1620px) {
   .fav-bychar-bar .fav-who { display: flex; }
   .pivot.fav-blocks-table.fav-wide { min-width: 0; }
   .fav-blocks-table.fav-wide .fav-groups { display: none; }
@@ -365,7 +366,7 @@ h1 {
   /* A long name (Bloodletting) would otherwise break mid-word. */
   .fav-blocks-table.fav-wide .fav-name { font-size: var(--fs-xs); overflow-wrap: normal; }
 }
-@media (max-width: 1000px) {
+@media (max-width: 1120px) {
   #relics-who:not([hidden]) { display: flex; }
   .pivot.fav-bychar-table.fav-blocks-table { min-width: 0; }
   .fav-blocks-table .fav-groups { display: none; }

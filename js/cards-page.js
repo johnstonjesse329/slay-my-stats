@@ -510,7 +510,7 @@ function favPanelHtml(title, tallies, chars) {
 // for all of them: the columns are the slots (the rarities, and Multi), and a
 // switch picks which of the three choices (most picked, best win %, most
 // bought) fills them. Your block of slots sits beside all players', as on
-// the Relics tab; below 1500px a You / All players switch shows one at a time.
+// the Relics tab; below 1620px a You / All players switch shows one at a time.
 let favByCharMetric = "picked";
 const FAV_METRICS = [
   { key: "picked", label: "Most picked" },
@@ -558,7 +558,7 @@ function favByCharHtml(you, all) {
     </table></div>
   </div>`;
 }
-let favByCharShowAll = false; // below 1000px: which block shows
+let favByCharShowAll = false; // once the blocks don't fit side by side: which one shows
 
 const favCoopNote = () => favSlots().some(s => s.coop) ? ", and of the cards only multiplayer runs offer (Multi)" : "";
 
