@@ -86,29 +86,29 @@ class GammaGate(unittest.TestCase):
     def test_prod_stops_without_a_gamma_pass(self):
         self.head("a" * 40)
         with self.assertRaisesRegex(deploy.DeployError, "no pass recorded"):
-            deploy.require_gamma_ok()
+            deploy.require_gamma_ok(None)
 
     def test_prod_takes_the_commit_gamma_passed(self):
         self.head("a" * 40)
-        deploy.record_gamma_ok()
-        deploy.require_gamma_ok()
+        deploy.record_gamma_ok("a" * 40)
+        deploy.require_gamma_ok(None)
 
     def test_prod_stops_on_a_newer_commit(self):
         self.head("a" * 40)
-        deploy.record_gamma_ok()
+        deploy.record_gamma_ok("a" * 40)
         self.head("b" * 40)
         with self.assertRaisesRegex(deploy.DeployError, "last passed aaaaaaa"):
-            deploy.require_gamma_ok()
+            deploy.require_gamma_ok(None)
 
     def test_a_dirty_tree_records_nothing(self):
         self.head("a" * 40, dirty=True)
-        deploy.record_gamma_ok()
+        deploy.record_gamma_ok(None)  # a dirty tree has no commit to pass
         self.assertFalse(self.file.exists())
 
     def test_the_hotfix_override(self):
         self.head("a" * 40)
         os.environ["DEPLOY_SKIP_GAMMA"] = "1"
-        deploy.require_gamma_ok()
+        deploy.require_gamma_ok(None)
 
 
 class FeedbackTableGuard(unittest.TestCase):
@@ -137,18 +137,18 @@ class FeedbackTableGuard(unittest.TestCase):
 
     def test_a_push_stops_with_no_table_deploy_recorded(self):
         with self.assertRaisesRegex(deploy.DeployError, "--feedback-table"):
-            deploy.require_feedback_table()
+            deploy.require_feedback_table(None)
 
     def test_a_push_goes_ahead_while_the_file_matches(self):
         self.file.write_text("c" * 40)
-        deploy.require_feedback_table()
+        deploy.require_feedback_table(None)
         self.assertIn(("git", "diff", "--name-only", "c" * 40, "--", deploy.FEEDBACK_STACK_FILE), self.calls)
 
     def test_a_push_stops_once_the_file_changed(self):
         self.file.write_text("c" * 40)
         self.diff = deploy.FEEDBACK_STACK_FILE
         with self.assertRaisesRegex(deploy.DeployError, r"changed since .*(ccccccc)"):
-            deploy.require_feedback_table()
+            deploy.require_feedback_table(None)
 
     def test_an_unchanged_table_records_the_commit_without_deploying(self):
         deploy.deploy_feedback_table()

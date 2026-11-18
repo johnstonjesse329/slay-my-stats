@@ -576,9 +576,10 @@ window.addEventListener("mousemove", () => document.body.classList.remove("suppr
 
 // Restore tab from URL hash — runs last so all init code has already executed
 (function() {
-  const { page, runTs } = parsePageHash();
-  if (!PAGES.includes(page)) return;
-  if (runTs != null) openRunLink(runTs); else showPage(page);
+  const { page, runTs, view } = parsePageHash();
+  // A bare load stays on Overview without a showPage(), so it's counted here (site/boot.js).
+  if (!PAGES.includes(page)) { if (window.noteView) noteView(currentPage); return; }
+  if (runTs != null) openRunLink(runTs, view); else showPage(page);
 })();
 
 // Card Stats is the heaviest page to render on first visit — one row per

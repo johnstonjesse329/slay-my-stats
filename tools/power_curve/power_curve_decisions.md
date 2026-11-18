@@ -1901,3 +1901,6 @@ run's chart cannot say it.
 
 Checked by `tools/test_keep_share_chart.py`, which recomputes both series from the run file and
 `fight_demand.json` and holds the page to them on desktop and both iPhone 16 layouts.
+
+Multiplayer, Everyone view: the same chart draws one damage-taken line per player. The 1x line and
+the fight-turns line are drawn once, because the fight (and so its winners' turns) is the same for all.

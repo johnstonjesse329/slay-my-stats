@@ -316,6 +316,18 @@ def merge(card: dict, game: dict, character_pools: set[str]) -> list[str]:
         card["showInCardLibrary"] = game["ShowInCardLibrary"]
         changed.append("showInCardLibrary")
 
+    # Cards only multiplayer runs offer (tools/ExportCards.cs's MultiplayerConstraint),
+    # kept as multiplayerOnly: true on just those. An export from before the exporter
+    # recorded it has no such key, and leaves the card as it was.
+    if "MultiplayerConstraint" in game:
+        mp_only = game["MultiplayerConstraint"] == "MultiplayerOnly"
+        if bool(card.get("multiplayerOnly")) != mp_only:
+            if mp_only:
+                card["multiplayerOnly"] = True
+            else:
+                card.pop("multiplayerOnly", None)
+            changed.append("multiplayerOnly")
+
     return changed
 
 

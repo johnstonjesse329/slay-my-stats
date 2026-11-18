@@ -23,22 +23,39 @@ group showing what feeds a payoff and what it pays off and the reason they conne
 relics show their art and rules text in place, since there is room beside the cards. Each run has its own
 link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
+A multiplayer run that the other players uploaded too names them on its **Party** line. Each name is a tab that
+shows that player's copy of the run in place, with a link to it on their profile. **Everyone**, above the floor
+charts, draws every player on them (HP, damage taken, damage done, deck, gold and relics), one line each. Dragging
+across a chart lists each player's card and relic changes over those floors.
+**Played with** above the list narrows it to the runs with the
+players you pick (see [Co-op links](#co-op-links)). A seed you played more than once numbers its attempts: a "#2" by
+the character in the list, the start time in place of the date for attempts on the same day, and "Attempt 2 of 3" in
+the run's header with links to the others.
 
 ![Runs tab showing a run's rating and Keeping Up by Floor](images/site-run-detail.png)
 
-**Cards:** your most-picked, best win rate and most-bought cards and relics beside every player's — each one showing its win rate — with pick and win rates for every card, yours and every player's side by side (on a phone, a You / All players switch swaps which set the table shows).
+**Cards:** each character's most-picked, best win rate and most-bought card of each rarity, yours beside every player's, then pick and win rates for every card.
+
+**Relics:** the same for relics.
 
 ![Cards tab with card pick rates](images/site-card-stats.png)
 
-The dashboard has four pages: Overview, Runs, Cards and Seeds. They cover win
+The dashboard has five pages: Overview, Runs, Cards, Relics and Seeds. They cover win
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup, among your own runs or everyone's.
+
+**What's new** (`/whats-new`) lists what's shipped on the site and the mod, newest first, each post at its own
+link (`/whats-new/<id>`). Anyone can read it. Signed in through Steam, you can react to a post with one
+of six of the game's icons (Rest Site, Elite, Red Skull, Glass Eye, Unknown, Happy Flower), and a post that closes
+feedback notes says how many players asked for it, with "You asked for this" for those who did. The site bar marks
+What's new with a dot until that browser has opened it since the newest post. Posts are files in `site/whats-new/`
+(see [its README](site/whats-new/README.md)).
 
 Overview always shows the full history, ignoring saved filters and filter links. Its
 statistics and charts cover Standard and Dread runs across all characters, builds, dates,
 mods and party sizes; a mode breakdown separately counts Daily, Custom and Blitz runs.
 The filter bar stays visible and locked on Overview. Filters can be changed on Runs,
-Cards and Seeds, and survive a visit to Overview. The normal bar says Default filters
+Cards, Relics and Seeds, and survive a visit to Overview. The normal bar says Default filters
 applied. Selections that differ from the built-in defaults highlight the bar and say
 Filters applied, with the matching run count and selections.
 Reset filters also clears the saved default in
@@ -69,7 +86,8 @@ slay-my-stats/
 │   ├── page-nav.js          tabs and the shared filter bar
 │   ├── fight-tables.js      Overview page: per-boss and per-elite fight lanes
 │   ├── run-detail.js        Runs page
-│   ├── cards-page.js        Cards page
+│   ├── cards-page.js        Cards page (and the favorites tallies the Relics page shares)
+│   ├── relics-page.js       Relics page
 │   ├── seeds.js             Seeds page
 │   ├── charts.js            Chart.js setup
 │   ├── card-face.js         card rendering
@@ -82,6 +100,7 @@ slay-my-stats/
 ├── site/                    Site-only code
 │   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>, pages
 │   ├── pages/               hand-written pages: <name>.html is served at /<name> (see its README)
+│   ├── whats-new/           What's new posts, one HTML file each, shown on pages/whats-new.html (see its README)
 │   ├── home-intro.html      the home page's hero: title, upload button, a line pointing to the Workshop mod, preview picture
 │   ├── home-preview.webp    that picture, and og-preview.png (the link preview): shots of a made-up player,
 │   │                        retaken by hand when the dashboard's look changes
@@ -89,18 +108,22 @@ slay-my-stats/
 │   ├── players.css          site bar, finder, site stats, pages
 │   ├── upload.js            Steam sign-in and the upload panel
 │   ├── upload.css
-│   └── feedback.js          feedback panel on every page (talks to /auth/feedback)
+│   ├── feedback.js          feedback panel on every page (talks to /auth/feedback)
+│   └── whats-new.js         What's new reactions and requests, and the site bar's new-post dot (talks to /auth/reactions)
 ├── infra/                   CDK app
 │   ├── app.py
 │   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
 │   ├── lambda/ingest/handler.py               the upload Lambdas (ingest, process, failure), the gamma Steam login and the feedback router
 │   ├── lambda/ingest/measured.py              per-floor energy and card numbers, read from a run's event log at upload
 │   ├── lambda/ingest/feedback.py              the gamma feedback inbox (session check, notes, resolve)
-│   ├── tests/test_ingest.py, test_measured.py, test_feedback.py, test_gamma_auth.py
+│   ├── lambda/ingest/reactions.py             What's new reactions and who asked for a post, kept in the feedback table
+│   ├── lambda/ingest/views.py                 page views, counted from CloudFront's access logs for the morning digest
+│   ├── tests/test_ingest.py, test_measured.py, test_feedback.py, test_gamma_auth.py, test_views.py, test_whats_new.py
 │   └── requirements.txt     CDK, boto3
 ├── tools/
 │   ├── serve_site.py        local dev server emulating CloudFront + the Lambda
 │   ├── deploy.py            pre-push deploy (see "Deploying")
+│   ├── test_deploy.py       the deploy lock and commit export, on a throwaway repo
 │   ├── smoke_site.py        loads the deployed site as a visitor would; deploy.py runs it last
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
@@ -187,8 +210,9 @@ the CSS and the other scripts) carry a hash of their content in the name (`app.5
 the site-wide running totals (see [Site-wide stats](#site-wide-stats)).
 
 **Server-side code** is just the upload Lambdas (one checks the Steam sign-in and hands out an upload URL, one
-adds each upload to its profile), the budget kill switch, and a morning email of the day's uploads. Viewing a page runs no Lambda at all;
-the only code involved is a small CloudFront Function that sends every `/u/<name>` address to `index.html`.
+adds each upload to its profile), the budget kill switch, and a morning email of the day's uploads. Viewing a page runs no Lambda,
+apart from the What's new page asking the ingest Lambda for its reaction counts; the only other code involved is a small
+CloudFront Function that sends every `/u/<name>` address to `index.html`.
 
 ## The website
 
@@ -220,13 +244,13 @@ own, `SlayMyStatsFeedbackStack` (`infra/slay_my_stats/feedback_stack.py`), which
 | **CloudFront Function** (`ProfileUrlRewriteFunction`) | Viewer request, JS 2.0. Sets the URI to `/index.html`. | Page URLs like `/u/<slug>` have no S3 object. Rewriting at the edge keeps the shareable URL in the address bar. Attached only to page behaviors, so asset requests never pay for it. |
 | **Route 53 A record** | Alias to the distribution, in an existing hosted zone. | The domain. The hosted zone is created outside CDK. |
 | **ACM certificate** | Imported by ARN, us-east-1. | CloudFront only reads certificates from us-east-1. Created outside CDK. |
-| **Ingest Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Function URL with no CORS, reached through CloudFront's `auth/*`. | The Steam sign-in and its 30-day session cookie, feedback, and the upload URL: it checks the session and the rate limits, then hands out a presigned POST for one upload. No API Gateway, and it never sees the upload, so it stays small. |
+| **Ingest Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Function URL with no CORS, reached through CloudFront's `auth/*`. | The Steam sign-in and its 30-day session cookie, feedback, What's new reactions, and the upload URL: it checks the session and the rate limits, then hands out a presigned POST for one upload. No API Gateway, and it never sees the upload, so it stays small. |
 | **Mod Lambda** | Python 3.12, 256 MB, 15 s timeout, one-week log retention. Same code as the ingest Lambda, answering only `/mod` and `/mod/runs`. Public Function URL, no CORS. | The game mod's door (see "Mod uploads"). Its own function so it can be shut off alone. |
 | **Process Lambda** | Python 3.12, 1024 MB, 5 min timeout, one-week log retention. Invoked by S3 for each new `raw/` object, retried twice. | Parses an upload and merges it into the profile a month at a time, so it costs the same however big the profile is. A 20,000-run upload took ~50 s locally; only one that big runs long. |
 | **Failure Lambda** | Python 3.12, 128 MB, 15 s timeout, one-month log retention. The process Lambda's on-failure destination; can only write `users/_uploads/*` and publish to the alert SNS topic, which has one email subscription. | When an upload has failed every retry, writes a failed result so the uploader's page says so instead of waiting, logs it, and emails you the raw key and the error. Lambda calls it directly, with no queue to poll, so it costs nothing unless something fails (SNS's first 1,000 emails a month are free). |
-| **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*`, publish to the alert SNS topic, write the adoption table and put metrics in the `slay-my-stats` namespace. | A daily summary of uploads and feedback, reported for trends. |
-| **Adoption table** `slay-my-stats-adoption` | DynamoDB, provisioned at 1 read and 1 write (inside the always-free 25), deletion protection, **retained**. Production only. One row a day, keyed by date. | The day's player, run and feedback counts, kept for trends. The digest also sends six of them as CloudWatch metrics for the dashboard; CloudWatch keeps those 15 months, the table keeps them for good. |
-| **Feedback table** `slay-my-stats-feedback` | DynamoDB, on-demand, point-in-time recovery, deletion protection, **retained**. Partition key `env` (`gamma`, `prod`), four indexes for the inbox's filters, TTL on the hourly throttle counters only. Its own stack, shared by both stages; IAM holds each Lambda to the `env` values it may read or write. | The feedback notes, their +1s and the FB-n counter. One table so a note keeps its number and history wherever it is read from. |
+| **Digest Lambda** + schedule | Python 3.12, 256 MB, 60 s timeout, one-month log retention. Production only. An EventBridge Scheduler cron at 8 AM America/Chicago invokes it; it can read `users/*` and `analytics/*`, write `analytics/views/*`, read the access-log bucket's `site/*`, publish to the alert SNS topic, write the adoption table and put metrics in the `slay-my-stats` namespace. | A daily summary of uploads, feedback and page views, reported for trends (see [Page views](#page-views)). |
+| **Adoption table** `slay-my-stats-adoption` | DynamoDB, provisioned at 1 read and 1 write (inside the always-free 25), deletion protection, **retained**. Production only. One row a day, keyed by date. | The day's player, run and feedback counts, kept for trends. The digest also sends six of them, plus the day's page views and visitors, as CloudWatch metrics for the dashboard; CloudWatch keeps those 15 months, the table keeps them for good. |
+| **Feedback table** `slay-my-stats-feedback` | DynamoDB, on-demand, point-in-time recovery, deletion protection, **retained**. Partition key `env` (`gamma`, `prod`), four indexes for the inbox's filters, TTL on the hourly throttle counters only. Its own stack, shared by both stages; IAM holds each Lambda to the `env` values it may read or write. | The feedback notes, their +1s and the FB-n counter, and the reactions on What's new posts (`react#`/`rcount#` items beside the notes, which every note query skips). One table so a note keeps its number and history wherever it is read from. |
 | **SSM parameter** `/slay-my-stats/session-key` | SecureString, imported by name, production only; the ingest Lambda gets read and `kms:Decrypt`. | Signs the session cookie. Kept out of the template and the Lambda's settings, since anyone holding it could sign in as anyone. Rotating it signs everyone out. |
 | **SSM parameter** `/slay-my-stats/steam-api-key` | SecureString, imported by name; the process and mod Lambdas get read and `kms:Decrypt`. | Steam Web API key for display names, and for confirming a mod's Steam ticket. CloudFormation can't create a SecureString with a real value, so it's created with the AWS CLI. |
 | **Metric filters + alarms** `ModRequests`, `ModRefusals` | Production only. Counted from the mod Lambda's log lines marked `"via": "mod"`. Alarm at 30 requests in 5 minutes, or 10 refusals in 15; both notify the alert SNS topic. | A mod stuck sending in a loop, or someone poking at the mod path, emails you. A handful of requests a day is normal. |
@@ -246,13 +270,15 @@ scripts read).
 |------|---------------------|--------|---------|
 | `/u/*` | rewrite to `/index.html` | site bucket | optimized (`/index.html`'s cache entry) |
 | `/<page>`, `/<page>/` (one pair per `site/pages/` file) | rewrite to `/index.html` | site bucket | optimized |
+| `/whats-new/*` (a What's new post's own link) | rewrite to `/index.html` | site bucket | optimized |
 | `/users/*` | none | data bucket | **disabled**, so a profile shows an upload straight away |
 | everything else (`/`, `/app.<hash>.js`, `/catalog.<hash>.json`, art) | none | site bucket | optimized |
 
 `ids/*` in the data bucket has no behavior, so it's unreachable from outside.
 
 Inside the page, `site/boot.js` decides what to draw from `location.pathname`: the player finder and
-site-wide stats on `/`, a hand-written page on `/<page>` (fetched from `/page-<page>.html`), or a
+site-wide stats on `/`, a hand-written page on `/<page>` (fetched from `/page-<page>.html`; on `/whats-new/<id>`,
+What's new scrolled to that post), or a
 profile on `/u/<slug>`, which it loads by fetching the catalog (`/catalog.<hash>.json`), the profile summary
 `/users/<slug>.json.gz` and then all its month files at once, joining them into `window.DATA` and then loading
 `/app.<hash>.js`.
@@ -267,9 +293,12 @@ profile on `/u/<slug>`, which it loads by fetching the catalog (`/catalog.<hash>
 | `users/_index.json.gz` | yes | every player's slug, name, run count and last upload, for the home page's search |
 | `users/_stats.json.gz` | yes | site-wide running totals for the home page (see below) |
 | `users/_uploads/<id>.json.gz` | yes | one upload's result (counts, or why it failed), which the page that sent it polls. The id is random; expires after 7 days. |
+| `users/<slug>/_coop.json.gz` | yes | the profile's co-op runs that other profiles have a copy of: `{"v":1, "runs": {"<ts>": {"i", "with": [{"slug", "ts", "i"}]}}}`, `i` being the party slot (see [Co-op links](#co-op-links)) |
 | `ids/<steamid>.json.gz` | no | `{"slug"}`, so an upload finds its profile |
+| `coop/<seed>.json.gz` | no | every uploaded copy of a co-op game on that seed whose uploader shared the party's Steam IDs: `{"slug", "ts", "party", "i", "ids"}` |
 | `raw/<steamid>/<time>-<id>.ndjson.gz` | no | every upload exactly as sent, so profiles can be rebuilt after a parser fix |
 | `limits/` | no | when upload URLs were last handed out, per Steam account and per IP address |
+| `analytics/views/<day>.json.gz` | no | one day's page views (see [Page views](#page-views)): views by page, player-page tab, player and run, visitors, and page loads by source. Counts only. |
 
 A profile is split by month so an upload only reads and writes the months it adds to, and costs the same however
 big the profile gets. The page fetches every month and joins them, so it still reads as one history. `noRaw`
@@ -418,7 +447,7 @@ the defaults below if it's missing, and re-reads it before every upload batch, s
 
 - `uploadsEnabled` (default `true`): `false` stops all uploads. Turn it back on and the mod uploads whatever it skipped.
 - `profiles` (default `"all"`): `"all"`, or a list of profiles; only runs from these upload.
-- `shareMultiplayerIds` (default `true`): `false` strips co-op partners' Steam IDs from a run before it's sent (your own stays, so the site can tell which player you are) and sends `multiplayerIdsShared: false` with it.
+- `shareMultiplayerIds` (default `true`): `false` strips multiplayer partners' Steam IDs from a run before it's sent (your own stays, so the site can tell which player you are) and sends `multiplayerIdsShared: false` with it.
 
 ```json
 {
@@ -432,8 +461,40 @@ A run the config skips isn't marked as uploaded, so the next backfill sends it o
 it does: the mod shows a main-menu notice (where it can show UI), writes the exact error to `slay-my-stats-config-error.txt` next to the config (deleted
 once the config parses), and logs it.
 
-The site keeps each co-op run's `multiplayerIdsShared` (`true` when the upload doesn't say, as with a `.run` file from the Upload page) on the run itself,
-so a later feature can link a co-op run to the other players' copies only where both shared their IDs. Nothing reads it yet.
+The site keeps each multiplayer run's `multiplayerIdsShared` (`true` when the upload doesn't say, as with a `.run` file from the Upload page) on the run itself,
+and links a co-op run to the other players' copies only where both shared their IDs (below).
+
+#### Co-op links
+
+Everyone in a co-op game saves their own copy of it. The copies share the seed, and since the party shares one map,
+the same characters in the same order, ascension, mode, result and floor. Each one's start time is that player's own
+PC clock, so they start seconds apart when the clocks agree (up to about 30 seen so far) and by anything when one is
+off. What ties them together for certain is the party's Steam IDs, which a copy carries only when its uploader shared them.
+
+- **At upload** the process Lambda lists each co-op run whose IDs were shared in the private `coop/<seed>.json.gz`,
+  with the party's Steam IDs (as compared after rounding through a float64, which some game builds write them as), the
+  uploader's party slot and the shared fields above. Copies with the same Steam IDs, seed and shared fields are one game
+  when each player has one such copy, whatever their clocks say (within six hours). Another group on the same daily seed,
+  or the same friends on different characters, don't match.
+- **The same group on the same seed more than once.** Different results already tell those attempts apart. Ones that
+  ended the same way are paired by start time, corrected by how far apart the two players' clocks have been on their
+  other linked games (the median), and each pair has to be the nearest for both copies by at least a minute over the
+  runner-up. Anything less clear stays unlinked: a missing link is better than one to the wrong attempt.
+- It then rewrites the public `users/<slug>/_coop.json.gz` of everyone in those games, so whoever uploads last links
+  every copy, and it doesn't matter who uploads first or whether the others had a profile yet. The public file names
+  profiles and party slots only, never a Steam ID.
+- **No link without both.** A copy whose uploader turned `shareMultiplayerIds` off isn't listed (and one sent again with
+  it off is taken off), so neither side shows a link to it.
+- `tools/rebuild_profiles.py`, `remove_runs.py` and `remove_profile.py` keep the index and the links in step; a run
+  or profile taken off the site takes its links with it.
+- **On the page**, `site/boot.js` fetches the links file with the profile (revalidated every visit, since a partner's
+  upload changes it) and the player list for the partners' current names. The run's header shows a Party line:
+  a tab for the profile's own player and one for each partner. A partner's tab fetches that partner's
+  copy (their profile summary, then the month file holding it) and shows it in place, with a link to
+  `/u/<partner>#detail/<their ts>`. The tab goes in the address (`#detail/<ts>/<partner>` or `#detail/<ts>/all`), so a
+  copied link or a reload keeps it. **Played with** above the
+  run list (Runs page only, like the archetype tags) keeps the runs that every picked player is linked to; filtering is
+  by name, since Steam IDs are never public.
 
 ### Held runs
 
@@ -469,8 +530,8 @@ Lambda tallies just the runs an upload added and adds that onto `users/_stats.js
 write. No one's history is ever reread, and a duplicate run is never counted twice. The file holds raw
 counts for every card and relic, around 11 KB for 660 runs, so the page does the ranking and its thresholds
 can change without recounting. It also counts each character's card and relic picks, and how many were shop
-buys, for the All players favorites on the Cards page, plus how often each was offered and how often a skipped
-offer went on to win, for the "All" columns of the card pick rate table (the file's `pickSlots` says which layout
+buys, for the All players favorites on the Cards and Relics pages, plus how often each was offered and how often a skipped
+offer went on to win, for the "All" columns of the card and relic pick rate tables (the file's `pickSlots` says which layout
 it has; a file counted before offers were kept has none, and the page then leaves those columns out until
 `tools/rebuild_stats.py` recounts it).
 
@@ -481,6 +542,23 @@ seed then loads their month file for the final deck.
 The update is best effort, like the player list. `tools/rebuild_stats.py` recounts everything from the
 profiles: run it by hand after adding a new figure, removing or rebuilding a profile, or if an update was
 missed.
+
+### Page views
+
+Each page, tab and run the site shows asks for `/seen.txt` once, its query naming what was shown:
+`?p=/u/<slug>&t=cards`, or `&t=detail&r=<run ts>` on Run Detail (`noteView` in `site/boot.js`, called from
+`showPage` and `syncRunHash`). Nothing reads the reply and the browser keeps nothing; the request is only there so
+CloudFront's access logs record it. The 8 AM digest then counts the day's requests
+(`infra/lambda/ingest/views.py`), keeps the counts in `analytics/views/<day>.json.gz`, and adds a **Page views**
+section to its email: views by page and by tab, yesterday and over the last week, the top player pages and runs,
+and where page loads came from. The paths and tab names come from the requests themselves, so a new page in
+`site/pages/` or a new tab in `PAGES` is counted from the day it ships; anything that doesn't look like a path or
+a name is dropped. No addresses or user agents are kept, and the owner's own visits count like anyone's.
+
+It costs nothing beyond what was already running: the pings are cached at the edge and the logs were already kept.
+The day's total views and visitors also go to CloudWatch as two metrics (eight of the free ten) and show on the
+dashboard's **Page views and visitors** graph; the per-page and per-tab counts stay in the files. The numbers are a day old, and standard logs are best-effort, so a few requests
+can be missing. `tools/visit_sources.py` reads the same logs by hand, for page-load sources over a longer span.
 
 ### Maintenance tools
 
@@ -499,6 +577,10 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
   month files, kept raw uploads and telemetry, so a rebuild can't bring them back. `--dry-run` lists first. Delete the
   `.run` file from the game's history folder too, or the next upload sends it again.
 - `tools/rebuild_stats.py` recounts the site-wide stats and rewrites every player's seed file. Run it after any of the above.
+- `tools/seed_gamma.py` copies prod's run data into gamma's bucket as prod built it (adds only, never deletes). The
+  process Lambda fires on uploads only, so the copied raw uploads aren't processed again. `--rebuild` then rebuilds
+  gamma's profiles and stats with the checkout's own code, so a change can be checked on gamma against real data;
+  `--no-copy` only rebuilds.
 
 ## Development
 
@@ -554,9 +636,9 @@ every push of `gamma` run it for [gamma](#gamma):
 ```mermaid
 flowchart TB
     push["git push (main or gamma)"] --> hook["githooks/pre-push"]
-    hook --> check{"HEAD is the pushed commit,<br/>tree clean, fast-forward (main)?"}
+    hook --> check{"fast-forward (main)?<br/>no other deploy holding the lock?"}
     check -- no --> abort["push aborted"]
-    check -- yes --> diff["cdk diff"]
+    check -- yes --> export["export the pushed commit<br/>to local_data/deploy-build/"] --> diff["cdk diff"]
     diff -- "changes" --> ask{"Deploy these<br/>infra changes? y/N"}
     ask -- N --> abort2["push aborted"]
     ask -- y --> deploy["cdk deploy"] --> smoke
@@ -587,8 +669,19 @@ request to another host left hanging and fails unless content is on screen withi
 slow CDN script looked like when Chart.js still came from jsdelivr. Without Playwright that step is skipped with
 a note. Run it by hand with `python tools/smoke_site.py [host] [--player slug] [--browser]`.
 Production only deploys a commit that gamma has already deployed and passed: a successful gamma deploy of a
-clean checkout records its commit inside the git directory, and a prod deploy of any other commit stops and
-says to push to gamma first. `DEPLOY_SKIP_GAMMA=1` overrides it for a hotfix.
+commit records it inside the git directory, and a prod deploy of any other commit stops and says to push to
+gamma first. `DEPLOY_SKIP_GAMMA=1` overrides it for a hotfix.
+
+A push builds the pushed commit, not the checkout it is pushed from: `git archive` exports it to the main
+checkout's `local_data/deploy-build/`, which borrows that checkout's ignored inputs (the infra venv,
+`infra/cdk.context.json`, the art folders and game data) and is deleted afterwards. So you can push from any
+worktree, and no checkout needs to be clean or on that commit. By hand, `tools/deploy.py --stage gamma --ref
+origin/gamma` does the same; without `--ref` it deploys the working tree as it is.
+
+One deploy runs at a time, of either stage or any stack, across every checkout and worktree: each takes
+`slay-my-stats-deploy.lock` in the git directory, and a second one stops and names the holder, its commit and
+when it started. `tools/deploy.py --lock-status` shows it. A deploy killed part-way (a closed terminal) leaves
+the lock behind; once nothing is still deploying, `tools/deploy.py --break-lock` clears it.
 
 Set up once, outside CDK:
 

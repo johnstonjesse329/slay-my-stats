@@ -8,6 +8,7 @@ Routes, all under /auth/ on the site's own origin (CloudFront sends them here):
     GET  /auth/me                 -> {"steamId"} while signed in, else 401
     POST /auth/logout             -> clears the session
     GET/POST /auth/feedback       -> feedback.handle
+    GET/POST /auth/reactions      -> reactions.handle (What's new; reading needs no sign-in)
     POST /auth/upload             -> an upload URL (handler.authorize), only where `upload` is given
 
 The cookie is `<steam id>.<expiry>.<HMAC-SHA256 of both>`, host-only, Secure, HttpOnly and
@@ -139,6 +140,9 @@ def handle(event, upload=None) -> dict:
     if path == "/auth/feedback":
         from feedback import handle as feedback
         return feedback(event)
+    if path == "/auth/reactions":
+        from reactions import handle as reactions
+        return reactions(event)
     if path == "/auth/upload" and upload:
         if method != "POST":
             return _json(405, {"error": "method_not_allowed", "message": "POST only."})

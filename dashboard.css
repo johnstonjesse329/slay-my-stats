@@ -271,6 +271,33 @@ h1 {
   .fav-table .fav-item { --fav-face-w: 34px; grid-template-columns: auto auto; column-gap: 0.4rem; min-height: 48px; }
   .fav-table .fav-name, .fav-table .fav-won, .fav-table .fav-count { display: none; }
 }
+/* All characters: one row per character (favByCharHtml), the slots as
+   columns. The blocks are styled with .fav-blocks-table below. */
+.fav-panels.fav-panels-bychar { display: block; }
+.fav-bychar-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; margin-bottom: 0.6rem; }
+.fav-bychar-bar .fav-metric { margin: 0; }
+.fav-bychar-wrap { max-height: none; }
+.pivot.fav-bychar-table { min-width: 760px; }
+.fav-bychar-table th:first-child { width: 8.5rem; }
+.fav-bychar-table thead th { text-align: left; padding-left: 0.6rem; }
+.fav-bychar-table tbody th { vertical-align: middle; }
+.fav-bychar-table .fav-runs { display: block; margin-top: 0.15rem; font-size: var(--fs-xs); font-weight: 400; color: var(--text-dim); }
+.fav-bychar-table td { vertical-align: top; }
+.fav-bychar-table .fav-item { min-height: 54px; padding: 0.15rem 0 0.15rem 0.5rem; border-left: 3px solid transparent; }
+@media (max-width: 700px) {
+  /* Phones: a narrow name column, so one block of the cards' four columns
+     or the relics' three fits the screen. */
+  .fav-bychar-table th:first-child { width: 4.6rem; }
+  .fav-bychar-table tbody th .char-label { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; overflow-wrap: anywhere; }
+  .pivot.fav-bychar-table { min-width: 460px; }
+  .fav-bychar-table .fav-item { padding-left: 0.3rem; column-gap: 0.25rem; }
+  .fav-bychar-table .fav-pic { width: 28px; height: 28px; }
+  /* The cards' four columns: each rate under its card, so a row fits 393px. */
+  .fav-blocks-table.fav-wide th, .fav-blocks-table.fav-wide td { padding-left: 0.2rem; padding-right: 0.2rem; }
+  .fav-blocks-table.fav-wide thead th:not(:first-child) { text-align: center; }
+  .fav-blocks-table.fav-wide .fav-item { grid-template-columns: auto; justify-items: center; row-gap: 0.15rem; padding-left: 0; }
+  .fav-blocks-table.fav-wide .fav-text { align-items: center; }
+}
 .fav-pic { width: 34px; height: 34px; object-fit: contain; border-radius: 4px; }
 .fav-icon { display: flex; align-items: center; justify-content: center; }
 .fav-item-face img { display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
@@ -300,6 +327,54 @@ h1 {
 /* Card Stats: the table at a snug width, and on wide screens the full card of
    the row under the pointer in the space beside it (previewCard). */
 .cards-split { display: flex; gap: 1.5rem; align-items: stretch; }
+/* Relics page: the offer table (renderRelicsTable), snug like the cards one. */
+.relics-list { max-height: min(70vh, 720px); overflow-y: auto; }
+#relics-table { table-layout: auto; min-width: 760px; width: 100%; }
+#relics-table th { cursor: pointer; user-select: none; white-space: nowrap; padding: 0.45rem 0.6rem; font-size: var(--fs-sm); }
+#relics-table td { padding: 0.35rem 0.6rem; font-size: var(--fs-sm); }
+#relics-table td.relics-num { text-align: center; font-size: var(--fs-md); }
+#relics-table .relics-name { display: inline-flex; align-items: center; gap: 0.5rem; font-size: var(--fs-md); color: #ccc; cursor: pointer; }
+#relics-table th.cards-all-col { background: #2e2a4c; }
+#relics-tbody td.cards-all { background: rgba(157, 184, 240, 0.06); }
+#relics-table .cards-all-start { border-left: 1px solid rgba(157, 184, 240, 0.35); }
+/* Favorites by character (cards and relics): your block of picks beside all
+   players', headed and tinted like the offer tables' two blocks. */
+.pivot.fav-blocks-table { min-width: 1000px; }
+.pivot.fav-blocks-table.fav-wide { min-width: 1500px; }
+.fav-blocks-table thead th { text-align: left; }
+.fav-blocks-table .fav-groups th { padding: 0.5rem 0.6rem 0.15rem; font-size: var(--fs-sm); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.fav-blocks-table .fav-group-you { color: var(--gold); }
+.fav-blocks-table .fav-group-all { color: #9db8f0; }
+.fav-blocks-table th.fav-all, .fav-blocks-table .fav-group-all { background: #2e2a4c; }
+.fav-blocks-table td.fav-all { background: rgba(157, 184, 240, 0.06); }
+.fav-blocks-table .fav-all-start { border-left: 1px solid rgba(157, 184, 240, 0.35); }
+.fav-blocks-table td.fav-cell { vertical-align: middle; }
+.fav-blocks-table td.fav-empty { color: var(--text-dim); }
+.fav-blocks-table .fav-item { border-left: 0; padding-left: 0; }
+/* The You / All players switch: only once both blocks no longer fit in the
+   panel (a 1000px table for the relics' three columns, 1500px for the cards'
+   four, plus about 120px of page and panel padding); then one block shows at
+   a time. */
+#relics-who, .fav-bychar-bar .fav-who { display: none; margin-bottom: 0.6rem; }
+.fav-bychar-bar .fav-who { margin: 0; }
+@media (max-width: 1620px) {
+  .fav-bychar-bar .fav-who { display: flex; }
+  .pivot.fav-blocks-table.fav-wide { min-width: 0; }
+  .fav-blocks-table.fav-wide .fav-groups { display: none; }
+  .fav-blocks-table.fav-wide:not(.show-all) .fav-all, .fav-blocks-table.fav-wide.show-all .fav-you { display: none; }
+  .fav-blocks-table.fav-wide .fav-all-start { border-left: 0; }
+  /* A long name (Bloodletting) would otherwise break mid-word. */
+  .fav-blocks-table.fav-wide .fav-name { font-size: var(--fs-xs); overflow-wrap: normal; }
+}
+@media (max-width: 1120px) {
+  #relics-who:not([hidden]) { display: flex; }
+  .pivot.fav-bychar-table.fav-blocks-table { min-width: 0; }
+  .fav-blocks-table .fav-groups { display: none; }
+  .fav-blocks-table:not(.show-all) .fav-all, .fav-blocks-table.show-all .fav-you { display: none; }
+  .fav-blocks-table .fav-all-start { border-left: 0; }
+}
+/* A co-op-only card's rarity carries a small Co-op tag (isCoopCard). */
+.cards-coop-tag { display: inline-block; margin-left: 0.4rem; padding: 0 0.35rem; border: 1px solid rgba(157, 184, 240, 0.45); border-radius: 4px; color: #9db8f0; font-size: var(--fs-xs); line-height: 1.4; vertical-align: 1px; }
 /* You / All players: phones only (the desktop table shows both). */
 #cards-who { display: none; margin-bottom: 0.6rem; }
 .cards-list { flex: 0 1 1500px; min-width: 0; max-height: min(70vh, 720px); overflow-y: auto; }
@@ -330,12 +405,12 @@ h1 {
 .cards-thumb { width: var(--cards-thumb-w); height: calc(var(--cards-thumb-w) * 0.75); object-fit: contain; border-radius: 4px; vertical-align: middle; }
 /* The table's two blocks of four figures carry their own heading and tint, so
    "whose number is this" is read from the block, not from every column title. */
-#cards-thead .cards-groups th {
+#cards-thead .cards-groups th, #relics-thead .cards-groups th {
   padding: 0.6rem 0.6rem 0.15rem; font-size: var(--fs-sm); font-weight: 800;
   letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
 }
-#cards-thead .cards-group-you { text-align: left; color: var(--gold); }
-#cards-thead .cards-group-all {
+#cards-thead .cards-group-you, #relics-thead .cards-group-you { text-align: left; color: var(--gold); }
+#cards-thead .cards-group-all, #relics-thead .cards-group-all {
   text-align: center; color: #9db8f0; background: #2e2a4c;
   border-left: 1px solid rgba(157, 184, 240, 0.35);
 }
@@ -1180,7 +1255,7 @@ h1 {
   gap: 0.5rem;
   min-width: 0;
 }
-#detail-tag-filter {
+#detail-tag-filter, #detail-partner-filter {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -1208,9 +1283,9 @@ h1 {
 .tag-filter-text { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-filter-caret { color: var(--text-dim); transition: transform 0.15s; }
 .tag-filter-summary:hover .tag-filter-caret { color: var(--text); }
-#detail-tag-filter.expanded .tag-filter-caret { transform: rotate(180deg); }
+#detail-tag-filter.expanded .tag-filter-caret, #detail-partner-filter.expanded .tag-filter-caret { transform: rotate(180deg); }
 .tag-filter-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--hairline); }
-#detail-tag-filter:not(.expanded) .tag-filter-chips { display: none; }
+#detail-tag-filter:not(.expanded) .tag-filter-chips, #detail-partner-filter:not(.expanded) .tag-filter-chips { display: none; }
 .tag-filter-chips { flex-direction: column; flex-wrap: nowrap; gap: 0.4rem; }
 .tag-filter-group { display: grid; grid-template-columns: 8.5rem 1fr; align-items: start; gap: 0.3rem 0.6rem; }
 .tag-filter-char { display: flex; align-items: center; min-height: 1.7rem; white-space: nowrap; }
@@ -1329,6 +1404,14 @@ h1 {
 .detail-run-floor { font-size: var(--fs-sm); text-align: center; }
 .detail-run-read  { text-align: center; }
 .detail-run-date  { font-size: var(--fs-sm); text-align: center; }
+/* A seed this profile played more than once: each attempt's number by its character, and in the
+   header "Attempt 2 of 3" with the others as links. */
+.seed-try { margin-left: 0.35em; font-size: var(--fs-sm); font-weight: 600; color: var(--gold); }
+.rh-attempts { color: var(--text); font-size: var(--fs-sm); display: inline-flex; align-items: baseline; gap: 0.3em; }
+.rh-attempt-links { display: inline-flex; gap: 0.35em; margin-left: 0.4em; }
+.rh-attempt-here { color: var(--text-dim); }
+.rh-attempt-link { color: var(--gold); text-decoration: none; }
+.rh-attempt-link:hover, .rh-attempt-link:focus-visible { color: var(--gold-bright); text-decoration: underline; }
 
 /* How the whole run read: a round mark in the run list, a pill on the run's
    header. OP is the same green filled in, so it reads as more of ahead and
@@ -1428,6 +1511,46 @@ h1 {
 .rh-date { color:var(--text-dim); font-size: var(--fs-sm); }
 .rh-seed { color:var(--text); font-size: var(--fs-sm); font-family: monospace; }
 .rh-seed-label { margin-right: 0.4em; color: var(--text-dim); font-family: inherit; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; }
+
+/* A multiplayer run's party: each slot's character, with the player's name where the site has
+   their copy of the game. The profile's own slot, each partner's and "Everyone" are tabs: the one
+   pressed is the copy on show. */
+.detail-run-party {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding-bottom: 0.6rem;
+  font-size: var(--fs-sm);
+}
+.party-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; margin-right: 0.25rem; }
+.party-member { display: inline-flex; align-items: center; gap: 0.35rem; }
+.party-none { padding: 0.2rem 0.4rem; color: var(--text-dim); }
+.party-name { color: var(--text); font-weight: 600; }
+.party-tab {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem 0.2rem 0.35rem;
+  cursor: pointer;
+}
+.party-tab.party-all { padding-left: 0.7rem; }
+.party-tab .party-name { color: var(--text-dim); font-weight: 600; }
+.party-tab:hover .party-name, .party-tab:focus-visible .party-name { color: var(--text); }
+.party-tab[aria-pressed="true"] { border-color: var(--gold); background: rgba(224, 196, 104, 0.12); }
+.party-tab[aria-pressed="true"] .party-name { color: var(--gold); }
+.party-profile-link { display: inline-flex; color: var(--text-dim); margin-left: -0.2rem; padding: 0.2rem; }
+.party-profile-link:hover, .party-profile-link:focus-visible { color: var(--gold-bright); }
+.party-note { color: var(--loss); }
+#detail-content.party-loading > :not(#detail-run-header) { opacity: 0.45; transition: opacity 0.2s; }
+.floor-tip .fl-swatch, .floor-legend .fl-swatch[style*="border-top"] { display: inline-block; width: 18px; }
+.range-player { margin-top: 0.6rem; }
+.range-who { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; border-left: 3px solid; padding-left: 0.5rem; }
+.range-who-name { font-weight: 600; }
+#detail-partner-filter .tag-filter-chips { flex-direction: row; }
+.partner-filter-none { color: var(--text-dim); font-size: var(--fs-sm); }
 
 .detail-run-headline-stats {
   display: flex;
@@ -3042,3 +3165,10 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .detail-run-party-heads { display: none; }
   .detail-run-party-text { display: inline; font-size: var(--fs-sm); }
 }
+
+/* The charts' own toggle, in the Keeping Up by Floor heading: just you, or every player. */
+.party-toggle { display: inline-flex; gap: 0.3rem; margin: 0 0 0.6rem; }
+.party-toggle:empty { display: none; }
+.party-toggle button { font: inherit; color: var(--text-dim); background: none; border: 1px solid var(--border, #3a3c42); border-radius: 6px; padding: 0.2rem 0.7rem; cursor: pointer; }
+.party-toggle button:hover, .party-toggle button:focus-visible { color: var(--text); }
+.party-toggle button[aria-pressed="true"] { border-color: var(--gold); background: rgba(224, 196, 104, 0.12); color: var(--gold); }

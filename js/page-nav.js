@@ -2,24 +2,29 @@
 // Page navigation
 // =========================================================================
 
-const PAGES = ["overview", "detail", "cards", "seeds"];
+const PAGES = ["overview", "detail", "cards", "relics", "seeds"];
 let currentPage = "overview";
 
 // The URL hash names the tab, and on Run Detail the run as well:
-// #detail/<run ts>, so the address opens the same run for anyone.
+// #detail/<run ts>, so the address opens the same run for anyone. A multiplayer
+// run's party tab follows it: #detail/<ts>/<partner's slug, or "all">.
 function parsePageHash() {
-  const [page, ts] = location.hash.replace("#", "").split("/");
-  return { page, runTs: page === "detail" && /^\d+$/.test(ts || "") ? +ts : null };
+  const [page, ts, view] = location.hash.replace("#", "").split("/");
+  const runTs = page === "detail" && /^\d+$/.test(ts || "") ? +ts : null;
+  return { page, runTs, view: runTs != null && /^[a-z0-9_-]+$/i.test(view || "") ? view : "" };
 }
 
 function pageHash(page) {
-  return page === "detail" && detailSelectedTs != null ? `detail/${detailSelectedTs}` : page;
+  if (page !== "detail" || detailSelectedTs == null) return page;
+  const view = partyViewOf(detailSelectedTs);
+  return `detail/${detailSelectedTs}${view ? "/" + view : ""}`;
 }
 
 const PAGE_RENDERERS = {
   overview:  updateAll,
   detail:    renderDetailRunList,
   cards:     renderCardsPage,
+  relics:    renderRelicsPage,
   seeds:     renderSeeds,
 };
 
@@ -141,6 +146,8 @@ function showPage(page) {
   }
   location.hash = pageHash(page);
   updateFilterSummary();
+  // Counted by the morning digest (site/boot.js); run.py's local file has no noteView.
+  if (window.noteView) noteView(page, page === "detail" ? detailSelectedTs : null);
 }
 
 // Jump to a specific run in Run Detail from anywhere else in the app
@@ -159,8 +166,8 @@ function jumpToRun(ts) {
 // Open the run a #detail/<ts> link names. A link has to work for whoever
 // opens it, so any filter that would hide the run is widened first; the
 // viewer's other filters stay as they were. A ts this profile has no run
-// for lands on Run Detail's usual first run.
-function openRunLink(ts) {
+// for lands on Run Detail's usual first run. `view` is the party tab to open on.
+function openRunLink(ts, view = "") {
   const run = DATA.runsData.find(r => r.ts === ts);
   const changed = [];
   if (run) {
@@ -174,6 +181,7 @@ function openRunLink(ts) {
     if (!state.modes.includes(runModeOf(run))) widen.modes = [...state.modes, runModeOf(run)];
     if (!modsShowRun(state.mods, run)) widen.mods = "all";
     if (![...detailTags].every(t => runTags(run).includes(t))) { detailTags.clear(); changed.push("tags"); }
+    if (!playedWithAll(run)) { detailPartners.clear(); changed.push("played with"); }
     const names = { char: "character", ascGranular: "ascension", builds: "build", tsFrom: "date", players: "players", modes: "mode", mods: "mods" };
     Object.keys(names).forEach(key => { if (key in widen) changed.push(names[key]); });
     if (Object.keys(widen).length > 0) {
@@ -185,6 +193,7 @@ function openRunLink(ts) {
       updateFilterSummary();
     }
   }
+  detailView = { ts, who: view };
   jumpToRun(ts);
   const notice = document.getElementById("detail-jump-notice");
   notice.textContent = changed.length ? `Filters adjusted to show this run: ${changed.join(", ")}.` : "";
@@ -195,9 +204,9 @@ function openRunLink(ts) {
 // changes the hash, so nothing reloads. Follow it. The hash this page sets
 // itself (showPage) arrives here too, already matching, and does nothing.
 window.addEventListener("hashchange", () => {
-  const { page, runTs } = parsePageHash();
+  const { page, runTs, view } = parsePageHash();
   if (!PAGES.includes(page)) return;
-  if (runTs != null && runTs !== detailSelectedTs) openRunLink(runTs);
+  if (runTs != null && (runTs !== detailSelectedTs || view !== partyViewOf(runTs))) openRunLink(runTs, view);
   else if (page !== currentPage) showPage(page);
 });
 

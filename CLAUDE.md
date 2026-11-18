@@ -8,6 +8,17 @@ the architecture diagram (`docs/slay-my-stats-architecture.drawio`, then re-expo
 catches the AWS part (a resource missing from the diagram, or drawn but gone); the
 pre-commit hook runs it whenever infra, docs or the README are in a commit.
 
+## What's new copy comes from the owner
+
+The What's new page intro and every post in `site/whats-new/` are the owner's words, not ours.
+Draft one when asked and suggest edits to theirs. Trimming, organizing and tightening are fine,
+but keep their voice: don't swap in different phrasing or tone, and never add claims, features or
+detail they didn't write. Show the exact before and after in the message that asks for approval,
+as for any public text.
+
+Open: a way to suggest flagship changes worth a post (so the owner can pick what to write up).
+Not built; ask before inventing one.
+
 ## Branches: gamma is the base, main is prod
 
 `gamma` is the trunk for new work. Branch every change from the current
@@ -24,16 +35,19 @@ branches. Assume they are, even when nothing shows it.
 
 - Do every change in a worktree of your own, branched from a fresh
   `origin/gamma`: `git worktree add -b <branch> "../smst-wt-<branch>" origin/gamma`.
-  Never switch branches, stash, commit or reset in the main checkout or in
+  Never switch branches, stash, commit or reset in the repo folder or in
   someone else's worktree; their uncommitted work is theirs.
 - Don't build on a local branch you didn't make. Re-fetch before merging or
   pushing: if `origin/gamma` moved, merge onto the new tip, and say what else
   is riding along before it goes to prod.
-- Deploys push from the main checkout (it holds the ignored `cdk.context.json`
-  and art). Only push from it when it is clean and on the commit you mean to
-  ship; if another session is mid-change there, wait or ask.
+- Push to deploy from your own worktree; leave the repo folder alone. The
+  push builds the pushed commit in an export that borrows the repo folder's
+  ignored inputs (`cdk.context.json`, art, venv), and only one deploy runs at
+  a time. If yours stops on the deploy lock, wait and push again; don't
+  `--break-lock` unless `tools/deploy.py --lock-status` shows it is over an
+  hour old and nothing is deploying.
 - Removing a worktree: unlink its junctions first (`cmd /c rmdir <junction>`).
-  `git worktree remove` deletes through a junction into the main checkout's art.
+  `git worktree remove` deletes through a junction into the repo folder's art.
 
 ## Screenshots
 

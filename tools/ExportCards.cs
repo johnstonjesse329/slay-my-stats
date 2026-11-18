@@ -24,6 +24,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -254,6 +255,7 @@ public partial class ExportCards : Node
 			["StarsUpgraded"] = 0,
 			["MaxUpgradeLevel"] = card.MaxUpgradeLevel,
 			["ShowInCardLibrary"] = card.ShouldShowInCardLibrary,
+			["MultiplayerConstraint"] = MultiplayerConstraintOf(card),
 			["PortraitPath"] = card.PortraitPath,
 			["AllPortraitPaths"] = card.AllPortraitPaths.ToList(),
 			["Keywords"] = KeywordNames(card.CanonicalKeywords),
@@ -280,6 +282,18 @@ public partial class ExportCards : Node
 			record["UpgradeError"] = $"{ex.GetType().Name}: {ex.Message}";
 		}
 		return record;
+	}
+
+	// Whether a card only turns up in multiplayer runs (the library's multiplayer
+	// cards): the value of the card's CardMultiplayerConstraint, e.g. "MultiplayerOnly".
+	// Found by its type rather than its member name, so a rename in a game update
+	// doesn't silently drop it; null when a card has no such member.
+	private static string? MultiplayerConstraintOf(CardModel card)
+	{
+		const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+		PropertyInfo? prop = card.GetType().GetProperties(Flags)
+			.FirstOrDefault(p => p.PropertyType.Name == "CardMultiplayerConstraint" && p.GetIndexParameters().Length == 0);
+		return prop?.GetValue(card)?.ToString();
 	}
 
 	private static Dictionary<string, object?> ExportEnchantment(EnchantmentModel enchantment)

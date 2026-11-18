@@ -187,6 +187,7 @@
       cardImageOverrides: catalog.cardImageOverrides,
       cardData: catalog.cardData,
       cardChar: catalog.cardChar,
+      cardCoop: catalog.cardCoop || [],
       cardVariants: catalog.cardVariants,
       measuredRuns: catalog.measuredRuns,
       fightDemand: catalog.fightDemand,
@@ -692,7 +693,7 @@
     return section;
   }
 
-  async function showSitePage(name) {
+  async function showSitePage(name, postId) {
     showFallback("");
     const html = await fetchFragment(`/page-${name}.html`);
     if (html === null) {
@@ -711,9 +712,32 @@
     if (title) document.title = title.includes("Slay My Stats") ? title : `${title} — Slay My Stats`;
     main.textContent = "";
     main.append(section);
+    window.noteView();
     // The Upload page's signed-in panel goes into this page (site/upload.js).
     if (window.placeUploadPanel) window.placeUploadPanel();
+    // What's new: reactions, requests, and the post a /whats-new/<id> link names (site/whats-new.js).
+    if (name === "whats-new" && window.placeWhatsNew) window.placeWhatsNew(section, postId);
   }
+
+  // ---- Page views ------------------------------------------------------------
+  //
+  // One tiny GET of /seen.txt for each page or tab shown, its query naming which:
+  // p (the path), t (a player page's tab), r (Run Detail's run). Nothing reads the
+  // reply: CloudFront's access logs keep the request, and the morning digest counts
+  // them (infra/lambda/ingest/views.py). It sends nothing else and stores nothing in
+  // the browser. no-store so a repeat view isn't answered from the browser's cache,
+  // which would leave no log line. The one global boot.js adds besides DATA, since
+  // app.js calls it on every tab switch (showPage) and run shown (syncRunHash).
+  let lastView = "";
+  window.noteView = function (tab, run) {
+    const q = new URLSearchParams({ p: location.pathname.replace(/(.)\/$/, "$1") });
+    if (tab) q.set("t", tab);
+    if (run != null) q.set("r", String(run));
+    const key = q.toString();
+    if (key === lastView) return;  // the same view reported twice in a row
+    lastView = key;
+    fetch(`/seen.txt?${key}`, { cache: "no-store", keepalive: true }).catch(() => {});
+  };
 
   // ---- Entry point ---------------------------------------------------------
 
@@ -723,6 +747,13 @@
     showNavSearch();
     if (location.pathname === "/" || location.pathname === "/index.html") {
       showFinder();
+      window.noteView();
+      return;
+    }
+    // A What's new post's own link, /whats-new/<post id>: the page, at that post.
+    const post = location.pathname.match(/^\/whats-new\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/);
+    if (post) {
+      showSitePage("whats-new", post[1]);
       return;
     }
     // Hand-written pages: one path segment, lowercase letters, digits and
@@ -781,9 +812,9 @@
     const index = await loadIndex();
     const indexEntry = index ? (index.players || []).find(p => p.slug === slug) || null : null;
 
-    let runs;
+    let runs, links;
     try {
-      runs = await loadRuns(slug, userDoc);
+      [runs, links] = await Promise.all([loadRuns(slug, userDoc), loadCoopLinks(slug)]);
     } catch (e) {
       showError();
       return;
@@ -794,8 +825,36 @@
       showNoRuns();
       return;
     }
+    attachCoopLinks(runs, links, index);
     window.DATA = buildData(catalog, runs);
+    window.DATA.profile = { slug, name: userDoc.name };
     loadAppScript();
+  }
+
+  // The other players' copies of this profile's co-op runs:
+  // /users/<slug>/_coop.json.gz, {"runs": {"<ts>": {"i", "with": [{"slug", "ts", "i"}]}}},
+  // written by the ingest Lambda for games where every linked player shared their party's
+  // Steam IDs (which it never publishes). It changes whenever a partner uploads, so it is
+  // revalidated on every visit. Missing (no linked runs yet) or unreadable means no links.
+  async function loadCoopLinks(slug) {
+    try {
+      const resp = await fetch(`/users/${slug}/_coop.json.gz`, { cache: "no-cache" });
+      return resp.ok ? ((await resp.json()).runs || {}) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // Puts each link on its run as run.coop = {i, with: [{slug, name, ts, i}]}: i is the
+  // party slot (the order of run.party) of this profile's player and of each partner,
+  // the name the partner's current one from the player list.
+  function attachCoopLinks(runs, links, index) {
+    const names = Object.fromEntries(((index && index.players) || []).map(p => [p.slug, p.name]));
+    for (const run of runs) {
+      const link = run.mp && links[run.ts];
+      if (!link || !Array.isArray(link.with) || !link.with.length) continue;
+      run.coop = { i: link.i, with: link.with.map(w => ({ slug: w.slug, ts: w.ts, i: w.i, name: names[w.slug] || w.slug })) };
+    }
   }
 
   // Every run on a profile, oldest first. The summary lists its months; each

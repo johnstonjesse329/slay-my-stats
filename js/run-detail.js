@@ -68,12 +68,19 @@ function nodeIconKey(node) {
 
 let detailSelectedTs  = null;
 let detailHpChart     = null;
+// The run on show: this profile's own, or a partner's copy of it (see showRunCopy).
+let detailShownRun    = null;
+// True while that is a partner's copy: what compares against this profile's own runs is left off.
+let detailForeign     = false;
 
 // Run list sort, set by clicking a column header (like the seeds table).
 // Ties fall back to newest first.
 let detailSortCol = "date";
 // Tags picked above the run list (see runTags); a run shows when it has all of them.
 const detailTags = new Set();
+// Players picked under "Played with" (profile slugs); a run shows when all of them have a
+// copy of it linked to this one (run.coop, from boot.js).
+const detailPartners = new Set();
 let detailSortAsc = false;
 const DETAIL_SORT_FNS = {
   char:  (a, b) => fmtCharName(a.char).localeCompare(fmtCharName(b.char)),
@@ -129,12 +136,15 @@ function syncRunHash() {
   if (parsePageHash().page !== "detail") return;
   const hash = "#" + pageHash("detail");
   if (location.hash !== hash) history.replaceState(null, "", hash);
+  // Each run shown counts as a view of it (site/boot.js); a repeat is dropped there.
+  if (window.noteView) noteView("detail", detailSelectedTs);
 }
 
 // The header's "Copy link" button: this page's own address with the run in
 // the hash, which openRunLink() turns back into this run for whoever opens it.
 function copyRunLink(ts, btn) {
-  const url = location.href.split("#")[0] + `#detail/${ts}`;
+  const view = partyViewOf(ts);
+  const url = location.href.split("#")[0] + `#detail/${ts}${view ? "/" + view : ""}`;
   navigator.clipboard.writeText(url).then(() => {
     if (btn.classList.contains("run-copy-link-icon")) {
       btn.classList.add("copied");
@@ -144,6 +154,201 @@ function copyRunLink(ts, btn) {
     btn.textContent = "Copied!";
     setTimeout(() => { btn.textContent = "Copy link"; }, 1200);
   });
+}
+
+// ---- Co-op party ----
+
+// A co-op run's party, slot by slot: each character, and who played it where the site knows.
+// run.coop (see boot.js's attachCoopLinks) names this profile's own slot and each partner whose
+// copy of the game is on the site; the other slots are just their character. Null for a run
+// with no linked copies, where which slot was this profile's isn't known.
+function coopParty(run) {
+  if (!run.mp || !run.coop) return null;
+  const party = run.party || [];
+  const owner = DATA.profile || {};
+  return party.map((char, i) => {
+    if (i === run.coop.i) return { char, name: owner.name || "", self: true };
+    const w = run.coop.with.find(p => p.i === i);
+    return w ? { char, name: w.name, slug: w.slug, ts: w.ts } : { char };
+  });
+}
+
+// The address of a partner's copy of a run, on their profile.
+const coopRunHref = p => `/u/${encodeURIComponent(p.slug)}#detail/${p.ts}`;
+
+// Which copy of a multiplayer run Run Detail shows: "" for this profile's own, a partner's slug for
+// theirs, "all" for the whole party side by side. It belongs to one run: picking another goes back
+// to the profile's own copy. In the address as #detail/<ts>/<slug or all> (see parsePageHash).
+let detailView = { ts: null, who: "" };
+const partyViewOf = ts => detailView.ts === ts ? detailView.who : "";
+
+// A partner's copy of a run, from their profile: their summary names the month it is in, and the
+// month file is fetched with the same key boot.js's loadRuns uses, so it is the browser's cached
+// copy when they have been visited. Null when it can't be had; a failure isn't kept, so the next
+// click tries again.
+const partnerDocs = new Map(), partnerCopies = new Map();
+function loadPartnerCopy(slug, ts) {
+  const key = `${slug}/${ts}`;
+  if (!partnerCopies.has(key)) partnerCopies.set(key, (async () => {
+    const base = `/users/${encodeURIComponent(slug)}`;
+    if (!partnerDocs.has(slug)) partnerDocs.set(slug, fetch(`${base}.json.gz`, { cache: "no-cache" }).then(r => r.ok ? r.json() : null));
+    const doc = await partnerDocs.get(slug);
+    if (!doc) return null;
+    if (!doc.months) return (doc.runs || []).find(r => r.ts === ts) || null;
+    const month = Object.keys(doc.months).find(m => (doc.months[m] || []).includes(ts));
+    if (!month) return null;
+    const list = doc.months[month];
+    const resp = await fetch(`${base}/${month}.json.gz?v=${list.length}-${list[list.length - 1] || 0}-${doc.v || 0}`);
+    return resp.ok ? ((await resp.json()).runs || []).find(r => r.ts === ts) || null : null;
+  })().catch(() => null).then(run => {
+    if (!run) { partnerCopies.delete(key); partnerDocs.delete(slug); }
+    return run;
+  }));
+  return partnerCopies.get(key);
+}
+
+// The header's Party line: every slot's head, with the player's name where it is known (the
+// character's name otherwise). The profile's own slot and each partner's are tabs that show that
+// player's copy of the run here, and "Everyone" shows the party side by side; the partner on show
+// also gets a link to the run on their own profile. `note` says when a copy couldn't be loaded.
+function partyLineHtml(run, who = "", note = "") {
+  const party = coopParty(run);
+  if (!party) return "";
+  const tab = (key, inner, tip, cls = "") =>
+    `<button type="button" class="party-member party-tab${cls}" data-who="${escapeHtml(key)}" aria-pressed="${who === key}" data-tip="${escapeHtml(tip)}">${inner}</button>`;
+  const slots = party.map(p => {
+    if (!p.self && !p.slug) return `<span class="party-member party-none">${charLabelHtml(p.char)}</span>`;
+    const inner = p.name ? `${charIconHtml(p.char)}<span class="party-name">${escapeHtml(p.name)}</span>` : charLabelHtml(p.char);
+    const tip = `${fmtCharName(p.char)}${p.name ? `: ${p.name}` : ""}`;
+    if (p.self) return tab("", inner, tip);
+    const open = `Open on ${p.name}'s profile`;
+    return tab(p.slug, inner, `${tip}'s copy of this run`) + (who === p.slug
+      ? `<a class="party-profile-link" href="${coopRunHref(p)}" data-tip="${escapeHtml(open)}" aria-label="${escapeHtml(open)}">` +
+        `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>`
+      : "");
+  }).join("");
+  return `<div class="detail-run-party" role="group" aria-label="Party"><span class="party-label">Party</span>${slots}` +
+    `${note ? `<span class="party-note" role="status">${escapeHtml(note)}</span>` : ""}</div>`;
+}
+
+// The charts' toggle: just the profile's own player, or every player on the same charts.
+function partyToggleHtml(owner, all) {
+  const party = coopParty(owner);
+  if (!party) return "";
+  const me = party.find(p => p.self);
+  const mine = me ? (me.name || fmtCharName(me.char)) : "You";
+  const b = (who, label) => `<button type="button" data-who="${who}" aria-pressed="${all === (who === "all")}">${escapeHtml(label)}</button>`;
+  return b("", `Just ${mine}`) + b("all", "Everyone");
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("#detail-party-toggle button");
+  if (t) {
+    const owner = DATA.runsData.find(r => r.ts === detailSelectedTs);
+    if (!owner || t.dataset.who === (detailView.who === "all" ? "all" : "")) return;
+    detailView = { ts: owner.ts, who: t.dataset.who };
+    syncRunHash();
+    renderDetailRun(owner);
+    return;
+  }
+  const b = e.target.closest("#detail-run-header .party-tab");
+  if (!b) return;
+  const owner = DATA.runsData.find(r => r.ts === detailSelectedTs);
+  if (!owner || b.dataset.who === partyViewOf(owner.ts)) return;
+  detailView = { ts: owner.ts, who: b.dataset.who };
+  syncRunHash();
+  renderDetailRun(owner);
+});
+
+// Everyone this profile has linked co-op runs with, most runs together first, as toggles
+// behind the "Played with" line. A picked player stays listed even when no run left has them.
+function renderDetailPartnerFilter(runs) {
+  const box = document.getElementById("detail-partner-filter");
+  if (!box) return;
+  const counts = {}, names = {};
+  const all = DATA.runsData.filter(r => r.coop);
+  all.forEach(r => r.coop.with.forEach(w => { names[w.slug] = w.name; }));
+  runs.forEach(r => (r.coop ? r.coop.with : []).forEach(w => { counts[w.slug] = (counts[w.slug] || 0) + 1; }));
+  const slugs = [...new Set([...Object.keys(counts), ...[...detailPartners].filter(s => names[s])])]
+    .sort((a, b) => (counts[b] || 0) - (counts[a] || 0) || names[a].localeCompare(names[b]));
+  box.style.display = all.length ? "" : "none";
+  box.querySelector(".tag-filter-text").textContent = detailPartners.size
+    ? [...detailPartners].map(s => names[s] || s).join(" + ") : "Anyone";
+  box.querySelector(".tag-filter-clear").hidden = detailPartners.size === 0;
+  const chips = box.querySelector(".tag-filter-chips");
+  chips.innerHTML = slugs.length
+    ? `<div class="tag-filter-tags">` + slugs.map(s => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailPartners.has(s)}" data-slug="${escapeHtml(s)}">${escapeHtml(names[s])} <span class="run-tag-n">${counts[s] || 0}</span></button>`).join("") + `</div>`
+    : `<span class="partner-filter-none">No linked multiplayer runs match the other filters.</span>`;
+  chips.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
+    const s = btn.dataset.slug;
+    if (detailPartners.has(s)) detailPartners.delete(s); else detailPartners.add(s);
+    renderDetailRunList();
+  }));
+}
+
+document.querySelector("#detail-partner-filter .tag-filter-summary")?.addEventListener("click", e => {
+  const open = document.getElementById("detail-partner-filter").classList.toggle("expanded");
+  e.currentTarget.setAttribute("aria-expanded", String(open));
+});
+
+document.querySelector("#detail-partner-filter .tag-filter-clear")?.addEventListener("click", () => {
+  detailPartners.clear();
+  renderDetailRunList();
+});
+
+const playedWithAll = run => !detailPartners.size
+  || (run.coop && [...detailPartners].every(s => run.coop.with.some(w => w.slug === s)));
+
+// ---- Repeat attempts on a seed ----
+
+// Every run on this profile by seed, oldest first, so a seed played more than once (a group
+// replaying a co-op seed, a custom seed retried) can number its attempts. Counted over all the
+// profile's runs, not the filtered list, so a run's number doesn't change with the filters.
+const SEED_RUNS = (() => {
+  const by = {};
+  DATA.runsData.forEach(r => { if (r.seed) (by[r.seed] = by[r.seed] || []).push(r); });
+  Object.values(by).forEach(list => list.sort((a, b) => a.ts - b.ts));
+  return by;
+})();
+
+// {n, of, runs} for a run on a seed this profile played more than once, else null.
+function seedAttempt(run) {
+  const runs = run.seed && SEED_RUNS[run.seed];
+  if (!runs || runs.length < 2) return null;
+  return { n: runs.indexOf(run) + 1, of: runs.length, runs };
+}
+
+const ordinal = n => n + ([, "st", "nd", "rd"][(n % 100 >> 3 ^ 1) && n % 10] || "th");
+const localDay = ts => new Date(ts * 1000).toDateString();
+// "8:41p": a start time short enough for the run list's date column.
+const fmtShortTime = ts => new Date(ts * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+  .replace(/\s?([AaPp])\.?[Mm]\.?$/, (_, x) => x.toLowerCase());
+
+// The run list's date cell: the date, or for a seed's attempts started on the same day, the
+// start time (the date is the same, so it can't tell them apart).
+function runDateCellHtml(run, fmtDate) {
+  const att = seedAttempt(run);
+  const sameDay = att && att.runs.some(r => r !== run && localDay(r.ts) === localDay(run.ts));
+  if (!sameDay) return fmtDate(run.ts).replace(/\/\d+$/, `<span class="detail-run-year">$&</span>`);
+  const full = new Date(run.ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  return `<span data-tip="${escapeHtml(full)}">${fmtShortTime(run.ts)}</span>`;
+}
+
+// The attempt's number, by the character in the run list (the first column takes what it
+// needs; the date column has no room to spare).
+function seedTryHtml(run) {
+  const att = seedAttempt(run);
+  return att ? `<span class="seed-try" data-tip="${ordinal(att.n)} of ${att.of} runs on this seed">#${att.n}</span>` : "";
+}
+
+// The run header's "Attempt 2 of 3", the other attempts as links to them.
+function attemptLineHtml(run) {
+  const att = seedAttempt(run);
+  if (!att) return "";
+  const others = att.runs.map((r, i) => r === run
+    ? `<span class="rh-attempt-here" aria-current="true">#${i + 1}</span>`
+    : `<a class="rh-attempt-link" href="#detail/${r.ts}" data-tip="${escapeHtml(`${new Date(r.ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}: ${r.won ? "Victory" : "Defeat"}, floor ${r.floor}`)}">#${i + 1}</a>`).join("");
+  return `<span class="rh-attempts"><span class="rh-seed-label">Attempt</span>${att.n} of ${att.of}<span class="rh-attempt-links">${others}</span></span>`;
 }
 
 // ---- Run list ----
@@ -199,7 +404,8 @@ document.querySelector("#detail-tag-filter .tag-filter-clear")?.addEventListener
 function renderDetailRunList() {
   const filtered = getDetailRuns();
   renderDetailTagFilter(filtered);
-  const runs = filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t)));
+  renderDetailPartnerFilter(filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t))));
+  const runs = filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t)) && playedWithAll(r));
   const container = document.getElementById("detail-run-list");
 
   if (runs.length === 0) {
@@ -229,16 +435,17 @@ function renderDetailRunList() {
     const active = run.ts === detailSelectedTs;
     // A multiplayer run names its party's characters, so show their heads; a solo run is one head.
     const party = run.mp ? (run.party || []) : [run.char];
-    const partyLabel = run.mp ? (party.length ? `Party: ${party.map(fmtCharName).join(", ")}` : "Multiplayer") : `Solo: ${fmtCharName(run.char)}`;
+    const named = coopParty(run);
+    const partyLabel = run.mp ? (party.length ? `Party: ${(named || party.map(char => ({ char }))).map(p => fmtCharName(p.char) + (p.name ? ` (${p.name})` : "")).join(", ")}` : "Multiplayer") : `Solo: ${fmtCharName(run.char)}`;
     const partyHtml = party.length ? party.slice(0, 4).map(c => charIconHtml(c)).join("") : (run.mp ? "Multi" : "Solo");
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
-      <span class="detail-run-char">${charLabelHtml(run.char)}</span>
+      <span class="detail-run-char">${charLabelHtml(run.char)}${seedTryHtml(run)}</span>
       <span class="detail-run-asc" style="color:var(--text-dim)">${ascHtml(runAsc(run), "detail-run-dread", true)}</span>
       <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}"><span class="detail-run-party-heads">${partyHtml}</span><span class="detail-run-party-text" aria-hidden="true">${run.mp ? "Multi" : "Solo"}</span></span>
       <span class="detail-run-won" style="color:${won ? COLORS.win : COLORS.loss}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
-      <span class="detail-run-date" style="color:var(--text-dim)">${fmtDate(run.ts).replace(/\/\d+$/, `<span class="detail-run-year">$&</span>`)}</span>
+      <span class="detail-run-date" style="color:var(--text-dim)">${runDateCellHtml(run, fmtDate)}</span>
     </div>`;
   }).join("");
 
@@ -279,13 +486,44 @@ function renderDetailRunList() {
 
 // ---- Run header ----
 
+// Shows `run` (one of this profile's) in the copy its party tabs pick: the profile's own, a
+// partner's, or the whole party's (see detailView). A partner's copy is fetched first; the tabs
+// say which is coming meanwhile, and a later pick wins over one still loading.
+let detailRenderToken = 0;
 function renderDetailRun(run) {
   document.getElementById("detail-placeholder").style.display = "none";
-  document.getElementById("detail-content").style.display = "";
+  const content = document.getElementById("detail-content");
+  content.style.display = "";
+  if (detailView.ts !== run.ts) detailView = { ts: run.ts, who: "" };
+  const partners = run.coop ? run.coop.with : [];
+  const who = detailView.who;
+  if (!partners.length || (who !== "all" && !partners.some(p => p.slug === who))) detailView.who = "";
+  const token = ++detailRenderToken;
+  content.classList.remove("party-loading");
+  if (!detailView.who) { showRunCopy(run, run); return; }
 
-  const won    = run.won;
-  const fmtDate = ts => new Date(ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  document.querySelectorAll("#detail-run-header .party-tab").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.who === who)));
+  content.classList.add("party-loading");
+  const wanted = who === "all" ? partners : partners.filter(p => p.slug === who);
+  Promise.all(wanted.map(p => loadPartnerCopy(p.slug, p.ts))).then(copies => {
+    if (token !== detailRenderToken) return;
+    content.classList.remove("party-loading");
+    if (who === "all") {
+      const byslug = Object.fromEntries(wanted.map((p, i) => [p.slug, copies[i]]));
+      const missing = wanted.filter((p, i) => !copies[i]).map(p => p.name);
+      showRunCopy(run, run, missing.length ? `Couldn't load ${missing.join(" and ")}'s copy of this run.` : "", partyPlayers(run, byslug));
+    } else if (copies[0]) {
+      showRunCopy(copies[0], run);
+    } else {
+      detailView.who = "";
+      syncRunHash();
+      showRunCopy(run, run, `Couldn't load ${wanted[0].name}'s copy of this run.`);
+    }
+  });
+}
 
+// What a run adds up to, for its header and the party's side-by-side table.
+function runTotals(run) {
   const tl = run.timeline || [];
   const totalRemoves     = tl.reduce((n, node) => n + (node.cardsRemoved || []).length, 0);
   const totalShopRemoves = tl.reduce((n, node) => n + (node.type === "shop" ? (node.cardsRemoved || []).length : 0), 0);
@@ -299,7 +537,6 @@ function renderDetailRun(run) {
   const cardsBoughtIds     = tl.reduce((arr, node) => arr.concat(node.cardsBought || []), []);
   const totalColorlessBought = cardsBoughtIds.filter(id => cardInfo(id)?.pool === "colorless").length;
   const totalOtherCardsBought = cardsBoughtIds.length - totalColorlessBought;
-  const countType = type => tl.filter(n => n.type === type).length;
   const totalDmg    = tl.reduce((s, n) => s + (n.dmg       || 0), 0);
   const totalHealed = tl.reduce((s, n) => s + (n.healed    || 0), 0);
   const totalGold   = tl.reduce((s, n) => s + (n.goldGained|| 0), 0);
@@ -310,6 +547,52 @@ function renderDetailRun(run) {
   const totalRewardsSkipped = tl.filter(node => node.type !== "shop" && (node.cardsSkipped || []).length && !(node.cardsRewarded || []).length).length;
   const ancientRelics = tl.filter(n => n.type === "ancient" && n.relicPicked).map(n => n.relicPicked);
   const elitesKilled = (run.fights || []).filter(f => f.type === "elite" && f.won).length;
+  return { tl, totalRemoves, totalShopRemoves, totalPotionsBought, totalPotionsGained, totalRelicsBought,
+    totalColorlessBought, totalOtherCardsBought, totalDmg, totalHealed, totalGold, totalRewardsSkipped,
+    ancientRelics, elitesKilled };
+}
+
+// The header bar: character, ascension, result, floor, time, date, seed and the copy-link buttons.
+// The whole party's view (`party`) leaves out what belongs to one player: the character and the
+// run's reading. The date, seed, attempts and link are the profile's own copy's (`owner`).
+function runHeaderBarHtml(run, owner, party = false) {
+  const won = run.won;
+  const fmtDate = ts => new Date(ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  return `<div class="detail-run-header-bar">
+      ${navigator.clipboard ? `<button type="button" class="run-copy-link-icon" aria-label="Copy link to this run" title="Copy link"><svg class="rci-share" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg><svg class="rci-done" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button>` : ""}
+      ${party ? "" : charLabelHtml(run.char, true)}
+      ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
+      <span style="color:${won ? COLORS.win : COLORS.loss};font-weight:600">${won ? "Victory" : "Defeat"}</span>
+      ${party ? "" : runReadingHtml(run) + runActMarksHtml(run)}
+      <span style="color:var(--text-dim)">Floor ${run.floor}</span>
+      <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
+      ${modeTagHtml(run)}${customTagHtml(run, true)}${moddedTagHtml(run, true)}
+      <span class="rh-meta">
+        <span class="rh-date">${fmtDate(owner.ts)}</span>
+        ${owner.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed</span>${owner.seed}</span>` : ""}
+        ${attemptLineHtml(owner)}
+        ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
+      </span>
+    </div>`;
+}
+
+const bindRunCopyLinks = owner =>
+  document.querySelectorAll("#detail-run-header .run-copy-link, #detail-run-header .run-copy-link-icon").forEach(copyBtn =>
+    copyBtn.addEventListener("click", () => copyRunLink(owner.ts, copyBtn)));
+
+// One player's copy of a run, the page as it always was: `run` is the copy on show, `owner` the
+// profile's own (the same run unless a partner's tab is picked), which the Party line, attempts
+// and link belong to.
+function showRunCopy(run, owner, note = "", players = null) {
+  clearPartyView();
+  if (players) detailParty = players;
+  document.getElementById("detail-party-toggle").innerHTML = partyToggleHtml(owner, !!players);
+  detailShownRun = run;
+  detailForeign = run !== owner;
+  const { tl, totalRemoves, totalShopRemoves, totalPotionsBought, totalPotionsGained, totalRelicsBought,
+    totalColorlessBought, totalOtherCardsBought, totalDmg, totalHealed, totalGold, totalRewardsSkipped,
+    ancientRelics, elitesKilled } = runTotals(run);
+  const countType = type => tl.filter(n => n.type === type).length;
 
   const finalDeck   = run.finalDeck   || [];
   const finalRelics = run.finalRelics || [];
@@ -436,21 +719,8 @@ function renderDetailRun(run) {
   }).join("");
 
   document.getElementById("detail-run-header").innerHTML = `
-    <div class="detail-run-header-bar">
-      ${navigator.clipboard ? `<button type="button" class="run-copy-link-icon" aria-label="Copy link to this run" title="Copy link"><svg class="rci-share" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg><svg class="rci-done" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg></button>` : ""}
-      ${charLabelHtml(run.char, true)}
-      ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
-      <span style="color:${won ? COLORS.win : COLORS.loss};font-weight:600">${won ? "Victory" : "Defeat"}</span>
-      ${runReadingHtml(run)}${runActMarksHtml(run)}
-      <span style="color:var(--text-dim)">Floor ${run.floor}</span>
-      <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
-      ${modeTagHtml(run)}${customTagHtml(run, true)}${moddedTagHtml(run, true)}
-      <span class="rh-meta">
-        <span class="rh-date">${fmtDate(run.ts)}</span>
-        ${run.seed ? `<span class="rh-seed"><span class="rh-seed-label">Seed</span>${run.seed}</span>` : ""}
-        ${navigator.clipboard ? `<button type="button" class="run-copy-link">Copy link</button>` : ""}
-      </span>
-    </div>
+    ${runHeaderBarHtml(run, owner)}
+    ${partyLineHtml(owner, partyViewOf(owner.ts), note)}
     <div class="detail-run-headline-stats">
       ${headlineHtml}${ancientBoonsHtml}
     </div>
@@ -478,24 +748,16 @@ function renderDetailRun(run) {
     wrap.addEventListener("focusin", fitSoon);
   });
 
-  document.querySelectorAll("#detail-run-header .run-copy-link, #detail-run-header .run-copy-link-icon").forEach(copyBtn =>
-    copyBtn.addEventListener("click", () => copyRunLink(run.ts, copyBtn)));
+  bindRunCopyLinks(owner);
 
   // The span a drag picks is per run: a new run starts with none, and its own floor-by-floor
   // changes are what the panel adds up. A run whose history doesn't fit the shape leaves the
   // charts alone and only loses the span.
   clearRange();
   rangeNodes = run.timeline || [];
-  try {
-    rangeChanges = run.deckAdded || run.relicsAdded
-      ? floorChanges(rangeNodes,
-        heldItems(run.finalDeck || [], run.deckAdded || [], run.cardsLost || []),
-        heldItems(run.finalRelics || [], run.relicsAdded || [], run.relicsLost || []))
-      : null;
-  } catch (err) {
-    console.warn("range select: no floor changes for this run", err);
-    rangeChanges = null;
-  }
+  rangeChanges = runFloorChanges(run);
+  // Everyone: the drag adds up every player's changes, each from their own copy.
+  rangeParty = players ? players.map(p => ({ char: p.char, label: p.label, color: p.color, nodes: p.run.timeline || [], changes: runFloorChanges(p.run) })) : null;
 
   renderDetailTimeline(run);
   renderDetailMaps(run);
@@ -504,7 +766,163 @@ function renderDetailRun(run) {
   renderDetailDeckChart(run);
   renderDetailRelicChart(run);
   renderDetailKeepCharts(run);
+  if (players) renderPartyCharts(players);
   renderDetailDeckRelics(run);
+}
+
+// A run's floor-by-floor changes, or null when it has no deck history (or one that doesn't fit).
+function runFloorChanges(run) {
+  if (!run.deckAdded && !run.relicsAdded) return null;
+  try {
+    return floorChanges(run.timeline || [],
+      heldItems(run.finalDeck || [], run.deckAdded || [], run.cardsLost || []),
+      heldItems(run.finalRelics || [], run.relicsAdded || [], run.relicsLost || []));
+  } catch (err) {
+    console.warn("range select: no floor changes for this run", err);
+    return null;
+  }
+}
+
+// ---- The whole party ----
+
+// "Everyone": the run page itself, with every player's copy drawn on its floor charts, one line
+// per player in their character's colour (dashed for a second player on the same character). A
+// drag still adds up what changed, one list per player. `copies` holds each partner's copy by
+// slug; one that couldn't be loaded is left out and named.
+let detailParty = null;   // the players on show while Everyone is on, else null
+function partyPlayers(owner, copies) {
+  const seen = {};
+  return coopParty(owner)
+    .map(p => ({ ...p, run: p.self ? owner : p.slug ? copies[p.slug] : null }))
+    .filter(p => p.run)
+    .map(p => {
+      const dash = seen[p.char] ? [6, 4] : [];
+      seen[p.char] = true;
+      return { ...p, dash, color: charColor(p.char), label: p.name || fmtCharName(p.char) };
+    });
+}
+
+function clearPartyView() {
+  detailParty = null;
+  rangeParty = null;
+}
+
+// How many of a run's cards (or relics) were held after each node, or null where the run
+// doesn't say when they came and went.
+function heldCountsByNode(nodes, finalItems, added, lost) {
+  if (!added) return null;
+  const items = heldItems(finalItems || [], added, lost || []);
+  return nodes.map(n => items.filter(it => it.added <= n.floor + 1 && it.removed > n.floor + 1).length);
+}
+
+// One chart with a line for each player. A player with no figures for it is left out. `extra` adds
+// what every player shares: `lines` (datasets drawn first), `rows(i)` (hover rows under the players')
+// and `floorAtZero` (a ratio axis has no below-zero).
+function partyChart(id, nodes, players, series, cell, reverse = false, icon = null, extra = {}) {
+  let chart = null;
+  const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
+  const tip = context => showFloorTip(context, i => nodes[i]
+    ? floorTipHead(nodes[i]) + `<table>${players.map((p, j) => series[j]
+        ? `<tr><td>${swatch(p)} ${escapeHtml(p.label)}</td><td>${cell(p, i, series[j][i])}</td></tr>` : "").join("")}${extra.rows ? extra.rows(i) : ""}</table>`
+    : "");
+  const base = iconAxis({ min: 0 });
+  const y = { ...base, stacked: false, reverse, ticks: { ...base.ticks, maxTicksLimit: 5 } };
+  if (extra.floorAtZero) {
+    const stretch = y.afterDataLimits;
+    y.afterDataLimits = scale => { if (stretch) stretch(scale); scale.min = Math.max(0, scale.min); };
+  }
+  const iconJ = series.findIndex(Boolean);   // icons ride one player's line: the fights are the same for all
+  const datasets = [...(extra.lines || []), ...players.map((p, j) => series[j] ? {
+    label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color, borderDash: p.dash,
+    borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone",
+    ...(icon && j === iconJ ? nodePoints(nodes, () => chart, icon) : {}),
+  } : null)].filter(Boolean);
+  chart = new Chart(document.getElementById(id).getContext("2d"),
+    floorChartConfig(nodes, [], tip, y, datasets, actWindow(nodes)));
+  bindRangeSelect(chart, nodes);
+  return chart;
+}
+
+// Swap the page's own floor charts for the party's: one line per player, and on "Keeping up, fight by
+// fight" one shared 1x line and fight-turns line, since the fight is the same for everyone.
+function renderPartyCharts(players) {
+  const nodes = players.map(p => p.run.timeline || []).reduce((a, b) => b.length > a.length ? b : a, []);
+  const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
+  const legend = `<div class="fl-items">${players.map(p =>
+    `<span class="fl-item">${swatch(p)}${charIconHtml(p.char)}${escapeHtml(p.label)}</span>`).join("")}</div>`;
+  const pad = v => v ? nodes.map((_, i) => v[i] ?? null) : null;
+  const tl = p => p.run.timeline || [];
+  const readings = players.map(p => fightReadings(p.run, tl(p), measuredStrengthByNode(p.run, tl(p))));
+  const perFight = pick => readings.map(r => r ? pad(r.map(x => {
+    const v = x ? pick(x) : null;
+    return v === undefined || Number.isNaN(v) ? null : v;
+  })) : null);
+  const has = series => series.some(v => v && v.some(x => x != null));
+  const turn = (p, i, v) => v == null ? "–" : v.toFixed(1);
+  const count = (p, i, v) => v ?? "–";
+  const dropCanvas = id => {
+    const old = floorCharts().find(c => c && c.canvas.id === id);
+    if (!old) return;
+    old.destroy();
+    detailKeepCharts = detailKeepCharts.filter(c => c !== old);
+    if (old === detailHpChart) detailHpChart = null;
+    if (old === detailGoldChart) detailGoldChart = null;
+    if (old === detailDeckChart) detailDeckChart = null;
+    if (old === detailRelicChart) detailRelicChart = null;
+  };
+  // Returns the new chart, or null (leaving the page's own) when nobody has figures for it.
+  const build = (id, legendId, series, cell, reverse, icon = null, extra = {}) => {
+    if (!has(series)) return null;
+    dropCanvas(id);
+    const shared = (extra.lines || []).map(l =>
+      `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, ${l.borderColor} 0 4px, transparent 4px 7px)"></span>${l.label}</span>`).join("");
+    document.getElementById(legendId).innerHTML = shared ? legend.slice(0, -"</div>".length) + shared + "</div>" : legend;
+    return partyChart(id, nodes, players, series, cell, reverse, icon, extra);
+  };
+
+  const hp = build("detail-hp-chart", "detail-hp-legend", players.map(p => pad(tl(p).map(n => n.hpAfter ?? null))),
+    (p, i, v) => v == null ? "–" : `${v}<small>/${(tl(p)[i] || {}).maxHp}</small>`, false,
+    (n, key) => n.type === "boss" || HP_ICON_KEYS.has(key) || (key === "unknown" && !!n.enc));
+  if (hp) detailHpChart = hp;
+  const gold = build("detail-gold-chart", "detail-gold-legend", players.map(p => pad(tl(p).map(n => n.gold ?? null))), count, false,
+    (n, key) => GOLD_ICON_KEYS.has(key));
+  if (gold) detailGoldChart = gold;
+  const relics = build("detail-relic-chart", "detail-relic-legend",
+    players.map(p => pad(heldCountsByNode(tl(p), p.run.finalRelics, p.run.relicsAdded, p.run.relicsLost))), count);
+  if (relics) detailRelicChart = relics;
+  // Keeping up, fight by fight: each player's damage taken as a multiple of the average win. The
+  // fight is the same for all of them, so its turns and the 1x line are drawn once.
+  const fightIcon = (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc);
+  const turnsShare = nodes.map((_, i) => {
+    for (const r of readings) { const x = r && r[i]; if (x && x.winTurns !== undefined) return x.turns / x.winTurns; }
+    return null;
+  });
+  const times = v => v == null ? "–" : `${v.toFixed(2)}×`;
+  const share = build("detail-keep-share-chart", "detail-keep-share-legend",
+    perFight(r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1)), (p, i, v) => times(v), false, fightIcon, {
+      floorAtZero: true,
+      lines: [
+        { label: "Average win", data: nodes.map(() => 1), borderColor: "#b9b9c4", backgroundColor: "#b9b9c4", borderWidth: 1.5,
+          borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 0 },
+        { label: "Fight turns", data: turnsShare, borderColor: KEEP_TURN_COLOR, backgroundColor: KEEP_TURN_COLOR, borderWidth: 2,
+          borderDash: [6, 3], pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone" },
+      ],
+      rows: i => turnsShare[i] == null ? "" :
+        `<tr><td><span class="fl-swatch" style="border-top:3px dashed ${KEEP_TURN_COLOR};height:0"></span> Fight turns</td><td>${times(turnsShare[i])}</td></tr>`,
+    });
+  if (share) document.getElementById("detail-keep-share-picks").style.display = "none";
+  const keep = [
+    share,
+    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
+      (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc)),
+    build("detail-keep-damage-chart", "detail-keep-damage-legend", perFight(r => r.doing), turn, false,
+      (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc)),
+    build("detail-keep-deck-chart", "detail-keep-deck-legend",
+      players.map(p => pad(heldCountsByNode(tl(p), p.run.finalDeck, p.run.deckAdded, p.run.cardsLost))), count),
+  ];
+  detailKeepCharts.push(...keep.filter(Boolean));
+  // The HP chart lives in the keep box, which the owner's own copy may have hidden.
+  if (hp || keep.some(Boolean)) document.getElementById("detail-keep-box").style.display = "";
 }
 
 // ---- Timeline ----
@@ -772,7 +1190,7 @@ function buildNodeTooltip(node) {
   if (node.dmg > 0) {
     lines.push(`<div class="nt-dmg">${node.dmg} Damage</div>`);
   }
-  if (node.enc && node.enc.startsWith("ENCOUNTER.") && _encAvgDmg[node.enc] != null) {
+  if (!detailForeign && node.enc && node.enc.startsWith("ENCOUNTER.") && _encAvgDmg[node.enc] != null) {
     lines.push(`<div class="nt-avg-dmg">(${Math.round(_encAvgDmg[node.enc])} dmg taken on avg)</div>`);
   }
   if (node.healed > 0) {
@@ -1533,8 +1951,9 @@ function renderDetailHpChart(run) {
 
   if (detailHpChart) { detailHpChart.destroy(); detailHpChart = null; }
 
-  // Only the hover box reads the wins now: what a fight cost beside what their wins lose.
-  const wins = hpWinsByNode(run, nodes);
+  // Only the hover box reads the wins now: what a fight cost beside what their wins lose. They
+  // are this profile's wins, so a partner's copy of the run goes without.
+  const wins = detailForeign ? [] : hpWinsByNode(run, nodes);
 
   // HP's swatch is the area's own fill; Max HP's is its thin line.
   document.getElementById("detail-hp-legend").innerHTML = `<div class="fl-items">` +
@@ -2204,6 +2623,7 @@ function makeHoverDotPlugin() {
 let rangeSel = null;      // {from, to}: floor numbers, as the axis numbers them (1-based)
 let rangeChanges = null;  // the run's floorChanges(), or null when it has no deck history
 let rangeNodes = [];      // its timeline
+let rangeParty = null;    // Everyone: [{char, label, color, nodes, changes}], one per player, else null
 let rangeDrag = null;     // {chart, nodes, host, from, moved} while a pointer is down on a chart
 let rangePanels = [];     // one under every floor chart while a span is live
 const RANGE_HINT_KEY = "slay-my-stats:range-used:v2";          // the gesture has been used
@@ -2253,6 +2673,7 @@ function makeRangeBandPlugin() {
 // The floor under a pointer: the chart's own axis decides, so a span lands on the right floor
 // whatever that chart has filtered out of its own points.
 function floorAtPointer(chart, nodes, clientX) {
+  if (!chart.canvas) return null;   // a replaced chart's listeners are still on the canvas
   const idx = Math.round(chart.scales.x.getValueForPixel(clientX - chart.canvas.getBoundingClientRect().left));
   const node = nodes[Math.max(0, Math.min(nodes.length - 1, idx))];
   return node ? floorOf(node) : null;
@@ -2393,22 +2814,6 @@ document.addEventListener("pointerdown", e => {
 // twice, and a card that was upgraded wears an arrow instead of counting as one out and one in.
 function rangeSummaryHtml() {
   const { from, to } = rangeSel;
-  const floors = rangeNodes.filter(n => floorOf(n) >= from && floorOf(n) <= to);
-  const fights = floors.filter(n => n.turns).length;
-  const dmg = floors.reduce((s, n) => s + (n.dmg || 0), 0);
-  const gold = floors.reduce((s, n) => s + (n.goldGained || 0), 0);
-  // Where the span left the HP: the first floor's starting HP to the last one's, so a dip is
-  // read at a glance without counting the line.
-  const hp = floors.length && floors[0].hpBefore != null && floors[floors.length - 1].hpAfter != null
-    ? [floors[0].hpBefore, floors[floors.length - 1].hpAfter] : null;
-  const inPlay = { added: [], removed: [], upgraded: [], relicsIn: [], relicsOut: [] };
-  (rangeChanges || []).forEach((change, i) => {
-    const f = floorOf(rangeNodes[i]);
-    if (f < from || f > to) return;
-    change.cards.forEach(([id, up, dir]) =>
-      inPlay[dir > 0 ? "added" : dir < 0 ? "removed" : "upgraded"].push({ id, up }));
-    change.relics.forEach(([id, , dir]) => inPlay[dir > 0 ? "relicsIn" : "relicsOut"].push({ id }));
-  });
   const tally = list => {
     const counts = new Map();
     const ups = new Map();
@@ -2425,24 +2830,49 @@ function rangeSummaryHtml() {
     return `<div class="range-group"><span class="range-head">${head}</span>` +
       tally(list).map(({ id, n, up }) => chip(src(id), name(id), n, cls, id, `${kind}:${id}:${up > 0 || cls ? 1 : 0}`)).join("") + `</div>`;
   };
-  const groups = group("Cards in", inPlay.added, "card", cardName) +
-    group("Upgraded", inPlay.upgraded, "card", cardName, " up") +
-    group("Cards out", inPlay.removed, "card", cardName) +
-    group("Relics in", inPlay.relicsIn, "relic", relicName) +
-    group("Relics out", inPlay.relicsOut, "relic", relicName);
-  const meta = [
-    `${floors.length} ${floors.length === 1 ? "floor" : "floors"}`,
-    fights ? `${fights} ${fights === 1 ? "fight" : "fights"}` : "",
-    dmg ? `${dmg} damage taken` : "",
-    gold ? `${gold} gold gained` : "",
-    hp ? `HP ${hp[0]} → ${hp[1]}` : "",
-  ].filter(Boolean).join(" · ");
-  const empty = rangeChanges ? "Nothing changed in these floors." : "This run has no deck history to add up.";
-  return `<div class="range-top"><span class="range-title">${from === to ? `Floor ${from}` : `Floors ${from}–${to}`}</span>` +
-    `<span class="range-meta">${meta}</span>` +
-    `<button type="button" class="range-clear" data-range-clear aria-label="Clear the selected floors">✕</button></div>` +
-    `<div class="range-groups">${groups || `<span class="range-empty">${empty}</span>`}</div>` +
-    `<div class="range-hint">Drag across any floor chart to pick another span; Esc or a click clears it.</div>`;
+  // One copy of the run over the span: what its floors cost and what changed in its deck.
+  const section = (nodes, changes) => {
+    const floors = nodes.filter(n => floorOf(n) >= from && floorOf(n) <= to);
+    const fights = floors.filter(n => n.turns).length;
+    const dmg = floors.reduce((s, n) => s + (n.dmg || 0), 0);
+    const gold = floors.reduce((s, n) => s + (n.goldGained || 0), 0);
+    const hp = floors.length && floors[0].hpBefore != null && floors[floors.length - 1].hpAfter != null
+      ? [floors[0].hpBefore, floors[floors.length - 1].hpAfter] : null;
+    const inPlay = { added: [], removed: [], upgraded: [], relicsIn: [], relicsOut: [] };
+    (changes || []).forEach((change, i) => {
+      const f = floorOf(nodes[i]);
+      if (f < from || f > to) return;
+      change.cards.forEach(([id, up, dir]) =>
+        inPlay[dir > 0 ? "added" : dir < 0 ? "removed" : "upgraded"].push({ id, up }));
+      change.relics.forEach(([id, , dir]) => inPlay[dir > 0 ? "relicsIn" : "relicsOut"].push({ id }));
+    });
+    const groups = group("Cards in", inPlay.added, "card", cardName) +
+      group("Upgraded", inPlay.upgraded, "card", cardName, " up") +
+      group("Cards out", inPlay.removed, "card", cardName) +
+      group("Relics in", inPlay.relicsIn, "relic", relicName) +
+      group("Relics out", inPlay.relicsOut, "relic", relicName);
+    const meta = [
+      floors.length ? `${floors.length} ${floors.length === 1 ? "floor" : "floors"}` : "",
+      fights ? `${fights} ${fights === 1 ? "fight" : "fights"}` : "",
+      dmg ? `${dmg} damage taken` : "",
+      gold ? `${gold} gold gained` : "",
+      hp ? `HP ${hp[0]} → ${hp[1]}` : "",
+    ].filter(Boolean).join(" · ");
+    const empty = changes ? "Nothing changed in these floors." : "This run has no deck history to add up.";
+    return { meta, groups: `<div class="range-groups">${groups || `<span class="range-empty">${empty}</span>`}</div>` };
+  };
+  const title = `<span class="range-title">${from === to ? `Floor ${from}` : `Floors ${from}–${to}`}</span>`;
+  const clear = `<button type="button" class="range-clear" data-range-clear aria-label="Clear the selected floors">✕</button>`;
+  const hint = `<div class="range-hint">Drag across any floor chart to pick another span; Esc or a click clears it.</div>`;
+  if (rangeParty) {
+    return `<div class="range-top">${title}${clear}</div>` + rangeParty.map(p => {
+      const { meta, groups } = section(p.nodes, p.changes);
+      return `<div class="range-player"><div class="range-who" style="border-color:${p.color}">${charIconHtml(p.char)}` +
+        `<span class="range-who-name">${escapeHtml(p.label)}</span><span class="range-meta">${meta}</span></div>${groups}</div>`;
+    }).join("") + hint;
+  }
+  const { meta, groups } = section(rangeNodes, rangeChanges);
+  return `<div class="range-top">${title}<span class="range-meta">${meta}</span>${clear}</div>${groups}${hint}`;
 }
 
 function floorChartConfig(nodes, plugins, tip, y, datasets, view = {}) {
@@ -3128,13 +3558,15 @@ document.addEventListener("click", e => {
 PHONE_MQ.addEventListener("change", () => {
   // The floor charts size their icons to the screen, so crossing the breakpoint redraws them:
   // full-size faces on a desktop, small ones that fit the floors on a phone.
-  const run = DATA.runsData?.find(r => r.ts === detailSelectedTs);
-  if (run && document.getElementById("detail-content").style.display !== "none") {
+  const run = detailShownRun;
+  const content = document.getElementById("detail-content");
+  if (run && content.style.display !== "none") {
     renderDetailHpChart(run);
     renderDetailGoldChart(run);
     renderDetailDeckChart(run);
     renderDetailRelicChart(run);
     renderDetailKeepCharts(run);
+    if (detailParty) renderPartyCharts(detailParty);
   } else if (keepActNodes.length) applyKeepAct();
 });
 

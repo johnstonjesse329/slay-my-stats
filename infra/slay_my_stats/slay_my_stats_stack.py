@@ -57,12 +57,14 @@ RETIRED_IDS = Path(__file__).resolve().parents[2] / "tools" / "retired_ids.json"
 # tools/deploy.py checks the names (build_site.site_pages()) before cdk
 # runs; each page gets its own CloudFront behavior below.
 SITE_PAGES = sorted(f.stem for f in (Path(__file__).resolve().parents[2] / "site" / "pages").glob("*.html"))
+# Pages with a link per post under them: /whats-new/<post id> (build_site.POSTS_PAGE).
+POST_PAGES = [name for name in ("whats-new",) if name in SITE_PAGES]
 
 
 @jsii.implements(ILocalBundling)
 class _CopyIngestSources:
     def try_bundle(self, output_dir: str, *, image=None, **_kwargs) -> bool:
-        for name in ("handler.py", "measured.py", "feedback.py", "session.py"):
+        for name in ("handler.py", "measured.py", "feedback.py", "reactions.py", "session.py", "views.py"):
             shutil.copy(INGEST_DIR / name, output_dir)
         shutil.copy(RUN_PY, output_dir)
         shutil.copy(DERIVE_PY, output_dir)
@@ -88,7 +90,7 @@ def _ingest_asset_hash() -> str:
     import hashlib
     h = hashlib.sha256()
     for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", INGEST_DIR / "feedback.py",
-              INGEST_DIR / "session.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
+              INGEST_DIR / "reactions.py", INGEST_DIR / "session.py", INGEST_DIR / "views.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
               IDS_PY, RELIC_DATA, RETIRED_IDS):
         if p.exists():
             h.update(p.read_bytes())
@@ -252,6 +254,8 @@ class SlayMyStatsStack(Stack):
         # users/_index.json.gz list and users/_uploads/<id>.json.gz, each
         # upload's result for the page to poll. Private (CloudFront only
         # serves users/*): ids/<steamid>.json.gz maps Steam IDs to slugs,
+        # coop/<seed>.json.gz lists co-op copies by party Steam IDs (behind each
+        # profile's public users/<slug>/_coop.json.gz links),
         # limits/ holds the upload rate limits, analytics/ a note per upload,
         # and raw/<steamid>/ keeps every upload as sent, so profiles can be
         # rebuilt after a parser fix.
@@ -286,7 +290,7 @@ class SlayMyStatsStack(Stack):
                     prefix=prefix,
                     noncurrent_version_expiration=Duration.days(30),
                     expired_object_delete_marker=True,
-                ) for prefix in ("users/", "ids/", "limits/", "analytics/", "raw/")
+                ) for prefix in ("users/", "ids/", "coop/", "limits/", "analytics/", "raw/")
             ] if gamma else []),
         )
 
@@ -381,6 +385,8 @@ class SlayMyStatsStack(Stack):
                 # Exact paths, not "<name>*", so a page can't catch an asset
                 # that starts with the same letters; the second is /<name>/.
                 **{pattern: page_behavior for name in SITE_PAGES for pattern in (name, f"{name}/")},
+                # Each What's new post's own link; boot.js shows the page at that post.
+                **{f"{name}/*": page_behavior for name in POST_PAGES},
             },
         )
 
@@ -502,11 +508,15 @@ class SlayMyStatsStack(Stack):
             on_failure=lambda_destinations.LambdaDestination(failure_fn),
         )
         data_bucket.grant_read_write(process_fn)  # and delete: junk uploads aren't kept
-        data_bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            s3n.LambdaDestination(process_fn),
-            s3.NotificationKeyFilter(prefix="raw/"),
-        )
+        # Uploads arrive as form POSTs (presign_post); PUT is kept for writing
+        # one by hand. A bucket-to-bucket copy (tools/seed_gamma.py) is neither,
+        # so copying uploads that were already processed doesn't run them again.
+        for event in (s3.EventType.OBJECT_CREATED_POST, s3.EventType.OBJECT_CREATED_PUT):
+            data_bucket.add_event_notification(
+                event,
+                s3n.LambdaDestination(process_fn),
+                s3.NotificationKeyFilter(prefix="raw/"),
+            )
 
         # CloudFormation can't create a SecureString with a real value baked
         # into the template, so the parameter itself is created out-of-band
@@ -623,6 +633,8 @@ class SlayMyStatsStack(Stack):
         # incoming and resolved counts), so feedback never sends an email of its own.
         # It also keeps the day's adoption numbers (players, by site and mod): a row
         # in the adoption table, kept for good, and the same as metrics for the dashboard.
+        # Last, the page views: it counts the day's view pings in the access logs
+        # (site/boot.js, views.py) and keeps the counts in analytics/views/.
         if not gamma:
             # One small row a day. Provisioned at 1/1, inside DynamoDB's always-free 25,
             # and kept if the stack is ever deleted.
@@ -651,7 +663,10 @@ class SlayMyStatsStack(Stack):
                 environment={"DATA_BUCKET": data_bucket.bucket_name, "SITE_DOMAIN": domain_name,
                              "ALERT_TOPIC_ARN": alert_topic.topic_arn, "FEEDBACK_TABLE": FEEDBACK_TABLE,
                              "FEEDBACK_DIGEST_SITES": f"prod=https://{DOMAIN_NAME},gamma=https://gamma.{DOMAIN_NAME}",
-                             "ADOPTION_TABLE": adoption_table.table_name},
+                             "ADOPTION_TABLE": adoption_table.table_name,
+                             # Page views (views.py): the site's access logs, one day's at a time.
+                             "ACCESS_LOG_BUCKET": log_bucket.bucket_name,
+                             "ACCESS_LOG_PREFIX": f"site/{distribution.distribution_id}."},
             )
             adoption_table.grant(digest_fn, "dynamodb:PutItem")
             digest_fn.add_to_role_policy(iam.PolicyStatement(
@@ -661,6 +676,8 @@ class SlayMyStatsStack(Stack):
             feedback_access(self, digest_fn.role, read=("prod", "gamma"))
             data_bucket.grant_read(digest_fn, "users/*")
             data_bucket.grant_read(digest_fn, "analytics/*")
+            data_bucket.grant_put(digest_fn, "analytics/views/*")
+            log_bucket.grant_read(digest_fn, "site/*")
             alert_topic.grant_publish(digest_fn)
             scheduler.Schedule(
                 self, "DigestSchedule",
@@ -806,7 +823,7 @@ class SlayMyStatsStack(Stack):
                     alarm_description=f"{what} on {domain_name}. Dashboard: {name_prefix}.",
                 ).add_alarm_action(cloudwatch_actions.SnsAction(alert_topic))
 
-            # The dashboard: adoption (from the morning digest), usage, and every alarm.
+            # The dashboard: adoption and page views (from the morning digest), usage, and every alarm.
             day = Duration.days(1)
             def ours(name):
                 return cloudwatch.Metric(namespace=name_prefix, metric_name=name,
@@ -832,6 +849,8 @@ class SlayMyStatsStack(Stack):
                      cloudwatch.GraphWidget(title="Total players", left=[ours("TotalPlayers")], **graph),
                      cloudwatch.GraphWidget(title="Runs added (per day)", left=[ours("RunsAdded")], **graph),
                      cloudwatch.GraphWidget(title="Feedback filed (per day)", left=[ours("FeedbackFiled")], **graph)],
+                    [cloudwatch.GraphWidget(title="Page views and visitors (per day)", left=[
+                        ours("PageViews"), ours("Visitors")], **graph)],
                     [cloudwatch.GraphWidget(title="Lambda invocations, all functions (per hour)", left=[
                         cloudwatch.Metric(namespace="AWS/Lambda", metric_name="Invocations",
                                           statistic="Sum", period=hour)], **graph),

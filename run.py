@@ -1044,6 +1044,7 @@ _JS_MODULES = [
     "update.js",
     "page-nav.js",
     "cards-page.js",
+    "relics-page.js",
     "seeds.js",
     "run-detail.js",
     "card-face.js",
@@ -1109,6 +1110,7 @@ _CARD_VARIANTS_FILE = _HERE / "card_variants.json"
 _MEASURED_FILE = _HERE / "measured_runs.json"
 # What winning runs did on each encounter (tools/power_curve/fight_demand.py).
 _FIGHT_DEMAND_FILE = _HERE / "fight_demand.json"
+_POWER_DATA_FILE = _HERE / "power_data.json"
 
 
 def build_card_final_images(url_for=Path.as_uri) -> dict[str, str]:
@@ -1239,6 +1241,25 @@ def build_card_char(card_data: dict) -> dict[str, str]:
     """
     return {cid: meta["pool"] for cid, meta in card_data.items() if "pool" in meta}
 
+def build_card_coop(card_data: dict) -> list[str]:
+    """
+    Ids of the cards that only appear in multiplayer runs (the game's
+    CardMultiplayerConstraint.MultiplayerOnly). The Cards page gives them a Co-op
+    bucket of their own beside the rarities.
+
+    card_data's multiplayerOnly, from the game's own exporter (tools/ExportCards.cs
+    via tools/import_game_data.py), is the source. Until card_data.json has been
+    refreshed with it, fall back to power_data.json (tools/extract_power_data.py's
+    read of the decompiled code), which only knows the cards that existed when it
+    was last run -- it has none of the Fool's. Empty when neither has any, which
+    hides the bucket.
+    """
+    ids = sorted(cid for cid, meta in card_data.items() if meta.get("multiplayerOnly"))
+    if ids or not _POWER_DATA_FILE.exists():
+        return ids
+    cards = json.loads(_POWER_DATA_FILE.read_text(encoding="utf-8")).get("cards", {})
+    return sorted(cid for cid, e in cards.items() if e.get("multiplayerOnly"))
+
 def resolve_image_paths(data: dict, url_for=Path.as_uri) -> dict:
     """
     relic_data.json and potion_data.json store imagePath as a path relative to
@@ -1365,6 +1386,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <button class="page-tab active" id="tab-overview" onclick="showPage('overview')">Overview</button>
   <button class="page-tab" id="tab-detail" onclick="showPage('detail')">Runs</button>
   <button class="page-tab" id="tab-cards" onclick="showPage('cards')">Cards</button>
+  <button class="page-tab" id="tab-relics" onclick="showPage('relics')">Relics</button>
   <button class="page-tab" id="tab-seeds" onclick="showPage('seeds')">Seeds</button>
 </nav>
 
@@ -1591,7 +1613,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
 <div class="chart-box">
   <h2>Favorites</h2>
-  <p class="chart-caption">Your most-picked, best win rate and most-bought card of each rarity and relic, beside the same for all players. Every card shows its win rate, with the count behind it underneath.</p>
+  <p class="chart-caption" id="cards-fav-caption">Your most-picked, best win rate and most-bought card of each rarity, beside the same for all players. Every card shows its win rate, with the count behind it underneath.</p>
   <div class="fav-panels" id="cards-favorites"></div>
 </div>
 
@@ -1615,6 +1637,32 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 </div>
 
 </div><!-- end #page-cards -->
+
+<div id="page-relics" style="display:none">
+
+<div class="chart-box">
+  <h2>Favorites</h2>
+  <p class="chart-caption" id="relics-fav-caption">Each character's most-picked, best win rate and most-bought relic.</p>
+  <div class="filter-group relics-who" id="relics-who" hidden>
+    <button class="toggle-btn active" id="relics-who-you">You</button>
+    <button class="toggle-btn" id="relics-who-all">All players</button>
+  </div>
+  <div id="relics-favorites"></div>
+</div>
+
+<div class="chart-box">
+  <h2>Relic offer &amp; pick rates</h2>
+  <p class="chart-caption" id="relics-caption">Every relic offered under the current filters.</p>
+  <input type="text" class="seeds-input" id="relics-name-filter" placeholder="Filter by relic name…" aria-label="Filter relics by name" style="max-width:260px;margin-bottom:0.75rem">
+  <div class="pivot-wrap relics-list">
+    <table class="pivot" id="relics-table">
+      <thead id="relics-thead"></thead>
+      <tbody id="relics-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- end #page-relics -->
 
 <!-- ================================================================
      Seeds page
@@ -1684,6 +1732,17 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="tag-filter-chips"></div>
     </div>
+    <div id="detail-partner-filter" style="display:none">
+      <div class="tag-filter-head">
+        <button type="button" class="tag-filter-summary" aria-expanded="false">
+          <span class="filter-label">Played with</span>
+          <span class="tag-filter-text"></span>
+          <span class="tag-filter-caret" aria-hidden="true">▾</span>
+        </button>
+        <button type="button" class="toggle-btn tag-filter-clear" hidden>Clear</button>
+      </div>
+      <div class="tag-filter-chips"></div>
+    </div>
     <div id="detail-jump-notice" role="status" hidden></div>
     <div id="detail-run-list"></div>
   </div>
@@ -1696,6 +1755,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="detail-maps"></div>
       <div class="chart-box" id="detail-keep-box" style="margin-top:16px">
         <h2>Keeping Up by Floor</h2>
+        <div id="detail-party-toggle" class="party-toggle" role="group" aria-label="Charts show"></div>
         <p class="chart-caption">This data highlights how your deck is performing per act against broad buckets of effectiveness: how much damage you put out and how much you mitigate. Slower decks with more turns per fight aren't penalized if damage taken is low.</p>
         <dl class="chart-caption keep-key">
           <dt>Graded on</dt><dd>Damage taken after healing, against wins on the same fights at <span id="detail-keep-tier"></span>. Energy and draw aren't graded</dd>
@@ -1705,10 +1765,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         </dl>
         <div class="keep-acts" id="detail-keep-acts"></div>
         <div class="keep-actpick" id="detail-keep-actpick"></div>
+        <div id="detail-keep-share">
         <h3 class="strength-label">Keeping up, fight by fight</h3>
         <p class="chart-caption">Damage taken and turns on each fight as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">Ticks mark recent deck changes to line up against the fights that followed; hover for the change, and a fight with more than one enemy wears one icon for each.</span> Breadcrumbs for troubleshooting, not proof.</p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-share-legend"></div>
+        </div>
         <div id="detail-hp-box">
           <h3 class="strength-label">HP by floor</h3>
           <p class="chart-caption">Your HP after each floor, against your max HP.</p>
@@ -1741,6 +1803,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <h2>Gold by Floor</h2>
         <p class="chart-caption">Your gold after each floor.</p>
         <div class="chart-wrap"><canvas id="detail-gold-chart"></canvas></div>
+        <div class="floor-legend" id="detail-gold-legend"></div>
       </div>
       <div class="chart-box" id="detail-deck-box" style="margin-top:16px">
         <h2>Deck by Floor</h2>
@@ -1860,6 +1923,7 @@ def build_html(runs: list[dict]) -> str:
         "cardImageOverrides": _PORTRAIT_OVERRIDES,
         "cardData":           card_data,
         "cardChar":           card_char,
+        "cardCoop":           build_card_coop(card_data),
         "cardVariants":       card_variants,
     "enchantmentData":    enchantment_data,
         "measuredRuns":       measured_runs,
