@@ -95,7 +95,6 @@
   color: var(--text-dim); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
 }
 .react img { width: 22px; height: 22px; object-fit: contain; }
-.react-plus { font-weight: 700; }
 .react:hover { border-color: var(--panel-border); color: var(--text); }
 .react[aria-pressed="true"] { border-color: var(--gold); background: rgba(224, 196, 104, 0.14); color: var(--gold-bright); }
 .react:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

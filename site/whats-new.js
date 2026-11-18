@@ -11,7 +11,6 @@
   "use strict";
   // reactions.KINDS, in the same order. The art is the game's, already on the site.
   const KINDS = [
-    { kind: "plus", label: "+1" },
     { kind: "flame", label: "Rest Site", src: "/node_icons/rest_site.png" },
     { kind: "elite", label: "Elite", src: "/node_icons/elite.png" },
     { kind: "skull", label: "Red Skull", src: "/thumbs/relic_images/red_skull.webp" },
@@ -71,10 +70,9 @@
     bar.setAttribute("aria-label", "Reactions");
     bar.hidden = true;  // until the counts load; left hidden if they can't
     bar.replaceChildren(...KINDS.map(({ kind, label, src }) => el("button", {
-      type: "button", className: "react" + (src ? "" : " react-text"),
+      type: "button", className: "react",
     }, [
-      src ? el("img", { src, alt: "", width: 22, height: 22, loading: "lazy", decoding: "async" })
-          : el("span", { className: "react-plus", textContent: label }),
+      el("img", { src, alt: "", width: 22, height: 22, loading: "lazy", decoding: "async" }),
       el("span", { className: "react-count" }),
     ])), el("span", { className: "react-status", role: "status" }));
     bar.querySelectorAll("button.react").forEach((button, i) => {

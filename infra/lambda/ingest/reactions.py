@@ -5,9 +5,9 @@ Anyone may read the counts; reacting takes a Steam sign-in, one of each reaction
 post. Like feedback, the env a reaction is stored under is the Lambda's own FEEDBACK_ENV.
 
     GET  /auth/reactions?posts=a,b&fixes=a:12.31,b:5
-        -> {"signedIn": bool, "posts": {"a": {"counts": {"plus": 3}, "mine": ["plus"],
+        -> {"signedIn": bool, "posts": {"a": {"counts": {"flame": 3}, "mine": ["flame"],
                                               "asked": {"count": 7, "mine": true}}}}
-    POST /auth/reactions {"post": "a", "kind": "plus", "on": true}
+    POST /auth/reactions {"post": "a", "kind": "flame", "on": true}
         -> {"signedIn": true, "posts": {"a": {...}}}
 
 `fixes` names the feedback notes a post closes (its FB numbers). `asked` is how many players
@@ -18,7 +18,7 @@ Lambda can't see the site bucket, and an unknown id only ever holds the reaction
 Items, in the env's partition beside the notes (whose keys all start feedback/, so no note
 query reads these):
     reaction  sk = react#<steam id>#<post>#<kind>, at
-    counts    sk = rcount#<post>, one number attribute per kind (n_plus, n_flame, ...)
+    counts    sk = rcount#<post>, one number attribute per kind (n_flame, n_elite, ...)
     throttle  sk = rrate#<steam id>#<UTC hour>, deleted by TTL
 """
 import base64
@@ -28,7 +28,7 @@ import re
 import time
 
 # The reactions a post offers, in the order site/whats-new.js shows them.
-KINDS = ("plus", "flame", "elite", "skull", "eye", "huh", "flower")
+KINDS = ("flame", "elite", "skull", "eye", "huh", "flower")
 POST_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 POST_ID_MAX = 60   # build_site.POST_ID_MAX
 MAX_POSTS = 100    # posts one read may ask about
