@@ -163,12 +163,12 @@ function copyRunLink(ts, btn) {
 // copy of the game is on the site; the other slots are just their character. Null for a run
 // with no linked copies, where which slot was this profile's isn't known.
 function coopParty(run) {
-  if (!run.mp || !run.coop) return null;
+  if (!run.mp || (!run.coop && !hasPartyDamage(run))) return null;
   const party = run.party || [];
   const owner = DATA.profile || {};
   return party.map((char, i) => {
-    if (i === run.coop.i) return { char, name: owner.name || "", self: true };
-    const w = run.coop.with.find(p => p.i === i);
+    if (i === (run.coop?.i ?? run.partySlot)) return { char, name: owner.name || "", self: true };
+    const w = run.coop?.with.find(p => p.i === i);
     return w ? { char, name: w.name, slug: w.slug, ts: w.ts } : { char };
   });
 }
@@ -499,10 +499,21 @@ function renderDetailRun(run) {
   if (detailView.ts !== run.ts) detailView = { ts: run.ts, who: "" };
   const partners = run.coop ? run.coop.with : [];
   const who = detailView.who;
-  if (!partners.length || (who !== "all" && !partners.some(p => p.slug === who))) detailView.who = "";
+  if (who === "all" ? !partners.length && !hasPartyDamage(run) : !partners.some(p => p.slug === who)) detailView.who = "";
   const token = ++detailRenderToken;
+  detailDamageRuns = [];
   content.classList.remove("party-loading");
-  if (!detailView.who) { showRunCopy(run, run); return; }
+  if (!detailView.who) {
+    showRunCopy(run, run);
+    if (partners.length && !hasPartyDamage(run)) {
+      Promise.all(partners.map(p => loadPartnerCopy(p.slug, p.ts))).then(copies => {
+        if (token !== detailRenderToken || !copies.some(hasPartyDamage)) return;
+        detailDamageRuns = copies;
+        renderDetailKeepCharts(run);
+      });
+    }
+    return;
+  }
 
   document.querySelectorAll("#detail-run-header .party-tab").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.who === who)));
   content.classList.add("party-loading");
@@ -587,6 +598,7 @@ const bindRunCopyLinks = owner =>
 // and link belong to.
 function showRunCopy(run, owner, note = "", players = null) {
   clearPartyView();
+  detailOwnerRun = owner;
   if (players) detailParty = players;
   document.getElementById("detail-party-toggle").innerHTML = partyToggleHtml(owner);
   detailShownRun = run;
@@ -797,17 +809,20 @@ function runFloorChanges(run) {
 // per player in their character's colour (dashed for a second player on the same character). A
 // drag still adds up what changed, one list per player. `copies` holds each partner's copy by
 // slug; one that couldn't be loaded is left out and named.
-let detailParty = null;   // the players on show while Everyone is on, else null
-function partyPlayers(owner, copies) {
+let detailParty = null, detailOwnerRun = null, detailDamageRuns = [];
+function partyRoster(owner) {
   const seen = {};
-  return coopParty(owner)
-    .map(p => ({ ...p, run: p.self ? owner : p.slug ? copies[p.slug] : null }))
-    .filter(p => p.run)
-    .map(p => {
-      const dash = seen[p.char] ? [6, 4] : [];
-      seen[p.char] = true;
-      return { ...p, dash, color: charColor(p.char), label: p.name || fmtCharName(p.char) };
-    });
+  return (coopParty(owner) || []).map((p, slot) => {
+    const dash = seen[p.char] ? [6, 4] : [];
+    seen[p.char] = true;
+    return { ...p, slot, dash, color: charColor(p.char), label: p.name || fmtCharName(p.char) };
+  });
+}
+
+function partyPlayers(owner, copies) {
+  return partyRoster(owner)
+    .map(p => ({ ...p, run: p.self ? owner : copies[p.slug] }))
+    .filter(p => p.run);
 }
 
 function clearPartyView() {
@@ -837,7 +852,8 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
   const iconJ = series.findIndex(Boolean);   // icons ride one player's line: the fights are the same for all
   const datasets = [...(extra.lines || []), ...players.map((p, j) => series[j] ? {
     label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color, borderDash: p.dash,
-    borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone",
+    borderWidth: 2, pointRadius: extra.recordedOnly ? 3 : 0, pointHoverRadius: 0,
+    spanGaps: !extra.recordedOnly, cubicInterpolationMode: "monotone",
     ...(icon && j === iconJ ? nodePoints(nodes, () => chart, icon) : {}),
   } : null)].filter(Boolean);
   const ranges = extra.ranges || [];
@@ -865,8 +881,12 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
 function renderPartyCharts(players) {
   const nodes = players.map(p => p.run.timeline || []).reduce((a, b) => b.length > a.length ? b : a, []);
   const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
-  const legend = `<div class="fl-items">${players.map(p =>
-    `<span class="fl-item">${swatch(p)}${charIconHtml(p.char)}${escapeHtml(p.label)}</span>`).join("")}</div>`;
+  const roster = partyRoster(detailOwnerRun);
+  const missingRuns = roster.filter(p => !players.some(loaded => loaded.slot === p.slot));
+  const missingMessage = missingRuns.length
+    ? `Player run data unavailable for ${missingRuns.map(p => p.label).join(", ")}. Their damage taken is omitted.` : "";
+  showKeepNotice("share", missingMessage);
+  showKeepNotice("in", missingMessage);
   const pad = v => v ? nodes.map((_, i) => v[i] ?? null) : null;
   const tl = p => p.run.timeline || [];
   const readings = players.map(p => fightReadings(p.run, tl(p), measuredStrengthByNode(p.run, tl(p))));
@@ -896,15 +916,16 @@ function renderPartyCharts(players) {
     if (old === detailRelicChart) detailRelicChart = null;
   };
   // Returns the new chart, or null (leaving the page's own) when nobody has figures for it.
-  const build = (id, legendId, series, cell, reverse, icon = null, extra = {}) => {
-    if (!has(series)) return null;
+  const build = (id, legendId, series, cell, reverse, icon = null, extra = {}, chartPlayers = players) => {
+    if (!has(series) && !extra.recordedOnly) return null;
     dropCanvas(id);
     const shared = (extra.lines || []).map(l =>
       `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, ${l.borderColor} 0 4px, transparent 4px 7px)"></span>${l.label}</span>`).join("");
     const range = extra.ranges?.some(Boolean) ? rangeKey("Best to worst quarter of wins", extra.reverse) : "";
-    document.getElementById(legendId).innerHTML = shared || range
-      ? legend.slice(0, -"</div>".length) + shared + range + "</div>" : legend;
-    return partyChart(id, nodes, players, series, cell, reverse, icon, extra);
+    const legend = chartPlayers.filter((_, i) => series[i]?.some(v => v != null))
+      .map(p => `<span class="fl-item">${swatch(p)}${charIconHtml(p.char)}${escapeHtml(p.label)}</span>`).join("");
+    document.getElementById(legendId).innerHTML = `<div class="fl-items">${legend}${shared}${range}</div>`;
+    return partyChart(id, nodes, chartPlayers, series, cell, reverse, icon, extra);
   };
 
   const hp = build("detail-hp-chart", "detail-hp-legend", players.map(p => pad(tl(p).map(n => n.hpAfter ?? null))),
@@ -935,12 +956,20 @@ function renderPartyCharts(players) {
         `<tr><td><span class="fl-swatch" style="border-top:3px dashed ${KEEP_TURN_COLOR};height:0"></span> Fight turns</td><td>${times(turnsShare[i])}</td></tr>`,
     });
   if (share) document.getElementById("detail-keep-share-picks").style.display = "none";
+  const damageSources = partyDamageSources(players.map(p => p.run));
+  const damageTotals = roster.map(p => partyDamageByFloor(damageSources, nodes, p.slot));
+  const damageRates = damageTotals.map(data => {
+    const rates = data.map((damage, i) => damage == null ? null : damage / nodes[i].turns);
+    return rates.some(v => v != null) ? rates : null;
+  });
+  showKeepNotice("damage", missingPartyDamage(nodes, roster, damageTotals));
   const keep = [
     share,
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
       fightIcon, historical("winRate", ranges.taken, true)),
-    build("detail-keep-damage-chart", "detail-keep-damage-legend", perFight(r => r.doing), turn, false,
-      fightIcon, historical("ask", ranges.done, false)),
+    build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
+      (p, i, value) => value == null ? "No data" : `${value.toFixed(1)} / turn (${damageTotals[p.slot][i]} HP)`,
+      false, null, { ...historical("ask", ranges.done, false), recordedOnly: true }, roster),
   ];
   detailKeepCharts.push(...keep.filter(Boolean));
   renderPartyFloorPanels(players);
@@ -3262,6 +3291,57 @@ function measuredStrengthByNode(run, nodes) {
   return nodes.map(n => byFloor.get(n.floor + 1) || null);
 }
 
+const damageFloorKey = n => `${n.floor}:${keepFight(n)}`;
+const hasPartyDamage = run => run?.measured?.some(row =>
+  Array.isArray(row.damageBySlot) && row.damageBySlot.length === run.party?.length);
+
+function partyDamageSources(runs) {
+  return [...new Set(runs)].filter(r => r?.mp).map(run => {
+    const samples = new Map();
+    const nodes = run.timeline || [];
+    const measured = measuredStrengthByNode(run, nodes);
+    nodes.forEach((n, i) => {
+      const damage = measured?.[i]?.damageBySlot;
+      if (keepFight(n) && Array.isArray(damage) && damage.length === run.party?.length) {
+        samples.set(damageFloorKey(n), damage);
+      }
+    });
+    return samples;
+  });
+}
+
+function partyDamageByFloor(sources, nodes, slot) {
+  return nodes.map(n => {
+    if (!keepFight(n)) return null;
+    for (const source of sources) {
+      const value = source.get(damageFloorKey(n))?.[slot];
+      if (Number.isFinite(value) && value >= 0) return value;
+    }
+    return null;
+  });
+}
+
+const acknowledgedKeepNotices = new Set();
+function showKeepNotice(chart, message) {
+  const note = document.getElementById(`detail-keep-${chart}-note`);
+  const key = JSON.stringify([detailView.ts, detailView.who, chart, message]);
+  note.hidden = !message || acknowledgedKeepNotices.has(key);
+  note.querySelector("span").textContent = message;
+  note.querySelector("button").onclick = () => {
+    acknowledgedKeepNotices.add(key);
+    note.hidden = true;
+  };
+}
+
+function missingPartyDamage(nodes, roster, totals) {
+  const missing = roster.filter((_, j) => nodes.some((n, i) => keepFight(n) && totals[j][i] == null));
+  if (!missing.length) return "";
+  if (totals.every(row => row.every(value => value == null))) {
+    return "No player damage was recorded for this run. Older uploads and standard run files do not identify who dealt damage.";
+  }
+  return `Player damage data is incomplete for ${missing.map(p => p.label).join(", ")}. Fights without a recorded value are omitted.`;
+}
+
 // One player's share of a co-op enemy's HP, over its solo HP: fight_demand.py's hp_share.
 const keepShare = (run, node) => !run.mp ? 1 : node.act === 1 ? 1.1 : node.act === 3 && node.type === "boss" ? 1.3 : 1.2;
 
@@ -3291,29 +3371,32 @@ const keepIconKey = n => n.type === "boss" ? nodeIconKey(n) : keepRank(n) ? "eli
 
 // fight_demand.py's readings, floor by floor: keep the two together. A logged fight's HP
 // is what the log saw come off, respawns and all, because an enemy's HP rolls per run and
-// the table only has its middle. A logged loss can't have left more than was there. Not
-// in co-op, until a log has shown whose numbers it carries with a party in the fight.
+// the table only has its middle. Co-op player damage comes from attributed hit events.
 // A lost fight has no damage figure without a log: the run file doesn't say how much HP
-// came off. A death is a death, so the line drops to 0 on that floor instead of stopping
-// short, and the hover box says there is no figure. That floor gets a row even when the
+// came off. That floor gets a row even when the
 // data has no HP for the fight. Damage taken is the run file's on every run, because
 // winners' is: all of it, whatever its source, with what the floor healed off it.
-function fightReadings(run, nodes, measured) {
+function fightReadings(run, nodes, measured, partyDamage = null) {
   if (!DATA.fightDemand) return null;
   const demand = DATA.fightDemand.encounters;
   const tough = +(run.asc >= 8);
   const lastFight = nodes.findLastIndex(keepFight);
   const rows = nodes.map((n, i) => {
+    if (!keepFight(n)) return null;
     const d = demand[keepFight(n)];
     const table = d ? d.pool[tough] * keepShare(run, n) : 0;
     const lost = !run.won && i === lastFight;
-    if (!table && !lost) return null;
+    const dealt = partyDamage?.[i];
+    if (!table && !lost && dealt == null) return null;
     const how = d && keepWinners(run, d);
     const m = !run.mp && measured && measured[i];
     const pool = !m ? table : lost ? Math.max(table, m.removed) : m.removed;
     const row = { pool, lost, turns: n.turns, many: d?.many, count: d?.count };
     if (how) { row.winTurns = how.turns; row.winN = how.n; if (pool) row.ask = pool / how.turns; }
-    if (m || !lost) row.doing = (m ? m.removed : pool) / n.turns;
+    if (run.mp ? dealt != null : m || !lost) {
+      row.damageDone = run.mp ? dealt : m ? m.removed : pool;
+      row.doing = row.damageDone / n.turns;
+    }
     // Enemies act after you, so a fight you won gives them a turn less. One won in a turn
     // gave them none, but what the floor cost still counts: it goes over one turn.
     const swung = m ? m.enemyTurns : n.turns - (lost ? 0 : 1);
@@ -3730,7 +3813,20 @@ function renderDetailKeepCharts(run) {
   detailKeepCharts = [];
   closeFloorTip();
   const measured = measuredStrengthByNode(run, nodes);
-  const rows = fightReadings(run, nodes, measured);
+  const owner = detailOwnerRun || run;
+  const slot = run.partySlot ?? (run === owner ? owner.coop?.i
+    : owner.coop?.with.find(p => p.slug === detailView.who)?.i);
+  const partyDamage = run.mp ? partyDamageByFloor(partyDamageSources([run, owner, ...detailDamageRuns]), nodes, slot) : null;
+  const rows = fightReadings(run, nodes, measured, partyDamage);
+  document.getElementById("detail-keep-damage-caption").textContent = run.mp
+    ? "Enemy HP lost to hits attributed to a player, averaged over the fight’s turns. The dotted line estimates a player’s share in an average win. Damage without a known player source is excluded."
+    : "Enemy HP lost per fight turn. The dotted line is the average win.";
+  showKeepNotice("share", "");
+  showKeepNotice("in", "");
+  showKeepNotice("damage", run.mp
+    ? missingPartyDamage(nodes, [{ label: "this player" }], [partyDamage])
+    : rows?.some((r, i) => r && !measured?.[i])
+      ? "Fights without a log use estimated enemy HP. Damage in an unlogged loss is omitted." : "");
   if (!rows) { box.style.display = "none"; return; }
   box.style.display = "";
   document.getElementById("detail-keep-tier").textContent = KEEP_TIER_NAMES[keepTier(run.asc)];
@@ -3778,15 +3874,15 @@ function renderDetailKeepCharts(run) {
   const simple = lines => r => { const list = lines(r); return list.length ? `<table>${list.join("")}</table>` : ""; };
 
   const damageTip = tip(r => {
-    const lost = r.doing === undefined;
+    const missing = r.doing === undefined;
     const hp = r.pool ? `${Math.round(r.pool)}${run.mp ? "/player" : ""}` : "";
     const wins = r.ask === undefined ? "" : `<div class="ft-cap">Average of ${r.winN} win${r.winN === 1 ? "" : "s"}</div>`;
-    const done = lost
+    const done = missing
       ? frow(swatch(KEEP_LINES.damage.color), "Damage done", "—", "—", hp, one(r.ask))
-      : frow(swatch(KEEP_LINES.damage.color), "Damage done", hp, one(r.doing), r.ask === undefined ? "" : hp, one(r.ask));
+      : frow(swatch(KEEP_LINES.damage.color), "Damage done", r.damageDone, one(r.doing), r.ask === undefined ? "" : hp, one(r.ask));
     return `<table>${fightHead}${done}` +
       frow(swatch(KEEP_DEMAND_COLOR), "Fight turns", r.turns, "", r.ask === undefined ? "" : +r.winTurns.toFixed(1), "") +
-      `</table>${wins}${lost ?`<div class="ft-cap">Lost here, no log to say.</div>` : ""}`;
+      `</table>${wins}${missing ? `<div class="ft-cap">Player damage unavailable.</div>` : ""}`;
   });
 
   // What arrived each turn, split into what was blocked, healed back, and got through. The
@@ -3882,7 +3978,11 @@ function renderDetailKeepCharts(run) {
     chart("deck", tKeys.map(k => deckLine(k, T.color[k], byT[k])), deckTip);
   }
 
-  chart("damage", [line(KEEP_LINES.damage, r => r.doing ?? 0, "damage"), winners(r => r.ask)], damageTip, ranges.done);
+  const damage = run.mp
+    ? { ...line(KEEP_LINES.damage, r => r.doing), pointRadius: 3, spanGaps: false }
+    : line(KEEP_LINES.damage, r => r.doing, "damage");
+  chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
+    winners(r => r.ask)], damageTip, ranges.done);
   chart("in", [line(KEEP_LINES.taken, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken, true);
 
   // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:

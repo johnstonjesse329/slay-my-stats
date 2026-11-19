@@ -33,10 +33,8 @@ const PAGE_RENDERERS = {
 // for cheap pages, but Card Stats rebuilds ~500 rows (each with a portrait
 // image) from scratch, which is a visible stutter switching back to a tab
 // where nothing actually changed. rerenderCurrentPage() is the single
-// chokepoint every filter change already runs through (individual
-// controls, Reset, and loading a saved preference all end up calling it —
-// the latter two via setSharedPlayers() inside applySharedFilterState()), so
-// it's the one place that needs to mark every *other* page dirty.
+// chokepoint for filter controls, Reset, and presets, so it's the one place
+// that needs to mark every *other* page dirty after rendering.
 const pageDirty = Object.fromEntries(PAGES.map(p => [p, true]));
 
 function rerenderCurrentPage() {
@@ -186,8 +184,7 @@ function openRunLink(ts, view = "") {
     Object.keys(names).forEach(key => { if (key in widen) changed.push(names[key]); });
     if (Object.keys(widen).length > 0) {
       applySharedFilterState({ ...state, ...widen }, "detail");
-      // applySharedFilterState() re-rendered the page behind this one partway
-      // through (setSharedPlayers), before the dates were in place.
+      // Other tabs need to reflect the widened filters when they're opened.
       PAGES.forEach(p => { pageDirty[p] = true; });
       updateUnsavedIndicator();
       updateFilterSummary();
@@ -393,11 +390,13 @@ const sharedPlayersButtons = {
 function setSharedPlayers(players) {
   sharedActivePlayers = players;
   Object.entries(sharedPlayersButtons).forEach(([key, btn]) => setActive(btn, key === players));
-  rerenderCurrentPage();
 }
 
 Object.entries(sharedPlayersButtons).forEach(([players, btn]) => {
-  btn.addEventListener("click", () => setSharedPlayers(players));
+  btn.addEventListener("click", () => {
+    setSharedPlayers(players);
+    rerenderCurrentPage();
+  });
 });
 
 const sharedModesBox = document.getElementById("shared-modes-checkboxes");
@@ -410,6 +409,7 @@ ALL_MODES.forEach(mode => {
     const next = new Set(sharedActiveModes);
     if (e.target.checked) next.add(mode); else next.delete(mode);
     setSharedModes(next);
+    rerenderCurrentPage();
   });
   sharedModesBox.appendChild(label);
 });
@@ -420,7 +420,6 @@ function setSharedModes(modes) {
     cb.checked = sharedActiveModes.has(cb.value);
     cb.closest("label").classList.toggle("checked", cb.checked);
   });
-  rerenderCurrentPage();
 }
 
 setSharedModes(SHARED_FILTER_HARDCODED_DEFAULTS.modes);
@@ -439,11 +438,13 @@ document.getElementById("shared-mods-group").style.display = DATA.runsData.some(
 function setSharedMods(mods) {
   sharedActiveMods = mods;
   Object.entries(sharedModsButtons).forEach(([key, btn]) => setActive(btn, key === mods));
-  rerenderCurrentPage();
 }
 
 Object.entries(sharedModsButtons).forEach(([mods, btn]) => {
-  btn.addEventListener("click", () => setSharedMods(mods));
+  btn.addEventListener("click", () => {
+    setSharedMods(mods);
+    rerenderCurrentPage();
+  });
 });
 
 setSharedMods("all");

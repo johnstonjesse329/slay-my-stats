@@ -204,6 +204,9 @@ def main():
             # is already there.
             assert page.get_by_role('tab', name='Inbox', exact=True).get_attribute('aria-selected') == 'true'
             assert page.get_by_role('tab', name='New note', exact=True).get_attribute('aria-selected') == 'false'
+            wait_summary(page, '1 note · 1 open · 1 place')
+            assert page.locator('#scope button').all_inner_texts() == ['Whole site', 'This page']
+            expect(page.get_by_role('button', name='Whole site', exact=True)).to_have_attribute('aria-pressed', 'true')
             page.get_by_role('tab', name='New note', exact=True).click()
             page.get_by_role('button', name='Whole page', exact=True).click()
             assert page.locator('#page-url').inner_text() == 'https://gamma.slay-my-stats.com/'
@@ -237,12 +240,13 @@ def main():
             # The inbox is a tab of the same panel, not a second button. After a send it reopens on it.
             page.get_by_role('button', name='Feedback', exact=False).click()
             assert page.get_by_role('tab', name='Inbox', exact=True).get_attribute('aria-selected') == 'true'
+            page.get_by_role('button', name='This page', exact=True).click()
             wait_summary(page, '1 note · 1 open · 1 place')
             assert page.locator('.bucket').count() == 1
             assert 'Whole page' in page.locator('.bucket summary').first.inner_text()
             # Groups start collapsed, showing the newest comment; one button opens or closes them all.
             assert page.locator('.bucket[open]').count() == 0
-            assert 'Make this clearer' in page.locator('.bucket-snippet').first.inner_text()
+            assert 'Steam …test · Make this clearer' in page.locator('.bucket-snippet').first.inner_text()
             assert page.locator('#toggle-all').inner_text() == 'Expand all'
             page.locator('#toggle-all').click()
             assert page.locator('.bucket[open]').count() == 1

@@ -91,6 +91,7 @@ def _new_turn(number, reason):
 
 
 def _new_fight(fight, first):
+    slots = first.get("damageSlots")
     return {
         "i": fight, "enc": first.get("enc", ""), "hp0": first.get("hp"), "hp1": None,
         "rounds0": first.get("round"), "rounds1": None, "deck0": first.get("deck"),
@@ -105,6 +106,7 @@ def _new_fight(fight, first):
         # Damage to enemies that did not come from one of our attacks: poison and
         # other damage over time log with an empty attacker.
         "dmg_other": 0, "dmg_hit": 0, "junk": 0,
+        "damageBySlot": [0] * slots if type(slots) is int and 2 <= slots <= 8 else None,
         # What the killing blow carried past 0 HP. It is part of `taken`, because the
         # damage that killed you is the damage you took, not the 6 HP you had left.
         "overkill": 0,
@@ -201,6 +203,12 @@ def derive(log, moves=None):
             continue
         if fight.get("closed"):
             continue
+
+        if kind == "hit" and a.get("enemy") is True and fight["damageBySlot"] is not None:
+            slot, damage = a.get("sourceSlot"), a.get("unb")
+            if (type(slot) is int and 0 <= slot < len(fight["damageBySlot"])
+                    and type(damage) is int and 0 <= damage < HP_SENTINEL):
+                fight["damageBySlot"][slot] += damage
 
         # Snapshots are state, not turn-scoped events: one arrives before any turn
         # exists (the fight's opening state). They hang off the fight, and off the

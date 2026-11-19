@@ -147,7 +147,7 @@
     </div>
     <div id="view-inbox" role="tabpanel">
       <div id="summary-row"><p id="summary"></p><button id="toggle-all" type="button">Expand all</button></div>
-      <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-page" type="button" aria-pressed="false">This page</button><button id="scope-site" type="button" aria-pressed="false">Whole site</button></div>
+      <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-site" type="button" aria-pressed="true">Whole site</button><button id="scope-page" type="button" aria-pressed="false">This page</button></div>
       <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="backlog">Backlog</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option><option value="kudos">Kudos</option></select><select id="filter-env" aria-label="Environment" hidden></select></div>
       <div id="find"><input id="search" type="search" placeholder="Search notes" aria-label="Search notes"><select id="filter-author" aria-label="Author"><option value="">Anyone</option></select></div>
       <div id="notes"></div>
@@ -160,7 +160,7 @@
   <button id="launcher" type="button"><span aria-hidden="true">✎</span> <span id="launcher-label">Feedback</span><span id="launcher-count" aria-hidden="true" hidden></span></button>`;
   const $ = id => root.getElementById(id);
   const ORIGIN = location.origin;
-  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'page', status = 'open', filterKind = '', envFilter = '', writeEnv = '', envs = [], admin = false, nextCursor = null, view = 'inbox', picking = false, start, previousFocus, oldTouchAction;
+  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'site', status = 'open', filterKind = '', envFilter = '', writeEnv = '', envs = [], admin = false, nextCursor = null, view = 'inbox', picking = false, start, previousFocus, oldTouchAction;
   const mark = document.createElement('div');
   Object.assign(mark.style, {position:'fixed',pointerEvents:'none',zIndex:'2147483645',border:'2px solid #f6c66d',background:'#f6c66d22',display:'none'});
   document.body.append(mark);
@@ -545,7 +545,8 @@
       if(focusId&&bucket.notes.some(n=>n.id===focusId)) expanded.add(bucket.key);
       details.open=expanded.has(bucket.key);
       label.className='bucket-label';label.textContent=bucket.label;
-      snippet.className='bucket-snippet';snippet.textContent=bucket.notes[0].comment.replace(/\s+/g,' ');
+      const latest=bucket.notes[0];
+      snippet.className='bucket-snippet';snippet.textContent=`${author(latest)} · ${latest.comment.replace(/\s+/g,' ')}`;
       text.className='bucket-text';text.append(label,snippet);
       meta.className='bucket-meta';meta.textContent=`${bucket.kind} · ${bucket.notes.length} note${bucket.notes.length===1?'':'s'} · ${bucket.open} open`;
       summary.append(text,meta);
@@ -564,8 +565,6 @@
     const open=visible.filter(note=>stateOf(note)==='open').length,backlogged=visible.filter(note=>stateOf(note)==='backlog').length;
     $('filter-status').value=status;$('filter-kind').value=filterKind;
     $('summary').innerHTML=`<b>${visible.length}</b> note${visible.length===1?'':'s'}${nextCursor?'+':''}${visible.length<notes.length?` of ${notes.length} loaded`:''} · ${open} open${backlogged?` · ${backlogged} backlog`:''} · ${groups.length} ${groups.length===1?'place':'places'}`;
-    $('scope-page').setAttribute('aria-pressed',String(scope==='page'));
-    $('scope-site').setAttribute('aria-pressed',String(scope==='site'));
     $('load-more').hidden=!nextCursor;
     $('copy').textContent=visible.length?`Copy all notes (${visible.length}${nextCursor?' loaded':''})`:'Copy all notes';
     $('copy').disabled=!visible.length;
@@ -589,6 +588,8 @@
   let loadId=0;
   async function load(reset=true) {
     const mine=++loadId;
+    $('scope-page').setAttribute('aria-pressed',String(scope==='page'));
+    $('scope-site').setAttribute('aria-pressed',String(scope==='site'));
     if(reset){notes=[];nextCursor=null;$('summary').textContent='Loading…';say('','inbox');}
     try {
       const params={scope,status};

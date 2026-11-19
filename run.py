@@ -996,7 +996,8 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         "mp":            len(players) > 1,
         # Who played, in the save's slot order, so the run list can show their
         # character heads instead of just "Multi". Characters only: never Steam IDs.
-        **({"party": [strip_prefix(p.get("character", ""), "CHARACTER.") for p in players if p.get("character")]}
+        **({"party": [strip_prefix(p.get("character") or "", "CHARACTER.") for p in players],
+            "partySlot": local_idx}
            if len(players) > 1 else {}),
         "mode":          data.get("game_mode", "standard"),
         "build":         data.get("build_id", "UNKNOWN"),
@@ -1771,6 +1772,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div id="detail-keep-share">
         <h3 class="strength-label">Keeping up, fight by fight</h3>
         <p class="chart-caption">Damage taken and turns on each fight as a multiple of the average win (the dotted line at 1×) — lower is better. <span id="detail-keep-share-picks">Ticks mark recent deck changes to line up against the fights that followed; hover for the change, and a fight with more than one enemy wears one icon for each.</span> Breadcrumbs for troubleshooting, not proof.</p>
+        <p class="chart-caption" id="detail-keep-share-note" hidden><span></span> <button type="button">OK</button></p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-share-legend"></div>
         </div>
@@ -1782,10 +1784,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         </div>
         <h3 class="strength-label">Damage taken per turn</h3>
         <p class="chart-caption">Damage that got through each turn, after healing. The dotted line is the average win.</p>
+        <p class="chart-caption" id="detail-keep-in-note" hidden><span></span> <button type="button">OK</button></p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-in-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-in-legend"></div>
         <h3 class="strength-label">Damage done per turn</h3>
-        <p class="chart-caption">Enemy HP taken off each turn. The dotted line is the average win.</p>
+        <p class="chart-caption" id="detail-keep-damage-caption">Enemy HP lost per fight turn. The dotted line is the average win.</p>
+        <p class="chart-caption" id="detail-keep-damage-note" hidden><span></span> <button type="button">OK</button></p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
         <div id="detail-keep-deck">

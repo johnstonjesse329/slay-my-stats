@@ -45,6 +45,33 @@ def _local():
 LOCAL = _local()
 
 
+class PartyDamage(unittest.TestCase):
+    def test_only_completed_fights_with_player_attribution_have_party_damage(self):
+        def events(encounter, slots, closed=True):
+            args = {"enc": encounter}
+            if slots:
+                args["damageSlots"] = slots
+            events = [
+                ("fight0", args),
+                ("hit", {"by": "P", "t": "enemy", "sourceSlot": 0, "enemy": True, "unb": 11, "ovk": 50}),
+                ("hit", {"by": "P", "t": "enemy", "sourceSlot": 1, "enemy": True, "unb": 7}),
+                ("hit", {"t": "enemy", "enemy": True, "unb": 99}),
+                ("hit", {"by": "P", "t": "pet", "sourceSlot": 0, "enemy": False, "unb": 99}),
+            ]
+            if closed:
+                events.append(("fight1", {}))
+            return events
+
+        fights = [events("ENCOUNTER.NEW", 3), events("ENCOUNTER.OLD", None),
+                  events("ENCOUNTER.PARTIAL", 3, closed=False)]
+        log = {"v": 3, "log": [{"k": kind, "a": args, "t": 1}
+                               for fight in fights for kind, args in fight]}
+        nodes = [{"floor": i, "turns": 1, "enc": enc} for i, enc in enumerate(
+            ("ENCOUNTER.NEW", "ENCOUNTER.OLD", "ENCOUNTER.PARTIAL"))]
+        rows = measured.measured(log, nodes)
+        self.assertEqual([r.get("damageBySlot") for r in rows], [[11, 7, 0], None, None])
+
+
 @unittest.skipUnless(LOCAL, "no local event logs with their runs")
 class ParityWithTheLocalExport(unittest.TestCase):
     def test_card_table_matches_the_report(self):

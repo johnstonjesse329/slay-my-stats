@@ -807,20 +807,22 @@
     // For the header's run count and last upload, from the same index the bar's
     // search and the root page's "Players" card use -- so all three show the same
     // number. The profile document itself carries only
-    // {name, months, no_raw, parser}. A failure leaves the header with the name
-    // alone.
-    const index = await loadIndex();
-    const indexEntry = index ? (index.players || []).find(p => p.slug === slug) || null : null;
+    // {name, months, no_raw, parser}. Show the name while the history loads.
+    showPlayerName(userDoc.name, null);
+    const profileIndex = loadIndex().then(index => {
+      const entry = index?.players?.find(p => p.slug === slug);
+      if (entry) showPlayerName(userDoc.name, entry);
+      return index;
+    });
 
-    let runs, links;
+    let runs, links, index;
     try {
-      [runs, links] = await Promise.all([loadRuns(slug, userDoc), loadCoopLinks(slug)]);
+      [runs, links, index] = await Promise.all([loadRuns(slug, userDoc), loadCoopLinks(slug), profileIndex]);
     } catch (e) {
       showError();
       return;
     }
 
-    showPlayerName(userDoc.name, indexEntry);
     if (!runs.length) {
       showNoRuns();
       return;

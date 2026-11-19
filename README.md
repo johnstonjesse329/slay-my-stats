@@ -29,6 +29,9 @@ while scrolling the floor charts. **Everyone** compares HP, damage and gold on s
 historical win ranges on the per-turn damage charts. Deck composition, deck rarity and relic rarity get a
 detailed panel per player. On phones, the **Breakdown** picker switches these panels together. Dragging across
 a chart lists each player's card and relic changes over those floors.
+Multiplayer damage done uses enemy HP loss from mod events that identify the attacking seat, averaged
+over the fight's turns. A compatible log can supply any seats it recorded, and charts flag missing
+coverage. Standard run files still supply damage taken for each available player's copy.
 **Played with** above the list narrows it to the runs with the
 players you pick (see [Co-op links](#co-op-links)). A seed you played more than once numbers its attempts: a "#2" by
 the character in the list, the start time in place of the date for attempts on the same day, and "Attempt 2 of 3" in

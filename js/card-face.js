@@ -565,8 +565,6 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeCardLightbox(); });
 
-renderPersonalBests();
-
 // Chrome keeps :hover on whatever sits under a stationary pointer while the
 // page scrolls, which can leave a card/relic tooltip pinned to a tile the
 // user is no longer really hovering. Suppress hover tooltips during scroll
@@ -577,8 +575,14 @@ window.addEventListener("mousemove", () => document.body.classList.remove("suppr
 // Restore tab from URL hash — runs last so all init code has already executed
 (function() {
   const { page, runTs, view } = parsePageHash();
-  // A bare load stays on Overview without a showPage(), so it's counted here (site/boot.js).
-  if (!PAGES.includes(page)) { if (window.noteView) noteView(currentPage); return; }
+  // Keep bare profile URLs intact while rendering their initial Overview.
+  if (!PAGES.includes(page)) {
+    PAGE_RENDERERS.overview();
+    pageDirty.overview = false;
+    updateFilterSummary();
+    if (window.noteView) noteView(currentPage);
+    return;
+  }
   if (runTs != null) openRunLink(runTs, view); else showPage(page);
 })();
 

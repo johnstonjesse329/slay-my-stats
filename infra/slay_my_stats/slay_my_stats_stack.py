@@ -844,6 +844,11 @@ class SlayMyStatsStack(Stack):
                 start="-P14D",
                 widgets=[
                     [cloudwatch.AlarmStatusWidget(title="Alarms", alarms=all_alarms, width=24, height=4)],
+                    [cloudwatch.GraphWidget(title="Production CloudFront requests (per hour)", left=[
+                        cloudwatch.Metric(namespace="AWS/CloudFront", metric_name="Requests",
+                                          statistic="Sum", period=hour, region="us-east-1",
+                                          dimensions_map={"DistributionId": distribution.distribution_id,
+                                                          "Region": "Global"})], **graph)],
                     [cloudwatch.GraphWidget(title="Players (per day)", left=[
                         ours("ActivePlayersSite"), ours("ActivePlayersMod"), ours("NewPlayers")], **graph),
                      cloudwatch.GraphWidget(title="Total players", left=[ours("TotalPlayers")], **graph),
