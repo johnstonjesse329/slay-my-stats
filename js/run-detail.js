@@ -232,20 +232,22 @@ function partyLineHtml(run, who = "", note = "") {
 }
 
 // The charts' toggle: just the profile's own player, or every player on the same charts.
-function partyToggleHtml(owner, all) {
+function partyToggleHtml(owner) {
   const party = coopParty(owner);
   if (!party) return "";
-  const me = party.find(p => p.self);
-  const mine = me ? (me.name || fmtCharName(me.char)) : "You";
-  const b = (who, label) => `<button type="button" data-who="${who}" aria-pressed="${all === (who === "all")}">${escapeHtml(label)}</button>`;
-  return b("", `Just ${mine}`) + b("all", "Everyone");
+  const who = partyViewOf(owner.ts);
+  const button = (id, label) => `<button type="button" data-who="${escapeHtml(id)}" aria-pressed="${who === id}">${label}</button>`;
+  return button("all", "Everyone") + party.filter(p => p.self || p.slug)
+    .map(p => button(p.slug || "", charIconHtml(p.char) + escapeHtml(p.name || fmtCharName(p.char)))).join("");
 }
 
 document.addEventListener("click", e => {
   const t = e.target.closest("#detail-party-toggle button");
   if (t) {
     const owner = DATA.runsData.find(r => r.ts === detailSelectedTs);
-    if (!owner || t.dataset.who === (detailView.who === "all" ? "all" : "")) return;
+    if (!owner || t.dataset.who === partyViewOf(owner.ts)) return;
+    t.parentElement.querySelectorAll("button").forEach(button =>
+      button.setAttribute("aria-pressed", String(button === t)));
     detailView = { ts: owner.ts, who: t.dataset.who };
     syncRunHash();
     renderDetailRun(owner);
@@ -586,7 +588,7 @@ const bindRunCopyLinks = owner =>
 function showRunCopy(run, owner, note = "", players = null) {
   clearPartyView();
   if (players) detailParty = players;
-  document.getElementById("detail-party-toggle").innerHTML = partyToggleHtml(owner, !!players);
+  document.getElementById("detail-party-toggle").innerHTML = partyToggleHtml(owner);
   detailShownRun = run;
   detailForeign = run !== owner;
   const { tl, totalRemoves, totalShopRemoves, totalPotionsBought, totalPotionsGained, totalRelicsBought,
@@ -753,6 +755,11 @@ function showRunCopy(run, owner, note = "", players = null) {
   // The span a drag picks is per run: a new run starts with none, and its own floor-by-floor
   // changes are what the panel adds up. A run whose history doesn't fit the shape leaves the
   // charts alone and only loses the span.
+  if (partyBreakdownRun !== owner.ts) {
+    partyBreakdownRun = owner.ts;
+    partyBreakdownIndex = 0;
+  }
+  clearPartyFloorPanels();
   clearRange();
   rangeNodes = run.timeline || [];
   rangeChanges = runFloorChanges(run);
@@ -767,6 +774,7 @@ function showRunCopy(run, owner, note = "", players = null) {
   renderDetailRelicChart(run);
   renderDetailKeepCharts(run);
   if (players) renderPartyCharts(players);
+  document.getElementById("detail-keep-heading").hidden = document.getElementById("detail-keep-box").style.display === "none";
   renderDetailDeckRelics(run);
 }
 
@@ -809,11 +817,6 @@ function clearPartyView() {
 
 // How many of a run's cards (or relics) were held after each node, or null where the run
 // doesn't say when they came and went.
-function heldCountsByNode(nodes, finalItems, added, lost) {
-  if (!added) return null;
-  const items = heldItems(finalItems || [], added, lost || []);
-  return nodes.map(n => items.filter(it => it.added <= n.floor + 1 && it.removed > n.floor + 1).length);
-}
 
 // One chart with a line for each player. A player with no figures for it is left out. `extra` adds
 // what every player shares: `lines` (datasets drawn first), `rows(i)` (hover rows under the players')
@@ -837,8 +840,22 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
     borderWidth: 2, pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone",
     ...(icon && j === iconJ ? nodePoints(nodes, () => chart, icon) : {}),
   } : null)].filter(Boolean);
+  const ranges = extra.ranges || [];
+  if (ranges.some(Boolean)) {
+    const after = y.afterDataLimits;
+    y.afterDataLimits = scale => {
+      const window = actView(nodes);
+      ranges.forEach((mark, i) => {
+        if (mark && (!window || (i >= window.from && i <= window.to))) {
+          scale.max = Math.max(scale.max, mark.good, mark.bad);
+        }
+      });
+      after?.(scale);
+    };
+  }
+  const plugins = ranges.some(Boolean) ? [makeWinRangePlugin(ranges)] : [];
   chart = new Chart(document.getElementById(id).getContext("2d"),
-    floorChartConfig(nodes, [], tip, y, datasets, actWindow(nodes)));
+    floorChartConfig(nodes, plugins, tip, y, datasets, actWindow(nodes)));
   bindRangeSelect(chart, nodes);
   return chart;
 }
@@ -853,6 +870,14 @@ function renderPartyCharts(players) {
   const pad = v => v ? nodes.map((_, i) => v[i] ?? null) : null;
   const tl = p => p.run.timeline || [];
   const readings = players.map(p => fightReadings(p.run, tl(p), measuredStrengthByNode(p.run, tl(p))));
+  const benchmarkPlayer = players.findIndex(p => tl(p) === nodes);
+  const benchmarkRows = readings[benchmarkPlayer];
+  const ranges = benchmarkRows ? keepRanges(players[benchmarkPlayer].run, nodes, benchmarkRows) : { taken: [], done: [] };
+  const historical = (key, ranges, reverse) => ({
+    ranges, reverse,
+    lines: [{ label: "Average win", data: nodes.map((_, i) => benchmarkRows?.[i]?.[key] ?? null),
+      borderColor: "#b9b9c4", borderDash: [2, 4], borderWidth: 1.5, pointRadius: 0, spanGaps: true }],
+  });
   const perFight = pick => readings.map(r => r ? pad(r.map(x => {
     const v = x ? pick(x) : null;
     return v === undefined || Number.isNaN(v) ? null : v;
@@ -876,7 +901,9 @@ function renderPartyCharts(players) {
     dropCanvas(id);
     const shared = (extra.lines || []).map(l =>
       `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, ${l.borderColor} 0 4px, transparent 4px 7px)"></span>${l.label}</span>`).join("");
-    document.getElementById(legendId).innerHTML = shared ? legend.slice(0, -"</div>".length) + shared + "</div>" : legend;
+    const range = extra.ranges?.some(Boolean) ? rangeKey("Best to worst quarter of wins", extra.reverse) : "";
+    document.getElementById(legendId).innerHTML = shared || range
+      ? legend.slice(0, -"</div>".length) + shared + range + "</div>" : legend;
     return partyChart(id, nodes, players, series, cell, reverse, icon, extra);
   };
 
@@ -887,9 +914,6 @@ function renderPartyCharts(players) {
   const gold = build("detail-gold-chart", "detail-gold-legend", players.map(p => pad(tl(p).map(n => n.gold ?? null))), count, false,
     (n, key) => GOLD_ICON_KEYS.has(key));
   if (gold) detailGoldChart = gold;
-  const relics = build("detail-relic-chart", "detail-relic-legend",
-    players.map(p => pad(heldCountsByNode(tl(p), p.run.finalRelics, p.run.relicsAdded, p.run.relicsLost))), count);
-  if (relics) detailRelicChart = relics;
   // Keeping up, fight by fight: each player's damage taken as a multiple of the average win. The
   // fight is the same for all of them, so its turns and the 1x line are drawn once.
   const fightIcon = (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc);
@@ -914,16 +938,134 @@ function renderPartyCharts(players) {
   const keep = [
     share,
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
-      (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc)),
+      fightIcon, historical("winRate", ranges.taken, true)),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", perFight(r => r.doing), turn, false,
-      (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc)),
-    build("detail-keep-deck-chart", "detail-keep-deck-legend",
-      players.map(p => pad(heldCountsByNode(tl(p), p.run.finalDeck, p.run.deckAdded, p.run.cardsLost))), count),
+      fightIcon, historical("ask", ranges.done, false)),
   ];
   detailKeepCharts.push(...keep.filter(Boolean));
+  renderPartyFloorPanels(players);
   // The HP chart lives in the keep box, which the owner's own copy may have hidden.
   if (hp || keep.some(Boolean)) document.getElementById("detail-keep-box").style.display = "";
 }
+
+// Composition keeps the single-player detail in separate plots, so line and band
+// colors retain their meaning. The phone selector is shared by all three charts.
+let partyBreakdownRun = null, partyBreakdownIndex = 0, partyFloorPanels = [];
+
+function clearPartyFloorPanels() {
+  partyFloorPanels.forEach(({ chart }) => chart.destroy());
+  partyFloorPanels = [];
+  document.querySelectorAll(".party-floor-grid, .party-floor-focus").forEach(el => el.remove());
+  document.querySelectorAll(".party-floor-active").forEach(el => el.classList.remove("party-floor-active"));
+}
+
+function applyPartyPanelAct() {
+  partyFloorPanels.forEach(({ chart, nodes }) => {
+    const view = actWindow(nodes);
+    Object.assign(chart.options.scales.x, { min: view.min, max: view.max, offset: !!view.offset });
+    chart.update("none");
+  });
+}
+
+function floorChangeTip(changes) {
+  const name = ([id], relic) => relic ? relicInfo(id)?.title || fmtRelicLabel(id) : cardInfo(id)?.title || fmtCardLabel(id);
+  const chips = (list, relic) => list.map(c => {
+    const src = relic ? relicImgSrc(c[0]) : cardImgSrc(c[0]);
+    return `<span class="strength-chip ${c[2] < 0 ? "loss" : "gain"}" data-pick="${relic ? "relic" : "card"}:${c[0]}${relic ? "" : ":" + +c[1]}">` +
+      `${src ? `<img src="${src}" alt="" loading="lazy">` : ""}${c[2] > 0 ? "+" : c[2] < 0 ? "−" : "↑"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`;
+  }).join("");
+  return i => {
+    const s = changes && i ? changes[i] : null;
+    return s && (s.cards.length || s.relics.length)
+      ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div>` : "";
+  };
+}
+
+function renderPartyComposition(run, panel) {
+  const nodes = run.timeline || [];
+  if (!nodes.length || !run.deckAdded) return;
+  const T = DECK_GROUPS.type;
+  const items = heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []);
+  const counts = countsByFloor(nodes, items, T);
+  const totals = floorTotals(nodes, counts, T.order);
+  const keys = usedKeys(counts, T.order);
+  const changed = floorChangeTip(runFloorChanges(run));
+  const datasets = keys.map(key => ({
+    label: key, data: counts[key], borderColor: T.color[key], borderWidth: 2,
+    pointRadius: 0, pointHoverRadius: 4, cubicInterpolationMode: "monotone",
+  }));
+  const tip = context => showFloorTip(context, i => {
+    const table = keys.filter(key => counts[key][i] > 0).map(key =>
+      `<tr><td style="color:${T.color[key]}">${key}</td><td>${counts[key][i]}</td></tr>`).join("");
+    return `${floorTipHead(nodes[i], totals[i], "cards")}<table>${table}</table>${changed(i)}`;
+  });
+  const chart = new Chart(panel.querySelector("canvas"),
+    floorChartConfig(nodes, [], tip, { min: 0, stacked: false }, datasets, actWindow(nodes)));
+  panel.querySelector(".floor-legend").innerHTML = floorLegendRow("Type", keys, T.color);
+  bindRangeSelect(chart, nodes);
+  return chart;
+}
+
+function renderPartyFloorPanels(players) {
+  partyBreakdownIndex = Math.min(partyBreakdownIndex, players.length - 1);
+  for (const [id, render] of [
+    ["detail-keep-deck", renderPartyComposition],
+    ["detail-deck-box", renderDetailDeckChart],
+    ["detail-relic-box", renderDetailRelicChart],
+  ]) {
+    const box = document.getElementById(id);
+    const grid = document.createElement("div");
+    grid.className = "party-floor-grid";
+    const picker = document.createElement("label");
+    picker.className = "party-floor-focus";
+    picker.innerHTML = `Breakdown <select>${players.map((player, i) =>
+      `<option value="${i}"${i === partyBreakdownIndex ? " selected" : ""}>${escapeHtml(player.label)}</option>`).join("")}</select>`;
+    box.style.display = "";
+    box.classList.add("party-floor-active");
+    box.append(picker, grid);
+    const charts = [];
+    players.forEach((player, i) => {
+      const panel = document.createElement("section");
+      panel.className = "party-floor-player";
+      panel.dataset.player = i;
+      panel.style.setProperty("--player-color", player.color);
+      panel.innerHTML = `<h4>${charIconHtml(player.char)}${escapeHtml(player.label)}</h4>
+        <div class="chart-wrap" data-chart-part="box"><canvas data-chart-part="chart"></canvas></div>
+        <div class="floor-legend" data-chart-part="legend"></div>`;
+      grid.append(panel);
+      const chart = render(player.run, panel);
+      if (chart) {
+        charts.push(chart);
+        partyFloorPanels.push({ chart, nodes: player.run.timeline });
+      } else {
+        panel.querySelector(".chart-wrap").hidden = true;
+        panel.insertAdjacentHTML("beforeend", "<p>Floor data unavailable for this player.</p>");
+      }
+    });
+    if (charts.length) {
+      const min = Math.min(...charts.map(chart => chart.scales.y.min));
+      const max = Math.max(...charts.map(chart => chart.scales.y.max));
+      charts.forEach(chart => {
+        Object.assign(chart.options.scales.y, { min, max, afterDataLimits: undefined });
+      });
+    }
+  }
+  applyPartyPanelAct();
+  showPartyBreakdown();
+}
+
+function showPartyBreakdown() {
+  document.querySelectorAll(".party-floor-focus select").forEach(select => { select.value = partyBreakdownIndex; });
+  document.querySelectorAll(".party-floor-player").forEach(panel =>
+    panel.toggleAttribute("data-inactive", Number(panel.dataset.player) !== partyBreakdownIndex));
+}
+
+document.addEventListener("change", event => {
+  if (!event.target.matches(".party-floor-focus select")) return;
+  partyBreakdownIndex = Number(event.target.value);
+  showPartyBreakdown();
+  closeFloorTip();
+});
 
 // ---- Timeline ----
 
@@ -2216,7 +2358,7 @@ function floorMarks(nodes, items, group, marked, imgSrc, name) {
 // stacked upward from the top of that floor's stack. Images are shared between
 // charts and redraw the chart once they decode.
 const floorMarkImages = new Map();  // src -> Image
-function makeMarkPlugin(marks, totals, colors) {
+function makeMarkPlugin(marks, totals, colors, sizeScale = 1) {
   const font = "700 13px 'Segoe UI', system-ui, sans-serif";
   return {
     id: "floorMarks",
@@ -2224,8 +2366,9 @@ function makeMarkPlugin(marks, totals, colors) {
       const { ctx, chartArea, scales: { x, y } } = chart;
       const badges = [];  // the ×N counts, drawn last so the next marker up can't cover them
       // Smaller on a narrow chart (a phone), where full-size markers bury the floors.
-      const scale = Math.min(1, Math.max(0.6, chartArea.width / 700));
+      const scale = sizeScale * Math.min(1, Math.max(0.6, chartArea.width / 700));
       marks.forEach((list, i) => {
+        if (i < x.min || i > x.max) return;
         let lift = 4;
         list.forEach(m => {
           const size = Math.round(MARK_SIZE[m.rarity] * scale), r = size / 2;
@@ -2499,12 +2642,12 @@ const floorTipChips = (marks, colors, relic) => `<div class="strength-chips">${m
 // top: past that the areas would flatten out, so a freak stack clips instead.
 // Matches makeMarkPlugin's sizes; the plot isn't laid out yet, so its size is
 // the canvas less the act band and the floor axis, close enough.
-function markHeadroom(marks, totals, step) {
+function markHeadroom(marks, totals, step, sizeScale = 1) {
   return scale => {
     const { width, height } = scale.chart;
     const cap = scale.max * 2;
     const plotH = height - ACT_BAND - 60;
-    const k = Math.min(1, Math.max(0.6, (width - 60) / 700));
+    const k = sizeScale * Math.min(1, Math.max(0.6, (width - 60) / 700));
     marks.forEach((list, i) => {
       if (!list.length) return;
       const h = list.reduce((n, m) => n + Math.round(MARK_SIZE[m.rarity] * k) + 2, 10);
@@ -2912,12 +3055,13 @@ function floorMarkerRow(keys, colors) {
   }).join("")}</div>`;
 }
 
-function renderDetailDeckChart(run) {
+function renderDetailDeckChart(run, panel = null) {
+  const get = part => panel ? panel.querySelector(`[data-chart-part="${part}"]`) : document.getElementById(`detail-deck-${part}`);
   const nodes = run.timeline || [];
-  const box = document.getElementById("detail-deck-box");
+  const box = get("box");
   if (nodes.length === 0 || !run.deckAdded) { box.style.display = "none"; return; }
   box.style.display = "";
-  if (detailDeckChart) { detailDeckChart.destroy(); detailDeckChart = null; }
+  if (!panel && detailDeckChart) { detailDeckChart.destroy(); detailDeckChart = null; }
 
   const { rarity: R, type: T } = DECK_GROUPS;
   const items = heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []);
@@ -2983,28 +3127,31 @@ function renderDetailDeckChart(run) {
   const y = {
     min: -Math.ceil((peak + 2) / 10) * 10,
     max: Math.ceil(peak * 1.3 / 10) * 10,
-    afterDataLimits: markHeadroom(marks, totals, 10),
+    afterDataLimits: markHeadroom(marks, totals, 10, panel ? 0.75 : 1),
     ticks: { callback: v => Math.abs(v) },
   };
-  detailDeckChart = new Chart(document.getElementById("detail-deck-chart").getContext("2d"),
-    floorChartConfig(nodes, [makeMarkPlugin(marks, totals, R.color), halves], tip, y, floorBands([
+  const chart = new Chart(get("chart").getContext("2d"),
+    floorChartConfig(nodes, [makeMarkPlugin(marks, totals, R.color, panel ? 0.75 : 1), halves], tip, y, floorBands([
       ...tKeys.map(k => ({ key: k, data: byT[k], color: T.color[k], stack: "type" })),
       ...rKeys.map(k => ({ key: k, data: byR[k].map(v => -v), color: R.color[k], stack: "rarity" })),
     ])));
-  bindRangeSelect(detailDeckChart, nodes);
+  bindRangeSelect(chart, nodes);
+  if (!panel) detailDeckChart = chart;
 
-  document.getElementById("detail-deck-legend").innerHTML =
+  get("legend").innerHTML =
     floorLegendRow("▲ Type", tKeys, T.color) +
     floorLegendRow("▼ Rarity", rKeys, R.color) +
     floorMarkerRow(["Uncommon", "Rare"], R.color);
+  return chart;
 }
 
-function renderDetailRelicChart(run) {
+function renderDetailRelicChart(run, panel = null) {
+  const get = part => panel ? panel.querySelector(`[data-chart-part="${part}"]`) : document.getElementById(`detail-relic-${part}`);
   const nodes = run.timeline || [];
-  const box = document.getElementById("detail-relic-box");
+  const box = get("box");
   if (nodes.length === 0 || !run.relicsAdded) { box.style.display = "none"; return; }
   box.style.display = "";
-  if (detailRelicChart) { detailRelicChart.destroy(); detailRelicChart = null; }
+  if (!panel && detailRelicChart) { detailRelicChart.destroy(); detailRelicChart = null; }
 
   const G = RELIC_GROUP;
   const items = heldItems(run.finalRelics || [], run.relicsAdded, run.relicsLost || []);
@@ -3027,15 +3174,17 @@ function renderDetailRelicChart(run) {
   });
 
   const peak = Math.max(...totals);
-  detailRelicChart = new Chart(document.getElementById("detail-relic-chart").getContext("2d"),
-    floorChartConfig(nodes, [makeMarkPlugin(marks, totals, G.color)], tip,
-      { min: 0, max: Math.ceil(peak * 1.3 / 2) * 2, afterDataLimits: markHeadroom(marks, totals, 2) },
+  const chart = new Chart(get("chart").getContext("2d"),
+    floorChartConfig(nodes, [makeMarkPlugin(marks, totals, G.color, panel ? 0.75 : 1)], tip,
+      { min: 0, max: Math.ceil(peak * 1.3 / 2) * 2, afterDataLimits: markHeadroom(marks, totals, 2, panel ? 0.75 : 1) },
       floorBands(keys.map(k => ({ key: k, data: counts[k], color: G.color[k], stack: "relics" })))));
-  bindRangeSelect(detailRelicChart, nodes);
+  bindRangeSelect(chart, nodes);
+  if (!panel) detailRelicChart = chart;
 
-  document.getElementById("detail-relic-legend").innerHTML =
+  get("legend").innerHTML =
     floorLegendRow("Rarity", keys, G.color) +
     floorMarkerRow(["Uncommon", "Rare", "Ancient"], G.color);
+  return chart;
 }
 
 // ---- Keeping up by floor ----
@@ -3548,6 +3697,7 @@ function applyKeepAct() {
     c.data.datasets.forEach(d => { if (d.clip !== undefined) d.clip = iconClip(); });
     c.update("none");
   });
+  applyPartyPanelAct();
   renderKeepActPicker();
   closeFloorTip();
 }
@@ -3561,6 +3711,7 @@ PHONE_MQ.addEventListener("change", () => {
   const run = detailShownRun;
   const content = document.getElementById("detail-content");
   if (run && content.style.display !== "none") {
+    clearPartyFloorPanels();
     renderDetailHpChart(run);
     renderDetailGoldChart(run);
     renderDetailDeckChart(run);
@@ -3590,19 +3741,10 @@ function renderDetailKeepCharts(run) {
   const changes = nodes.length && run.deckAdded && run.relicsAdded ? floorChanges(nodes,
     heldItems(run.finalDeck || [], run.deckAdded, run.cardsLost || []),
     heldItems(run.finalRelics || [], run.relicsAdded, run.relicsLost || [])) : null;
-  const name = ([id], relic) => relic ? relicInfo(id)?.title || fmtRelicLabel(id) : cardInfo(id)?.title || fmtCardLabel(id);
+
   // A pickup: its picture, then its name. data-pick says what to show in full on hover:
   // "card:ID:1" (upgraded) or "relic:ID".
-  const chips = (list, relic) => list.map(c => {
-    const src = relic ? relicImgSrc(c[0]) : cardImgSrc(c[0]);
-    return `<span class="strength-chip ${c[2] < 0 ? "loss" : "gain"}" data-pick="${relic ? "relic" : "card"}:${c[0]}${relic ? "" : ":" + +c[1]}">` +
-      `${src ? `<img src="${src}" alt="" loading="lazy">` : ""}${c[2] > 0 ? "+" : c[2] < 0 ? "−" : "↑"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`;
-  }).join("");
-  const changed = i => {
-    const s = changes && i ? changes[i] : null;
-    return s && (s.cards.length || s.relics.length)
-      ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div>` : "";
-  };
+  const changed = floorChangeTip(changes);
 
   // The simple tip table: key, label, figure, note.
   const row = (label, color, value, note) => `<tr><td><span class="strength-key" style="background:${color}"></span>` +
