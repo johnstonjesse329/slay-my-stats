@@ -1,3 +1,12 @@
+# Clean up merged branches and worktrees
+
+After a change is pushed and merged, fetch and verify it is present on the
+intended upstream branch (`origin/gamma` for Gamma work, `origin/main` for
+production work). Remove the completed worktree and its local topic branch
+before closing the task. Keep active branches and any unique or uncommitted
+work. Check for junctions before removing a Windows worktree and unlink them
+without deleting their targets.
+
 # The C: drive is not scratch space
 
 Experimental work here once left a virtualenv on `C:` holding over two million

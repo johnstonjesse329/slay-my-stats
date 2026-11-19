@@ -46,8 +46,9 @@ branches. Assume they are, even when nothing shows it.
   a time. If yours stops on the deploy lock, wait and push again; don't
   `--break-lock` unless `tools/deploy.py --lock-status` shows it is over an
   hour old and nothing is deploying.
-- Removing a worktree: unlink its junctions first (`cmd /c rmdir <junction>`).
-  `git worktree remove` deletes through a junction into the repo folder's art.
+- Clean up the completed worktree and topic branch after verifying the merge
+  on its upstream branch. Follow the cleanup rule in `AGENTS.md`,
+  including checking and unlinking junctions before removing a worktree.
 
 ## Screenshots
 
