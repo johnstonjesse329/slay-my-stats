@@ -369,7 +369,7 @@ def build_synergy() -> dict | None:
     card_variants = {}
     for section in ("cards", "relics"):
         table = {}
-        for item_id in set(data.get(section, {})) | set(texts[section]):
+        for item_id in sorted(data.get(section, {}).keys() | texts[section].keys()):
             if item_id in junk:
                 continue
             e = data.get(section, {}).get(item_id, {})

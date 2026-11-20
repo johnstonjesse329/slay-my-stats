@@ -10,10 +10,8 @@ Steps:
   0. Check site/pages/ file names, since the stack routes a URL per page.
   1. `cdk diff`. If the stack changed, print the diff and ask y/N before
      `cdk deploy`. No changes -> skip straight to the site.
-  2. `build_site.py`, then upload only the dist/ files whose content changed (with
-     dist_cache_control()), and `aws s3 sync` the game-art folders with ART_CACHE_CONTROL (never
-     --delete; art uses --size-only so an unchanged checkout doesn't
-     re-upload thousands of images just because mtimes moved).
+  2. `build_site.py`, then upload only changed site files and art. Site files are compared
+     with top-level S3 objects. Art is compared with the stage's content manifest.
   3. CloudFront invalidation of just the uploaded paths (or /* past ten of
      them), so index.html/app.js don't serve stale. Nothing uploaded, no
      invalidation. The first 1,000 paths a month are free.
@@ -82,10 +80,13 @@ Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 """
 
 import contextlib
+import base64
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import importlib.util
 import io
 import json
+import mimetypes
 import re
 import os
 import shutil
@@ -122,6 +123,7 @@ FEEDBACK_STACK_FILE = "infra/slay_my_stats/feedback_stack.py"
 EDGE_ALARMS_STACK = "SlayMyStatsEdgeAlarmsStack"
 DATA_BUCKETS = {"prod": "slay-my-stats-data", "gamma": "slay-my-stats-gamma-data"}
 PROFILE_REBUILD_KEY = "analytics/deploy/profile-rebuild.json"
+ART_MANIFEST_KEY = "analytics/deploy/art-manifest.json"
 # Pushing one of these branches deploys its stage (see check_pre_push).
 DEPLOY_BRANCHES = {"main": "prod", "gamma": "gamma"}
 # One deploy at a time, across every checkout and worktree: this file in the git directory they share.
@@ -207,7 +209,7 @@ def run(args, *, cwd=None, env=None, capture=False, stream=False) -> subprocess.
     Run a command with stdin detached (in pre-push, stdin is git's ref list).
     capture: collect output silently (printed only on failure).
     stream: print output live as it arrives and also collect it, for slow
-    steps whose output the caller still needs (cdk diff, art syncs) so the
+    steps whose output the caller still needs (such as cdk diff), so the
     push doesn't sit silent for minutes.
     """
     cwd = SRC if cwd is None else cwd
@@ -554,8 +556,8 @@ def upload_changed_dist() -> list[str]:
     threshold). Returns the uploaded keys.
     """
     listing = run([
-        "aws", "s3api", "list-objects-v2", "--bucket", SITE_BUCKET, "--output", "json",
-        "--query", "Contents[?!contains(Key, '/')].[Key, ETag]",
+        "aws", "s3api", "list-objects-v2", "--bucket", SITE_BUCKET, "--delimiter", "/", "--output", "json",
+        "--query", "Contents[].[Key, ETag]",
     ], capture=True).stdout
     remote = {key: etag.strip('"') for key, etag in (json.loads(listing) or [])}
 
@@ -572,12 +574,58 @@ def upload_changed_dist() -> list[str]:
     return uploaded
 
 
+def art_digests() -> dict[str, str]:
+    digests = {}
+    for folder in ART_DIRS:
+        root = LOCAL / folder
+        if not root.is_dir():
+            raise DeployError(f"Missing art folder: {root}")
+        for path in sorted(root.rglob("*")):
+            if path.is_file():
+                digests[path.relative_to(LOCAL).as_posix()] = hashlib.md5(path.read_bytes()).hexdigest()
+    return digests
+
+
+def save_art_manifest(s3, bucket: str, digests: dict, etag: str | None) -> str:
+    condition = {"IfMatch": etag} if etag else {"IfNoneMatch": "*"}
+    return s3.put_object(Bucket=bucket, Key=ART_MANIFEST_KEY, Body=json.dumps(digests).encode(),
+                         ContentType="application/json", **condition)["ETag"]
+
+
+def read_art_manifest(s3, bucket: str, digests: dict) -> tuple[dict, str]:
+    from botocore.exceptions import ClientError
+
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=ART_MANIFEST_KEY)
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] not in ("NoSuchKey", "404"):
+            raise
+    else:
+        with obj["Body"] as body:
+            return json.load(body), obj["ETag"]
+
+    # Seed from existing content so the first deploy only sends objects whose bytes differ.
+    # Record the baseline before uploading so a failed invalidation can be retried on the next deploy.
+    pages = s3.get_paginator("list_objects_v2").paginate(Bucket=SITE_BUCKET)
+    remote = {obj["Key"]: obj["ETag"].strip('"') for page in pages for obj in page.get("Contents", [])
+              if obj["Key"] in digests}
+    return remote, save_art_manifest(s3, bucket, remote, None)
+
+
+def upload_art_object(s3, key: str, digest: str) -> None:
+    path = LOCAL / key
+    content_type = CONTENT_TYPES.get(path.suffix.lower()) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    with path.open("rb") as body:
+        s3.put_object(Bucket=SITE_BUCKET, Key=key, Body=body, CacheControl=ART_CACHE_CONTROL,
+                      ContentType=content_type, ContentMD5=base64.b64encode(bytes.fromhex(digest)).decode())
+
+
 def reheader() -> None:
     """
     Set the Cache-Control values above on everything already in the bucket,
     then invalidate it.
 
-    A normal deploy only sends files whose content (dist/) or size (art)
+    A normal deploy only sends files whose content
     changed, so anything uploaded before these headers existed -- and any art
     folder the game didn't change this round -- would keep serving no
     Cache-Control forever. This rewrites each object's metadata in place (an
@@ -598,8 +646,8 @@ def reheader() -> None:
     """
     # The same top-level keys upload_changed_dist() compares against.
     listing = run([
-        "aws", "s3api", "list-objects-v2", "--bucket", SITE_BUCKET, "--output", "json",
-        "--query", "Contents[?!contains(Key, '/')].Key",
+        "aws", "s3api", "list-objects-v2", "--bucket", SITE_BUCKET, "--delimiter", "/", "--output", "json",
+        "--query", "Contents[].Key",
     ], capture=True).stdout
     keys = json.loads(listing) or []
     unknown = [key for key in keys if Path(key).suffix not in CONTENT_TYPES]
@@ -748,20 +796,25 @@ def require_feedback_table(commit: str | None) -> None:
                           f"({done[:7]}). Run tools/deploy.py --feedback-table first.")
 
 
-def deploy_site() -> None:
+def deploy_site(stage: str) -> None:
+    import boto3
+
     print("Site: building dist/...", flush=True)
     run([sys.executable, str(SRC / "build_site.py")])
-    print("Site: uploading changed dist/ files...", flush=True)
-    changed = upload_changed_dist()
-    for d in ART_DIRS:
-        print(f"Site: syncing {d}/ (each uploaded file is listed)...", flush=True)
-        out = run(["aws", "s3", "sync", str(LOCAL / d), f"s3://{SITE_BUCKET}/{d}",
-                   "--size-only", "--no-progress",
-                   "--cache-control", ART_CACHE_CONTROL], stream=True).stdout
-        # "upload: <local path> to s3://<bucket>/<key>"
-        changed += [line.split(f"s3://{SITE_BUCKET}/", 1)[1]
-                    for line in out.splitlines() if line.startswith("upload:")]
+    s3 = boto3.client("s3")
+    bucket = DATA_BUCKETS[stage]
+    art = art_digests()
+    deployed_art, art_etag = read_art_manifest(s3, bucket, art)
+    changed_art = {key: digest for key, digest in art.items() if deployed_art.get(key) != digest}
+    if changed_art:
+        print(f"Site: uploading {len(changed_art)} changed art files...", flush=True)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(lambda item: upload_art_object(s3, *item), changed_art.items()))
+    else:
+        print(f"Site: art unchanged ({len(art)} files).", flush=True)
 
+    print("Site: uploading changed dist/ files...", flush=True)
+    changed = [*changed_art, *upload_changed_dist()]
     if not changed:
         print("Site: no changes, skipping CloudFront invalidation.")
         return
@@ -770,6 +823,8 @@ def deploy_site() -> None:
     # /index.html (the viewer-request rewrite runs before the cache lookup),
     # so invalidating /index.html covers them.
     invalidate(["/*"] if len(changed) > 10 else ["/" + key for key in changed])
+    if changed_art:
+        save_art_manifest(s3, bucket, {**deployed_art, **changed_art}, art_etag)
 
 
 def smoke_test_site() -> None:
@@ -862,7 +917,7 @@ def main() -> int:
                     require_gamma_ok(commit)
                 deploy_infra()
                 smoke_test_ingest(ingest_function_url())
-                deploy_site()
+                deploy_site(stage)
                 smoke_test_site()
                 rebuild_held_runs(stage)
                 if stage == "gamma":

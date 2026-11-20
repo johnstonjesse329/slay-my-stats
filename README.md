@@ -654,7 +654,7 @@ flowchart TB
     diff -- "no differences" --> smoke
     smoke{"ingest function answers an<br/>empty POST below 500?"} -- no --> abort3["push aborted"]
     smoke -- yes --> build
-    build["build_site.py<br/>(ingest URL from stack outputs)"] --> upload["upload dist/ files whose MD5<br/>differs from the S3 ETag;<br/>aws s3 sync the art folders"]
+    build["build_site.py<br/>(ingest URL from stack outputs)"] --> upload["Upload changed site files and art<br/>using top-level S3 ETags<br/>and the stage's art manifest"]
     upload --> inval["CloudFront invalidation<br/>of just those paths (/* past 10)"]
     inval --> visit{"tools/smoke_site.py: the site loads<br/>for a visitor, fast, with other hosts hanging?"}
     visit -- no --> abort4["deploy fails"]

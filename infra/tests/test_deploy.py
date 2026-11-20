@@ -228,5 +228,55 @@ class ProfileRebuildGuard(unittest.TestCase):
         self.s3.put_object.assert_not_called()
 
 
+class ArtDeploy(unittest.TestCase):
+    def setUp(self):
+        self.s3 = mock.Mock()
+        self.bucket = deploy.DATA_BUCKETS["gamma"]
+        self.key = "card_final/example.webp"
+        self.art = {self.key: "abc"}
+
+    def test_first_deploy_seeds_from_existing_s3_objects(self):
+        self.s3.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        self.s3.get_paginator.return_value.paginate.return_value = [
+            {"Contents": [{"Key": self.key, "ETag": '"abc"'}, {"Key": "index.html", "ETag": '"extra"'}]},
+        ]
+        self.s3.put_object.return_value = {"ETag": '"baseline"'}
+        self.assertEqual(deploy.read_art_manifest(self.s3, self.bucket, self.art), (self.art, '"baseline"'))
+        self.assertEqual(json.loads(self.s3.put_object.call_args.kwargs["Body"]), self.art)
+        self.assertEqual(self.s3.put_object.call_args.kwargs["IfNoneMatch"], "*")
+
+    def test_existing_manifest_skips_remote_art_listing(self):
+        self.s3.get_object.return_value = {"Body": io.BytesIO(json.dumps(self.art).encode()), "ETag": '"art"'}
+        self.assertEqual(deploy.read_art_manifest(self.s3, self.bucket, self.art), (self.art, '"art"'))
+        self.s3.get_paginator.assert_not_called()
+        self.s3.put_object.assert_not_called()
+
+    def test_same_size_art_edit_changes_digest(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(deploy, "LOCAL", Path(tmp)), \
+                mock.patch.object(deploy, "ART_DIRS", ["card_final"]):
+            path = Path(tmp) / self.key
+            path.parent.mkdir()
+            path.write_bytes(b"one")
+            first = deploy.art_digests()
+            path.write_bytes(b"two")
+            self.assertNotEqual(first[self.key], deploy.art_digests()[self.key])
+
+    def test_art_manifest_advances_after_invalidation(self):
+        self.s3.get_object.return_value = {"Body": io.BytesIO(b'{}'), "ETag": '"old"'}
+        self.s3.put_object.return_value = {"ETag": '"new"'}
+        calls = mock.Mock()
+        with mock.patch("boto3.client", return_value=self.s3), mock.patch.object(deploy, "run"), \
+                mock.patch.object(deploy, "art_digests", return_value=self.art), \
+                mock.patch.object(deploy, "upload_changed_dist", return_value=[]), \
+                mock.patch.object(deploy, "upload_art_object", calls.upload), \
+                mock.patch.object(deploy, "invalidate", calls.invalidate):
+            self.s3.attach_mock(calls, "deploy")
+            deploy.deploy_site("gamma")
+        self.assertEqual([entry[0] for entry in self.s3.mock_calls],
+                         ["get_object", "deploy.upload", "deploy.invalidate", "put_object"])
+        calls.invalidate.assert_called_once_with(["/" + self.key])
+        self.assertEqual(self.s3.put_object.call_args.kwargs["IfMatch"], '"old"')
+
+
 if __name__ == "__main__":
     unittest.main()
