@@ -139,7 +139,7 @@ function renderPersonalBests() {
   // A winning-runs stat: a desktop reads its fewest–most; a phone, short of room, shows the
   // median and pops the fewest and most runs out on a tap.
   const medRange = (vals, lo, hi) => !vals.length ? "—"
-    : `<span class="pb-rng">${range(lo, hi)}</span><button type="button" class="pb-med" aria-haspopup="dialog">${Math.round(median(vals))}</button>`;
+    : `<span class="pb-rng">${range(lo, hi)}</span><button type="button" class="pb-med pb-pop-trigger" aria-haspopup="dialog" aria-expanded="false">${Math.round(median(vals))}</button>`;
   // One figure per cell: a share of runs, the counts behind it on hover.
   const pct = (n, d) => !d ? "—"
     : `<span data-tip="${n} of ${d} run${d !== 1 ? "s" : ""}">${fmtWinPct(n, d)}</span>`;
@@ -150,6 +150,7 @@ function renderPersonalBests() {
   const bothKinds = total.tiers.all?.solo.runs && total.tiers.all?.multi.runs;
   const bar = (t, c, cls = "") => `<span class="pb-bar${cls}"><i style="width:${t.runs ? Math.round(t.wins / t.runs * 100) : 0}%;background-color:${c.bar || c.color}"></i></span>`;
   const runsOf = t => !t.runs ? "no runs" : `${t.wins} of ${t.runs} run${t.runs !== 1 ? "s" : ""} (${fmtWinPct(t.wins, t.runs)})`;
+  const record = t => fmtRecord(t.wins.toLocaleString(), (t.runs - t.wins).toLocaleString());
   const tierBar = (t, c) => {
     if (!t) return "—";
     const rate = bothKinds
@@ -157,8 +158,11 @@ function renderPersonalBests() {
       : pct(t.wins, t.runs);
     const bars = bothKinds || t.multi.runs
       ? bar(t.solo, c) + bar(t.multi, c, " pb-bar-multi") : bar(t.solo, c);
-    return `<div class="pb-win-line"><strong style="color:${c.color}">${rate}</strong><span>${t.wins.toLocaleString()}W</span></div>
-      <div class="pb-win-modes"><span>Solo ${t.solo.wins.toLocaleString()}</span><span>Multi ${t.multi.wins.toLocaleString()}</span></div>${bars}`;
+    return `<div class="pb-win-desktop"><div class="pb-win-line"><strong style="color:${c.color}">${rate}</strong><span>${record(t)}</span></div>
+      <div class="pb-win-modes"><span>Solo ${record(t.solo)}</span><span>Multi ${record(t.multi)}</span></div>${bars}</div>
+      <button type="button" class="pb-win-tap pb-pop-trigger" style="color:${c.color}" aria-haspopup="dialog" aria-expanded="false"
+        data-record="${record(t)}" data-solo="${record(t.solo)}" data-multi="${record(t.multi)}">
+        <strong>${fmtWinPct(t.wins, t.runs)}</strong>${bars}</button>`;
   };
 
   // [label, cell, row class]
@@ -194,38 +198,48 @@ function renderPersonalBests() {
       </tbody>
     </table>`;
 
-  // A phone's median opens a popout under its cell with the fewest and most runs, each a link.
+  // On a phone, tapping a win rate or median opens the details for that cell.
   const box = document.getElementById("personal-bests-cards");
   const pop = document.createElement("div");
   pop.className = "pb-pop";
   pop.setAttribute("role", "dialog");
+  pop.tabIndex = -1;
   pop.hidden = true;
   box.appendChild(pop);
-  const closePop = () => { pop.hidden = true; box.querySelector(".pb-med[aria-expanded=true]")?.setAttribute("aria-expanded", "false"); };
-  box.querySelectorAll(".pb-med").forEach(btn => btn.addEventListener("click", e => {
+  const openTrigger = () => box.querySelector(".pb-pop-trigger[aria-expanded=true]");
+  const closePop = () => { pop.hidden = true; openTrigger()?.setAttribute("aria-expanded", "false"); };
+  const popRow = (name, value) => `<div class="pb-pop-row"><span>${name}</span><b>${value}</b></div>`;
+  box.querySelectorAll(".pb-pop-trigger").forEach(btn => btn.addEventListener("click", e => {
     e.stopPropagation();
     const wasOpen = btn.getAttribute("aria-expanded") === "true";
     closePop();
     if (wasOpen) return;
     const td = btn.closest("td");
-    const [lo, hi] = td.querySelectorAll(".pb-rng .pb-stat-link");
     const label = `${td.dataset.col} · ${td.parentElement.querySelector("th").textContent}`;
     pop.setAttribute("aria-label", label);
-    pop.innerHTML = `<div class="pb-pop-title">${label}</div>`
-      + `<div class="pb-pop-row"><span>Median</span><b>${btn.textContent}</b></div>`
-      + `<div class="pb-pop-row"><span>Fewest</span>${lo.outerHTML}</div>`
-      + `<div class="pb-pop-row"><span>Most</span>${(hi || lo).outerHTML}</div>`;
+    pop.innerHTML = `<div class="pb-pop-title">${label}</div>`;
+    if (btn.dataset.record) {
+      pop.innerHTML += popRow("Total", btn.dataset.record) + popRow("Solo", btn.dataset.solo) + popRow("Multi", btn.dataset.multi);
+    } else {
+      const [lo, hi] = td.querySelectorAll(".pb-rng .pb-stat-link");
+      pop.innerHTML += popRow("Median", btn.textContent)
+        + `<div class="pb-pop-row"><span>Fewest</span>${lo.outerHTML}</div>`
+        + `<div class="pb-pop-row"><span>Most</span>${(hi || lo).outerHTML}</div>`;
+    }
     pop.hidden = false;
     btn.setAttribute("aria-expanded", "true");
     const b = box.getBoundingClientRect(), r = td.getBoundingClientRect();
     const left = Math.min(Math.max(r.left + r.width / 2 - pop.offsetWidth / 2 - b.left, 0), b.width - pop.offsetWidth);
     pop.style.left = `${left}px`;
-    pop.style.top = `${r.bottom - b.top + 4}px`;
+    const above = r.bottom + pop.offsetHeight + 4 > window.innerHeight && r.top >= pop.offsetHeight + 4;
+    pop.style.top = `${(above ? r.top - pop.offsetHeight - 4 : r.bottom + 4) - b.top}px`;
     pop.querySelectorAll(".pb-stat-link").forEach(bindRunLink);
-    if (!e.detail) pop.querySelector(".pb-stat-link").focus();   // opened from the keyboard
+    if (!e.detail) (pop.querySelector(".pb-stat-link") || pop).focus();
   }));
-  document.addEventListener("click", e => { if (!pop.hidden && !pop.contains(e.target)) closePop(); });
-  pop.addEventListener("keydown", e => { if (e.key === "Escape") { const b = box.querySelector(".pb-med[aria-expanded=true]"); closePop(); b?.focus(); } });
+  document.addEventListener("pointerdown", e => {
+    if (!pop.hidden && !pop.contains(e.target) && !e.target.closest(".pb-pop-trigger")) closePop();
+  });
+  box.addEventListener("keydown", e => { if (e.key === "Escape" && !pop.hidden) { const btn = openTrigger(); closePop(); btn?.focus(); } });
   function bindRunLink(el) {
     el.setAttribute("role", "link");
     el.setAttribute("tabindex", "0");
