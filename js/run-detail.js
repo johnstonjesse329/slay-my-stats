@@ -739,7 +739,6 @@ function showRunCopy(run, owner, note = "", players = null) {
   document.getElementById("detail-run-header").innerHTML = `
     ${runHeaderBarHtml(run, owner)}
     ${partyLineHtml(owner, partyViewOf(owner.ts), note)}
-    ${owner.mp ? '<p class="party-metrics-note">Teammates can unlock more per-player metrics by installing the Slay My Stats mod and uploading their copy of the run.</p>' : ""}
     <div class="detail-run-headline-stats">
       ${headlineHtml}${ancientBoonsHtml}
     </div>
@@ -902,8 +901,12 @@ function renderPartyCharts(players) {
   const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
   const roster = partyRoster(detailOwnerRun);
   const missingRuns = roster.filter(p => !players.some(loaded => loaded.slot === p.slot));
-  const missingMessage = missingRuns.length
-    ? `Player run data unavailable for ${missingRuns.map(p => p.label).join(", ")}. Their damage taken is omitted.` : "";
+  const unlinked = missingRuns.filter(p => !p.slug).map(p => p.label);
+  const unavailable = missingRuns.filter(p => p.slug).map(p => p.label);
+  const missingMessage = [
+    unlinked.length ? `No linked run upload for ${unlinked.join(", ")}.` : "",
+    unavailable.length ? `Couldn't load the linked run for ${unavailable.join(", ")}.` : "",
+  ].filter(Boolean).join(" ");
   showKeepNotice("share", missingMessage);
   showKeepNotice("in", missingMessage);
   const pad = v => v ? nodes.map((_, i) => v[i] ?? null) : null;
@@ -955,7 +958,13 @@ function renderPartyCharts(players) {
   const hp = build("detail-hp-chart", "detail-hp-legend", players.map(p => pad(tl(p).map(n => n.hpAfter ?? null))),
     (p, i, v) => v == null ? "–" : `${v}<small>/${(tl(p)[i] || {}).maxHp}</small>`, false,
     (n, key) => n.type === "boss" || HP_ICON_KEYS.has(key) || (key === "unknown" && !!n.enc), {
-      detail: (p, i) => tl(p)[i] ? hpTip(p.run, tl(p)[i], p.self ? hpWins[i] : null, false) : "",
+      detail: (p, i) => {
+        const node = tl(p)[i];
+        if (!node) return "";
+        const history = !p.self && p.slug && keepFight(node)
+          ? `<div class="ft-cap"><a href="${coopRunHref(p)}">See personal win history on their profile</a></div>` : "";
+        return hpTip(p.run, node, p.self ? hpWins[i] : null, false) + history;
+      },
     });
   if (hp) detailHpChart = hp;
   const gold = build("detail-gold-chart", "detail-gold-legend", players.map(p => pad(tl(p).map(n => n.gold ?? null))), count, false,
@@ -992,11 +1001,17 @@ function renderPartyCharts(players) {
     share,
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
       fightIcon, { ...historical("winRate", ranges.taken, true), fightRows: benchmarkRows,
-        detail: (p, i) => { const row = readings.get(p.slot)?.[i]; return row && keepIncomingTip(row); } }),
+        detail: (p, i) => { const row = readings.get(p.slot)?.[i]; return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
       (p, i, value) => value == null ? "No data" : `${value.toFixed(1)} / turn (${damageTotals[p.slot][i]} HP)`,
       false, null, { ...historical("ask", ranges.done, false), recordedOnly: true, fightRows: benchmarkRows,
-        detail: (p, i) => { const row = damageReadings[p.slot]?.[i]; return row && keepDamageTip(row, true); } },
+        detail: (p, i) => {
+          const row = damageReadings[p.slot]?.[i];
+          if (!row) return "";
+          const seatOnly = !p.self && !p.slug && row.doing !== undefined
+            ? '<div class="ft-cap">Damage attributed to this party seat.</div>' : "";
+          return keepDamageTip(row, true) + seatOnly;
+        } },
       roster.map(p => ({ ...p, run: players.find(player => player.slot === p.slot)?.run }))),
   ];
   detailKeepCharts.push(...keep.filter(Boolean));
@@ -2120,7 +2135,10 @@ function hpTip(run, n, s, heading = true) {
   const row = (label, you) => `<tr><td>${label}</td><td><b>${you}</b></td></tr>`;
   const left = row("Left with", `${n.hpAfter}<small>/${n.maxHp}</small>`);
   const healed = n.healed > 0 ? row("Healed", `+${n.healed}`) : "";
-  if (!s) return `${head}<table>${healed}${left}</table>`;
+  if (!s) {
+    const entry = keepFight(n) ? row("Entered with", n.hpBefore) + row("HP lost", n.dmg) : "";
+    return `${head}<table>${entry}${healed}${left}</table>`;
+  }
   // What the fight cost beside what their wins lose: the damage comparison, which is the signal.
   // HP left isn't compared: it is HP entering minus this, so it carries every earlier floor too.
   const top = Math.max(n.maxHp, n.dmg, s.heavy_wins_dmg);
@@ -3375,9 +3393,9 @@ function missingPartyDamage(nodes, roster, totals) {
   const missing = roster.filter((_, j) => nodes.some((n, i) => keepFight(n) && totals[j][i] == null));
   if (!missing.length) return "";
   if (totals.every(row => row.every(value => value == null))) {
-    return "No player damage was recorded for this run. Older uploads and standard run files do not identify who dealt damage.";
+    return "No per-player damage recorded. This chart uses damage attributed by any teammate’s mod log.";
   }
-  return `Player damage data is incomplete for ${missing.map(p => p.label).join(", ")}. Fights without a recorded value are omitted.`;
+  return `Some fights have no attributed damage for ${missing.map(p => p.label).join(", ")}.`;
 }
 
 // One player's share of a co-op enemy's HP, over its solo HP: fight_demand.py's hp_share.
@@ -3881,19 +3899,19 @@ function keepDamageTip(r, mp) {
     : frow(swatch(KEEP_LINES.damage.color), "Damage done", r.damageDone, one(r.doing), r.ask === undefined ? "" : hp, one(r.ask));
   return `<table>${fightHead}${done}` +
     frow(swatch(KEEP_DEMAND_COLOR), "Fight turns", r.turns, "", r.ask === undefined ? "" : +r.winTurns.toFixed(1), "") +
-    `</table>${wins}${missing ? `<div class="ft-cap">Player damage unavailable.</div>` : ""}`;
+    `</table>${wins}${missing ? `<div class="ft-cap">${mp ? "No mod log attributed damage to this player." : "Damage done wasn’t recorded."}</div>` : ""}`;
 }
 
 // What arrived each turn, split into what was blocked, healed back, and got through. The
 // bar is as wide as what arrived; winners' figures are in the table.
-function keepIncomingTip(r) {
+function keepIncomingTip(r, mp = false) {
   if (r.taken === undefined) return "";
   const et = r.enemyTurns, k = KEEP_SPLIT;
   const quick = r.oneTurn ? `<div class="ft-cap">Won in 1 turn.</div>` : "";
   const share = v => r.arrived ? `<small>${Math.round(v / r.arrived * 100)}%</small>` : "";
   const through = key => frow(key, `Damage taken ${share(r.taken)}`, Math.round(r.total), one(r.taken),
     r.winRate === undefined ? "" : Math.round(r.winTotal), one(r.winRate), "ft-through");
-  if (r.arrived === undefined) return `<table>${fightHead}${r.healedOff ? frow(keepIcon("healed", k.healed), "Healed", r.healedOff, one(r.healed), "", "") : ""}${through(keepIcon("taken", k.through))}</table>${quick}`;
+  if (r.arrived === undefined) return `<table>${fightHead}${r.healedOff ? frow(keepIcon("healed", k.healed), "Healed", r.healedOff, one(r.healed), "", "") : ""}${through(keepIcon("taken", k.through))}</table>${quick}${mp ? '<div class="ft-cap">Block details need a usable mod log for this player.</div>' : ""}`;
   const seg = (v, color, what) => v > 0 ? `<span style="flex:${v} 1 0;background:${color}" title="${what}"></span>` : "";
   return `<div class="ft-split" role="img" aria-label="Of ${r.arrived.toFixed(1)} a turn arriving: ${r.blocked.toFixed(1)} blocked, ${r.healed.toFixed(1)} healed, ${r.taken.toFixed(1)} got through">` +
     seg(r.blocked, k.blocked, "Blocked") + seg(r.healed, k.healed, "Healed") + seg(r.taken, k.through, "Got through") + `</div>` +
@@ -3968,7 +3986,7 @@ function renderDetailKeepCharts(run) {
 
   const damageTip = tip(r => keepDamageTip(r, run.mp));
 
-  const inTip = tip(keepIncomingTip);
+  const inTip = tip(r => keepIncomingTip(r, run.mp));
   const playTip = tip(simple(r => r.play ? [
     row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
     row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),

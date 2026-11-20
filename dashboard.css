@@ -1545,7 +1545,6 @@ h1 {
 .party-profile-link { display: inline-flex; color: var(--text-dim); margin-left: -0.2rem; padding: 0.2rem; }
 .party-profile-link:hover, .party-profile-link:focus-visible { color: var(--gold-bright); }
 .party-note { color: var(--loss); }
-.party-metrics-note { margin: 0 0 0.6rem; color: var(--text-dim); font-size: var(--fs-sm); }
 #detail-content.party-loading > :not(#detail-run-header) { opacity: 0.45; transition: opacity 0.2s; }
 .floor-tip .fl-swatch, .floor-legend .fl-swatch[style*="border-top"] { display: inline-block; width: 18px; }
 .range-player { margin-top: 0.6rem; }
