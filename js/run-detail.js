@@ -879,6 +879,8 @@ function partyHpComparison(players, i, history) {
   });
 }
 
+const COOP_BLOCK_NOTICE = '<div class="ft-cap">A mod update is coming to record block for each player in new co-op runs. This fight has no verified player breakdown.</div>';
+
 function partyIncomingComparison(players, rows, average) {
   const table = partyFloorTable(players, ["Arrived", "Blocked", "Healed", "Damage taken"], p => {
     const r = rows(p);
@@ -887,7 +889,7 @@ function partyIncomingComparison(players, rows, average) {
       total, total == null ? null : total / r.turns));
   }, average?.winGross ? [null, null, null, partyFightValue(average.winGross.total, average.winGross.rate)] : null);
   return table + (players.some(p => rows(p) && rows(p).grossBlocked === undefined)
-    ? '<div class="ft-cap">Block is available where mod events identify the player and match their recorded HP loss.</div>' : "");
+    ? COOP_BLOCK_NOTICE : "");
 }
 
 // One line per player with data. Desktop tooltips compare the party together.
@@ -4093,7 +4095,7 @@ function keepIncomingTip(r, mp = false) {
   const through = frow(keepIcon("taken", k.through), `Damage taken ${share(r.grossTaken)}`, r.grossTaken, one(r.grossRate),
     r.winGross ? Math.round(r.winGross.total) : "", one(r.winGrossRate), "ft-through");
   const healed = r.healedAll ? frow(keepIcon("healed", k.healed), "Healed", r.healedAll, one(r.healedAll / r.turns), "", "") : "";
-  if (r.grossArrived === undefined) return `<table>${fightHead}${healed}${through}</table>${mp ? '<div class="ft-cap">Block is available where mod events identify the player and match their recorded HP loss.</div>' : ""}`;
+  if (r.grossArrived === undefined) return `<table>${fightHead}${healed}${through}</table>${mp ? COOP_BLOCK_NOTICE : ""}`;
   const seg = (v, color, what) => v > 0 ? `<span style="flex:${v} 1 0;background:${color}" title="${what}"></span>` : "";
   return `<div class="ft-split" role="img" aria-label="${Math.round(r.grossBlocked)} blocked, ${r.grossTaken} HP lost">` +
     seg(r.grossBlocked, k.blocked, "Blocked") + seg(r.grossTaken, k.through, "HP lost") + `</div>` +
