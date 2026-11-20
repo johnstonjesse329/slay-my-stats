@@ -3512,12 +3512,14 @@ function partyDamageFallback(run, nodes, sources, totals) {
   const tip = i => fights[i] ? `<div class="ft-cap">${fights[i].estimated ? "Estimated party total" : "Party total"} <b>${Math.round(fights[i].total)} HP · ${rates[i].toFixed(1)}/turn</b></div>` : "";
   const logged = fights.some(fight => fight && !fight.estimated);
   const hasLog = sources.some(source => source.size);
+  const hasMod = [run, detailOwnerRun].some(copy => copy?.mods?.some(mod => mod.id === "SlayMyStats"));
+  const linkMod = !hasLog && !hasMod;
   const notice = !missing ? "" : logged
     ? "The combat log gives party totals for fights without a player breakdown."
-    : hasLog ? "The combat log is missing damage for some fights."
+    : !linkMod ? lines.length ? "Some party totals are estimated from enemy HP." : "Damage data is missing for some fights."
     : lines.length ? "Some party totals are estimated. To record combat logs, use the"
       : "Damage data is missing for some fights. To record combat logs, use the";
-  return { lines, rates, tip, notice, linkMod: !hasLog, partySize };
+  return { lines, rates, tip, notice, linkMod, partySize };
 }
 
 function partyDamageHistory(history, fallback) {
