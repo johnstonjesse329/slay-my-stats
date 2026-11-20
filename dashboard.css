@@ -141,7 +141,7 @@ h1 {
 @media (max-width: 1200px) {
   .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-/* The win breakdown spans the four other summary cards. */
+/* Keep the four overview summary cards on one row at desktop widths. */
 #summary-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 /* Each summary card is a bar: label left, value right, one line instead of the
@@ -188,15 +188,17 @@ h1 {
 .pb-table td { text-align: center; color: var(--text); font-weight: 500; }
 .pb-table thead th.pb-total { font-size: var(--fs-sm); font-weight: 600; }
 .pb-char-icon { width: 22px; height: 22px; vertical-align: middle; margin-right: 0.4rem; }
-.pb-table tr.pb-headline td { font-size: 1.6rem; font-weight: 700; padding: 0.6rem 0.5rem 0.3rem; border-bottom: 0; }
-.pb-table tr.pb-headline th { color: var(--text); font-weight: 700; border-bottom: 0; }
 .pb-table tr.pb-tier th { padding-left: 1.25rem; font-size: var(--fs-sm); border-bottom: 0; }
-.pb-table tr.pb-tier td { font-size: var(--fs-sm); color: var(--text-dim); padding-top: 0.15rem; padding-bottom: 0.15rem; border-bottom: 0; }
+.pb-table tr.pb-tier td { font-size: var(--fs-sm); color: var(--text-dim); padding-block: 0.45rem; }
 .pb-table tr:not(.pb-tier) + tr.pb-tier td, .pb-table tr:not(.pb-tier) + tr.pb-tier th { padding-top: 0.3rem; }
+.pb-table tr.pb-win-total th { padding-left: 0.5rem; color: var(--text); font-weight: 700; }
 .pb-table tr.pb-tier-dread th { color: #87ceeb; font-weight: 700; letter-spacing: 0.04em; }
-.pb-tier-wins { display: block; color: var(--text); }
-.pb-bar { display: block; height: 4px; width: min(100%, 7rem); margin: 3px auto 0; border-radius: 2px; background: rgba(255,255,255,0.08); overflow: hidden; }
-.pb-bar i { display: block; height: 100%; border-radius: 2px; }
+.pb-win-line, .pb-win-modes { display: flex; justify-content: center; gap: 0.4em; white-space: nowrap; }
+.pb-win-line { color: var(--text); font-variant-numeric: tabular-nums; }
+.pb-win-modes { font-size: var(--fs-xs); }
+.pb-win-modes span + span::before { content: "·"; margin-right: 0.4em; color: var(--text-faint); }
+.pb-bar { display: block; height: 5.33px; width: min(100%, 7rem); margin: 3px auto 0; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.pb-bar i { display: block; height: 100%; border-radius: inherit; }
 /* Multiplayer's bar, under solo's: striped, as the home page draws Multi. */
 .pb-bar + .pb-bar { margin-top: 2px; }
 .pb-bar-multi i { background-image: repeating-linear-gradient(135deg, rgba(13,12,26,0.55) 0 3px, transparent 3px 6px); }
@@ -220,18 +222,19 @@ h1 {
 .pb-pop .pb-stat-link { font-weight: 700; }
 /* A phone keeps the table: the characters are their energy icons, the stat
    names wrap, and every figure is short enough to fit. */
-@media (max-width: 700px) {
+@media (max-width: 800px), (max-width: 950px) and (max-height: 500px) and (orientation: landscape) {
   .pb-table { font-size: var(--fs-sm); }
   .pb-table th, .pb-table td { padding: 0.4rem 0.1rem; }
-  .pb-table thead th:first-child { width: 5.75rem; }
+  .pb-table thead th:first-child { width: 4.5rem; }
   .pb-table tbody th { padding-left: 0; white-space: normal; line-height: 1.2; }
   .pb-table tr.pb-tier th { padding-left: 0.6rem; }
-  .pb-table tr.pb-headline td { font-size: 1.05rem; }
   .pb-char-icon { margin-right: 0; }
   .pb-char-name { display: none; }
   .pb-table thead th.pb-total { font-size: var(--fs-xs); }
   .pb-table tr:not(.pb-group) td { font-size: var(--fs-xs); }
-  .pb-table tr.pb-headline td { font-size: var(--fs-sm); }
+  .pb-win-line, .pb-win-modes { flex-direction: column; gap: 0; }
+  .pb-win-modes { font-size: 0.625rem; white-space: normal; }
+  .pb-win-modes span + span::before { content: none; }
   .pb-sep { margin: 0; }
   .pb-table td { white-space: nowrap; }
   .pb-table .pb-rng { display: none; }
@@ -239,6 +242,14 @@ h1 {
   .pb-med { all: unset; display: inline; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
   .pb-med[aria-expanded=true] { color: var(--gold); }
   .pb-med:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+}
+
+@media (max-width: 950px) and (max-height: 500px) and (orientation: landscape) {
+  .pb-table thead th:first-child { width: 7rem; }
+  .pb-table th, .pb-table td { padding-inline: 0.4rem; }
+  .pb-table tr.pb-tier td { padding-block: 0.65rem; vertical-align: top; }
+  .pb-win-line, .pb-win-modes { line-height: 1.4; }
+  .pb-bar { width: min(78%, 7rem); }
 }
 
 /* Favorites (Cards page): the player's table and all players' side by side,
@@ -435,14 +446,6 @@ h1 {
 #summary-cards .card .value { color: var(--text); white-space: nowrap; font-size: 1.25rem; }
 /* The name is the main item now, so it is not the small print beside a big number. */
 #summary-cards .card .label { font-size: var(--fs-md); }
-#summary-cards .summary-wins {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-  text-align: center;
-}
 .card .sub   { font-size: var(--fs-sm); color: var(--text-dim); margin-top: 0.1rem; }
 
 /* Personal Bests stat values that link to the run behind them (see

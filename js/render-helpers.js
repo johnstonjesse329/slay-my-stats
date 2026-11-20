@@ -15,7 +15,7 @@ function bindEnterSpace(el) {
   });
 }
 
-function renderCards(grand, runs) {
+function renderCards(grand) {
   const items = [
     { label: "Time played", detail: grand.runs ? `Median ${grand.median_min}m` : "",
       value: grand.runs ? fmtHrsMin(grand.total_min) : "—" },
@@ -32,24 +32,14 @@ function renderCards(grand, runs) {
       <div class="label"><b class="name">${label}</b></div>
       <div class="value"${detail ? ` data-tip="${detail}" tabindex="0"` : ""}>${value}</div>
     </div>`;
-  const wins = runs.filter(run => run.won);
-  const dreadWins = wins.filter(run => run.mode === "dread").length;
-  const winCounts = [
-    ["Total wins", grand.wins],
-    ...ASC_RANGES.map(({ label, min, max }) => [`${label} wins`,
-      wins.filter(run => run.mode !== "dread" && run.asc >= min && run.asc <= max).length]),
-    ...(dreadWins ? [["Dread wins", dreadWins]] : []),
-  ];
-  const winsCard = `<div class="card summary-wins">${winCounts.map(([label, value]) =>
-    `<div><div class="label">${label}</div><div class="value">${value.toLocaleString()}</div></div>`).join("")}</div>`;
-  document.getElementById("summary-cards").innerHTML = winsCard + items.map(itemCard).join("");
+  document.getElementById("summary-cards").innerHTML = items.map(itemCard).join("");
 }
 
 function renderPersonalBests() {
   const chars = DATA.characters;
   const allRuns = [...filterRuns()].sort((a, b) => a.ts - b.ts);
 
-  const fresh = () => ({ gamesPlayed: 0, totalWins: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, tiers: {},
+  const fresh = () => ({ gamesPlayed: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, tiers: {},
     // Every winning run's figure, for the medians the table shows before its ranges.
     won: { elites: [], cards: [], relics: [], maxHp: [], bossTurns: [] } });
   const bests = {};
@@ -58,15 +48,19 @@ function renderPersonalBests() {
   // across characters in play order and its ranges span all of them.
   const total = fresh();
 
-  const tally = (b, run) => {
-    b.gamesPlayed = (b.gamesPlayed || 0) + 1;
-    // A Dread run is past every ascension, so it gets its own tier and stays out of A8+.
-    const tier = b.tiers[run.mode === "dread" ? "dread" : ascColumnKey(run.asc)] ||= { runs: 0, wins: 0, solo: { runs: 0, wins: 0 }, multi: { runs: 0, wins: 0 } };
+  const tallyTier = (b, key, run) => {
+    const tier = b.tiers[key] ||= { runs: 0, wins: 0, solo: { runs: 0, wins: 0 }, multi: { runs: 0, wins: 0 } };
     tier.runs++;
     if (run.won) tier.wins++;
     const side = tier[run.mp ? "multi" : "solo"];
     side.runs++;
     if (run.won) side.wins++;
+  };
+  const tally = (b, run) => {
+    b.gamesPlayed++;
+    tallyTier(b, "all", run);
+    // Dread has its own tier and stays out of A8+.
+    tallyTier(b, run.mode === "dread" ? "dread" : ascColumnKey(run.asc), run);
     const bossFights = (run.fights || []).filter(f => f.type === "boss");
     const finalBoss  = bossFights.length ? bossFights[bossFights.length - 1] : null;
     if (finalBoss && !finalBoss.won) {
@@ -85,7 +79,6 @@ function renderPersonalBests() {
       if (run.won) b.won.bossTurns.push(finalBoss.turns);
     }
     if (run.won) {
-      b.totalWins = (b.totalWins || 0) + 1;
       b._streak++;
       if (b._streak > b.longestStreak) b.longestStreak = b._streak;
     } else {
@@ -154,25 +147,27 @@ function renderPersonalBests() {
   // solo and multiplayer runs (All), every tier draws both bars, Multi striped as on the home
   // page, so the two read apart without a second set of figures, and a tier with no runs of
   // one kind shows that empty bar rather than dropping it.
-  const tierList = Object.values(total.tiers);
-  const bothKinds = tierList.some(t => t.solo.runs) && tierList.some(t => t.multi.runs);
+  const bothKinds = total.tiers.all?.solo.runs && total.tiers.all?.multi.runs;
   const bar = (t, c, cls = "") => `<span class="pb-bar${cls}"><i style="width:${t.runs ? Math.round(t.wins / t.runs * 100) : 0}%;background-color:${c.bar || c.color}"></i></span>`;
   const runsOf = t => !t.runs ? "no runs" : `${t.wins} of ${t.runs} run${t.runs !== 1 ? "s" : ""} (${fmtWinPct(t.wins, t.runs)})`;
-  const tierBar = (t, c) => !t ? "0W"
-    : `<strong class="pb-tier-wins">${t.wins.toLocaleString()}W</strong>` + (!bothKinds
-      ? `${pct(t.wins, t.runs)}${bar(t, c)}`
-      : `<span data-tip="Solo: ${runsOf(t.solo)}\nMulti: ${runsOf(t.multi)}">${fmtWinPct(t.wins, t.runs)}</span>`
-        + bar(t.solo, c) + bar(t.multi, c, " pb-bar-multi"));
+  const tierBar = (t, c) => {
+    if (!t) return "—";
+    const rate = bothKinds
+      ? `<span data-tip="Solo: ${runsOf(t.solo)}\nMulti: ${runsOf(t.multi)}">${fmtWinPct(t.wins, t.runs)}</span>`
+      : pct(t.wins, t.runs);
+    const bars = bothKinds || t.multi.runs
+      ? bar(t.solo, c) + bar(t.multi, c, " pb-bar-multi") : bar(t.solo, c);
+    return `<div class="pb-win-line"><strong style="color:${c.color}">${rate}</strong><span>${t.wins.toLocaleString()}W</span></div>
+      <div class="pb-win-modes"><span>Solo ${t.solo.wins.toLocaleString()}</span><span>Multi ${t.multi.wins.toLocaleString()}</span></div>${bars}`;
+  };
 
   // [label, cell, row class]
   const rows = [
-    ["Total wins", b => b.totalWins.toLocaleString()],
-    ["Win %", (b, c) => `<span style="color:${c.color}">${pct(b.totalWins, b.gamesPlayed)}</span>`, "pb-headline"],
+    ["All ascensions", (b, c) => tierBar(b.tiers.all, c), "pb-tier pb-win-total"],
     // The ascension tiers the other tables split by (ascColumns).
     ...(currentPage === "overview" ? ASC_RANGES : ascColumns())
       .map(col => [col.label, (b, c) => tierBar(b.tiers[col.key], c), "pb-tier"]),
-    // Dread, the pinnacle past A10, keeps its row wherever its runs could show, runs or not.
-    ...(currentPage === "overview" || sharedActiveModes.has("dread") ? [["Dread", (b, c) => tierBar(b.tiers.dread, c), "pb-tier pb-tier-dread"]] : []),
+    ...(total.tiers.dread ? [["Dread", (b, c) => tierBar(b.tiers.dread, c), "pb-tier pb-tier-dread"]] : []),
     ["Runs",              b => b.gamesPlayed],
     ["Final boss deaths", b => pct(b.finalBossDeaths, b.gamesPlayed)],
     ["Elite deaths",      b => pct(b.eliteDeaths, b.gamesPlayed)],
