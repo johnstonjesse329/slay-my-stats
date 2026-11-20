@@ -1396,8 +1396,6 @@ h1 {
 /* A party reads as a stack of heads, the way an avatar row does; the ring keeps
    overlapping ones apart. Four is the most a run can carry. */
 .detail-run-players { display: flex; justify-content: center; align-items: center; white-space: nowrap; }
-/* The heads are a desktop nicety: a phone's narrow list keeps the plain word. */
-.detail-run-party-text { display: none; }
 .detail-run-players .char-icon { width: 16px; height: 16px; margin-right: 0; border-radius: 50%; object-fit: cover; background: #1b1a26; box-shadow: 0 0 0 1px #191c20; }
 .detail-run-players .char-icon + .char-icon { margin-left: -3px; }
 .detail-run-won  { font-weight: 700; font-size: var(--fs-sm); text-align: center; }
@@ -1524,9 +1522,11 @@ h1 {
   font-size: var(--fs-sm);
 }
 .party-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; margin-right: 0.25rem; }
-.party-member { display: inline-flex; align-items: center; gap: 0.35rem; }
+.party-member { display: inline-flex; align-items: center; gap: 0.35rem; max-width: 100%; }
+.party-member .char-icon, .party-toggle .char-icon { flex: none; margin-right: 0; }
+.party-member .fl-swatch { flex: none; }
 .party-none { padding: 0.2rem 0.4rem; color: var(--text-dim); }
-.party-name { color: var(--text); font-weight: 600; }
+.party-name { overflow-wrap: anywhere; }
 .party-tab {
   font: inherit;
   color: inherit;
@@ -1544,6 +1544,7 @@ h1 {
 .party-profile-link { display: inline-flex; color: var(--text-dim); margin-left: -0.2rem; padding: 0.2rem; }
 .party-profile-link:hover, .party-profile-link:focus-visible { color: var(--gold-bright); }
 .party-note { color: var(--loss); }
+.party-metrics-note { margin: 0 0 0.6rem; color: var(--text-dim); font-size: var(--fs-sm); }
 #detail-content.party-loading > :not(#detail-run-header) { opacity: 0.45; transition: opacity 0.2s; }
 .floor-tip .fl-swatch, .floor-legend .fl-swatch[style*="border-top"] { display: inline-block; width: 18px; }
 .range-player { margin-top: 0.6rem; }
@@ -3160,10 +3161,9 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .run-boon-icons { flex-wrap: wrap; gap: 6px 14px; }
 }
 
-/* A phone's run list is narrower than four stacked heads, so it keeps the plain word. */
 @media (max-width: 560px) {
-  .detail-run-party-heads { display: none; }
-  .detail-run-party-text { display: inline; font-size: var(--fs-sm); }
+  .detail-run-players .char-icon { width: 13px; height: 13px; }
+  .detail-run-players .char-icon + .char-icon { margin-left: -4px; }
 }
 
 /* The charts' own toggle, in the Keeping Up by Floor heading: just you, or every player. */
@@ -3179,7 +3179,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .detail-floor-controls:has(.party-toggle:empty):not(:has(.keep-actpick button)) { display: none; }
 .detail-floor-controls .party-toggle { display: flex; flex-wrap: wrap; margin: 0; }
 .detail-floor-controls .party-toggle:empty { display: none; }
-.detail-floor-controls .party-toggle button { min-height: 30px; white-space: nowrap; }
+.detail-floor-controls .party-toggle button { display: inline-flex; align-items: center; gap: 0.3rem; max-width: 100%; min-height: 30px; }
 .detail-floor-controls .keep-actpick { position: static; padding: 0; margin: 4px 0 0; }
 .party-floor-active > .chart-wrap, .party-floor-active > .floor-legend { display: none; }
 .party-floor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -3195,8 +3195,8 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 @media (max-width: 760px) {
   .party-floor-grid { grid-template-columns: minmax(0, 1fr); }
   .party-floor-player .chart-wrap { height: 210px; }
-  .party-floor-focus { display: block; margin-bottom: 6px; }
-  .party-floor-focus select { font: inherit; margin-left: 8px; padding: 4px 8px; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 6px; }
+  .party-floor-focus { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .party-floor-focus select { min-width: 0; font: inherit; padding: 4px 8px; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 6px; }
   .party-floor-player[data-inactive] { display: none; }
 }
 @media (max-height: 430px) and (orientation: landscape) {

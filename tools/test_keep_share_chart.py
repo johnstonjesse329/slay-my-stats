@@ -31,7 +31,7 @@ def load_run():
 
 def expected_series(run, demand):
     """The two multiples the page should draw, keyed by node index: fightReadings' rows,
-    with a lost final fight's damage taken from its log when there is one."""
+    using a lost final fight's log if it covers at least the recorded damage."""
     nodes = run["timeline"]
     measured = {m["floor"]: m for m in run.get("measured") or []}
     last = max((i for i, n in enumerate(nodes) if n.get("turns")), default=-1)
@@ -44,7 +44,8 @@ def expected_series(run, demand):
             continue
         lost = not run["won"] and i == last
         log = measured.get(node["floor"] + 1)
-        gross = log["taken"] if lost and log else node.get("dmg") or 0
+        recorded = node.get("dmg") or 0
+        gross = max(recorded, log["taken"]) if lost and log else recorded
         total = max(0, gross - (node.get("healed") or 0))
         out[i] = {"taken": (total + 1) / (how["taken"] + 1), "turns": node["turns"] / how["turns"]}
     return out
@@ -124,6 +125,19 @@ def main():
                 page.evaluate(f"location.hash = '#detail/{RUN_TS}'")
             page.wait_for_selector("#detail-keep-share-chart", state="attached", timeout=20000)
             page.wait_for_function("() => typeof detailKeepCharts !== 'undefined' && detailKeepCharts.some(c => c.canvas.id === 'detail-keep-share-chart')")
+
+            final_fight = page.evaluate("""() => {
+              const run = { asc: 10, won: false };
+              const nodes = [{ enc: 'ENCOUNTER.AEONGLASS_BOSS', turns: 8, dmg: 104, healed: 43 }];
+              const log = { taken: 54, enemyTurns: 5, arrived: 21.6, removed: 364 };
+              const [partial] = fightReadings(run, nodes, [log]);
+              const [overkill] = fightReadings(run, nodes, [{ ...log, taken: 114, enemyTurns: 8 }]);
+              return { partial, overkill };
+            }""")
+            assert final_fight["partial"]["total"] == 61, final_fight
+            assert final_fight["partial"]["taken"] == 61 / 8, final_fight
+            assert "blocked" not in final_fight["partial"], final_fight
+            assert final_fight["overkill"]["total"] == 71, final_fight
 
             got = series_from_page(page)
             assert got, "the share chart did not render"

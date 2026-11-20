@@ -46,6 +46,7 @@ DRAWN = {
     "KillSwitchLogGroup": "CloudWatch",
     "AccessLogBucket": "access logs",
     "DigestFunction": "daily digest",
+    "BenchmarkFunction": "fight benchmark",
     "DigestLogGroup": "CloudWatch",
     "Dashboard": "dashboard",
 }
@@ -55,6 +56,7 @@ NOT_DRAWN = {  # plumbing inside a drawn box, or an output
     "SteamGateFunction": "gamma-only Steam session check; the diagram shows production",
     "GammaAuthFunction": "gamma-only Steam login; the diagram shows production",
     "DigestSchedule": "the 8 AM schedule is noted inside the Digest box",
+    "BenchmarkSchedule": "the daily timing is noted in the benchmark box",
 }
 OUTPUT_ID = re.compile(r"(Name|Domain\w*|Url)$")
 

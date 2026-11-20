@@ -817,7 +817,11 @@
 
     let runs, links, index;
     try {
-      [runs, links, index] = await Promise.all([loadRuns(slug, userDoc), loadCoopLinks(slug), profileIndex]);
+      const [history, partners, players, benchmark] = await Promise.all([
+        loadRuns(slug, userDoc), loadCoopLinks(slug), profileIndex, loadFightBenchmark(),
+      ]);
+      [runs, links, index] = [history, partners, players];
+      if (benchmark) catalog.fightDemand = benchmark;
     } catch (e) {
       showError();
       return;
@@ -831,6 +835,20 @@
     window.DATA = buildData(catalog, runs);
     window.DATA.profile = { slug, name: userDoc.name };
     loadAppScript();
+  }
+
+  async function loadFightBenchmark() {
+    if (!["slay-my-stats.com", "gamma.slay-my-stats.com"].includes(location.hostname)) return null;
+    try {
+      const response = await fetch("/users/_fight-demand.json.gz", {
+        cache: "no-cache", signal: AbortSignal.timeout(1500),
+      });
+      if (!response.ok) return null;
+      const benchmark = await response.json();
+      return benchmark?.encounters && benchmark?.cuts ? benchmark : null;
+    } catch {
+      return null;
+    }
   }
 
   // The other players' copies of this profile's co-op runs:

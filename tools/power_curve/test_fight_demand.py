@@ -17,6 +17,7 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
 
 import fight_demand as fd  # noqa: E402
+import telemetry_report as tr  # noqa: E402
 
 MONSTERS = {
     "MONSTER.A": {"hpMin": [40, 44], "hpMax": [44, 48]},
@@ -30,7 +31,7 @@ def fight(enc="ENCOUNTER.X", ids=("MONSTER.A",), t=3, taken=0, asc=0, died=False
 
 
 def demand_of(runs, logged=None):
-    with mock.patch.object(fd.pc, "PD", {"monsters": MONSTERS}):
+    with mock.patch.object(fd, "monster_data", return_value=MONSTERS):
         return fd.table(runs, logged)
 
 
@@ -56,7 +57,7 @@ def run(rooms, players=1, abandoned=False, win=True, taken=(5,), healed=None):
 
 class BodyPool(unittest.TestCase):
     def pool(self, monster):
-        with mock.patch.object(fd.pc, "PD", {"monsters": MONSTERS}):
+        with mock.patch.object(fd, "monster_data", return_value=MONSTERS):
             return fd.body_pool(monster)
 
     def test_takes_the_middle_of_the_range_at_each_difficulty(self):
@@ -308,25 +309,25 @@ class SharedMoves(unittest.TestCase):
                            {"id": "SAME", "intents": [{"dmg": 3}]}]}}}
 
     def setUp(self):
-        patcher = mock.patch.object(fd.pc, "PD", self.PD)
+        patcher = mock.patch.object(tr.pc, "PD", self.PD)
         patcher.start()
         self.addCleanup(patcher.stop)
 
     def test_max_hp_says_whose_move_it_was(self):
-        table = fd.tr.move_table()
+        table = tr.move_table()
         self.assertEqual(table[("ENCOUNTER.X", "RAM", 106)][0], [(15, 1)])
         self.assertEqual(table[("ENCOUNTER.X", "RAM", 80)][0], [(10, 1)])
 
     def test_where_the_bands_touch_the_first_monster_listed_wins(self):
-        self.assertEqual(fd.tr.move_table()[("ENCOUNTER.X", "RAM", 100)][0], [(15, 1)])
+        self.assertEqual(tr.move_table()[("ENCOUNTER.X", "RAM", 100)][0], [(15, 1)])
 
     def test_an_hp_outside_both_bands_falls_back_to_the_encounter(self):
-        table = fd.tr.move_table()
+        table = tr.move_table()
         self.assertNotIn(("ENCOUNTER.X", "RAM", 500), table)
         self.assertEqual(table[("ENCOUNTER.X", "RAM")][0], [(15, 1)])
 
     def test_a_move_that_means_the_same_on_both_needs_no_hp(self):
-        self.assertFalse([k for k in fd.tr.move_table() if k[:2] == ("ENCOUNTER.X", "SAME") and len(k) == 3])
+        self.assertFalse([k for k in tr.move_table() if k[:2] == ("ENCOUNTER.X", "SAME") and len(k) == 3])
 
 
 class Deadly(unittest.TestCase):
@@ -336,16 +337,16 @@ class Deadly(unittest.TestCase):
     ]}}}
 
     def setUp(self):
-        patcher = mock.patch.object(fd.pc, "PD", self.PD)
+        patcher = mock.patch.object(tr.pc, "PD", self.PD)
         patcher.start()
         self.addCleanup(patcher.stop)
 
     def test_each_move_table_reads_its_own_column(self):
-        self.assertEqual(fd.tr.move_table()["HIT"][0], [(6, 2)])
-        self.assertEqual(fd.tr.move_table("dmgAsc")["HIT"][0], [(7, 2)])
+        self.assertEqual(tr.move_table()["HIT"][0], [(6, 2)])
+        self.assertEqual(tr.move_table("dmgAsc")["HIT"][0], [(7, 2)])
 
     def test_a_move_ascension_leaves_alone_keeps_its_damage(self):
-        self.assertEqual(fd.tr.move_table("dmgAsc")["SAME"][0], [(3, 1)])
+        self.assertEqual(tr.move_table("dmgAsc")["SAME"][0], [(3, 1)])
 
     def test_a_log_reads_moves_at_its_runs_ascension(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -354,10 +355,10 @@ class Deadly(unittest.TestCase):
                 path.parent.mkdir(exist_ok=True)
                 with gzip.open(path, "wt", encoding="utf-8") as fh:
                     json.dump({"log": []}, fh)
-            runs = {("sid", 1): {"ascension": fd.tr.DEADLY - 1}, ("sid", 2): {"ascension": fd.tr.DEADLY}}
-            with mock.patch.object(fd.tr, "TELEMETRY", Path(folder)), \
-                    mock.patch.object(fd.tr.dt, "derive", lambda log, moves: moves["HIT"][0]):
-                logs, _ = fd.tr.load_logs(runs)
+            runs = {("sid", 1): {"ascension": tr.DEADLY - 1}, ("sid", 2): {"ascension": tr.DEADLY}}
+            with mock.patch.object(tr, "TELEMETRY", Path(folder)), \
+                    mock.patch.object(tr.dt, "derive", lambda log, moves: moves["HIT"][0]):
+                logs, _ = tr.load_logs(runs)
         self.assertEqual(logs[("sid", 1)], [(6, 2)])
         self.assertEqual(logs[("sid", 2)], [(7, 2)])
         # No run file to say otherwise: base.

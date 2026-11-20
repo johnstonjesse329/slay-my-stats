@@ -65,11 +65,11 @@ import re
 import statistics
 import sys
 from collections import Counter, defaultdict
+from functools import lru_cache
+from pathlib import Path
 
-import power_curve as pc
-import telemetry_report as tr
-
-OUT = pc.WT / "fight_demand.json"
+ROOT = Path(__file__).resolve().parents[2]
+OUT = ROOT / "fight_demand.json"
 
 # The ascension the enemies start to change at (Tough Enemies); every level from it on does.
 TOUGH = 8
@@ -105,13 +105,18 @@ TIER_NAMES = ("under 8", "8 and up")
 PLACEHOLDER_HP = 9999
 
 
+@lru_cache
+def monster_data():
+    return json.loads((ROOT / "power_data.json").read_text(encoding="utf-8"))["monsters"]
+
+
 def body_pool(monster):
     """(base, Tough Enemies) HP of one enemy, mid-range. Zero when the game data has
     none: Doormaker, gone from the game after v0.103.2, and anything a patch adds until
     the data is refreshed. Those fights get no reading rather than a guess."""
     if monster in PHASES:
         return PHASES[monster]
-    record = pc.PD["monsters"].get(monster) or {}
+    record = monster_data().get(monster) or {}
     lo, hi = record.get("hpMin") or (0, 0), record.get("hpMax") or (0, 0)
     return (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
 
@@ -532,6 +537,8 @@ def check_acts(runs):
 
 
 def main():
+    import telemetry_report as tr
+
     raw = tr.load_runs()
     runs = run_fights(raw)
     logs, _ = tr.load_logs(raw)

@@ -891,7 +891,15 @@ Each refresh keeps a copy of the card, relic and potion data in `local_data/game
 `tools/diff_game_data.py` writes what changed since the previous version to
 `local_data/game_data/changes_<old>_to_<new>.txt`.
 
-The Runs page's Keeping Up charts need one more file, made after the refresh:
+Production's Keeping Up charts refresh their benchmark daily at 4:30 a.m. Central.
+EventBridge Scheduler invokes the benchmark Lambda in the production stack. It reads the
+production raw uploads for runs currently published on the site and writes aggregate results
+to `users/_fight-demand.json.gz`.
+Profile pages use those results when available.
+Gamma can preview the same aggregate at that path in its own data bucket. Its benchmark
+stays at the last preview until it is refreshed manually.
+
+The site build also carries a fallback benchmark, made after the game-data refresh:
 `python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in
 `tools/power_curve/gamma_raw/`. Without it the charts are hidden. It also records how many enemies each
 encounter fields, from the opening line-up the run files list, which the charts show as a two-icon depth stack (the

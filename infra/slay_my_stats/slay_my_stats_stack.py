@@ -46,6 +46,8 @@ RUN_PY = Path(__file__).resolve().parents[2] / "run.py"
 # Likewise the event-log reading the Keeping Up numbers come from, and the card costs
 # it prices plays with, cut from the local game data (tools/build_measured_cards.py).
 DERIVE_PY = Path(__file__).resolve().parents[2] / "tools" / "power_curve" / "derive_telemetry.py"
+FIGHT_DEMAND_PY = DERIVE_PY.with_name("fight_demand.py")
+POWER_DATA = Path(__file__).resolve().parents[2] / "power_data.json"
 CARDS_PY = Path(__file__).resolve().parents[2] / "tools" / "build_measured_cards.py"
 CARD_DATA = Path(__file__).resolve().parents[2] / "card_data.json"
 # And which characters, cards and relics are core game content, so runs from mods or a
@@ -64,10 +66,15 @@ POST_PAGES = [name for name in ("whats-new",) if name in SITE_PAGES]
 @jsii.implements(ILocalBundling)
 class _CopyIngestSources:
     def try_bundle(self, output_dir: str, *, image=None, **_kwargs) -> bool:
-        for name in ("handler.py", "measured.py", "feedback.py", "reactions.py", "session.py", "views.py"):
+        for name in ("handler.py", "measured.py", "feedback.py", "reactions.py", "session.py", "views.py", "benchmark.py"):
             shutil.copy(INGEST_DIR / name, output_dir)
         shutil.copy(RUN_PY, output_dir)
         shutil.copy(DERIVE_PY, output_dir)
+        benchmark_dir = Path(output_dir) / "tools" / "power_curve"
+        benchmark_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(FIGHT_DEMAND_PY, benchmark_dir)
+        if POWER_DATA.exists():
+            shutil.copy(POWER_DATA, output_dir)
         # Without game data the table is left out and the Lambda reads it as empty:
         # Card cost lines come out flat, nothing else is lost.
         if CARD_DATA.exists():
@@ -91,7 +98,7 @@ def _ingest_asset_hash() -> str:
     h = hashlib.sha256()
     for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", INGEST_DIR / "feedback.py",
               INGEST_DIR / "reactions.py", INGEST_DIR / "session.py", INGEST_DIR / "views.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
-              IDS_PY, RELIC_DATA, RETIRED_IDS):
+              IDS_PY, RELIC_DATA, RETIRED_IDS, INGEST_DIR / "benchmark.py", FIGHT_DEMAND_PY, POWER_DATA):
         if p.exists():
             h.update(p.read_bytes())
     return h.hexdigest()
@@ -685,6 +692,29 @@ class SlayMyStatsStack(Stack):
                     minute="0", hour="8", time_zone=TimeZone.AMERICA_CHICAGO),
                 target=scheduler_targets.LambdaInvoke(digest_fn),
                 description=f"Daily upload digest for {domain_name}",
+            )
+            benchmark_fn = lambda_.Function(
+                self, "BenchmarkFunction",
+                runtime=lambda_.Runtime.PYTHON_3_12,
+                handler="benchmark.refresh",
+                code=ingest_code,
+                timeout=Duration.minutes(5),
+                memory_size=512,
+                environment={"DATA_BUCKET": data_bucket.bucket_name},
+            )
+            benchmark_fn.add_to_role_policy(iam.PolicyStatement(
+                actions=["s3:ListBucket"], resources=[data_bucket.bucket_arn],
+            ))
+            data_bucket.grant_read(benchmark_fn, "raw/*")
+            data_bucket.grant_read(benchmark_fn, "ids/*")
+            data_bucket.grant_read(benchmark_fn, "users/*")
+            data_bucket.grant_read_write(benchmark_fn, "users/_fight-demand.json.gz")
+            scheduler.Schedule(
+                self, "BenchmarkSchedule",
+                schedule=scheduler.ScheduleExpression.cron(
+                    minute="30", hour="4", time_zone=TimeZone.AMERICA_CHICAGO),
+                target=scheduler_targets.LambdaInvoke(benchmark_fn),
+                description="Refresh the fight benchmark from production uploads",
             )
 
         # No API Gateway: the handler checks the session itself, so a bare

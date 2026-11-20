@@ -160,16 +160,19 @@ function copyRunLink(ts, btn) {
 
 // A co-op run's party, slot by slot: each character, and who played it where the site knows.
 // run.coop (see boot.js's attachCoopLinks) names this profile's own slot and each partner whose
-// copy of the game is on the site; the other slots are just their character. Null for a run
-// with no linked copies, where which slot was this profile's isn't known.
+// copy of the game is on the site. Party damage also allows a roster without linked copies.
 function coopParty(run) {
   if (!run.mp || (!run.coop && !hasPartyDamage(run))) return null;
   const party = run.party || [];
   const owner = DATA.profile || {};
+  const counts = new Map();
   return party.map((char, i) => {
+    const number = (counts.get(char) || 0) + 1;
+    counts.set(char, number);
     if (i === (run.coop?.i ?? run.partySlot)) return { char, name: owner.name || "", self: true };
     const w = run.coop?.with.find(p => p.i === i);
-    return w ? { char, name: w.name, slug: w.slug, ts: w.ts } : { char };
+    const label = fmtCharName(char) + (party.indexOf(char) === party.lastIndexOf(char) ? "" : ` ${number}`);
+    return w ? { char, name: w.name, slug: w.slug, ts: w.ts } : { char, label };
   });
 }
 
@@ -217,7 +220,7 @@ function partyLineHtml(run, who = "", note = "") {
   const tab = (key, inner, tip, cls = "") =>
     `<button type="button" class="party-member party-tab${cls}" data-who="${escapeHtml(key)}" aria-pressed="${who === key}" data-tip="${escapeHtml(tip)}">${inner}</button>`;
   const slots = party.map(p => {
-    if (!p.self && !p.slug) return `<span class="party-member party-none">${charLabelHtml(p.char)}</span>`;
+    if (!p.self && !p.slug) return `<span class="party-member party-none">${charIconHtml(p.char)}<span>${escapeHtml(p.label)}</span></span>`;
     const inner = p.name ? `${charIconHtml(p.char)}<span class="party-name">${escapeHtml(p.name)}</span>` : charLabelHtml(p.char);
     const tip = `${fmtCharName(p.char)}${p.name ? `: ${p.name}` : ""}`;
     if (p.self) return tab("", inner, tip);
@@ -238,7 +241,7 @@ function partyToggleHtml(owner) {
   const who = partyViewOf(owner.ts);
   const button = (id, label) => `<button type="button" data-who="${escapeHtml(id)}" aria-pressed="${who === id}">${label}</button>`;
   return button("all", "Everyone") + party.filter(p => p.self || p.slug)
-    .map(p => button(p.slug || "", charIconHtml(p.char) + escapeHtml(p.name || fmtCharName(p.char)))).join("");
+    .map(p => button(p.slug || "", charIconHtml(p.char) + `<span class="party-name">${escapeHtml(p.name || fmtCharName(p.char))}</span>`)).join("");
 }
 
 document.addEventListener("click", e => {
@@ -438,12 +441,12 @@ function renderDetailRunList() {
     // A multiplayer run names its party's characters, so show their heads; a solo run is one head.
     const party = run.mp ? (run.party || []) : [run.char];
     const named = coopParty(run);
-    const partyLabel = run.mp ? (party.length ? `Party: ${(named || party.map(char => ({ char }))).map(p => fmtCharName(p.char) + (p.name ? ` (${p.name})` : "")).join(", ")}` : "Multiplayer") : `Solo: ${fmtCharName(run.char)}`;
+    const partyLabel = run.mp ? (party.length ? `Party: ${(named || party.map(char => ({ char }))).map(p => (p.label || fmtCharName(p.char)) + (p.name ? ` (${p.name})` : "")).join(", ")}` : "Multiplayer") : `Solo: ${fmtCharName(run.char)}`;
     const partyHtml = party.length ? party.slice(0, 4).map(c => charIconHtml(c)).join("") : (run.mp ? "Multi" : "Solo");
     return `<div class="detail-run-item${active ? " active" : ""}" data-ts="${run.ts}" tabindex="0">
       <span class="detail-run-char">${charLabelHtml(run.char)}${seedTryHtml(run)}</span>
       <span class="detail-run-asc" style="color:var(--text-dim)">${ascHtml(runAsc(run), "detail-run-dread", true)}</span>
-      <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}"><span class="detail-run-party-heads">${partyHtml}</span><span class="detail-run-party-text" aria-hidden="true">${run.mp ? "Multi" : "Solo"}</span></span>
+      <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}">${partyHtml}</span>
       <span class="detail-run-won" style="color:${won ? COLORS.win : COLORS.loss}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
       <span class="detail-run-read">${runReadingHtml(run, true)}</span>
@@ -735,6 +738,7 @@ function showRunCopy(run, owner, note = "", players = null) {
   document.getElementById("detail-run-header").innerHTML = `
     ${runHeaderBarHtml(run, owner)}
     ${partyLineHtml(owner, partyViewOf(owner.ts), note)}
+    ${owner.mp ? '<p class="party-metrics-note">Teammates can unlock more per-player metrics by installing the Slay My Stats mod and uploading their copy of the run.</p>' : ""}
     <div class="detail-run-headline-stats">
       ${headlineHtml}${ancientBoonsHtml}
     </div>
@@ -806,16 +810,18 @@ function runFloorChanges(run) {
 // ---- The whole party ----
 
 // "Everyone": the run page itself, with every player's copy drawn on its floor charts, one line
-// per player in their character's colour (dashed for a second player on the same character). A
+// per player in their character's colour, with distinct dash patterns for repeated characters. A
 // drag still adds up what changed, one list per player. `copies` holds each partner's copy by
 // slug; one that couldn't be loaded is left out and named.
 let detailParty = null, detailOwnerRun = null, detailDamageRuns = [];
 function partyRoster(owner) {
-  const seen = {};
+  const seen = new Map();
+  const patterns = [[], [6, 4], [2, 4], [8, 3, 2, 3]];
   return (coopParty(owner) || []).map((p, slot) => {
-    const dash = seen[p.char] ? [6, 4] : [];
-    seen[p.char] = true;
-    return { ...p, slot, dash, color: charColor(p.char), label: p.name || fmtCharName(p.char) };
+    const occurrence = seen.get(p.char) || 0;
+    const dash = patterns[occurrence % patterns.length];
+    seen.set(p.char, occurrence + 1);
+    return { ...p, slot, dash, color: charColor(p.char), label: p.name || p.label || fmtCharName(p.char) };
   });
 }
 
@@ -923,7 +929,7 @@ function renderPartyCharts(players) {
       `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, ${l.borderColor} 0 4px, transparent 4px 7px)"></span>${l.label}</span>`).join("");
     const range = extra.ranges?.some(Boolean) ? rangeKey("Best to worst quarter of wins", extra.reverse) : "";
     const legend = chartPlayers.filter((_, i) => series[i]?.some(v => v != null))
-      .map(p => `<span class="fl-item">${swatch(p)}${charIconHtml(p.char)}${escapeHtml(p.label)}</span>`).join("");
+      .map(p => `<span class="fl-item party-member">${swatch(p)}${charIconHtml(p.char)}<span class="party-name">${escapeHtml(p.label)}</span></span>`).join("");
     document.getElementById(legendId).innerHTML = `<div class="fl-items">${legend}${shared}${range}</div>`;
     return partyChart(id, nodes, chartPlayers, series, cell, reverse, icon, extra);
   };
@@ -1058,7 +1064,7 @@ function renderPartyFloorPanels(players) {
       panel.className = "party-floor-player";
       panel.dataset.player = i;
       panel.style.setProperty("--player-color", player.color);
-      panel.innerHTML = `<h4>${charIconHtml(player.char)}${escapeHtml(player.label)}</h4>
+      panel.innerHTML = `<h4 class="party-member">${charIconHtml(player.char)}<span class="party-name">${escapeHtml(player.label)}</span></h4>
         <div class="chart-wrap" data-chart-part="box"><canvas data-chart-part="chart"></canvas></div>
         <div class="floor-legend" data-chart-part="legend"></div>`;
       grid.append(panel);
@@ -3399,14 +3405,19 @@ function fightReadings(run, nodes, measured, partyDamage = null) {
     }
     // Enemies act after you, so a fight you won gives them a turn less. One won in a turn
     // gave them none, but what the floor cost still counts: it goes over one turn.
-    const swung = m ? m.enemyTurns : n.turns - (lost ? 0 : 1);
+    const recordedDamage = n.dmg || 0;
+    // The log's damage counts enemy hits, while the run file also records
+    // self-inflicted HP loss. A smaller log total cannot replace the run
+    // file's damage or supply a block breakdown for that same calculation.
+    const damageLog = lost && m && m.taken < recordedDamage ? null : m;
+    const swung = damageLog ? damageLog.enemyTurns : n.turns - (lost ? 0 : 1);
     const enemyTurns = Math.max(1, swung);
     if (n.turns) {
       row.enemyTurns = enemyTurns;
       if (!swung) row.oneTurn = true;
       // The fight that killed you: the run file stops at the HP you had left, the log
       // has the whole blow.
-      const gross = lost && m ? m.taken : n.dmg || 0;
+      const gross = lost && damageLog ? damageLog.taken : recordedDamage;
       row.total = Math.max(0, gross - (n.healed || 0));
       row.taken = row.total / enemyTurns;
       row.healedOff = gross - row.total;
@@ -3415,7 +3426,10 @@ function fightReadings(run, nodes, measured, partyDamage = null) {
       if (how) { row.winRate = how.rate; row.winTotal = how.taken; }
       // What the log blocked, and what arrived is that and all of what got through, so
       // the hover box adds up.
-      if (m) { row.blocked = m.arrived - m.taken / enemyTurns; row.arrived = row.blocked + row.healed + row.taken; }
+      if (damageLog) {
+        row.blocked = damageLog.arrived - damageLog.taken / enemyTurns;
+        row.arrived = row.blocked + row.healed + row.taken;
+      }
     }
     if (m) row.play = { drawn: m.draw, played: m.played, energy: m.listPrice, spent: m.spent, junk: m.junk };
     return row;
