@@ -10,9 +10,9 @@ function updateAll() {
     `${DATA.runsData.length} runs uploaded · ` + [...counts].filter(([, n]) => n)
       .map(([mode, n]) => `${n} ${MODE_LABELS[mode] || mode}`).join(" · ");
 
-  const { pivot, grand, charStats } = aggregateRuns(filteredRuns);
+  const { pivot, grand } = aggregateRuns(filteredRuns);
 
-  renderCards(grand, charStats, avgRestOnWins(filteredRuns));
+  renderCards(grand, filteredRuns);
   renderTimeLanes(pivot);
   renderRunEndLanes(pivot);
   renderFightTables();
@@ -58,10 +58,11 @@ let lastUnlockedChar   = "ALL";
 // column) unless granular view is on: the run page's tuning tiers (keepTier in
 // run-detail.js), so a table and a run's grading split at the same place. A bucket the player has no runs in is
 // dropped, since DATA.ascensions only lists levels that appear in runs.
-const ASC_BUCKETS = [
+const ASC_RANGES = [
   { key: "A0-7", label: "A0–7", min: 0, max: 7 },
   { key: "A8+",  label: "A8+",  min: 8, max: Infinity },
-].map(b => ({ ...b, ascs: DATA.ascensions.filter(a => a >= b.min && a <= b.max) }))
+];
+const ASC_BUCKETS = ASC_RANGES.map(b => ({ ...b, ascs: DATA.ascensions.filter(a => a >= b.min && a <= b.max) }))
  .filter(b => b.ascs.length);
 let sharedActiveAscs   = new Set(DATA.ascensions);
 // "Show granular" reveals the per-level ascension checkboxes and splits the tables

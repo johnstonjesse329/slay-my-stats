@@ -141,11 +141,7 @@ h1 {
 @media (max-width: 1200px) {
   .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-/* The dashboard's summary row is 8 cards, not 9,
-   so four across divides it into 4 + 4 with no ragged edge. Keyed off the id
-   rather than .cards because .cards is shared with the finder's 6-card grid
-   (players.css .site-cards) and the Personal Bests row, both of which need
-   their own counts. */
+/* The win breakdown spans the four other summary cards. */
 #summary-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 /* Each summary card is a bar: label left, value right, one line instead of the
@@ -198,6 +194,7 @@ h1 {
 .pb-table tr.pb-tier td { font-size: var(--fs-sm); color: var(--text-dim); padding-top: 0.15rem; padding-bottom: 0.15rem; border-bottom: 0; }
 .pb-table tr:not(.pb-tier) + tr.pb-tier td, .pb-table tr:not(.pb-tier) + tr.pb-tier th { padding-top: 0.3rem; }
 .pb-table tr.pb-tier-dread th { color: #87ceeb; font-weight: 700; letter-spacing: 0.04em; }
+.pb-tier-wins { display: block; color: var(--text); }
 .pb-bar { display: block; height: 4px; width: min(100%, 7rem); margin: 3px auto 0; border-radius: 2px; background: rgba(255,255,255,0.08); overflow: hidden; }
 .pb-bar i { display: block; height: 100%; border-radius: 2px; }
 /* Multiplayer's bar, under solo's: striped, as the home page draws Multi. */
@@ -438,6 +435,14 @@ h1 {
 #summary-cards .card .value { color: var(--text); white-space: nowrap; font-size: 1.25rem; }
 /* The name is the main item now, so it is not the small print beside a big number. */
 #summary-cards .card .label { font-size: var(--fs-md); }
+#summary-cards .summary-wins {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  text-align: center;
+}
 .card .sub   { font-size: var(--fs-sm); color: var(--text-dim); margin-top: 0.1rem; }
 
 /* Personal Bests stat values that link to the run behind them (see
