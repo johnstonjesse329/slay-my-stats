@@ -12,7 +12,7 @@ function updateAll() {
 
   const { pivot, grand } = aggregateRuns(filteredRuns);
 
-  renderCards(grand, filteredRuns);
+  renderCards(grand);
   renderTimeLanes(pivot);
   renderRunEndLanes(pivot);
   renderFightTables();
