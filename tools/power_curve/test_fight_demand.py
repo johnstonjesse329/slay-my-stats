@@ -25,8 +25,9 @@ MONSTERS = {
 }
 
 
-def fight(enc="ENCOUNTER.X", ids=("MONSTER.A",), t=3, taken=0, asc=0, died=False, share=None, act=0, build=fd.SPAWNS_LISTED):
-    return {"enc": enc, "ids": list(ids), "t": t, "taken": taken, "each": [taken], "asc": asc, "kind": "monster",
+def fight(enc="ENCOUNTER.X", ids=("MONSTER.A",), t=3, taken=0, asc=0, died=False, share=None, act=0, build=fd.SPAWNS_LISTED, gross_taken=None):
+    return {"enc": enc, "ids": list(ids), "t": t, "taken": taken, "gross_taken": taken if gross_taken is None else gross_taken,
+            "each": [taken], "asc": asc, "kind": "monster",
             "act": act, "died": died, "coop": share is not None, "share": share or 1, "build": build}
 
 
@@ -430,6 +431,10 @@ class Winners(unittest.TestCase):
 
     def test_the_rate_is_a_sum_over_a_sum(self):
         self.assertEqual(fd.winners([fight(t=1, taken=4), fight(t=3, taken=8)])["rate"], 6)
+
+    def test_gross_damage_uses_all_fight_turns_and_ignores_healing(self):
+        got = fd.winners([fight(t=8, taken=61, gross_taken=104), fight(t=1, taken=0, gross_taken=3)])
+        self.assertEqual(got["gross"], {"total": 53.5, "rate": 8.0, "light": 3.0, "heavy": 13.0})
 
     def test_the_table_keeps_the_rate(self):
         d = line_of([[fight(taken=6)] for _ in range(fd.WON_MIN)])

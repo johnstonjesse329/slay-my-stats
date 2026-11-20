@@ -166,6 +166,7 @@ def run_fights(runs):
                             "ids": [m for m in room["monster_ids"] if m not in PETS],
                             "t": room["turns_taken"],
                             "taken": statistics.mean(net_taken(s) for s in stats),
+                            "gross_taken": statistics.mean(s.get("damage_taken") or 0 for s in stats),
                             "each": [net_taken(s) for s in stats],
                             "asc": raw.get("ascension") or 0,
                             "build": build,
@@ -217,6 +218,13 @@ def winners(fights):
     # And the worst quarter, the far end of the page's bars: the slowest wins' turns, and the
     # heaviest wins' damage taken a turn. How bad a win can get and still be one.
     out["slow"] = round(worst_quarter(f["t"] for f in fights), 2)
+    gross = [f["gross_taken"] / f["t"] for f in fights]
+    out["gross"] = {
+        "total": round(statistics.mean(f["gross_taken"] for f in fights), 2),
+        "rate": round(statistics.mean(gross), 2),
+        "light": round(best_quarter(gross), 2),
+        "heavy": round(worst_quarter(gross), 2),
+    }
     if light:
         out["heavy"] = round(worst_quarter(light), 2)
     return out

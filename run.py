@@ -1784,7 +1784,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
           <div class="floor-legend" id="detail-hp-legend"></div>
         </div>
         <h3 class="strength-label">Damage taken per turn</h3>
-        <p class="chart-caption">Damage that got through each turn, after healing. The dotted line is the average win.</p>
+        <p class="chart-caption">Total HP lost divided by fight turns. The white line shows the average win.</p>
         <p class="keep-data-notice" id="detail-keep-in-note" role="status" hidden><strong>Run data</strong> <span></span></p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-in-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-in-legend"></div>

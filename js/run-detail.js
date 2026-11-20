@@ -883,10 +883,10 @@ function partyIncomingComparison(players, rows, average) {
   const table = partyFloorTable(players, ["Arrived", "Blocked", "Healed", "Damage taken"], p => {
     const r = rows(p);
     if (!r) return [null, null, null, null];
-    return [r.arrived, r.blocked, r.healed, r.taken].map(rate => partyFightValue(
-      rate == null ? null : rate * r.enemyTurns, rate));
-  }, average?.winRate === undefined ? null : [null, null, null, partyFightValue(average.winTotal, average.winRate)]);
-  return table + (players.some(p => rows(p) && rows(p).blocked === undefined)
+    return [r.grossArrived, r.grossBlocked, r.healedAll, r.grossTaken].map(total => partyFightValue(
+      total, total == null ? null : total / r.turns));
+  }, average?.winGross ? [null, null, null, partyFightValue(average.winGross.total, average.winGross.rate)] : null);
+  return table + (players.some(p => rows(p) && rows(p).grossBlocked === undefined)
     ? '<div class="ft-cap">Block details need a usable mod log for each player.</div>' : "");
 }
 
@@ -1065,8 +1065,8 @@ function renderPartyCharts(players) {
   showKeepNotice("damage", partyDamage.notice, partyDamage.linkMod);
   const keep = [
     share,
-    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
-      fightIcon, { ...historical("winRate", ranges.taken, true), fightRows: benchmarkRows,
+    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.grossRate), turn, true,
+      fightIcon, { ...historical("winGrossRate", ranges.taken, true), fightRows: benchmarkRows,
         compare: (party, i) => partyIncomingComparison(party, p => readingAt(p, i), benchmarkRows?.[i]),
         detail: (p, i) => { const row = readingAt(p, i); return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
@@ -3621,7 +3621,6 @@ function fightReadings(run, nodes, measured, partyDamage = null) {
     const table = d ? d.pool[tough] * keepShare(run, n) : 0;
     const lost = !run.won && i === lastFight;
     const dealt = partyDamage?.[i];
-    if (!table && !lost && dealt == null) return null;
     const how = d && keepWinners(run, d);
     const sample = measured?.[i];
     const m = run.mp ? null : sample;
@@ -3632,34 +3631,29 @@ function fightReadings(run, nodes, measured, partyDamage = null) {
       row.damageDone = run.mp ? dealt : m ? m.removed : pool;
       row.doing = row.damageDone / n.turns;
     }
-    // Enemies act after you, so a fight you won gives them a turn less. One won in a turn
-    // gave them none, but what the floor cost still counts: it goes over one turn.
     const recordedDamage = n.dmg || 0;
     // The log's damage counts enemy hits, while the run file also records
     // self-inflicted HP loss. A smaller log total cannot replace the run
     // file's damage or supply a block breakdown for that same calculation.
     const damageLog = lost && m && m.taken < recordedDamage ? null : m;
-    const swung = damageLog ? damageLog.enemyTurns : n.turns - (lost ? 0 : 1);
-    const enemyTurns = Math.max(1, swung);
     if (n.turns) {
-      row.enemyTurns = enemyTurns;
-      if (!swung) row.oneTurn = true;
+      row.grossTaken = recordedDamage;
+      row.grossRate = recordedDamage / n.turns;
+      row.winGross = how?.gross;
+      row.winGrossRate = how?.gross?.rate;
       // The fight that killed you: the run file stops at the HP you had left, the log
       // has the whole blow.
       const gross = lost && damageLog ? damageLog.taken : recordedDamage;
       row.total = Math.max(0, gross - (n.healed || 0));
-      row.taken = row.total / enemyTurns;
-      row.healedOff = gross - row.total;
       row.healedAll = n.healed || 0;
-      row.healed = row.healedOff / enemyTurns;
-      if (how) { row.winRate = how.rate; row.winTotal = how.taken; }
+      if (how) row.winTotal = how.taken;
       // What the log blocked, and what arrived is that and all of what got through, so
       // the hover box adds up.
       const splitLog = damageLog || (run.mp && sample?.enemyTurns > 0 && sample.taken >= recordedDamage ? sample : null);
       if (splitLog) {
         const blocked = splitLog.arrived * splitLog.enemyTurns - splitLog.taken;
-        row.blocked = Math.max(0, blocked) / enemyTurns;
-        row.arrived = row.blocked + row.healed + row.taken;
+        row.grossBlocked = Math.max(0, blocked);
+        row.grossArrived = row.grossBlocked + row.grossTaken;
       }
     }
     if (m) row.play = { drawn: m.draw, played: m.played, energy: m.listPrice, spent: m.spent, junk: m.junk };
@@ -3680,7 +3674,7 @@ function keepRanges(run, nodes, rows) {
     const r = rows[i], d = demand[keepFight(n)], how = r && d && keepWinners(run, d);
     const ok = how && how.n >= KEEP_RANGE_MIN;
     done.push(ok && r.ask !== undefined && how.slow && how.fast ? { bad: r.pool / how.slow, good: r.pool / how.fast } : null);
-    taken.push(ok && r.winRate !== undefined && how.heavy !== undefined && how.light !== undefined ? { bad: how.heavy, good: how.light } : null);
+    taken.push(ok && how.gross ? { bad: how.gross.heavy, good: how.gross.light } : null);
   });
   return { done, taken };
 }
@@ -4086,24 +4080,22 @@ function keepDamageTip(r, mp, color = KEEP_LINES.damage.color) {
     `</table>${wins}${missing ? `<div class="ft-cap">${mp ? "No mod log attributed damage to this player." : "Damage done wasn’t recorded."}</div>` : ""}`;
 }
 
-// What arrived each turn, split into what was blocked, healed back, and got through. The
-// bar is as wide as what arrived; winners' figures are in the table.
+// Incoming damage splits into blocked damage and HP lost. Healing is reported separately.
 function keepIncomingTip(r, mp = false) {
-  if (r.taken === undefined) return "";
-  const et = r.enemyTurns, k = KEEP_SPLIT;
-  const quick = r.oneTurn ? `<div class="ft-cap">Won in 1 turn.</div>` : "";
-  const share = v => r.arrived ? `<small>${Math.round(v / r.arrived * 100)}%</small>` : "";
-  const through = key => frow(key, `Damage taken ${share(r.taken)}`, Math.round(r.total), one(r.taken),
-    r.winRate === undefined ? "" : Math.round(r.winTotal), one(r.winRate), "ft-through");
-  if (r.arrived === undefined) return `<table>${fightHead}${r.healedOff ? frow(keepIcon("healed", k.healed), "Healed", r.healedOff, one(r.healed), "", "") : ""}${through(keepIcon("taken", k.through))}</table>${quick}${mp ? '<div class="ft-cap">Block details need a usable mod log for this player.</div>' : ""}`;
+  if (r.grossTaken === undefined) return "";
+  const k = KEEP_SPLIT;
+  const share = v => r.grossArrived ? `<small>${Math.round(v / r.grossArrived * 100)}%</small>` : "";
+  const through = frow(keepIcon("taken", k.through), `Damage taken ${share(r.grossTaken)}`, r.grossTaken, one(r.grossRate),
+    r.winGross ? Math.round(r.winGross.total) : "", one(r.winGrossRate), "ft-through");
+  const healed = r.healedAll ? frow(keepIcon("healed", k.healed), "Healed", r.healedAll, one(r.healedAll / r.turns), "", "") : "";
+  if (r.grossArrived === undefined) return `<table>${fightHead}${healed}${through}</table>${mp ? '<div class="ft-cap">Block details need a usable mod log for this player.</div>' : ""}`;
   const seg = (v, color, what) => v > 0 ? `<span style="flex:${v} 1 0;background:${color}" title="${what}"></span>` : "";
-  return `<div class="ft-split" role="img" aria-label="Of ${r.arrived.toFixed(1)} a turn arriving: ${r.blocked.toFixed(1)} blocked, ${r.healed.toFixed(1)} healed, ${r.taken.toFixed(1)} got through">` +
-    seg(r.blocked, k.blocked, "Blocked") + seg(r.healed, k.healed, "Healed") + seg(r.taken, k.through, "Got through") + `</div>` +
+  return `<div class="ft-split" role="img" aria-label="${Math.round(r.grossBlocked)} blocked, ${r.grossTaken} HP lost">` +
+    seg(r.grossBlocked, k.blocked, "Blocked") + seg(r.grossTaken, k.through, "HP lost") + `</div>` +
     `<table>${fightHead}` +
-    frow(swatch(KEEP_DEMAND_COLOR), "Arrived", Math.round(r.arrived * et), one(r.arrived), "", "") +
-    frow(keepIcon("blocked", k.blocked), `Blocked ${share(r.blocked)}`, Math.round(r.blocked * et), one(r.blocked), "", "") +
-    (r.healedOff ? frow(keepIcon("healed", k.healed), `Healed ${share(r.healed)}`, r.healedOff, one(r.healed), "", "") : "") +
-    through(keepIcon("taken", k.through)) + `</table>${quick}`;
+    frow(swatch(KEEP_DEMAND_COLOR), "Arrived", Math.round(r.grossArrived), one(r.grossArrived / r.turns), "", "") +
+    frow(keepIcon("blocked", k.blocked), `Blocked ${share(r.grossBlocked)}`, Math.round(r.grossBlocked), one(r.grossBlocked / r.turns), "", "") +
+    healed + through + `</table>`;
 }
 
 function keepShareTip(r, color = KEEP_LINES.taken.color) {
@@ -4256,7 +4248,7 @@ function renderDetailKeepCharts(run) {
   const damageHistory = partyDamageHistory({ lines: [winners(r => r.ask)], ranges: ranges.done }, fallback);
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
     ...damageHistory.lines, ...(fallback?.lines || []), ...markers], damageTip, damageHistory.ranges);
-  chart("in", [line(takenLine, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken, true);
+  chart("in", [line(takenLine, r => r.grossRate, "in"), winners(r => r.winGrossRate)], inTip, ranges.taken, true);
 
   // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:
   // turns (time) and damage taken (HP). Below 1 is ahead of the average win, so a slide is the

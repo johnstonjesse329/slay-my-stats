@@ -135,8 +135,9 @@ def main():
               return { partial, overkill };
             }""")
             assert final_fight["partial"]["total"] == 61, final_fight
-            assert final_fight["partial"]["taken"] == 61 / 8, final_fight
-            assert "blocked" not in final_fight["partial"], final_fight
+            assert final_fight["partial"]["grossTaken"] == 104, final_fight
+            assert final_fight["partial"]["grossRate"] == 13, final_fight
+            assert "grossBlocked" not in final_fight["partial"], final_fight
             assert final_fight["overkill"]["total"] == 71, final_fight
 
             roster = page.evaluate("""() => {
