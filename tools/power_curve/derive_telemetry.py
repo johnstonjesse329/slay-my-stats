@@ -19,6 +19,7 @@ fight actually cost.
 import gzip
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 PLAYER = "P"
@@ -107,6 +108,11 @@ def _new_fight(fight, first):
         # other damage over time log with an empty attacker.
         "dmg_other": 0, "dmg_hit": 0, "junk": 0,
         "damageBySlot": [0] * slots if type(slots) is int and 2 <= slots <= 8 else None,
+        "incomingBySlot": [{"blocked": 0, "taken": 0} for _ in range(slots)]
+        if type(slots) is int and 2 <= slots <= 8 else None,
+        "hpLostBySlot": [0] * slots if type(slots) is int and 2 <= slots <= 8 else None,
+        "playerHits": Counter(),
+        "playerReceipts": Counter(),
         # What the killing blow carried past 0 HP. It is part of `taken`, because the
         # damage that killed you is the damage you took, not the 6 HP you had left.
         "overkill": 0,
@@ -203,6 +209,34 @@ def derive(log, moves=None):
             continue
         if fight.get("closed"):
             continue
+
+        incoming = fight["incomingBySlot"]
+        if incoming is not None and kind in ("hit", "recv", "hp"):
+            target = a.get("c" if kind == "hp" else "t")
+            slot = a.get("targetSlot")
+            if target == PLAYER or slot is not None:
+                if type(slot) is not int or not 0 <= slot < len(incoming):
+                    fight["incomingBySlot"] = None
+                elif kind == "hp":
+                    delta = a.get("d")
+                    if type(delta) is int:
+                        fight["hpLostBySlot"][slot] += max(0, -delta)
+                    else:
+                        fight["incomingBySlot"] = None
+                else:
+                    # The same damage result can also appear as recv. Count hit
+                    # once, including lethal hits that have no recv event.
+                    blocked, taken = a.get("blk"), a.get("unb")
+                    if all(type(value) is int and 0 <= value < HP_SENTINEL for value in (blocked, taken)):
+                        result = (slot, blocked, taken)
+                        if kind == "hit":
+                            fight["playerHits"][result] += 1
+                            incoming[slot]["blocked"] += blocked
+                            incoming[slot]["taken"] += taken
+                        else:
+                            fight["playerReceipts"][result] += 1
+                    else:
+                        fight["incomingBySlot"] = None
 
         if kind == "hit" and a.get("enemy") is True and fight["damageBySlot"] is not None:
             slot, damage = a.get("sourceSlot"), a.get("unb")
@@ -494,6 +528,14 @@ def derive(log, moves=None):
     close_turn()
 
     for f in fights:
+        incoming = f["incomingBySlot"]
+        hits = f.pop("playerHits")
+        receipts = f.pop("playerReceipts")
+        hp_lost = f.pop("hpLostBySlot")
+        if incoming is not None and (
+            not f.get("closed") or not receipts <= hits or [row["taken"] for row in incoming] != hp_lost
+        ):
+            f["incomingBySlot"] = None
         f.setdefault("extra_turns", 0)
         for t in f["turns"]:
             # Energy a turn did not start with but did have: cards and relics.

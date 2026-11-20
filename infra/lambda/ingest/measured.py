@@ -121,6 +121,8 @@ def floor_numbers(fight, costs):
         "removed": fight["enemy_lost"],
         **({"damageBySlot": fight["damageBySlot"]}
            if fight.get("closed") and fight.get("damageBySlot") is not None else {}),
+        **({"incomingBySlot": fight["incomingBySlot"]}
+           if fight.get("incomingBySlot") is not None else {}),
         "played": plays["played"] if plays else 0.0,
         "listPrice": plays["equiv"] if plays else 0.0,
         "spent": plays["spent"] if plays else 0.0,

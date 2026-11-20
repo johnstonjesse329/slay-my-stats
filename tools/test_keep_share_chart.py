@@ -140,6 +140,23 @@ def main():
             assert "grossBlocked" not in final_fight["partial"], final_fight
             assert final_fight["overkill"]["total"] == 71, final_fight
 
+            incoming = page.evaluate("""() => {
+              const run = { asc: 0, won: true, mp: true, party: ["A", "B"] };
+              const node = { enc: "ENCOUNTER.SPINY_TOAD_NORMAL", turns: 2 };
+              const legacy = { taken: 98, arrived: 33.75, enemyTurns: 4 };
+              const verified = { ...legacy, incomingBySlot: [
+                { blocked: 15, taken: 2 }, { blocked: 3, taken: 8 },
+              ] };
+              const read = (partySlot, dmg, sample) =>
+                fightReadings({ ...run, partySlot }, [{ ...node, dmg }], [sample])[0];
+              return [
+                read(0, 47, legacy), read(1, 51, legacy),
+                read(0, 2, verified), read(1, 8, verified), read(1, 9, verified),
+              ].map(row => [row.grossTaken, row.grossBlocked ?? null, row.grossArrived ?? null]);
+            }""")
+            assert incoming == [[47, None, None], [51, None, None],
+                                [2, 15, 17], [8, 3, 11], [9, None, None]], incoming
+
             roster = page.evaluate("""() => {
               const char = DATA.runsData.find(run => run.char).char;
               const party = Array(4).fill(char);

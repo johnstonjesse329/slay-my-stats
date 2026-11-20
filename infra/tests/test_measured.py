@@ -46,6 +46,33 @@ LOCAL = _local()
 
 
 class PartyDamage(unittest.TestCase):
+    def test_incoming_damage_requires_reconciled_player_slots(self):
+        # Both players are named P, including when one player hits the other.
+        # The lethal hit has no recv, while the blocked hit appears in both hooks.
+        blocked = {"t": "P", "targetSlot": 0, "blk": 15, "unb": 0}
+        lethal = {"by": "P", "sourceSlot": 0, "t": "P", "targetSlot": 1,
+                  "blk": 3, "unb": 8, "ovk": 5}
+        combat = [("hit", blocked), ("recv", blocked), ("hit", lethal),
+                  ("hp", {"c": "P", "targetSlot": 1, "d": -8})]
+        cases = [
+            ("attributed", 2, combat, True, [{"blocked": 15, "taken": 0}, {"blocked": 3, "taken": 8}]),
+            ("legacy", None, combat, True, None),
+            ("unassigned", 2, combat + [("hit", {"t": "P", "blk": 1, "unb": 0})], True, None),
+            ("missing_hit", 2, combat[1:], True, None),
+            ("mismatched", 2, combat + [("hp", {"c": "P", "targetSlot": 0, "d": -2})], True, None),
+            ("incomplete", 2, combat, False, None),
+        ]
+        for name, slots, events, closed, expected in cases:
+            with self.subTest(name=name):
+                events = [("fight0", {"enc": "ENCOUNTER.TOAD", "damageSlots": slots}),
+                          ("turn0", {}), *events]
+                if closed:
+                    events.append(("fight1", {}))
+                log = {"v": 3, "log": [{"k": kind, "a": args, "t": 1} for kind, args in events]}
+                nodes = [{"floor": 25, "turns": 1, "enc": "ENCOUNTER.TOAD"}]
+                rows = measured.measured(handler.clean_event_log(log), nodes)
+                self.assertEqual(rows[0].get("incomingBySlot"), expected)
+
     def test_only_completed_fights_with_player_attribution_have_party_damage(self):
         def events(encounter, slots, closed=True):
             args = {"enc": encounter}
