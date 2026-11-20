@@ -77,7 +77,7 @@ def series_from_page(page):
       return {
         plugins: c.config.plugins.map(p => p.id),
         yMin: c.scales.y.min,
-        datasets: c.data.datasets.map(d => ({label: d.label, data: d.data})),
+        datasets: c.data.datasets.map(d => ({label: d.label, data: d.data, width: d.borderWidth, dash: d.borderDash})),
         legend: document.getElementById('detail-keep-share-legend').innerText,
         caption: document.getElementById('detail-keep-share-picks').style.display,
       };
@@ -143,11 +143,12 @@ def main():
               const char = DATA.runsData.find(run => run.char).char;
               const party = Array(4).fill(char);
               const owner = { mp: true, party, partySlot: 0, measured: [{ damageBySlot: [1, 1, 1, 1] }] };
-              return partyRoster(owner);
+              return { first: partyRoster(owner), third: partyRoster({ ...owner, partySlot: 2 }) };
             }""")
-            assert len({seat["color"] for seat in roster}) == 4, roster
-            assert len({tuple(seat["dash"]) for seat in roster}) == 4, roster
-            assert len({seat["label"] for seat in roster}) == 4, roster
+            for seats in roster.values():
+                assert len({seat["color"] for seat in seats}) == 4, seats
+                assert len({seat["label"] for seat in seats}) == 4, seats
+            assert [seat["color"] for seat in roster["first"]] == [seat["color"] for seat in roster["third"]], roster
 
             got = series_from_page(page)
             assert got, "the share chart did not render"
@@ -156,6 +157,9 @@ def main():
             assert got["yMin"] == 0, got["yMin"]
             labels = [d["label"] for d in got["datasets"]]
             assert labels == ["Average win", "Damage taken", "Fight turns"], labels
+            baseline, player, turns_line = got["datasets"]
+            assert baseline["width"] > player["width"] and turns_line["width"] > player["width"], got
+            assert baseline["dash"] and turns_line["dash"] and baseline["dash"] != turns_line["dash"], got
             assert "Damage taken" in got["legend"] and "Fight turns" in got["legend"], got["legend"]
             assert got["caption"] == "", "the tick caption should show when the run changed cards"
 

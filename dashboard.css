@@ -1901,10 +1901,16 @@ h1 {
 .floor-tip.above::before { top: auto; bottom: -12px; }
 .floor-tip .ft-row { display: flex; gap: 14px; align-items: flex-start; }
 .floor-tip .ft-head { margin-bottom: 6px; font-size: 1rem; white-space: nowrap; }
-.floor-tip:not(.docked):has(.ft-party-player) { max-height: min(420px, calc(100dvh - 16px)); overflow: auto; overscroll-behavior: contain; }
+.floor-tip:not(.docked):has(.ft-party-player, .ft-party-overall) { max-height: min(420px, calc(100dvh - 16px)); overflow: auto; overscroll-behavior: contain; }
 .ft-party-player + .ft-party-player { border-top: 1px solid var(--hairline); }
 .ft-party-player summary { cursor: pointer; padding: 4px 0; }
 .ft-party-player[open] { padding-bottom: 6px; }
+.floor-tip .ft-party-table { width: 100%; margin-top: 6px; }
+.floor-tip .ft-party-table thead th { text-align: right; }
+.floor-tip .ft-party-table thead th:first-child { text-align: left; }
+.floor-tip .ft-party-table tbody th { text-align: left; font-weight: 400; }
+.floor-tip .ft-party-table tfoot { border-top: 1px solid var(--hairline); color: var(--text-dim); }
+.floor-tip .ft-party-picks { border-top: 1px solid var(--hairline); margin-top: 6px; padding-top: 4px; }
 .floor-tip table { border-collapse: collapse; }
 .floor-tip th, .floor-tip td { padding: 3px 8px; text-align: right; white-space: nowrap; }
 .floor-tip th:first-child, .floor-tip td:first-child { text-align: left; padding-left: 0; }
@@ -1927,6 +1933,8 @@ h1 {
    charts draw them, a thin line at the median win, and a bar where this run went in. */
 .floor-tip .ft-lane { position: relative; height: 10px; margin: 8px 6px 8px 0; min-width: 240px; border-radius: 5px; background: var(--hairline); }
 .floor-tip .ft-lane > span { position: absolute; top: 50%; transform: translate(-50%, -50%); }
+.floor-tip .ft-lane:has(.ft-party-marker) { height: 22px; }
+.floor-tip .ft-party-marker { width: 9px; height: 5px; border-radius: 2px; }
 .floor-tip .ft-lane > .ft-zone { height: 10px; transform: translateY(-50%); border-radius: 5px; background: #e6e2f244; }
 .floor-tip .ft-end { width: 3px; height: 16px; border-radius: 2px; }
 .floor-tip .ft-med { width: 2px; height: 12px; border-radius: 1px; background: #e6e2f2; }

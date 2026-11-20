@@ -810,20 +810,23 @@ function runFloorChanges(run) {
 // ---- The whole party ----
 
 // "Everyone": the run page itself, with every player's copy drawn on its floor charts, one line
-// per player in a dedicated colour and dash pattern keyed by seat. A
+// per player in a dedicated colour keyed by seat. A
 // drag still adds up what changed, one list per player. `copies` holds each partner's copy by
 // slug; one that couldn't be loaded is left out and named.
 let detailParty = null, detailOwnerRun = null, detailDamageRuns = [];
-const PARTY_CHART_STYLES = [
-  { color: "#ff87c8", dash: [] },
-  { color: "#69e0bc", dash: [6, 4] },
-  { color: "#ffc478", dash: [2, 4] },
-  { color: "#a9b5ff", dash: [8, 3, 2, 3] },
-];
+const PARTY_CHART_COLORS = ["#c480a0", "#69e0bc", "#ffc478", "#a9b5ff"];
+const partySeatColor = slot => Number.isInteger(slot) ? PARTY_CHART_COLORS[slot % PARTY_CHART_COLORS.length] : undefined;
+const partyChartSwatch = p => `<span class="fl-swatch" style="border-top:3px solid ${p.color};height:0"></span>`;
+
+function chartPartySlot(run, owner = detailOwnerRun || run) {
+  if (!run.mp) return undefined;
+  return run.partySlot ?? (run === owner ? owner.coop?.i
+    : owner.coop?.with.find(p => p.slug === partyViewOf(owner.ts))?.i);
+}
 
 function partyRoster(owner) {
   return (coopParty(owner) || []).map((p, slot) => ({
-    ...p, slot, ...PARTY_CHART_STYLES[slot % PARTY_CHART_STYLES.length],
+    ...p, slot, color: partySeatColor(slot),
     label: p.name || p.label || fmtCharName(p.char),
   }));
 }
@@ -842,22 +845,65 @@ function clearPartyView() {
 // How many of a run's cards (or relics) were held after each node, or null where the run
 // doesn't say when they came and went.
 
-// One chart with a line for each player. A player with no figures for it is left out. `extra` adds
-// what every player shares: `lines` (datasets drawn first), `detail` (per-player hover content)
-// and `floorAtZero` (a ratio axis has no below-zero).
+function partyFloorTable(players, headings, values, average = null) {
+  const cells = data => data.map(value => `<td>${value ?? "—"}</td>`).join("");
+  const name = p => p.slug ? `<a href="${coopRunHref(p)}">${escapeHtml(p.label)}</a>` : escapeHtml(p.label);
+  return `<table class="ft-party-table"><thead><tr><th>Player</th>${headings.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+    <tbody>${players.map(p => `<tr><th scope="row">${partyChartSwatch(p)} ${name(p)}</th>${cells(values(p))}</tr>`).join("")}</tbody>
+    ${average ? `<tfoot><tr><th scope="row">Avg win</th>${cells(average)}</tr></tfoot>` : ""}</table>`;
+}
+
+const partyFightValue = (total, rate) => total == null ? null : `${Math.round(total)}<small> · ${rate.toFixed(1)}/turn</small>`;
+
+function partyHpComparison(players, i, history) {
+  const nodes = players.map(p => p.run.timeline?.[i]);
+  const fight = nodes.find(n => n && keepFight(n));
+  const marker = fight ? players.flatMap((p, j) => nodes[j]?.dmg != null
+    ? [{ value: nodes[j].dmg, color: p.color, title: `${p.label}: ${nodes[j].dmg} HP lost` }] : []) : [];
+  const scale = Math.max(1, ...nodes.map(n => n?.maxHp || 0), ...marker.map(m => m.value), history?.heavy_wins_dmg || 0);
+  const owner = players.find(p => p.self);
+  const lane = marker.length ? `<div class="ft-lanelabel">HP lost</div>${tipLane(scale, {
+    mid: history?.avg_dmg, good: history?.light_wins_dmg, bad: history?.heavy_wins_dmg,
+    markers: marker, what: marker.map(m => m.title).join(", "),
+  })}${history ? `<div class="ft-cap">${escapeHtml(owner.label)}’s wins · median ${history.avg_dmg} HP · worst quarter ${history.heavy_wins_dmg} HP</div>${tipKey(null)}` : ""}` : "";
+  return lane + partyFloorTable(players, ["Entered", "HP lost", "Healed", "Left with"], p => {
+    const n = p.run.timeline?.[i];
+    return [n?.hpBefore, n?.dmg, n?.healed, n && `${n.hpAfter}<small>/${n.maxHp}</small>`];
+  });
+}
+
+function partyIncomingComparison(players, rows, average) {
+  const table = partyFloorTable(players, ["Arrived", "Blocked", "Healed", "Damage taken"], p => {
+    const r = rows(p);
+    if (!r) return [null, null, null, null];
+    return [r.arrived, r.blocked, r.healed, r.taken].map(rate => partyFightValue(
+      rate == null ? null : rate * r.enemyTurns, rate));
+  }, average?.winRate === undefined ? null : [null, null, null, partyFightValue(average.winTotal, average.winRate)]);
+  return table + (players.some(p => rows(p) && rows(p).blocked === undefined)
+    ? '<div class="ft-cap">Block details need a usable mod log for each player.</div>' : "");
+}
+
+// One line per player with data. Desktop tooltips compare the party together.
+// Touch tooltips use the same individual breakdowns as the separate run view.
 function partyChart(id, nodes, players, series, cell, reverse = false, icon = null, extra = {}) {
   let chart = null;
-  const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
   const changes = extra.detail ? players.map(p => floorChangeTip(p.run && runFloorChanges(p.run))) : [];
   const tip = context => showFloorTip(context, i => {
     if (!nodes[i]) return "";
     const n = nodes[i];
     const head = floorTipHead(extra.fightRows ? { ...n, enc: n.fight || n.enc } : n) +
       (extra.fightRows ? fightKind(n, extra.fightRows[i]) : "");
+    if (extra.compare && !floorTipTouch && matchMedia("(min-width: 761px)").matches) {
+      const pickups = players.map((p, j) => {
+        const chips = changes[j](i);
+        return chips ? `<div class="ft-party-picks">${partyChartSwatch(p)} ${escapeHtml(p.label)}${chips}</div>` : "";
+      }).join("");
+      return `${head}<div class="ft-party-overall">${extra.compare(players, i)}${pickups}</div>`;
+    }
     if (!extra.detail) return head + `<table>${players.map((p, j) => series[j]
-      ? `<tr><td>${swatch(p)} ${escapeHtml(p.label)}</td><td>${cell(p, i, series[j][i])}</td></tr>` : "").join("")}</table>`;
+      ? `<tr><td>${partyChartSwatch(p)} ${escapeHtml(p.label)}</td><td>${cell(p, i, series[j][i])}</td></tr>` : "").join("")}</table>`;
     return head + players.map((p, j) => `<details class="ft-party-player" name="ft-party-player"${j === 0 ? " open" : ""}>
-      <summary>${swatch(p)} ${escapeHtml(p.label)}</summary>
+      <summary>${partyChartSwatch(p)} ${escapeHtml(p.label)}</summary>
       ${extra.detail(p, i) || '<div class="ft-cap">Player data unavailable.</div>'}${changes[j](i)}
       </details>`).join("");
   });
@@ -869,7 +915,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
   }
   const iconJ = series.findIndex(Boolean);   // icons ride one player's line: the fights are the same for all
   const datasets = [...(extra.lines || []), ...players.map((p, j) => series[j] ? {
-    label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color, borderDash: p.dash,
+    label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color,
     borderWidth: 2, pointRadius: extra.recordedOnly ? 3 : 0, pointHoverRadius: 0,
     spanGaps: !extra.recordedOnly, cubicInterpolationMode: "monotone",
     ...(icon && j === iconJ ? nodePoints(nodes, () => chart, icon) : {}),
@@ -898,7 +944,6 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
 // fight" one shared 1x line and fight-turns line, since the fight is the same for everyone.
 function renderPartyCharts(players) {
   const nodes = players.map(p => p.run.timeline || []).reduce((a, b) => b.length > a.length ? b : a, []);
-  const swatch = p => `<span class="fl-swatch" style="border-top:3px ${p.dash.length ? "dashed" : "solid"} ${p.color};height:0"></span>`;
   const roster = partyRoster(detailOwnerRun);
   const missingRuns = roster.filter(p => !players.some(loaded => loaded.slot === p.slot));
   const unlinked = missingRuns.filter(p => !p.slug).map(p => p.label);
@@ -917,11 +962,11 @@ function renderPartyCharts(players) {
     fightReadings(p.run, tl(p), measuredStrengthByNode(p.run, tl(p)), partyDamageByFloor(damageSources, tl(p), p.slot))]));
   const benchmarkPlayer = players.findIndex(p => tl(p) === nodes);
   const benchmarkRows = readings.get(players[benchmarkPlayer]?.slot);
+  const readingAt = (p, i) => readings.get(p.slot)?.[i];
   const ranges = benchmarkRows ? keepRanges(players[benchmarkPlayer].run, nodes, benchmarkRows) : { taken: [], done: [] };
   const historical = (key, ranges, reverse) => ({
     ranges, reverse,
-    lines: [{ label: "Average win", data: nodes.map((_, i) => benchmarkRows?.[i]?.[key] ?? null),
-      borderColor: "#b9b9c4", borderDash: [2, 4], borderWidth: 1.5, pointRadius: 0, spanGaps: true }],
+    lines: [{ ...KEEP_AVERAGE_STYLE, data: nodes.map((_, i) => benchmarkRows?.[i]?.[key] ?? null), spanGaps: true }],
   });
   const perFight = pick => players.map(p => readings.get(p.slot)).map(r => r ? pad(r.map(x => {
     const v = x ? pick(x) : null;
@@ -944,11 +989,10 @@ function renderPartyCharts(players) {
   const build = (id, legendId, series, cell, reverse, icon = null, extra = {}, chartPlayers = players) => {
     if (!has(series) && !extra.recordedOnly) return null;
     dropCanvas(id);
-    const shared = (extra.lines || []).map(l =>
-      `<span class="fl-item"><span class="strength-key" style="background:repeating-linear-gradient(90deg, ${l.borderColor} 0 4px, transparent 4px 7px)"></span>${l.label}</span>`).join("");
+    const shared = (extra.lines || []).map(keepLegendEntry).join("");
     const range = extra.ranges?.some(Boolean) ? rangeKey("Best to worst quarter of wins", extra.reverse) : "";
     const legend = chartPlayers.filter((_, i) => series[i]?.some(v => v != null))
-      .map(p => `<span class="fl-item party-member">${swatch(p)}${charIconHtml(p.char)}<span class="party-name">${escapeHtml(p.label)}</span></span>`).join("");
+      .map(p => `<span class="fl-item party-member">${partyChartSwatch(p)}${charIconHtml(p.char)}<span class="party-name">${escapeHtml(p.label)}</span></span>`).join("");
     document.getElementById(legendId).innerHTML = `<div class="fl-items">${legend}${shared}${range}</div>`;
     return partyChart(id, nodes, chartPlayers, series, cell, reverse, icon, extra);
   };
@@ -958,12 +1002,13 @@ function renderPartyCharts(players) {
   const hp = build("detail-hp-chart", "detail-hp-legend", players.map(p => pad(tl(p).map(n => n.hpAfter ?? null))),
     (p, i, v) => v == null ? "–" : `${v}<small>/${(tl(p)[i] || {}).maxHp}</small>`, false,
     (n, key) => n.type === "boss" || HP_ICON_KEYS.has(key) || (key === "unknown" && !!n.enc), {
+      compare: (party, i) => partyHpComparison(party, i, hpWins[i]),
       detail: (p, i) => {
         const node = tl(p)[i];
         if (!node) return "";
         const history = !p.self && p.slug && keepFight(node)
           ? `<div class="ft-cap"><a href="${coopRunHref(p)}">See personal win history on their profile</a></div>` : "";
-        return hpTip(p.run, node, p.self ? hpWins[i] : null, false) + history;
+        return hpTip(p.run, node, p.self ? hpWins[i] : null, false, p.color) + history;
       },
     });
   if (hp) detailHpChart = hp;
@@ -983,12 +1028,19 @@ function renderPartyCharts(players) {
       floorAtZero: true,
       fightRows: benchmarkRows,
       lines: [
-        { label: "Average win", data: nodes.map(() => 1), borderColor: "#b9b9c4", backgroundColor: "#b9b9c4", borderWidth: 1.5,
-          borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 0 },
-        { label: "Fight turns", data: turnsShare, borderColor: KEEP_TURN_COLOR, backgroundColor: KEEP_TURN_COLOR, borderWidth: 2,
-          borderDash: [6, 3], pointRadius: 0, pointHoverRadius: 0, spanGaps: true, cubicInterpolationMode: "monotone" },
+        { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) },
+        { ...KEEP_TURN_STYLE, data: turnsShare, spanGaps: true, cubicInterpolationMode: "monotone" },
       ],
-      detail: (p, i) => { const row = readings.get(p.slot)?.[i]; return row && keepShareTip(row); },
+      compare: (party, i) => {
+        const r = benchmarkRows?.[i];
+        const turns = r?.winTurns === undefined ? "" :
+          `<div class="ft-cap">Fight turns <b>${r.turns}</b> · ${times(turnsShare[i])} avg win · Avg win ${+r.winTurns.toFixed(1)}</div>`;
+        return turns + partyFloorTable(party, ["Damage taken", "× avg win"], p => {
+          const row = readingAt(p, i);
+          return [row?.total, row?.winTotal === undefined ? null : times((row.total + 1) / (row.winTotal + 1))];
+        }, r?.winTotal === undefined ? null : [Math.round(r.winTotal), "1.00×"]);
+      },
+      detail: (p, i) => { const row = readingAt(p, i); return row && keepShareTip(row, p.color); },
     });
   if (share) document.getElementById("detail-keep-share-picks").style.display = "none";
   const damageReadings = roster.map(p => fightReadings(detailOwnerRun, nodes, null, damageTotals[p.slot]));
@@ -1001,16 +1053,26 @@ function renderPartyCharts(players) {
     share,
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
       fightIcon, { ...historical("winRate", ranges.taken, true), fightRows: benchmarkRows,
-        detail: (p, i) => { const row = readings.get(p.slot)?.[i]; return row && keepIncomingTip(row, true); } }),
+        compare: (party, i) => partyIncomingComparison(party, p => readingAt(p, i), benchmarkRows?.[i]),
+        detail: (p, i) => { const row = readingAt(p, i); return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
       (p, i, value) => value == null ? "No data" : `${value.toFixed(1)} / turn (${damageTotals[p.slot][i]} HP)`,
       false, null, { ...historical("ask", ranges.done, false), recordedOnly: true, fightRows: benchmarkRows,
+        compare: (party, i) => {
+          const r = benchmarkRows?.[i];
+          const table = partyFloorTable(party, ["Damage done", "Fight turns"], p => {
+            const row = damageReadings[p.slot]?.[i];
+            return [partyFightValue(row?.damageDone, row?.doing), row?.turns];
+          }, r?.ask === undefined ? null : [partyFightValue(r.pool, r.ask), +r.winTurns.toFixed(1)]);
+          return table + (party.some(p => damageReadings[p.slot]?.[i]?.doing === undefined)
+            ? '<div class="ft-cap">Missing damage values need attribution in a teammate’s mod log.</div>' : "");
+        },
         detail: (p, i) => {
           const row = damageReadings[p.slot]?.[i];
           if (!row) return "";
           const seatOnly = !p.self && !p.slug && row.doing !== undefined
             ? '<div class="ft-cap">Damage attributed to this party seat.</div>' : "";
-          return keepDamageTip(row, true) + seatOnly;
+          return keepDamageTip(row, true, p.color) + seatOnly;
         } },
       roster.map(p => ({ ...p, run: players.find(player => player.slot === p.slot)?.run }))),
   ];
@@ -2111,26 +2173,29 @@ function makeChoiceTickPlugin(ticks) {
 // chart's own colour), the zone of the wins from their best quarter to their worst, a green cap at the
 // good end, a red one at the bad end, and a thin line at the median or average win. `what` is the
 // reading for a screen reader.
-function tipLane(top, { you, youColour, mid, good, bad, what }) {
+function tipLane(top, { you, youColour, mid, good, bad, what, markers = [] }) {
   const at = v => (v / top * 100).toFixed(1) + "%";
   const end = (v, colour) => `<span class="ft-end" style="left:${at(v)};background:${colour}"></span>`;
   return `<div class="ft-lane" role="img" aria-label="${what}">` +
     (good != null && bad != null ? `<span class="ft-zone" style="left:${at(Math.min(good, bad))};width:${at(Math.abs(good - bad))}"></span>` +
       end(good, GOOD_COLOUR) + end(bad, BAD_COLOUR) : "") +
-    `<span class="ft-med" style="left:${at(mid)}"></span>` +
-    `<span class="ft-you" style="left:${at(you)};background:${youColour}"></span></div>`;
+    (mid == null ? "" : `<span class="ft-med" style="left:${at(mid)}"></span>`) +
+    (you == null ? "" : `<span class="ft-you" style="left:${at(you)};background:${youColour}"></span>`) +
+    markers.map((marker, index) => `<span class="ft-party-marker" title="${escapeHtml(marker.title)}"
+      style="left:${at(marker.value)};top:${(index + 0.5) * 100 / markers.length}%;background:${marker.color}"></span>`).join("") +
+    `</div>`;
 }
 
 // What the marks in a hover box's lanes are. One key, under every lane the box has, since the
 // same marks mean the same thing in each.
-function tipKey() {
-  return `<div class="ft-key"><span><i class="ft-you" style="background:var(--gold)"></i>This run</span>` +
+function tipKey(color) {
+  return `<div class="ft-key">${color ? `<span><i class="ft-you" style="background:${color}"></i>This run</span>` : ""}` +
     `<span><i class="ft-med"></i>Median win</span>` +
     `<span><i class="ft-end" style="background:${GOOD_COLOUR}"></i>Best 25% of wins</span>` +
     `<span><i class="ft-end" style="background:${BAD_COLOUR}"></i>Worst 25% of wins</span></div>`;
 }
 
-function hpTip(run, n, s, heading = true) {
+function hpTip(run, n, s, heading = true, color = "var(--gold)") {
   const head = heading ? floorTipHead(n) : "";
   const row = (label, you) => `<tr><td>${label}</td><td><b>${you}</b></td></tr>`;
   const left = row("Left with", `${n.hpAfter}<small>/${n.maxHp}</small>`);
@@ -2142,11 +2207,11 @@ function hpTip(run, n, s, heading = true) {
   // What the fight cost beside what their wins lose: the damage comparison, which is the signal.
   // HP left isn't compared: it is HP entering minus this, so it carries every earlier floor too.
   const top = Math.max(n.maxHp, n.dmg, s.heavy_wins_dmg);
-  const lost = tipLane(top, { you: n.dmg, youColour: "var(--gold)", mid: s.avg_dmg, good: s.light_wins_dmg, bad: s.heavy_wins_dmg,
+  const lost = tipLane(top, { you: n.dmg, youColour: color, mid: s.avg_dmg, good: s.light_wins_dmg, bad: s.heavy_wins_dmg,
     what: `Lost ${n.dmg} HP; your wins' median ${s.avg_dmg}, worst quarter ${s.heavy_wins_dmg}, best quarter ${s.light_wins_dmg}` });
   return `${head}<div class="ft-lost"><div class="ft-lost-big">Lost <b${n.dmg > s.avg_dmg ? ` class="ft-worse"` : ""}>${n.dmg} HP</b></div>` +
     `<div class="ft-cap">Wins usually lose ${s.avg_dmg} · the worst quarter lose ${s.heavy_wins_dmg}</div></div>` +
-    `<div class="ft-lanelabel">HP lost</div>${lost}${tipKey()}` +
+    `<div class="ft-lanelabel">HP lost</div>${lost}${tipKey(color)}` +
     `<table>${row("Entered with", n.hpBefore)}${healed}${left}</table>` +
     `<div class="ft-cap">Won ${s.wins} of ${s.runs} (${s.win_pct}%) at ${KEEP_TIER_NAMES[keepTier(run.asc)]}</div>`;
 }
@@ -2159,9 +2224,8 @@ function renderDetailHpChart(run) {
   }
   document.getElementById("detail-hp-box").style.display = "";
 
-  // Not the character's colour: Regent's is gold, which sat too close to the
-  // gold chart under it, and the Silent's green reads as HP anyway.
-  const color = HP_LINE;
+  const partyColor = partySeatColor(chartPartySlot(run));
+  const color = partyColor || HP_LINE;
   const labels = floorLabels(nodes);
   const hpData = nodes.map(n => n.hpAfter);
   const maxHpData = nodes.map(n => n.maxHp);
@@ -2220,7 +2284,7 @@ function renderDetailHpChart(run) {
         // keeping-up charts, so all of them read the same.
         legend: { display: false },
         // The same hover box as Keeping Up by Floor: the floor, a small table, what it means.
-        tooltip: { enabled: false, external: context => showFloorTip(context, i => hpTip(run, nodes[i], wins[i])) },
+        tooltip: { enabled: false, external: context => showFloorTip(context, i => hpTip(run, nodes[i], wins[i], true, partyColor)) },
       },
       scales: {
         x: floorAxis({ grid: { color: "#2e3035" }, ...actWindow(nodes) }),
@@ -2245,6 +2309,7 @@ function renderDetailGoldChart(run) {
 
   const labels   = floorLabels(nodes);
   const goldData = nodes.map(n => n.gold);
+  const color = partySeatColor(chartPartySlot(run)) || COLORS.gold;
 
   if (detailGoldChart) { detailGoldChart.destroy(); detailGoldChart = null; }
 
@@ -2257,10 +2322,10 @@ function renderDetailGoldChart(run) {
       datasets: [{
         label: "Gold",
         data: goldData,
-        borderColor: COLORS.gold,
-        backgroundColor: COLORS.gold + "33",
+        borderColor: color,
+        backgroundColor: color + "33",
         borderWidth: 2,
-        pointBackgroundColor: COLORS.gold,
+        pointBackgroundColor: color,
         ...nodePoints(nodes, () => detailGoldChart, (n, key) => GOLD_ICON_KEYS.has(key)),
         fill: true,
         cubicInterpolationMode: "monotone",
@@ -2647,7 +2712,7 @@ function showFloorTip(context, html) {
   // held inside the screen on both sides.
   floorTip.classList.remove("docked", "docked-top");
   const partyDetails = floorTip.querySelector(".ft-party-player summary");
-  const interactive = !!partyDetails || !!floorTip.querySelector("[data-pick]");
+  const interactive = !!partyDetails || !!floorTip.querySelector("[data-pick], .ft-party-table a");
   if (floorTipTouch && partyDetails) {
     floorTip.style.left = floorTip.style.top = "";
     floorTip.scrollTop = 0;
@@ -3294,8 +3359,20 @@ const KEEP_LINES = {
 // Your run is the same solid gold line (YOUR_LINE) on the HP, damage done and damage taken charts.
 // In the tip's split bar the incoming damage is red, next to blocked in blue and healed in green.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
-// The share chart's turns line, dashed so the two measures never differ by colour alone.
-const KEEP_TURN_COLOR = "#54c6d4";
+const KEEP_AVERAGE_STYLE = {
+  label: "Average win", borderColor: "#d0ced9", borderWidth: 3, borderDash: [2, 5],
+  borderCapStyle: "round", pointRadius: 0, pointHoverRadius: 0,
+};
+const KEEP_TURN_STYLE = {
+  label: "Fight turns", borderColor: "#f3efe7", borderWidth: 2.5, borderDash: [9, 4],
+  pointRadius: 0, pointHoverRadius: 0,
+};
+
+function keepLegendEntry({ label, borderColor, borderDash, borderWidth }) {
+  const [dash, gap] = borderDash || [];
+  const background = dash ? `repeating-linear-gradient(90deg, ${borderColor} 0 ${dash}px, transparent ${dash}px ${dash + gap}px)` : borderColor;
+  return `<span class="fl-item"><span class="strength-key" style="background:${background};height:${borderWidth}px${dash ? ";width:24px" : ""}"></span>${label}</span>`;
+}
 // What arrived on a turn, split: blocked, healed off, and what got through (red). Each has an icon and a label as well, so colour is never the only cue.
 const KEEP_SPLIT = { blocked: "#5aa0e6", healed: COLORS.win, through: COLORS.loss };
 // How a reading is named on the page. The keys ("ahead", "meeting", "behind") are
@@ -3890,13 +3967,13 @@ const fightKind = (n, r) => {
   return text ? `<div class="ft-cap">${text}</div>` : "";
 };
 
-function keepDamageTip(r, mp) {
+function keepDamageTip(r, mp, color = KEEP_LINES.damage.color) {
   const missing = r.doing === undefined;
   const hp = r.pool ? `${Math.round(r.pool)}${mp ? "/player" : ""}` : "";
   const wins = r.ask === undefined ? "" : `<div class="ft-cap">Average of ${r.winN} win${r.winN === 1 ? "" : "s"}</div>`;
   const done = missing
-    ? frow(swatch(KEEP_LINES.damage.color), "Damage done", "—", "—", hp, one(r.ask))
-    : frow(swatch(KEEP_LINES.damage.color), "Damage done", r.damageDone, one(r.doing), r.ask === undefined ? "" : hp, one(r.ask));
+    ? frow(swatch(color), "Damage done", "—", "—", hp, one(r.ask))
+    : frow(swatch(color), "Damage done", r.damageDone, one(r.doing), r.ask === undefined ? "" : hp, one(r.ask));
   return `<table>${fightHead}${done}` +
     frow(swatch(KEEP_DEMAND_COLOR), "Fight turns", r.turns, "", r.ask === undefined ? "" : +r.winTurns.toFixed(1), "") +
     `</table>${wins}${missing ? `<div class="ft-cap">${mp ? "No mod log attributed damage to this player." : "Damage done wasn’t recorded."}</div>` : ""}`;
@@ -3922,13 +3999,13 @@ function keepIncomingTip(r, mp = false) {
     through(keepIcon("taken", k.through)) + `</table>${quick}`;
 }
 
-function keepShareTip(r) {
+function keepShareTip(r, color = KEEP_LINES.taken.color) {
   if (r.winTurns === undefined) return "";
   const mult = v => `${v.toFixed(2)}×`;
   return `<table><tr><th></th><th>This run</th><th>× avg win</th><th class="ft-win">Avg win</th></tr>` +
-    `<tr><td>${swatch(KEEP_LINES.taken.color)}Damage taken</td><td><b>${Math.round(r.total)}</b></td>` +
+    `<tr><td>${swatch(color)}Damage taken</td><td><b>${Math.round(r.total)}</b></td>` +
     `<td>${mult((r.total + 1) / (r.winTotal + 1))}</td><td class="ft-win">${Math.round(r.winTotal)}</td></tr>` +
-    `<tr><td>${swatch(KEEP_TURN_COLOR)}Fight turns</td><td><b>${r.turns}</b></td>` +
+    `<tr><td>${swatch(KEEP_TURN_STYLE.borderColor)}Fight turns</td><td><b>${r.turns}</b></td>` +
     `<td>${mult(r.turns / r.winTurns)}</td><td class="ft-win">${+r.winTurns.toFixed(1)}</td></tr></table>` +
     (r.lost ? `<div class="ft-cap">The fight that ended the run.</div>` : "");
 }
@@ -3943,8 +4020,10 @@ function renderDetailKeepCharts(run) {
   closeFloorTip();
   const measured = measuredStrengthByNode(run, nodes);
   const owner = detailOwnerRun || run;
-  const slot = run.partySlot ?? (run === owner ? owner.coop?.i
-    : owner.coop?.with.find(p => p.slug === detailView.who)?.i);
+  const slot = chartPartySlot(run, owner);
+  const partyColor = partySeatColor(slot);
+  const damageLine = { ...KEEP_LINES.damage, color: partyColor || KEEP_LINES.damage.color };
+  const takenLine = { ...KEEP_LINES.taken, color: partyColor || KEEP_LINES.taken.color };
   const partyDamage = run.mp ? partyDamageByFloor(partyDamageSources([run, owner, ...detailDamageRuns]), nodes, slot) : null;
   const rows = fightReadings(run, nodes, measured, partyDamage);
   document.getElementById("detail-keep-damage-caption").textContent = run.mp
@@ -3984,7 +4063,7 @@ function renderDetailKeepCharts(run) {
   });
   const simple = lines => r => { const list = lines(r); return list.length ? `<table>${list.join("")}</table>` : ""; };
 
-  const damageTip = tip(r => keepDamageTip(r, run.mp));
+  const damageTip = tip(r => keepDamageTip(r, run.mp, damageLine.color));
 
   const inTip = tip(r => keepIncomingTip(r, run.mp));
   const playTip = tip(simple(r => r.play ? [
@@ -4008,11 +4087,11 @@ function renderDetailKeepCharts(run) {
     ...(icons && nodePoints(nodes, () => detailKeepCharts.find(c => c.canvas.id === `detail-keep-${icons}-chart`),
       (n, key, i) => rows[i] && pick(rows[i]) !== undefined, iconSize, keepIconKey)),
   });
-  // The average win: a faint dotted line, no icons.
+  // The average win: a dotted line without fight icons.
   const winners = pick => ({
-    label: "Average win", data: rows.map(r => { const v = r ? pick(r) : null; return v === undefined ? null : v; }),
-    borderColor: "#b9b9c4", pointHoverBackgroundColor: "#b9b9c4",
-    borderWidth: 1.5, borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 3, spanGaps: true,
+    ...KEEP_AVERAGE_STYLE,
+    data: rows.map(r => { const v = r ? pick(r) : null; return v === undefined ? null : v; }),
+    pointHoverBackgroundColor: KEEP_AVERAGE_STYLE.borderColor, pointHoverRadius: 3, spanGaps: true,
     cubicInterpolationMode: "monotone",
   });
   const ranges = keepRanges(run, nodes, rows);
@@ -4020,9 +4099,7 @@ function renderDetailKeepCharts(run) {
     // Only the lines.
     // The ring, where the chart has any, is the HP chart's: the best quarter of the wins.
     const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 25% of wins", false) : "";
-    document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(s =>
-      `<span class="fl-item"><span class="strength-key" style="background:${s.borderDash?.length ? `repeating-linear-gradient(90deg, ${s.borderColor} 0 4px, transparent 4px 7px)` : s.borderColor}"></span>${s.label}</span>`
-    ).join("")}${ring}</div>`;
+    document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(keepLegendEntry).join("")}${ring}</div>`;
     // Room for a ring that sits above everything else on the chart.
     const base = iconAxis({ min: 0 });
     const yAxis = { ...base, stacked: false, ticks: { ...base.ticks, maxTicksLimit: 5 }, reverse: !!up };
@@ -4062,11 +4139,11 @@ function renderDetailKeepCharts(run) {
   }
 
   const damage = run.mp
-    ? { ...line(KEEP_LINES.damage, r => r.doing), pointRadius: 3, spanGaps: false }
-    : line(KEEP_LINES.damage, r => r.doing, "damage");
+    ? { ...line(damageLine, r => r.doing), pointRadius: 3, spanGaps: false }
+    : line(damageLine, r => r.doing, "damage");
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
     winners(r => r.ask)], damageTip, ranges.done);
-  chart("in", [line(KEEP_LINES.taken, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken, true);
+  chart("in", [line(takenLine, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken, true);
 
   // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:
   // turns (time) and damage taken (HP). Below 1 is ahead of the average win, so a slide is the
@@ -4076,14 +4153,13 @@ function renderDetailKeepCharts(run) {
   // next fights without those fights being read as the choice's doing.
   const ticks = changes ? changes.map((s, i) => i ? choiceTick(s) : null) : null;
   document.getElementById("detail-keep-share-picks").style.display = ticks && ticks.some(Boolean) ? "" : "none";
-  const shareTip = tip(keepShareTip);
-  const average = { label: "Average win", data: nodes.map(() => 1), borderColor: "#b9b9c4",
-    pointHoverBackgroundColor: "#b9b9c4", borderWidth: 1.5, borderDash: [2, 4], pointRadius: 0, pointHoverRadius: 0 };
+  const shareTip = tip(r => keepShareTip(r, takenLine.color));
+  const average = { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) };
   chart("share", [
     average,
-    line(KEEP_LINES.taken, r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1), "share"),
-    line({ label: "Fight turns", color: KEEP_TURN_COLOR, dash: [6, 3] },
-      r => r.winTurns === undefined ? undefined : r.turns / r.winTurns),
+    line(takenLine, r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1), "share"),
+    { ...line({ label: KEEP_TURN_STYLE.label, color: KEEP_TURN_STYLE.borderColor },
+      r => r.winTurns === undefined ? undefined : r.turns / r.winTurns), ...KEEP_TURN_STYLE },
   ], shareTip, null, false, ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : [], true);
 
   const played = rows.some(r => r && r.play);
