@@ -645,6 +645,16 @@ h1 {
 /* Overview's groups of panels: a quiet name, no box of their own. */
 .group-head { font-size: var(--fs-lg); color: var(--gold); margin: 3rem 0 0.75rem; }
 .chart-caption { font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 0.9rem; }
+.keep-data-notice {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #70617f;
+  border-inline-start: 3px solid #b3a1cc;
+  border-radius: 6px;
+  background: #342b43;
+  color: var(--text);
+}
+.keep-data-notice strong { margin-inline-end: 0.35rem; }
 
 /* 300px: room for a plot after the --fs-sm axis labels and legend. */
 .chart-wrap { position: relative; height: 300px; }
@@ -1753,6 +1763,7 @@ h1 {
    card's width, not the whole row. Never more than three across; 340px minimum each, except
    that a card is never wider than the row (min(100%, ...)): on a 360px phone the row is
    narrower than 340px and the cards pushed the whole page sideways. */
+.keep-party-coverage { color: var(--text); font-size: var(--fs-sm); font-weight: 600; margin: 0 0 0.55rem; }
 .keep-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, max(340px, calc((100% - 1.7rem) / 3))), 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
 /* On a phone the Keeping Up charts show one act at a time (run-detail.js keepActSpan); this picks it.
    Stays at the top of the screen while the charts scroll under it. */

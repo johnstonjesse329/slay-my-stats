@@ -886,6 +886,7 @@ function partyIncomingComparison(players, rows, average) {
 // One line per player with data. Desktop tooltips compare the party together.
 // Touch tooltips use the same individual breakdowns as the separate run view.
 function partyChart(id, nodes, players, series, cell, reverse = false, icon = null, extra = {}) {
+  const canvas = document.getElementById(id);
   let chart = null;
   const changes = extra.detail ? players.map(p => floorChangeTip(p.run && runFloorChanges(p.run))) : [];
   const tip = context => showFloorTip(context, i => {
@@ -920,6 +921,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
     spanGaps: !extra.recordedOnly, cubicInterpolationMode: "monotone",
     ...(icon && j === iconJ ? nodePoints(nodes, () => chart, icon) : {}),
   } : null)].filter(Boolean);
+  if (extra.fightMarkers) datasets.push(keepDamageMarkers(nodes, extra.fightMarkers, canvas, () => chart));
   const ranges = extra.ranges || [];
   if (ranges.some(Boolean)) {
     const after = y.afterDataLimits;
@@ -935,7 +937,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
   }
   const plugins = ranges.some(Boolean) ? [makeWinRangePlugin(ranges)] : [];
   if (extra.averageGuide) plugins.push(keepAverageGuide);
-  chart = new Chart(document.getElementById(id).getContext("2d"),
+  chart = new Chart(canvas.getContext("2d"),
     floorChartConfig(nodes, plugins, tip, y, datasets, actWindow(nodes)));
   bindRangeSelect(chart, nodes);
   return chart;
@@ -1060,6 +1062,7 @@ function renderPartyCharts(players) {
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
       (p, i, value) => value == null ? "No data" : `${value.toFixed(1)} / turn (${damageTotals[p.slot][i]} HP)`,
       false, null, { ...historical("ask", ranges.done, false), recordedOnly: true, fightRows: benchmarkRows,
+        fightMarkers: nodes.map((_, i) => benchmarkRows?.[i]?.ask ?? damageRates.find(series => series?.[i] != null)?.[i]),
         compare: (party, i) => {
           const r = benchmarkRows?.[i];
           const table = partyFloorTable(party, ["Damage done", "Fight turns"], p => {
@@ -2823,7 +2826,7 @@ function makeManyIconPlugin(nodes) {
         const meta = chart.getDatasetMeta(di);
         ds.pointRadius.forEach((radius, i) => {
           const img = ds.pointStyle && ds.pointStyle[i];
-          if (!(radius > 0) || !(img instanceof HTMLImageElement)) return;
+          if (!(radius > 0) || !(img instanceof HTMLImageElement) || !img.complete || !img.naturalWidth) return;
           const node = nodes[i];
           const count = node && node.type !== "boss" ? nodeEnemyCount(node) : 1;
           if (count < 2 || i < x.min || i > x.max) return;
@@ -3464,23 +3467,17 @@ function partyDamageByFloor(sources, nodes, slot) {
   });
 }
 
-const acknowledgedKeepNotices = new Set();
 function showKeepNotice(chart, message) {
   const note = document.getElementById(`detail-keep-${chart}-note`);
-  const key = JSON.stringify([detailView.ts, detailView.who, chart, message]);
-  note.hidden = !message || acknowledgedKeepNotices.has(key);
   note.querySelector("span").textContent = message;
-  note.querySelector("button").onclick = () => {
-    acknowledgedKeepNotices.add(key);
-    note.hidden = true;
-  };
+  note.hidden = !message;
 }
 
 function missingPartyDamage(nodes, roster, totals) {
   const missing = roster.filter((_, j) => nodes.some((n, i) => keepFight(n) && totals[j][i] == null));
   if (!missing.length) return "";
   if (totals.every(row => row.every(value => value == null))) {
-    return "No per-player damage recorded. This chart uses damage attributed by any teammate’s mod log.";
+    return "No player damage recorded for this run. A compatible mod log from any teammate can supply it.";
   }
   return `Some fights have no attributed damage for ${missing.map(p => p.label).join(", ")}.`;
 }
@@ -3493,6 +3490,19 @@ const keepTier = asc => +(asc >= 8);
 
 // A floor's damage taken with what it healed off it, down to 0: fight_demand.py's net_taken.
 const keepTaken = n => Math.max(0, (n.dmg || 0) - (n.healed || 0));
+
+function partyFightCosts(players, nodes) {
+  const fights = players.map(({ run }) => new Map((run.timeline || []).filter(keepFight).map(n => [damageFloorKey(n), n])));
+  return nodes.map(n => {
+    if (!keepFight(n)) return null;
+    const key = damageFloorKey(n);
+    const matched = fights.map(byFloor => byFloor.get(key)).filter(Boolean);
+    if (!matched.length) return null;
+    const taken = matched.reduce((sum, match) => sum + keepTaken(match), 0);
+    const raw = matched.reduce((sum, match) => sum + (match.dmg || 0), 0);
+    return { taken: taken / matched.length, healed: (raw - taken) / matched.length };
+  });
+}
 
 // Which of an encounter's lines this run reads against, or null if too few have won it
 // with the monsters tuned the same: fight_demand.py's winners_of.
@@ -3511,6 +3521,18 @@ const keepRank = n => n.type === "boss" ? "Boss" : /_ELITE$/.test(keepFight(n)) 
 
 // A fight's map icon: fight, elite, or the boss's own portrait.
 const keepIconKey = n => n.type === "boss" ? nodeIconKey(n) : keepRank(n) ? "elite" : "monster";
+
+function keepDamageMarkers(nodes, values, canvas, getChart) {
+  const view = actView(nodes);
+  const size = keepIconSize(canvas.clientWidth, view ? view.to - view.from + 1 : nodes.length);
+  return {
+    label: "Fight markers",
+    data: nodes.map((n, i) => keepFight(n) ? values[i] ?? 0 : null),
+    showLine: false,
+    borderColor: "transparent",
+    ...nodePoints(nodes, getChart, n => !!keepFight(n), size, keepIconKey),
+  };
+}
 
 // fight_demand.py's readings, floor by floor: keep the two together. A logged fight's HP
 // is what the log saw come off, respawns and all, because an enemy's HP rolls per run and
@@ -3630,7 +3652,7 @@ const keepVerdict = (pace, guard, cut) => {
 // fight_demand.py's act_readings and lacking: keep them together. Turns and damage taken
 // are the run file's on every run, logged or not, because winners' averages are built
 // from them. A log adds what a run file can't say.
-function actReadings(run, nodes, measured) {
+function actReadings(run, nodes, measured, partyCosts = null) {
   // A fight_demand.json from before the quarters has nothing to read an act against.
   if (!DATA.fightDemand?.cuts) return [];
   const demand = DATA.fightDemand.encounters;
@@ -3647,8 +3669,10 @@ function actReadings(run, nodes, measured) {
     a.kinds[key] = (a.kinds[key] || 0) + 1;
     a.turns += n.turns;
     a.winTurns += how.turns;
-    a.taken += keepTaken(n);
-    a.healed += (n.dmg || 0) - keepTaken(n);
+    const cost = partyCosts?.[i];
+    const taken = keepTaken(n);
+    a.taken += cost?.taken ?? taken;
+    a.healed += cost?.healed ?? (n.dmg || 0) - taken;
     a.winTaken += how.taken;
     const m = !run.mp && measured && measured[i];
     if (!m) return;
@@ -3794,7 +3818,11 @@ function runActMarksHtml(run) {
 
 function renderKeepActs(run, nodes, measured) {
   const box = document.getElementById("detail-keep-acts");
-  const acts = actReadings(run, nodes, measured);
+  const party = detailParty?.length ? detailParty : null;
+  const acts = actReadings(run, nodes, measured, party && partyFightCosts(party, nodes));
+  const coverage = document.getElementById("detail-keep-party-coverage");
+  coverage.hidden = !party || !acts.length;
+  coverage.textContent = party ? `Party average · ${party.length} of ${partyRoster(run).length} run copies` : "";
   box.style.display = acts.length ? "" : "none";
   // One metric on one line, as cells of the half-card's grid: icon and label take the slack,
   // then the figure and either its mark and the average win's, or (a per-turn figure) its
@@ -4037,7 +4065,7 @@ function renderDetailKeepCharts(run) {
   const partyDamage = run.mp ? partyDamageByFloor(partyDamageSources([run, owner, ...detailDamageRuns]), nodes, slot) : null;
   const rows = fightReadings(run, nodes, measured, partyDamage);
   document.getElementById("detail-keep-damage-caption").textContent = run.mp
-    ? "Enemy HP lost to hits attributed to a player, averaged over the fight’s turns. The dotted line estimates a player’s share in an average win. Damage without a known player source is excluded."
+    ? "Enemy HP lost per fight turn, by player. The dotted line estimates a player’s share in an average win."
     : "Enemy HP lost per fight turn. The dotted line is the average win.";
   showKeepNotice("share", "");
   showKeepNotice("in", "");
@@ -4151,8 +4179,10 @@ function renderDetailKeepCharts(run) {
   const damage = run.mp
     ? { ...line(damageLine, r => r.doing), pointRadius: 3, spanGaps: false }
     : line(damageLine, r => r.doing, "damage");
+  const damageCanvas = document.getElementById("detail-keep-damage-chart");
+  const markers = run.mp ? [keepDamageMarkers(nodes, rows.map(r => r?.ask ?? r?.doing), damageCanvas, () => Chart.getChart(damageCanvas))] : [];
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
-    winners(r => r.ask)], damageTip, ranges.done);
+    winners(r => r.ask), ...markers], damageTip, ranges.done);
   chart("in", [line(takenLine, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken, true);
 
   // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:

@@ -149,6 +149,23 @@ def main():
                 assert len({seat["color"] for seat in seats}) == 4, seats
                 assert len({seat["label"] for seat in seats}) == 4, seats
             assert [seat["color"] for seat in roster["first"]] == [seat["color"] for seat in roster["third"]], roster
+            markers = page.evaluate("""() => {
+              const source = detailShownRun.timeline;
+              const nodes = [source.find(n => !keepFight(n)), source.find(n => keepFight(n))];
+              const layer = keepDamageMarkers(nodes, [undefined, 8], document.getElementById('detail-keep-damage-chart'), () => null);
+              return {line: layer.showLine, values: layer.data, icons: layer.pointStyle.map(p => p instanceof HTMLImageElement)};
+            }""")
+            assert markers == {"line": False, "values": [None, 8], "icons": [False, True]}, markers
+            costs = page.evaluate("""() => {
+              const fight = {floor: 4, turns: 3, enc: 'ENCOUNTER.AEONGLASS_BOSS'};
+              const players = [
+                {run: {timeline: [{...fight, dmg: 20, healed: 26}]}},
+                {run: {timeline: [{...fight, dmg: 40, healed: 10}]}},
+                {run: {timeline: [{...fight, enc: 'ENCOUNTER.OTHER', dmg: 99}]}},
+              ];
+              return partyFightCosts(players, [fight]);
+            }""")
+            assert costs == [{"taken": 15, "healed": 15}], costs
 
             got = series_from_page(page)
             assert got, "the share chart did not render"

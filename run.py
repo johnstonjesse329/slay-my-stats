@@ -1768,11 +1768,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
           <dt><span class="keep-signal meeting"></span> Mid</dt><dd>The middle half</dd>
           <dt><span class="keep-signal behind"></span> Rough</dt><dd>More damage taken than 3 in 4 wins</dd>
         </dl>
+        <p class="keep-party-coverage" id="detail-keep-party-coverage" role="status" hidden></p>
         <div class="keep-acts" id="detail-keep-acts"></div>
         <div id="detail-keep-share">
         <h3 class="strength-label">Keeping up, fight by fight</h3>
         <p class="chart-caption">Damage taken and fight turns compared with an average win. Lower is better. <span id="detail-keep-share-picks">Hover a floor to see card and relic changes.</span></p>
-        <p class="chart-caption" id="detail-keep-share-note" hidden><span></span> <button type="button">OK</button></p>
+        <p class="keep-data-notice" id="detail-keep-share-note" role="status" hidden><strong>Run data</strong> <span></span></p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-share-legend"></div>
         </div>
@@ -1784,12 +1785,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         </div>
         <h3 class="strength-label">Damage taken per turn</h3>
         <p class="chart-caption">Damage that got through each turn, after healing. The dotted line is the average win.</p>
-        <p class="chart-caption" id="detail-keep-in-note" hidden><span></span> <button type="button">OK</button></p>
+        <p class="keep-data-notice" id="detail-keep-in-note" role="status" hidden><strong>Run data</strong> <span></span></p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-in-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-in-legend"></div>
         <h3 class="strength-label">Damage done per turn</h3>
         <p class="chart-caption" id="detail-keep-damage-caption">Enemy HP lost per fight turn. The dotted line is the average win.</p>
-        <p class="chart-caption" id="detail-keep-damage-note" hidden><span></span> <button type="button">OK</button></p>
+        <p class="keep-data-notice" id="detail-keep-damage-note" role="status" hidden><strong>Damage data</strong> <span></span></p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
         <div id="detail-keep-deck">
