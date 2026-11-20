@@ -143,8 +143,7 @@ function syncRunHash() {
 // The header's "Copy link" button: this page's own address with the run in
 // the hash, which openRunLink() turns back into this run for whoever opens it.
 function copyRunLink(ts, btn) {
-  const view = partyViewOf(ts);
-  const url = location.href.split("#")[0] + `#detail/${ts}${view ? "/" + view : ""}`;
+  const url = location.href.split("#")[0] + "#" + runDetailHash(ts);
   navigator.clipboard.writeText(url).then(() => {
     if (btn.classList.contains("run-copy-link-icon")) {
       btn.classList.add("copied");
@@ -184,6 +183,12 @@ const coopRunHref = p => `/u/${encodeURIComponent(p.slug)}#detail/${p.ts}`;
 // to the profile's own copy. In the address as #detail/<ts>/<slug or all> (see parsePageHash).
 let detailView = { ts: null, who: "" };
 const partyViewOf = ts => detailView.ts === ts ? detailView.who : "";
+const defaultPartyView = run => run?.mp && (run.coop?.with.length || hasPartyDamage(run)) ? "all" : "";
+function runDetailHash(ts) {
+  const run = DATA.runsData.find(r => r.ts === ts);
+  const view = detailView.ts === ts ? detailView.who || (defaultPartyView(run) && "self") : "";
+  return `detail/${ts}${view ? "/" + view : ""}`;
+}
 
 // A partner's copy of a run, from their profile: their summary names the month it is in, and the
 // month file is fetched with the same key boot.js's loadRuns uses, so it is the browser's cached
@@ -501,10 +506,11 @@ function renderDetailRun(run) {
   const content = document.getElementById("detail-content");
   content.style.display = "";
   const partners = run.coop ? run.coop.with : [];
-  const canShowEveryone = run.mp && (partners.length > 0 || hasPartyDamage(run));
-  if (detailView.ts !== run.ts) detailView = { ts: run.ts, who: canShowEveryone ? "all" : "" };
+  const defaultView = defaultPartyView(run);
+  if (detailView.ts !== run.ts) detailView = { ts: run.ts, who: defaultView };
   const who = detailView.who;
-  if (who === "all" ? !canShowEveryone : who && !partners.some(p => p.slug === who)) detailView.who = "";
+  if (who === "all" ? !defaultView : who && !partners.some(p => p.slug === who)) detailView.who = "";
+  syncRunHash();
   const token = ++detailRenderToken;
   detailDamageRuns = [];
   content.classList.remove("party-loading");

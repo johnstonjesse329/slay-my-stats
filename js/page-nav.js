@@ -16,8 +16,7 @@ function parsePageHash() {
 
 function pageHash(page) {
   if (page !== "detail" || detailSelectedTs == null) return page;
-  const view = partyViewOf(detailSelectedTs);
-  return `detail/${detailSelectedTs}${view ? "/" + view : ""}`;
+  return runDetailHash(detailSelectedTs);
 }
 
 const PAGE_RENDERERS = {
@@ -190,7 +189,7 @@ function openRunLink(ts, view = "") {
       updateFilterSummary();
     }
   }
-  detailView = { ts, who: view };
+  detailView = { ts, who: view === "self" ? "" : view || defaultPartyView(run) };
   jumpToRun(ts);
   const notice = document.getElementById("detail-jump-notice");
   notice.textContent = changed.length ? `Filters adjusted to show this run: ${changed.join(", ")}.` : "";
@@ -203,7 +202,7 @@ function openRunLink(ts, view = "") {
 window.addEventListener("hashchange", () => {
   const { page, runTs, view } = parsePageHash();
   if (!PAGES.includes(page)) return;
-  if (runTs != null && (runTs !== detailSelectedTs || view !== partyViewOf(runTs))) openRunLink(runTs, view);
+  if (runTs != null && (runTs !== detailSelectedTs || location.hash !== "#" + runDetailHash(runTs))) openRunLink(runTs, view);
   else if (page !== currentPage) showPage(page);
 });
 
