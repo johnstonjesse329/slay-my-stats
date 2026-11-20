@@ -139,6 +139,16 @@ def main():
             assert "blocked" not in final_fight["partial"], final_fight
             assert final_fight["overkill"]["total"] == 71, final_fight
 
+            roster = page.evaluate("""() => {
+              const char = DATA.runsData.find(run => run.char).char;
+              const party = Array(4).fill(char);
+              const owner = { mp: true, party, partySlot: 0, measured: [{ damageBySlot: [1, 1, 1, 1] }] };
+              return partyRoster(owner);
+            }""")
+            assert len({seat["color"] for seat in roster}) == 4, roster
+            assert len({tuple(seat["dash"]) for seat in roster}) == 4, roster
+            assert len({seat["label"] for seat in roster}) == 4, roster
+
             got = series_from_page(page)
             assert got, "the share chart did not render"
             assert "choiceTicks" in got["plugins"], got["plugins"]

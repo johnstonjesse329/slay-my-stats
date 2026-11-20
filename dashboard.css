@@ -1524,6 +1524,7 @@ h1 {
 .party-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.05em; margin-right: 0.25rem; }
 .party-member { display: inline-flex; align-items: center; gap: 0.35rem; max-width: 100%; }
 .party-member .char-icon, .party-toggle .char-icon { flex: none; margin-right: 0; }
+.party-color-key { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--player-color); }
 .party-member .fl-swatch { flex: none; }
 .party-none { padding: 0.2rem 0.4rem; color: var(--text-dim); }
 .party-name { overflow-wrap: anywhere; }
@@ -1901,6 +1902,10 @@ h1 {
 .floor-tip.above::before { top: auto; bottom: -12px; }
 .floor-tip .ft-row { display: flex; gap: 14px; align-items: flex-start; }
 .floor-tip .ft-head { margin-bottom: 6px; font-size: 1rem; white-space: nowrap; }
+.floor-tip:not(.docked):has(.ft-party-player) { max-height: min(420px, calc(100dvh - 16px)); overflow: auto; overscroll-behavior: contain; }
+.ft-party-player + .ft-party-player { border-top: 1px solid var(--hairline); }
+.ft-party-player summary { cursor: pointer; padding: 4px 0; }
+.ft-party-player[open] { padding-bottom: 6px; }
 .floor-tip table { border-collapse: collapse; }
 .floor-tip th, .floor-tip td { padding: 3px 8px; text-align: right; white-space: nowrap; }
 .floor-tip th:first-child, .floor-tip td:first-child { text-align: left; padding-left: 0; }

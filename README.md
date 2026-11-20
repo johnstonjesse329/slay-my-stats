@@ -25,8 +25,9 @@ link (`/u/<name>#detail/<run timestamp>`, the address
 bar or **Copy link** in the run's header), and opening one shows that run whatever filters you had saved.
 A multiplayer run that the other players uploaded too names them on its **Party** line. Each name is a tab that
 shows that player's copy of the run in place, with a link to it on their profile. Player buttons stay in view
-while scrolling the floor charts. **Everyone** compares HP, damage and gold on shared charts, with the same
-historical win ranges on the per-turn damage charts. Deck composition, deck rarity and relic rarity get a
+while scrolling the floor charts. **Everyone** compares HP, damage and gold on shared charts. Each seat keeps
+its own color and line pattern, even when players chose the same character. Per-turn damage charts show
+historical win ranges. Deck composition, deck rarity and relic rarity get a
 detailed panel per player. On phones, the **Breakdown** picker switches these panels together. Dragging across
 a chart lists each player's card and relic changes over those floors.
 Multiplayer damage done uses enemy HP loss from mod events that identify the attacking seat, averaged
