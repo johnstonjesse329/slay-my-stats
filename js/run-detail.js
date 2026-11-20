@@ -3355,10 +3355,10 @@ const KEEP_LINES = {
 // In the tip's split bar the incoming damage is red, next to blocked in blue and healed in green.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
 const KEEP_AVERAGE_STYLE = {
-  label: "Average win", borderColor: "#9995a8", borderWidth: 1.5, borderDash: [2, 4],
+  label: "Average win", borderColor: "#b4afc3", borderWidth: 1.5, borderDash: [2, 4],
   order: 10, pointRadius: 0, pointHoverRadius: 0,
 };
-const KEEP_SHARE_BASELINE = { ...KEEP_AVERAGE_STYLE, borderColor: "#78738a", borderWidth: 1, borderDash: [] };
+const KEEP_SHARE_BASELINE = { ...KEEP_AVERAGE_STYLE, borderColor: "#a6a0b7", borderWidth: 1.35, borderDash: [] };
 const KEEP_TURN_STYLE = {
   label: "Fight turns", borderColor: "#9aa9bf", borderWidth: 1.75, borderDash: [6, 4],
   order: 5, pointRadius: 0, pointHoverRadius: 0,
@@ -3374,7 +3374,7 @@ const keepAverageGuide = {
     ctx.textBaseline = "bottom";
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#211e34";
-    ctx.fillStyle = "#c6c2d3";
+    ctx.fillStyle = "#ded9e7";
     ctx.strokeText("1× avg win", chartArea.right - 3, y - 4);
     ctx.fillText("1× avg win", chartArea.right - 3, y - 4);
     ctx.restore();
