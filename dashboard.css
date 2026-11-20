@@ -655,6 +655,7 @@ h1 {
   color: var(--text);
 }
 .keep-data-notice strong { margin-inline-end: 0.35rem; }
+.keep-data-notice a { color: var(--gold-bright); text-decoration: underline; }
 
 /* 300px: room for a plot after the --fs-sm axis labels and legend. */
 .chart-wrap { position: relative; height: 300px; }

@@ -77,7 +77,7 @@ def series_from_page(page):
       return {
         plugins: c.config.plugins.map(p => p.id),
         yMin: c.scales.y.min,
-        datasets: c.data.datasets.map(d => ({label: d.label, data: d.data, width: d.borderWidth, dash: d.borderDash, order: d.order || 0})),
+        datasets: c.data.datasets.map(d => ({label: d.label, data: d.data, color: d.borderColor, width: d.borderWidth, dash: d.borderDash, order: d.order || 0})),
         legend: document.getElementById('detail-keep-share-legend').innerText,
         caption: document.getElementById('detail-keep-share-picks').style.display,
       };
@@ -156,6 +156,22 @@ def main():
               return {line: layer.showLine, values: layer.data, icons: layer.pointStyle.map(p => p instanceof HTMLImageElement)};
             }""")
             assert markers == {"line": False, "values": [None, 8], "icons": [False, True]}, markers
+            damage = page.evaluate("""() => {
+              const encounter = Object.keys(DATA.fightDemand.encounters)[0];
+              const nodes = Array.from({length: 4}, (_, floor) => ({floor, turns: 2, act: 1, enc: encounter}));
+              const run = {mp: true, asc: 0, won: false, party: ['SILENT', 'SILENT'], timeline: nodes};
+              const partner = {...run, measured: [
+                {floor: 1, removed: 120}, {floor: 2, removed: 132, damageBySlot: [0, 125]},
+              ]};
+              const sources = partyDamageSources([run, partner]);
+              const seats = [0, 1].map(slot => partyDamageByFloor(sources, nodes, slot));
+              const fallback = partyDamageFallback(run, nodes, sources, seats);
+              return {seats, measured: fallback.lines[0].data, estimated: fallback.lines[1].data,
+                      expected: DATA.fightDemand.encounters[encounter].pool[0] * 1.1};
+            }""")
+            assert damage["seats"] == [[None, 0, None, None], [None, 125, None, None]], damage
+            assert damage["measured"] == [60, None, None, None], damage
+            assert damage["estimated"] == [None, None, damage["expected"], None], damage
             costs = page.evaluate("""() => {
               const fight = {floor: 4, turns: 3, enc: 'ENCOUNTER.AEONGLASS_BOSS'};
               const players = [
@@ -175,6 +191,7 @@ def main():
             labels = [d["label"] for d in got["datasets"]]
             assert labels == ["Average win", "Damage taken", "Fight turns"], labels
             baseline, player, turns_line = got["datasets"]
+            assert baseline["color"] == "rgba(255, 255, 255, 0.86)", baseline
             assert baseline["width"] < turns_line["width"] < player["width"], got
             assert baseline["order"] > turns_line["order"] > player["order"], got
             assert baseline["dash"] == [] and turns_line["dash"] and "keepAverageGuide" in got["plugins"], got

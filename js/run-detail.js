@@ -511,7 +511,7 @@ function renderDetailRun(run) {
     showRunCopy(run, run);
     if (partners.length && !hasPartyDamage(run)) {
       Promise.all(partners.map(p => loadPartnerCopy(p.slug, p.ts))).then(copies => {
-        if (token !== detailRenderToken || !copies.some(hasPartyDamage)) return;
+        if (token !== detailRenderToken || !copies.some(copy => copy?.measured?.length)) return;
         detailDamageRuns = copies;
         renderDetailKeepCharts(run);
       });
@@ -893,7 +893,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
     if (!nodes[i]) return "";
     const n = nodes[i];
     const head = floorTipHead(extra.fightRows ? { ...n, enc: n.fight || n.enc } : n) +
-      (extra.fightRows ? fightKind(n, extra.fightRows[i]) : "");
+      (extra.fightRows ? fightKind(n, extra.fightRows[i]) : "") + (extra.overview?.(i) || "");
     if (extra.compare && !floorTipTouch && matchMedia("(min-width: 761px)").matches) {
       const pickups = players.map((p, j) => {
         const chips = changes[j](i);
@@ -1032,7 +1032,7 @@ function renderPartyCharts(players) {
       averageGuide: true,
       fightRows: benchmarkRows,
       lines: [
-        { ...KEEP_SHARE_BASELINE, data: nodes.map(() => 1) },
+        { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) },
         { ...KEEP_TURN_STYLE, data: turnsShare, spanGaps: true, cubicInterpolationMode: "monotone" },
       ],
       compare: (party, i) => {
@@ -1052,7 +1052,10 @@ function renderPartyCharts(players) {
     const rates = data.map((damage, i) => damage == null ? null : damage / nodes[i].turns);
     return rates.some(v => v != null) ? rates : null;
   });
-  showKeepNotice("damage", missingPartyDamage(nodes, roster, damageTotals));
+  const partyDamage = partyDamageFallback(players[benchmarkPlayer]?.run || detailOwnerRun, nodes, damageSources, damageTotals);
+  const damageHistory = historical("ask", ranges.done, false);
+  if (partyDamage.lines.length) damageHistory.lines[0].label = "Average win / player";
+  showKeepNotice("damage", partyDamage.notice, true);
   const keep = [
     share,
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
@@ -1061,16 +1064,16 @@ function renderPartyCharts(players) {
         detail: (p, i) => { const row = readingAt(p, i); return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
       (p, i, value) => value == null ? "No data" : `${value.toFixed(1)} / turn (${damageTotals[p.slot][i]} HP)`,
-      false, null, { ...historical("ask", ranges.done, false), recordedOnly: true, fightRows: benchmarkRows,
-        fightMarkers: nodes.map((_, i) => benchmarkRows?.[i]?.ask ?? damageRates.find(series => series?.[i] != null)?.[i]),
+      false, null, { ...damageHistory, lines: [...damageHistory.lines, ...partyDamage.lines],
+        recordedOnly: true, fightRows: benchmarkRows, overview: partyDamage.tip,
+        fightMarkers: nodes.map((_, i) => partyDamage.rates[i] ?? benchmarkRows?.[i]?.ask ?? damageRates.find(series => series?.[i] != null)?.[i]),
         compare: (party, i) => {
           const r = benchmarkRows?.[i];
           const table = partyFloorTable(party, ["Damage done", "Fight turns"], p => {
             const row = damageReadings[p.slot]?.[i];
             return [partyFightValue(row?.damageDone, row?.doing), row?.turns];
           }, r?.ask === undefined ? null : [partyFightValue(r.pool, r.ask), +r.winTurns.toFixed(1)]);
-          return table + (party.some(p => damageReadings[p.slot]?.[i]?.doing === undefined)
-            ? '<div class="ft-cap">Missing damage values need attribution in a teammate’s mod log.</div>' : "");
+          return table;
         },
         detail: (p, i) => {
           const row = damageReadings[p.slot]?.[i];
@@ -2092,7 +2095,7 @@ function hpWinsByNode(run, nodes) {
 
 // On each fight floor, a bar from the best quarter of this player's wins to the worst: a green cap at
 // the good end, a red cap at the bad one. Drawn before the datasets, so the floor's icon and the
-// line sit over it; the dotted average line crosses it where the middle is.
+// lines sit over it.
 const HP_WIN_COLOUR = "#e6e2f2";
 const GOOD_COLOUR = "#5fd08a", BAD_COLOUR = "#e8605d";
 // Legend key for the bars: the same bar and dots. `goodDown` for damage taken, where less is better.
@@ -3355,10 +3358,9 @@ const KEEP_LINES = {
 // In the tip's split bar the incoming damage is red, next to blocked in blue and healed in green.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
 const KEEP_AVERAGE_STYLE = {
-  label: "Average win", borderColor: "#b4afc3", borderWidth: 1.5, borderDash: [2, 4],
+  label: "Average win", borderColor: "rgba(255, 255, 255, 0.86)", borderWidth: 1.65, borderDash: [],
   order: 10, pointRadius: 0, pointHoverRadius: 0,
 };
-const KEEP_SHARE_BASELINE = { ...KEEP_AVERAGE_STYLE, borderColor: "#a6a0b7", borderWidth: 1.35, borderDash: [] };
 const KEEP_TURN_STYLE = {
   label: "Fight turns", borderColor: "#9aa9bf", borderWidth: 1.75, borderDash: [6, 4],
   order: 5, pointRadius: 0, pointHoverRadius: 0,
@@ -3447,10 +3449,11 @@ function partyDamageSources(runs) {
     const nodes = run.timeline || [];
     const measured = measuredStrengthByNode(run, nodes);
     nodes.forEach((n, i) => {
-      const damage = measured?.[i]?.damageBySlot;
-      if (keepFight(n) && Array.isArray(damage) && damage.length === run.party?.length) {
-        samples.set(damageFloorKey(n), damage);
-      }
+      const row = measured?.[i];
+      if (!row || !keepFight(n)) return;
+      const bySlot = Array.isArray(row.damageBySlot) && row.damageBySlot.length === run.party?.length
+        ? row.damageBySlot : null;
+      samples.set(damageFloorKey(n), { bySlot, total: row.removed });
     });
     return samples;
   });
@@ -3460,26 +3463,52 @@ function partyDamageByFloor(sources, nodes, slot) {
   return nodes.map(n => {
     if (!keepFight(n)) return null;
     for (const source of sources) {
-      const value = source.get(damageFloorKey(n))?.[slot];
+      const value = source.get(damageFloorKey(n))?.bySlot?.[slot];
       if (Number.isFinite(value) && value >= 0) return value;
     }
     return null;
   });
 }
 
-function showKeepNotice(chart, message) {
+function showKeepNotice(chart, message, linkMod = false) {
   const note = document.getElementById(`detail-keep-${chart}-note`);
   note.querySelector("span").textContent = message;
+  const link = note.querySelector("a");
+  if (link) link.hidden = !linkMod;
   note.hidden = !message;
 }
 
-function missingPartyDamage(nodes, roster, totals) {
-  const missing = roster.filter((_, j) => nodes.some((n, i) => keepFight(n) && totals[j][i] == null));
-  if (!missing.length) return "";
-  if (totals.every(row => row.every(value => value == null))) {
-    return "No player damage recorded for this run. A compatible mod log from any teammate can supply it.";
-  }
-  return `Some fights have no attributed damage for ${missing.map(p => p.label).join(", ")}.`;
+function partyDamageFallback(run, nodes, sources, totals) {
+  const lastFight = nodes.findLastIndex(keepFight);
+  let missing = false;
+  const fights = nodes.map((n, i) => {
+    if (!keepFight(n) || !totals.some(row => row[i] == null)) return null;
+    missing = true;
+    const key = damageFloorKey(n);
+    for (const source of sources) {
+      const total = source.get(key)?.total;
+      if (Number.isFinite(total) && total >= 0) return { total, estimated: false };
+    }
+    const pool = DATA.fightDemand?.encounters?.[keepFight(n)]?.pool?.[keepTier(run.asc)];
+    if (!pool || !run.party?.length || (!run.won && i === lastFight)) return null;
+    return { total: pool * keepShare(run, n) * run.party.length, estimated: true };
+  });
+  const rates = fights.map((fight, i) => fight ? fight.total / nodes[i].turns : null);
+  const color = "#c8dd8a";
+  const lines = [false, true].flatMap(estimated => {
+    const data = rates.map((rate, i) => fights[i]?.estimated === estimated ? rate : null);
+    return data.some(rate => rate != null) ? [{
+      label: estimated ? "Party total (estimated)" : "Party total", data,
+      borderColor: color, borderWidth: 2, borderDash: estimated ? [4, 4] : [],
+      pointBackgroundColor: estimated ? "transparent" : color,
+      order: 2, pointRadius: 3, spanGaps: false,
+    }] : [];
+  });
+  const tip = i => fights[i] ? `<div class="ft-cap">${fights[i].estimated ? "Estimated party total" : "Party total"} <b>${Math.round(fights[i].total)} HP · ${rates[i].toFixed(1)}/turn</b></div>` : "";
+  const notice = missing
+    ? lines.length ? "Party totals are shown where player damage can’t be split. One teammate can record the breakdown with the" : "Player damage is unavailable. One teammate can record the breakdown with the"
+    : "";
+  return { lines, rates, tip, notice };
 }
 
 // One player's share of a co-op enemy's HP, over its solo HP: fight_demand.py's hp_share.
@@ -4062,17 +4091,19 @@ function renderDetailKeepCharts(run) {
   const partyColor = partySeatColor(slot);
   const damageLine = { ...KEEP_LINES.damage, color: partyColor || KEEP_LINES.damage.color };
   const takenLine = { ...KEEP_LINES.taken, color: partyColor || KEEP_LINES.taken.color };
-  const partyDamage = run.mp ? partyDamageByFloor(partyDamageSources([run, owner, ...detailDamageRuns]), nodes, slot) : null;
-  const rows = fightReadings(run, nodes, measured, partyDamage);
+  const damageSources = run.mp ? partyDamageSources([run, owner, ...detailDamageRuns]) : [];
+  const partyDamage = run.mp ? partyDamageByFloor(damageSources, nodes, slot) : null;
+  const fallback = run.mp ? partyDamageFallback(run, nodes, damageSources, [partyDamage]) : null;
+  const rows = fightReadings(run, nodes, measured, partyDamage) || (fallback?.lines.length ? nodes.map(() => null) : null);
   document.getElementById("detail-keep-damage-caption").textContent = run.mp
-    ? "Enemy HP lost per fight turn, by player. The dotted line estimates a player’s share in an average win."
-    : "Enemy HP lost per fight turn. The dotted line is the average win.";
+    ? "Enemy HP lost per fight turn. The white line estimates a player’s share in an average win."
+    : "Enemy HP lost per fight turn. The white line shows the average win.";
   showKeepNotice("share", "");
   showKeepNotice("in", "");
   showKeepNotice("damage", run.mp
-    ? missingPartyDamage(nodes, [{ label: "this player" }], [partyDamage])
+    ? fallback.notice
     : rows?.some((r, i) => r && !measured?.[i])
-      ? "Fights without a log use estimated enemy HP. Damage in an unlogged loss is omitted." : "");
+      ? "Fights without a log use estimated enemy HP. Damage in an unlogged loss is omitted." : "", run.mp);
   if (!rows) { box.style.display = "none"; return; }
   box.style.display = "";
   document.getElementById("detail-keep-tier").textContent = KEEP_TIER_NAMES[keepTier(run.asc)];
@@ -4094,14 +4125,14 @@ function renderDetailKeepCharts(run) {
   const aTurn = v => `${v.toFixed(1)} a turn`;
   // Each chart's hover box: the floor, that chart's own numbers, what the floor changed.
   // `body` gets the floor's reading and returns HTML (a table, and whatever goes with it).
-  const tip = body => context => showFloorTip(context, i => {
+  const tip = (body, overview) => context => showFloorTip(context, i => {
     const inner = rows[i] ? body(rows[i]) : "";
     const head = floorTipHead({ ...nodes[i], enc: nodes[i].fight || nodes[i].enc });
-    return `${head}${fightKind(nodes[i], rows[i])}${inner}${changed(i)}`;
+    return `${head}${fightKind(nodes[i], rows[i])}${overview?.(i) || ""}${inner}${changed(i)}`;
   });
   const simple = lines => r => { const list = lines(r); return list.length ? `<table>${list.join("")}</table>` : ""; };
 
-  const damageTip = tip(r => keepDamageTip(r, run.mp, damageLine.color));
+  const damageTip = tip(r => keepDamageTip(r, run.mp, damageLine.color), fallback?.tip);
 
   const inTip = tip(r => keepIncomingTip(r, run.mp));
   const playTip = tip(simple(r => r.play ? [
@@ -4125,7 +4156,7 @@ function renderDetailKeepCharts(run) {
     ...(icons && nodePoints(nodes, () => detailKeepCharts.find(c => c.canvas.id === `detail-keep-${icons}-chart`),
       (n, key, i) => rows[i] && pick(rows[i]) !== undefined, iconSize, keepIconKey)),
   });
-  // The average win: a dotted line without fight icons.
+  // The average win line has no fight icons.
   const winners = pick => ({
     ...KEEP_AVERAGE_STYLE,
     data: rows.map(r => { const v = r ? pick(r) : null; return v === undefined ? null : v; }),
@@ -4180,9 +4211,11 @@ function renderDetailKeepCharts(run) {
     ? { ...line(damageLine, r => r.doing), pointRadius: 3, spanGaps: false }
     : line(damageLine, r => r.doing, "damage");
   const damageCanvas = document.getElementById("detail-keep-damage-chart");
-  const markers = run.mp ? [keepDamageMarkers(nodes, rows.map(r => r?.ask ?? r?.doing), damageCanvas, () => Chart.getChart(damageCanvas))] : [];
+  const markers = run.mp ? [keepDamageMarkers(nodes, rows.map((r, i) => fallback.rates[i] ?? r?.ask ?? r?.doing), damageCanvas, () => Chart.getChart(damageCanvas))] : [];
+  const damageAverage = winners(r => r.ask);
+  if (fallback?.lines.length) damageAverage.label = "Average win / player";
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
-    winners(r => r.ask), ...markers], damageTip, ranges.done);
+    damageAverage, ...(fallback?.lines || []), ...markers], damageTip, ranges.done);
   chart("in", [line(takenLine, r => r.taken, "in"), winners(r => r.winRate)], inTip, ranges.taken, true);
 
   // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:
@@ -4194,7 +4227,7 @@ function renderDetailKeepCharts(run) {
   const ticks = changes ? changes.map((s, i) => i ? choiceTick(s) : null) : null;
   document.getElementById("detail-keep-share-picks").style.display = ticks && ticks.some(Boolean) ? "" : "none";
   const shareTip = tip(r => keepShareTip(r, takenLine.color));
-  const average = { ...KEEP_SHARE_BASELINE, data: nodes.map(() => 1) };
+  const average = { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) };
   chart("share", [
     average,
     line(takenLine, r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1), "share"),
