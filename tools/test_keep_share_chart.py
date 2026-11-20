@@ -77,7 +77,7 @@ def series_from_page(page):
       return {
         plugins: c.config.plugins.map(p => p.id),
         yMin: c.scales.y.min,
-        datasets: c.data.datasets.map(d => ({label: d.label, data: d.data, width: d.borderWidth, dash: d.borderDash})),
+        datasets: c.data.datasets.map(d => ({label: d.label, data: d.data, width: d.borderWidth, dash: d.borderDash, order: d.order || 0})),
         legend: document.getElementById('detail-keep-share-legend').innerText,
         caption: document.getElementById('detail-keep-share-picks').style.display,
       };
@@ -158,8 +158,9 @@ def main():
             labels = [d["label"] for d in got["datasets"]]
             assert labels == ["Average win", "Damage taken", "Fight turns"], labels
             baseline, player, turns_line = got["datasets"]
-            assert baseline["width"] > player["width"] and turns_line["width"] > player["width"], got
-            assert baseline["dash"] and turns_line["dash"] and baseline["dash"] != turns_line["dash"], got
+            assert baseline["width"] < turns_line["width"] < player["width"], got
+            assert baseline["order"] > turns_line["order"] > player["order"], got
+            assert baseline["dash"] == [] and turns_line["dash"] and "keepAverageGuide" in got["plugins"], got
             assert "Damage taken" in got["legend"] and "Fight turns" in got["legend"], got["legend"]
             assert got["caption"] == "", "the tick caption should show when the run changed cards"
 
@@ -192,6 +193,20 @@ def main():
             assert sorted(hp["stacked"]) == sorted(want_many), (hp["stacked"], sorted(want_many))
 
             assert page.evaluate("document.documentElement.scrollWidth - window.innerWidth <= 20")
+            if not device.get("has_touch"):
+                tip = page.evaluate("""() => {
+                  closeFloorTip();
+                  floorTipTouch = false;
+                  Object.assign(floorTipPointer, {x: 1330, y: 550});
+                  const canvas = {getBoundingClientRect: () => ({left: 700, right: 1600, top: 200, bottom: 930})};
+                  showFloorTip({chart: {id: 'position-check', canvas},
+                    tooltip: {opacity: 1, caretX: 630, caretY: 350, dataPoints: [{dataIndex: 29}]}},
+                    () => '<div class="ft-party-overall" style="width:360px;height:400px">Floor 30</div>');
+                  const {left, width, top, bottom} = floorTip.getBoundingClientRect();
+                  closeFloorTip();
+                  return {center: left + width / 2, top, bottom};
+                }""")
+                assert abs(tip["center"] - 1330) <= 1 and (tip["bottom"] <= 550 or tip["top"] >= 550), tip
             if device.get("has_touch"):
                 assert page.locator("#detail-keep-actpick button").count() >= 1
                 chart = page.evaluate("""() => {

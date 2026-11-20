@@ -934,6 +934,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
     };
   }
   const plugins = ranges.some(Boolean) ? [makeWinRangePlugin(ranges)] : [];
+  if (extra.averageGuide) plugins.push(keepAverageGuide);
   chart = new Chart(document.getElementById(id).getContext("2d"),
     floorChartConfig(nodes, plugins, tip, y, datasets, actWindow(nodes)));
   bindRangeSelect(chart, nodes);
@@ -1026,9 +1027,10 @@ function renderPartyCharts(players) {
   const share = build("detail-keep-share-chart", "detail-keep-share-legend",
     perFight(r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1)), (p, i, v) => times(v), false, fightIcon, {
       floorAtZero: true,
+      averageGuide: true,
       fightRows: benchmarkRows,
       lines: [
-        { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) },
+        { ...KEEP_SHARE_BASELINE, data: nodes.map(() => 1) },
         { ...KEEP_TURN_STYLE, data: turnsShare, spanGaps: true, cubicInterpolationMode: "monotone" },
       ],
       compare: (party, i) => {
@@ -2705,6 +2707,8 @@ function showFloorTip(context, html) {
   floorTip.innerHTML = html(t.dataPoints[0].dataIndex);
   floorTip.dataset.key = key;
   floorTip.style.display = "block";
+  floorTip.style.maxHeight = "";
+  floorTip.scrollTop = 0;
   const { vw, vh } = viewportSize();
   const r = context.chart.canvas.getBoundingClientRect();
   // A finger covers what it points at, so on touch the box sits beside the touched point: above
@@ -2740,33 +2744,21 @@ function showFloorTip(context, html) {
   floorTip.style.left = floorTip.style.top = "0px";
   // Centred on the floor's column, so the pointer is over the box's width however it drifts.
   const px = r.left + t.caretX, py = floorTipPointer.y || r.top + t.caretY;
-  const w = floorTip.offsetWidth, h = floorTip.offsetHeight;
+  const w = floorTip.offsetWidth;
+  let h = floorTip.offsetHeight;
   const gap = 12;
   const live = interactive;
   floorTip.classList.toggle("passive", !live);
-  // Never over the chart: the box sits under it, else above it, else beside it, and the floor it
-  // belongs to is read from the column it is centred on. Only a box that fits nowhere (a phone's
-  // landscape, a very tall table) falls back to the pointer, where at least it can be read.
-  const room = {
-    below: r.bottom + gap + h <= vh - 8,
-    above: r.top - gap - h >= 8,
-    right: r.right + gap + w <= vw - 8,
-    left: r.left - gap - w >= 8,
-  };
-  let below, left, top;
-  if (room.below || room.above) {
-    below = room.below;
-    top = below ? r.bottom + gap : r.top - gap - h;
-    left = clampAxis(px - w / 2, w, vw);
-  } else if (room.right || room.left) {
-    below = py < r.top + r.height / 2;
-    left = room.right ? r.right + gap : r.left - gap - w;
-    top = clampAxis(py - h / 2, h, vh);
-  } else {
-    below = py + gap + h <= vh - 8 || py - gap - h < 8;
-    top = below ? py + gap : py - gap - h;
-    left = clampAxis(px - w / 2, w, vw);
+  const roomBelow = vh - py - gap - 8;
+  const roomAbove = py - gap - 8;
+  const below = roomBelow >= h || roomBelow >= roomAbove;
+  const available = below ? roomBelow : roomAbove;
+  if (floorTip.querySelector(".ft-party-overall") && h > available) {
+    floorTip.style.maxHeight = Math.max(1, available) + "px";
+    h = floorTip.offsetHeight;
   }
+  const left = clampAxis(px - w / 2, w, vw);
+  const top = below ? py + gap : py - gap - h;
   floorTip.classList.toggle("above", !below);
   floorTip.style.left = left + "px";
   floorTip.style.top = clampAxis(top, h, vh) + "px";
@@ -3360,12 +3352,30 @@ const KEEP_LINES = {
 // In the tip's split bar the incoming damage is red, next to blocked in blue and healed in green.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
 const KEEP_AVERAGE_STYLE = {
-  label: "Average win", borderColor: "#d0ced9", borderWidth: 3, borderDash: [2, 5],
-  borderCapStyle: "round", pointRadius: 0, pointHoverRadius: 0,
+  label: "Average win", borderColor: "#9995a8", borderWidth: 1.5, borderDash: [2, 4],
+  order: 10, pointRadius: 0, pointHoverRadius: 0,
 };
+const KEEP_SHARE_BASELINE = { ...KEEP_AVERAGE_STYLE, borderColor: "#78738a", borderWidth: 1, borderDash: [] };
 const KEEP_TURN_STYLE = {
-  label: "Fight turns", borderColor: "#f3efe7", borderWidth: 2.5, borderDash: [9, 4],
-  pointRadius: 0, pointHoverRadius: 0,
+  label: "Fight turns", borderColor: "#9aa9bf", borderWidth: 1.75, borderDash: [6, 4],
+  order: 5, pointRadius: 0, pointHoverRadius: 0,
+};
+const keepAverageGuide = {
+  id: "keepAverageGuide",
+  afterDatasetsDraw({ ctx, chartArea, scales }) {
+    const y = scales.y.getPixelForValue(1);
+    if (y < chartArea.top + 14 || y > chartArea.bottom) return;
+    ctx.save();
+    ctx.font = "600 11px system-ui";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#211e34";
+    ctx.fillStyle = "#c6c2d3";
+    ctx.strokeText("1× avg win", chartArea.right - 3, y - 4);
+    ctx.fillText("1× avg win", chartArea.right - 3, y - 4);
+    ctx.restore();
+  },
 };
 
 function keepLegendEntry({ label, borderColor, borderDash, borderWidth }) {
@@ -4154,13 +4164,13 @@ function renderDetailKeepCharts(run) {
   const ticks = changes ? changes.map((s, i) => i ? choiceTick(s) : null) : null;
   document.getElementById("detail-keep-share-picks").style.display = ticks && ticks.some(Boolean) ? "" : "none";
   const shareTip = tip(r => keepShareTip(r, takenLine.color));
-  const average = { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) };
+  const average = { ...KEEP_SHARE_BASELINE, data: nodes.map(() => 1) };
   chart("share", [
     average,
     line(takenLine, r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1), "share"),
     { ...line({ label: KEEP_TURN_STYLE.label, color: KEEP_TURN_STYLE.borderColor },
       r => r.winTurns === undefined ? undefined : r.turns / r.winTurns), ...KEEP_TURN_STYLE },
-  ], shareTip, null, false, ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : [], true);
+  ], shareTip, null, false, [keepAverageGuide, ...(ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : [])], true);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";
