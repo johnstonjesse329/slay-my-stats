@@ -240,7 +240,7 @@ def main():
                   closeFloorTip();
                   return {center: left + width / 2, top, bottom};
                 }""")
-                assert abs(tip["center"] - 1330) <= 1 and (tip["bottom"] <= 550 or tip["top"] >= 550), tip
+                assert abs(tip["center"] - 1330) <= 1 and (tip["bottom"] <= 200 or tip["top"] >= 930), tip
             if device.get("has_touch"):
                 assert page.locator("#detail-keep-actpick button").count() >= 1
                 chart = page.evaluate("""() => {

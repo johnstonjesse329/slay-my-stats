@@ -2756,16 +2756,18 @@ function showFloorTip(context, html) {
   const gap = 12;
   const live = interactive;
   floorTip.classList.toggle("passive", !live);
-  const roomBelow = vh - py - gap - 8;
-  const roomAbove = py - gap - 8;
+  const belowPlot = r.top + (context.chart.chartArea?.bottom ?? r.bottom - r.top) + gap;
+  const abovePlot = r.top + (context.chart.chartArea?.top ?? 0) - gap;
+  const roomBelow = vh - belowPlot - 8;
+  const roomAbove = abovePlot - 8;
   const below = roomBelow >= h || roomBelow >= roomAbove;
   const available = below ? roomBelow : roomAbove;
-  if (floorTip.querySelector(".ft-party-overall") && h > available) {
+  if (h > available) {
     floorTip.style.maxHeight = Math.max(1, available) + "px";
     h = floorTip.offsetHeight;
   }
   const left = clampAxis(px - w / 2, w, vw);
-  const top = below ? py + gap : py - gap - h;
+  const top = below ? belowPlot : abovePlot - h;
   floorTip.classList.toggle("above", !below);
   floorTip.style.left = left + "px";
   floorTip.style.top = clampAxis(top, h, vh) + "px";
