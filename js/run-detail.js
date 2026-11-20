@@ -1056,7 +1056,7 @@ function renderPartyCharts(players) {
   const partyDamage = partyDamageFallback(players[benchmarkPlayer]?.run || detailOwnerRun, nodes, damageSources, damageTotals);
   const damageHistory = historical("ask", ranges.done, false);
   if (partyDamage.lines.length) damageHistory.lines[0].label = "Average win / player";
-  showKeepNotice("damage", partyDamage.notice, true);
+  showKeepNotice("damage", partyDamage.notice, partyDamage.linkMod);
   const keep = [
     share,
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.taken), turn, true,
@@ -3508,11 +3508,14 @@ function partyDamageFallback(run, nodes, sources, totals) {
     }] : [];
   });
   const tip = i => fights[i] ? `<div class="ft-cap">${fights[i].estimated ? "Estimated party total" : "Party total"} <b>${Math.round(fights[i].total)} HP · ${rates[i].toFixed(1)}/turn</b></div>` : "";
-  const notice = !missing ? "" : lines.some(line => line.label === "Party total")
-    ? "The combat log recorded party damage. Some fights are missing a player breakdown. For future runs, one teammate can record it with the"
-    : lines.length ? "Party damage is estimated where player damage can’t be split. One teammate can record the breakdown with the"
-      : "Player damage is unavailable. One teammate can record the breakdown with the";
-  return { lines, rates, tip, notice };
+  const logged = fights.some(fight => fight && !fight.estimated);
+  const hasLog = sources.some(source => source.size);
+  const notice = !missing ? "" : logged
+    ? "The combat log gives party totals for fights without a player breakdown."
+    : hasLog ? "The combat log is missing damage for some fights."
+    : lines.length ? "Some party totals are estimated. To record combat logs, use the"
+      : "Damage data is missing for some fights. To record combat logs, use the";
+  return { lines, rates, tip, notice, linkMod: !hasLog };
 }
 
 // One player's share of a co-op enemy's HP, over its solo HP: fight_demand.py's hp_share.
@@ -4107,7 +4110,7 @@ function renderDetailKeepCharts(run) {
   showKeepNotice("damage", run.mp
     ? fallback.notice
     : rows?.some((r, i) => r && !measured?.[i])
-      ? "Fights without a log use estimated enemy HP. Damage in an unlogged loss is omitted." : "", run.mp);
+      ? "Fights without a log use estimated enemy HP. Damage in an unlogged loss is omitted." : "", fallback?.linkMod);
   if (!rows) { box.style.display = "none"; return; }
   box.style.display = "";
   document.getElementById("detail-keep-tier").textContent = KEEP_TIER_NAMES[keepTier(run.asc)];
