@@ -15,28 +15,7 @@ function bindEnterSpace(el) {
   });
 }
 
-function avgRestOnWins(filteredRuns) {
-  let healSum = 0, smithSum = 0, n = 0;
-  const healVals = [], smithVals = [];
-  filteredRuns.forEach(run => {
-    if (!run.won) return;
-    const rc = run.restChoices || {};
-    if (rc["3"] === undefined) return;  // didn't reach Act 3
-    const h = REST_ACTS.reduce((s, act) => s + ((rc[String(act)] || {})["HEAL"]  || 0), 0);
-    const s = REST_ACTS.reduce((s, act) => s + ((rc[String(act)] || {})["SMITH"] || 0), 0);
-    healSum += h; smithSum += s;
-    healVals.push(h); smithVals.push(s);
-    n++;
-  });
-  return n > 0
-    ? { heal: +(healSum / n).toFixed(1), smith: +(smithSum / n).toFixed(1),
-        healMedian: median(healVals), smithMedian: median(smithVals) }
-    : { heal: null, smith: null, healMedian: null, smithMedian: null };
-}
-
-function renderCards(grand, charStats, restAvg) {
-  // Runs, wins and the per-character split are the character table's; the
-  // bars keep the totals it has no row for.
+function renderCards(grand, runs) {
   const items = [
     { label: "Time played", detail: grand.runs ? `Median ${grand.median_min}m` : "",
       value: grand.runs ? fmtHrsMin(grand.total_min) : "—" },
@@ -53,7 +32,17 @@ function renderCards(grand, charStats, restAvg) {
       <div class="label"><b class="name">${label}</b></div>
       <div class="value"${detail ? ` data-tip="${detail}" tabindex="0"` : ""}>${value}</div>
     </div>`;
-  document.getElementById("summary-cards").innerHTML = items.map(itemCard).join("");
+  const wins = runs.filter(run => run.won);
+  const dreadWins = wins.filter(run => run.mode === "dread").length;
+  const winCounts = [
+    ["Total wins", grand.wins],
+    ...ASC_RANGES.map(({ label, min, max }) => [`${label} wins`,
+      wins.filter(run => run.mode !== "dread" && run.asc >= min && run.asc <= max).length]),
+    ...(dreadWins ? [["Dread wins", dreadWins]] : []),
+  ];
+  const winsCard = `<div class="card summary-wins">${winCounts.map(([label, value]) =>
+    `<div><div class="label">${label}</div><div class="value">${value.toLocaleString()}</div></div>`).join("")}</div>`;
+  document.getElementById("summary-cards").innerHTML = winsCard + items.map(itemCard).join("");
 }
 
 function renderPersonalBests() {
@@ -169,16 +158,19 @@ function renderPersonalBests() {
   const bothKinds = tierList.some(t => t.solo.runs) && tierList.some(t => t.multi.runs);
   const bar = (t, c, cls = "") => `<span class="pb-bar${cls}"><i style="width:${t.runs ? Math.round(t.wins / t.runs * 100) : 0}%;background-color:${c.bar || c.color}"></i></span>`;
   const runsOf = t => !t.runs ? "no runs" : `${t.wins} of ${t.runs} run${t.runs !== 1 ? "s" : ""} (${fmtWinPct(t.wins, t.runs)})`;
-  const tierBar = (t, c) => !t ? "—"
-    : !bothKinds ? `${pct(t.wins, t.runs)}${bar(t, c)}`
-    : `<span data-tip="Solo: ${runsOf(t.solo)}\nMulti: ${runsOf(t.multi)}">${fmtWinPct(t.wins, t.runs)}</span>`
-      + bar(t.solo, c) + bar(t.multi, c, " pb-bar-multi");
+  const tierBar = (t, c) => !t ? "0W"
+    : `<strong class="pb-tier-wins">${t.wins.toLocaleString()}W</strong>` + (!bothKinds
+      ? `${pct(t.wins, t.runs)}${bar(t, c)}`
+      : `<span data-tip="Solo: ${runsOf(t.solo)}\nMulti: ${runsOf(t.multi)}">${fmtWinPct(t.wins, t.runs)}</span>`
+        + bar(t.solo, c) + bar(t.multi, c, " pb-bar-multi"));
 
   // [label, cell, row class]
   const rows = [
+    ["Total wins", b => b.totalWins.toLocaleString()],
     ["Win %", (b, c) => `<span style="color:${c.color}">${pct(b.totalWins, b.gamesPlayed)}</span>`, "pb-headline"],
     // The ascension tiers the other tables split by (ascColumns).
-    ...ascColumns().map(col => [col.label, (b, c) => tierBar(b.tiers[col.key], c), "pb-tier"]),
+    ...(currentPage === "overview" ? ASC_RANGES : ascColumns())
+      .map(col => [col.label, (b, c) => tierBar(b.tiers[col.key], c), "pb-tier"]),
     // Dread, the pinnacle past A10, keeps its row wherever its runs could show, runs or not.
     ...(currentPage === "overview" || sharedActiveModes.has("dread") ? [["Dread", (b, c) => tierBar(b.tiers.dread, c), "pb-tier pb-tier-dread"]] : []),
     ["Runs",              b => b.gamesPlayed],
