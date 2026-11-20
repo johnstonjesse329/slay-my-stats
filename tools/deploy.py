@@ -38,9 +38,9 @@ function started (it answers 404 there: uploads come through /auth/upload, the m
 deploy before the site goes up, which is how a bundle that crashes on import (a 502 for every
 upload from the mod) gets caught on gamma rather than found in the mod's log.
 
-A deploy that changed the stack (the Lambda bundle carries the known-ID list) ends by running
-rebuild_profiles --all and rebuild_stats on that stage's data bucket, so runs held for unknown IDs
-join their profiles. A failure there only warns; run the two by hand.
+After smoke checks, a changed parser version or known-ID list triggers a profile and stats rebuild.
+Each stage records the inputs of its last successful rebuild in its own data bucket. A failure
+warns and leaves the previous marker in place so the next deploy retries.
 
 Production only deploys a commit that gamma has already deployed and passed that check on. A
 successful gamma deploy of a commit writes it to `slay-my-stats-gamma-ok` inside the git directory
@@ -83,6 +83,7 @@ Skip the whole thing for one push with `SKIP_DEPLOY=1 git push` or
 
 import contextlib
 import hashlib
+import importlib.util
 import io
 import json
 import re
@@ -120,6 +121,7 @@ FEEDBACK_STACK_FILE = "infra/slay_my_stats/feedback_stack.py"
 # The us-east-1 alarms on prod's CloudFront metrics.
 EDGE_ALARMS_STACK = "SlayMyStatsEdgeAlarmsStack"
 DATA_BUCKETS = {"prod": "slay-my-stats-data", "gamma": "slay-my-stats-gamma-data"}
+PROFILE_REBUILD_KEY = "analytics/deploy/profile-rebuild.json"
 # Pushing one of these branches deploys its stage (see check_pre_push).
 DEPLOY_BRANCHES = {"main": "prod", "gamma": "gamma"}
 # One deploy at a time, across every checkout and worktree: this file in the git directory they share.
@@ -470,15 +472,14 @@ def _cdk_env() -> dict:
     return {**os.environ, "PATH": f"{venv_bin}{os.pathsep}{os.environ['PATH']}"}
 
 
-def deploy_infra() -> bool:
-    """Deploy the stack if it differs; True when it did (the Lambda bundle, and so the
-    known-ID list, may have changed)."""
+def deploy_infra() -> None:
+    """Deploy the stack if it differs."""
     env = _cdk_env()
     print("Infra: comparing the stack with AWS (cdk diff, usually a minute or two)...", flush=True)
     output = run(["cdk", "diff", STACK_NAME], cwd=SRC / "infra", env=env, stream=True).stdout
     if "There were no differences" in output:
         print("Infra: no changes.")
-        return False
+        return
     # DEPLOY_YES answers the question up front, for a run with nobody at the terminal.
     # Any value does it for gamma; production wants the word "prod", so a stray
     # DEPLOY_YES=1 left in the environment can't ship a production stack change.
@@ -488,22 +489,60 @@ def deploy_infra() -> bool:
     elif not ask("Deploy these infra changes?"):
         raise DeployError("infra deploy declined")
     run(["cdk", "deploy", STACK_NAME, "--require-approval", "never"], cwd=SRC / "infra", env=env)
-    return True
+
+
+def profile_rebuild_inputs() -> dict:
+    """Read the parser version and generate the same known-ID list CDK packages."""
+    src = (SRC / "run.py").read_text(encoding="utf-8")
+    version = re.search(r"^PARSER_VERSION = (\d+)\s*$", src, re.MULTILINE)
+    if version is None:
+        raise DeployError("Could not read PARSER_VERSION from run.py")
+    known = None
+    if all((SRC / name).is_file() for name in ("card_data.json", "relic_data.json")):
+        spec = importlib.util.spec_from_file_location("deploy_known_ids", SRC / "tools" / "build_known_ids.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        known = hashlib.sha256(json.dumps(mod.load(), separators=(",", ":")).encode()).hexdigest()
+    return {"parser_version": int(version[1]), "known_ids_sha256": known}
 
 
 def rebuild_held_runs(stage: str) -> None:
-    """Bring in runs the new known-ID list no longer holds back, then recount the site totals.
-    Both are safe to repeat; a failure here leaves the deploy done, so it only warns."""
+    """Refresh profiles and stats only for inputs the stage has yet to rebuild."""
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+
     bucket = DATA_BUCKETS[stage]
     python = _venv_bin() / ("python.exe" if os.name == "nt" else "python")
-    print(f"Runs: re-checking held uploads in {bucket} (rebuild_profiles --all, rebuild_stats)...", flush=True)
-    for script, extra in (("rebuild_profiles.py", ["--all"]), ("rebuild_stats.py", [])):
+    try:
+        inputs = profile_rebuild_inputs()
+        s3 = boto3.client("s3")
         try:
-            run([str(python), str(SRC / "tools" / script), *extra, "--bucket", bucket], stream=True)
-        except DeployError as e:
-            print(f"Warning: {script} failed ({e}). Run it by hand: "
-                  f"tools/{script} {' '.join(extra)} --bucket {bucket}", file=sys.stderr)
+            marker = s3.get_object(Bucket=bucket, Key=PROFILE_REBUILD_KEY)
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] not in ("NoSuchKey", "404"):
+                raise
+            marker = None
+        previous = None
+        if marker:
+            try:
+                previous = json.loads(marker["Body"].read())
+            except ValueError:
+                pass  # Rebuild and replace an unreadable marker.
+        if previous == inputs:
+            print(f"Runs: {stage} parser version and known IDs match the last successful rebuild. Skipping.")
             return
+        labels = {"parser_version": "parser version", "known_ids_sha256": "known IDs"}
+        changed = ", ".join(labels[key] for key in inputs
+                            if not isinstance(previous, dict) or previous.get(key) != inputs[key])
+        print(f"Runs: rebuilding {stage} profiles and stats ({changed})...", flush=True)
+        run([str(python), str(SRC / "tools" / "rebuild_profiles.py"), "--all", "--strict", "--bucket", bucket], stream=True)
+        run([str(python), str(SRC / "tools" / "rebuild_stats.py"), "--bucket", bucket], stream=True)
+        condition = {"IfMatch": marker["ETag"]} if marker else {"IfNoneMatch": "*"}
+        s3.put_object(Bucket=bucket, Key=PROFILE_REBUILD_KEY,
+                      Body=json.dumps(inputs).encode(), ContentType="application/json", **condition)
+    except (BotoCoreError, ClientError, DeployError, OSError, ValueError) as exc:
+        print(f"Warning: {stage} profile rebuild did not complete ({exc}). The next deploy will retry.",
+              file=sys.stderr)
 
 
 def upload_changed_dist() -> list[str]:
@@ -821,12 +860,11 @@ def main() -> int:
                 require_feedback_table(commit)
                 if stage == "prod":
                     require_gamma_ok(commit)
-                infra_changed = deploy_infra()
+                deploy_infra()
                 smoke_test_ingest(ingest_function_url())
                 deploy_site()
                 smoke_test_site()
-                if infra_changed:
-                    rebuild_held_runs(stage)
+                rebuild_held_runs(stage)
                 if stage == "gamma":
                     record_gamma_ok(commit)
             finally:

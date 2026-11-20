@@ -1623,7 +1623,7 @@ def _raw_uploads(store, steam_id: str):
             yield got[0]
 
 
-def _replay_raw(store, steam_id: str, now: float, dry_run: bool, lookup_name) -> dict:
+def _replay_raw(store, steam_id: str, now: float, dry_run: bool, lookup_name, strict: bool = False) -> dict:
     """rebuild_profile for someone with raw uploads but no profile: every run
     they sent was held (or unreadable). Each upload goes through again as if
     just sent, which makes the profile and counts the runs in the site stats."""
@@ -1637,7 +1637,9 @@ def _replay_raw(store, steam_id: str, now: float, dry_run: bool, lookup_name) ->
                     added, held = added + len(spool.ts), held + h.get("runs", 0)
                 continue
             res = _merge_upload(store, steam_id, body, now, lookup_name or lookup_steam_name)
-        except IngestError:
+        except IngestError as exc:
+            if strict and (exc.status >= 500 or exc.status == 409):
+                raise
             unreadable += 1
             continue
         added, held, slug = added + res["added"], held + res.get("held", 0), res["slug"] or slug
@@ -1646,7 +1648,7 @@ def _replay_raw(store, steam_id: str, now: float, dry_run: bool, lookup_name) ->
 
 
 def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: bool = False,
-                    lookup_name=None) -> dict:
+                    lookup_name=None, *, strict: bool = False) -> dict:
     """
     Re-parse every raw upload a player has made with the current parser and
     rewrite their profile from it; runs with no raw copy stay as they are.
@@ -1659,7 +1661,7 @@ def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: boo
     if doc is None:
         if not store.list(f"raw/{steam_id}/"):
             raise IngestError(404, "no_profile", f"No profile for {steam_id}.")
-        return _replay_raw(store, steam_id, time.time() if now is None else now, dry_run, lookup_name)
+        return _replay_raw(store, steam_id, time.time() if now is None else now, dry_run, lookup_name, strict)
     unreadable, held = 0, {}
     with Spool() as spool:
         for body in _raw_uploads(store, steam_id):  # oldest first: later copies win

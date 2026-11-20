@@ -518,8 +518,11 @@ The check is a lookup of each ID in the run against that list, so it adds next t
 
 The upload's result counts the held runs and names the top IDs; the page tells the player, and they're
 reported for trends. `tools/find_unknown_ids.py --bucket slay-my-stats-data` lists every one in `raw/`, with
-the players and builds. After a patch: refresh the game data and deploy. A deploy that changes the stack runs
-`tools/rebuild_profiles.py --all` and `tools/rebuild_stats.py` for you, which brings in the runs it now knows, making a profile for anyone whose runs were all held. A mod's runs stay held.
+the players and builds. After a patch, refresh the game data and deploy. If the parser version or accepted ID
+list changed, the deploy runs `tools/rebuild_profiles.py --all` and `tools/rebuild_stats.py`. Each stage records
+its own last successful rebuild in its private data bucket. The first deploy without a record rebuilds once.
+A failed rebuild leaves the previous record in place so the next deploy can retry. Runs that the updated list
+accepts become visible, including when a player had no profile because every run was held.
 
 ### Site-wide stats
 

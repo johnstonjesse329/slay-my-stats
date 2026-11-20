@@ -25,6 +25,7 @@ Usage:
         re-parsed. An upload does this for its own profile anyway.
 
     --dry-run            Report what would change without writing.
+    --strict             Fail if a profile could not be rebuilt.
     --bucket <name>      The live data bucket (needs AWS credentials);
                          otherwise local_data/ (the dev server's store).
 """
@@ -60,6 +61,7 @@ def main():
     bucket = arg("--bucket")
     store = handler.S3Store(bucket) if bucket else handler.DirStore(_DATA_DIR)
     dry_run = "--dry-run" in args
+    strict = "--strict" in args
 
     players = _players(store)
     if "--migrate" in args:
@@ -93,7 +95,7 @@ def main():
     else:
         sys.exit(__doc__)
 
-    rebuilt = 0
+    rebuilt = failed = 0
     for steam_id in targets:
         slug = players.get(steam_id)
         if "--stale" in args:
@@ -102,9 +104,11 @@ def main():
             if version is None or version >= run.PARSER_VERSION:
                 continue
         try:
-            s = handler.rebuild_profile(store, steam_id, dry_run=dry_run)
+            s = handler.rebuild_profile(store, steam_id, dry_run=dry_run, strict=strict)
         except handler.IngestError as e:
             print(f"  {slug or steam_id}: {e.message}")
+            if e.code != "no_profile":
+                failed += 1
             continue
         rebuilt += 1
         line = f"  {s['slug']}: {s['runs']} runs ({s['fromRaw']} re-parsed, {s['noRaw']} without a raw copy)"
@@ -121,6 +125,8 @@ def main():
     print(f"{rebuilt} profile(s) {'would be ' if dry_run else ''}rebuilt with parser v{run.PARSER_VERSION}.")
     if rebuilt and not dry_run:
         print("Now run tools/rebuild_stats.py" + (f" --bucket {bucket}" if bucket else "") + " to recount the site stats.")
+    if strict and failed:
+        sys.exit(f"{failed} profile(s) could not be rebuilt.")
 
 
 if __name__ == "__main__":

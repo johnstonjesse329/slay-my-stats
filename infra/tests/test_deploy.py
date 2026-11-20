@@ -6,6 +6,8 @@ tools/deploy.py answers an empty POST to the ingest URL (any status under 500 pa
 silence fails the deploy) and lets production take only the commit gamma last passed.
 """
 import os
+import io
+import json
 import sys
 import tempfile
 import threading
@@ -18,6 +20,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(REPO / "tools")]
 
 import deploy  # noqa: E402
+from botocore.exceptions import ClientError  # noqa: E402
 
 
 def serve(status):
@@ -173,6 +176,56 @@ class FeedbackTableGuard(unittest.TestCase):
         self.dirty = " M " + deploy.FEEDBACK_STACK_FILE
         deploy.deploy_feedback_table()
         self.assertFalse(self.file.exists())
+
+
+class ProfileRebuildGuard(unittest.TestCase):
+    def setUp(self):
+        self.inputs = {"parser_version": 7, "known_ids_sha256": "new"}
+        self.s3 = mock.Mock()
+        mocks = (
+            mock.patch("boto3.client", return_value=self.s3),
+            mock.patch.object(deploy, "profile_rebuild_inputs", return_value=self.inputs),
+            mock.patch.object(deploy, "run"),
+        )
+        for patcher in mocks:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def marker(self, previous):
+        self.s3.get_object.return_value = {"Body": io.BytesIO(json.dumps(previous).encode()), "ETag": '"old"'}
+
+    def test_matches_skip_this_stage(self):
+        self.marker(self.inputs)
+        deploy.rebuild_held_runs("gamma")
+        deploy.run.assert_not_called()
+        self.s3.get_object.assert_called_once_with(Bucket=deploy.DATA_BUCKETS["gamma"], Key=deploy.PROFILE_REBUILD_KEY)
+        self.s3.put_object.assert_not_called()
+
+    def test_each_input_change_rebuilds_before_recording(self):
+        for changed in ({"parser_version": 6}, {"known_ids_sha256": "old"}):
+            with self.subTest(changed=changed):
+                self.marker({**self.inputs, **changed})
+                deploy.run.reset_mock()
+                deploy.rebuild_held_runs("prod")
+                args = [call.args[0] for call in deploy.run.call_args_list]
+                self.assertEqual([Path(arg[1]).name for arg in args], ["rebuild_profiles.py", "rebuild_stats.py"])
+                self.assertIn("--strict", args[0])
+                self.assertTrue(all(arg[-1] == deploy.DATA_BUCKETS["prod"] for arg in args))
+                self.s3.put_object.assert_called_with(Bucket=deploy.DATA_BUCKETS["prod"], Key=deploy.PROFILE_REBUILD_KEY,
+                                                        Body=json.dumps(self.inputs).encode(), ContentType="application/json",
+                                                        IfMatch='"old"')
+
+    def test_missing_marker_initializes_after_success(self):
+        self.s3.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        deploy.rebuild_held_runs("gamma")
+        self.assertEqual(deploy.run.call_count, 2)
+        self.assertEqual(self.s3.put_object.call_args.kwargs["IfNoneMatch"], "*")
+
+    def test_failed_rebuild_saves_no_marker(self):
+        self.marker({**self.inputs, "parser_version": 6})
+        deploy.run.side_effect = [None, deploy.DeployError("stats recount failed")]
+        deploy.rebuild_held_runs("gamma")
+        self.s3.put_object.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ def main():
     bucket = args[args.index("--bucket") + 1] if "--bucket" in args else None
     store = handler.S3Store(bucket) if bucket else handler.DirStore(_DATA_DIR)
 
+    current = store.get(handler.STATS_KEY)
     players, _ = handler._read_index(store)
     total = handler.empty_stats()
     for p in players:
@@ -52,7 +53,6 @@ def main():
 
     # Overwrites whatever is there. An upload landing mid-recount makes this
     # write fail rather than lose its tally; run it again.
-    current = store.get(handler.STATS_KEY)
     store.put(handler.STATS_KEY, handler._pack(total), {}, current[2] if current else None)
     print(f"{len(players)} players, {total['allRuns']} runs ({total['solo']['runs']} solo, "
           f"{total['multi']['runs']} multiplayer) -> {handler.STATS_KEY}")
