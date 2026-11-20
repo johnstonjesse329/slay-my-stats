@@ -1790,7 +1790,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="floor-legend" id="detail-keep-in-legend"></div>
         <h3 class="strength-label">Damage done per turn</h3>
         <p class="chart-caption" id="detail-keep-damage-caption">Enemy HP lost per fight turn. The white line shows the average win.</p>
-        <p class="keep-data-notice" id="detail-keep-damage-note" role="status" hidden><strong>Damage data</strong> <span></span> <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909" target="_blank" rel="noopener" hidden>Slay My Stats mod</a></p>
+        <p class="keep-data-notice" id="detail-keep-damage-note" role="status" hidden><strong>Damage data</strong> <span></span> <span class="keep-mod-link" hidden><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909" target="_blank" rel="noopener">Slay My Stats mod</a>.</span></p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-damage-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-damage-legend"></div>
         <div id="detail-keep-deck">

@@ -3474,7 +3474,7 @@ function partyDamageByFloor(sources, nodes, slot) {
 function showKeepNotice(chart, message, linkMod = false) {
   const note = document.getElementById(`detail-keep-${chart}-note`);
   note.querySelector("span").textContent = message;
-  const link = note.querySelector("a");
+  const link = note.querySelector(".keep-mod-link");
   if (link) link.hidden = !linkMod;
   note.hidden = !message;
 }
@@ -3506,9 +3506,10 @@ function partyDamageFallback(run, nodes, sources, totals) {
     }] : [];
   });
   const tip = i => fights[i] ? `<div class="ft-cap">${fights[i].estimated ? "Estimated party total" : "Party total"} <b>${Math.round(fights[i].total)} HP · ${rates[i].toFixed(1)}/turn</b></div>` : "";
-  const notice = missing
-    ? lines.length ? "Party totals are shown where player damage can’t be split. One teammate can record the breakdown with the" : "Player damage is unavailable. One teammate can record the breakdown with the"
-    : "";
+  const notice = !missing ? "" : lines.some(line => line.label === "Party total")
+    ? "The combat log recorded party damage. Some fights are missing a player breakdown. For future runs, one teammate can record it with the"
+    : lines.length ? "Party damage is estimated where player damage can’t be split. One teammate can record the breakdown with the"
+      : "Player damage is unavailable. One teammate can record the breakdown with the";
   return { lines, rates, tip, notice };
 }
 
