@@ -500,10 +500,11 @@ function renderDetailRun(run) {
   document.getElementById("detail-placeholder").style.display = "none";
   const content = document.getElementById("detail-content");
   content.style.display = "";
-  if (detailView.ts !== run.ts) detailView = { ts: run.ts, who: "" };
   const partners = run.coop ? run.coop.with : [];
+  const canShowEveryone = run.mp && (partners.length > 0 || hasPartyDamage(run));
+  if (detailView.ts !== run.ts) detailView = { ts: run.ts, who: canShowEveryone ? "all" : "" };
   const who = detailView.who;
-  if (who === "all" ? !partners.length && !hasPartyDamage(run) : !partners.some(p => p.slug === who)) detailView.who = "";
+  if (who === "all" ? !canShowEveryone : who && !partners.some(p => p.slug === who)) detailView.who = "";
   const token = ++detailRenderToken;
   detailDamageRuns = [];
   content.classList.remove("party-loading");

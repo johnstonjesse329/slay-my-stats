@@ -33,6 +33,11 @@ foreach ($p in "$env:LOCALAPPDATA\pip\cache", "$env:LOCALAPPDATA\uv\cache",
 
 # Visual review baseline
 
+For Gamma UI changes, let the user drive visual review. After the deployment
+smoke check, give them a direct Gamma link and the specific controls or charts
+to inspect. Run basic correctness checks, then deploy. Run additional browser
+reviews only when requested or needed to diagnose a reported failure.
+
 For UI changes and "what does this look like" reviews, use these reference
 devices unless the user explicitly requests another size:
 
