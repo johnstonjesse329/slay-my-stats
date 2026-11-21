@@ -62,7 +62,7 @@ Storage (the data bucket; CloudFront serves users/* only):
     ids/<steamid>.json.gz   private: {"slug"}. The only place a Steam ID is
                             kept, so nothing public links a profile to a
                             Steam account.
-    raw/<steamid>/<time>-<id>.ndjson.gz
+    raw/<steamid>/<time>-<id>.ndjson.gz (manual) or .mod.ndjson.gz (mod)
                             private: every upload exactly as sent.
     limits/steam/<steamid>.json.gz, limits/ip/<hash>.json.gz,
     limits/mod/<steamid>.json.gz
@@ -151,6 +151,7 @@ UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 UPLOAD_URL_SECONDS = 10 * 60
 MAX_DECOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_LINE_BYTES = 4 * 1024 * 1024
+MOD_MAX_LINE_BYTES = 2 * MAX_LINE_BYTES
 MAX_RUNS_PER_UPLOAD = 20000
 MAX_MONTHS_PER_UPLOAD = 240
 MAX_PARSED_RUN_BYTES = 1024 * 1024
@@ -175,7 +176,7 @@ INDEX_KEY = "users/_index.json.gz"
 INDEX_RETRIES = 5
 STATS_KEY = "users/_stats.json.gz"
 UPLOAD_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16}$")
-RAW_KEY_RE = re.compile(r"^raw/(\d{17})/(\d{8}T\d{6}Z)-([A-Za-z0-9_-]{16})\.ndjson\.gz$")
+RAW_KEY_RE = re.compile(r"^raw/(\d{17})/(\d{8}T\d{6}Z)-([A-Za-z0-9_-]{16})(?:\.mod)?\.ndjson\.gz$")
 
 
 class StoreConflict(Exception):
@@ -369,7 +370,7 @@ def slugify(name: str) -> str:
 # Upload body
 # ---------------------------------------------------------------------------
 
-def iter_upload_lines(body: bytes):
+def iter_upload_lines(body: bytes, max_line_bytes: int = MAX_LINE_BYTES):
     """
     Yield each NDJSON line of a gzip'd body, decompressing incrementally so a
     small body that inflates enormously is cut off at MAX_DECOMPRESSED_BYTES
@@ -391,9 +392,11 @@ def iter_upload_lines(body: bytes):
         buf += chunk
         *lines, buf = buf.split(b"\n")
         for line in lines:
+            if len(line) > max_line_bytes:
+                raise IngestError(400, "bad_body", "A run in the upload is implausibly large.")
             if line.strip():
                 yield line
-        if len(buf) > MAX_LINE_BYTES:
+        if len(buf) > max_line_bytes:
             raise IngestError(400, "bad_body", "A run in the upload is implausibly large.")
         if d.eof and d.unused_data:
             # Concatenated gzip members are one valid gzip stream; carry on
@@ -556,7 +559,8 @@ def _ends_before_floor_three(parsed: dict) -> bool:
     return parsed.get("floor") in (0, 1, 2)
 
 
-def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = None) -> tuple[int, int, int, int]:
+def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = None,
+                 *, max_line_bytes: int = MAX_LINE_BYTES) -> tuple[int, int, int, int]:
     """Parse every run in the upload into the spool; returns (count good,
     count rejected, count that looked like .run files at all -- rejected ones
     included, since a run the parser can't handle yet may be the parser's
@@ -564,7 +568,7 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool, held: dict | None = N
     is held: left out, counted in `held` ({"runs": n, "ids": {id: runs}}), and
     kept in raw/ for a rebuild once the game data has it."""
     good, rejected, run_shaped, held_n, skipped_early = 0, 0, 0, 0, 0
-    for line_number, line in enumerate(iter_upload_lines(body), start=1):
+    for line_number, line in enumerate(iter_upload_lines(body, max_line_bytes), start=1):
         if line_number > MAX_RUNS_PER_UPLOAD:
             raise IngestError(413, "too_many_runs", f"At most {MAX_RUNS_PER_UPLOAD} runs per upload.")
         try:
@@ -641,9 +645,15 @@ def id_key(steam_id: str) -> str:
     return f"ids/{steam_id}.json.gz"
 
 
-def raw_key(steam_id: str, upload_id: str, now: float) -> str:
+def raw_key(steam_id: str, upload_id: str, now: float, *, mod: bool = False) -> str:
     stamp = datetime.fromtimestamp(now, timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"raw/{steam_id}/{stamp}-{upload_id}.ndjson.gz"
+    suffix = ".mod.ndjson.gz" if mod else ".ndjson.gz"
+    return f"raw/{steam_id}/{stamp}-{upload_id}{suffix}"
+
+
+def raw_line_limit(key: str) -> int:
+    # The authorization endpoint signs the exact key, so the payload cannot choose its limit.
+    return MOD_MAX_LINE_BYTES if key.endswith(".mod.ndjson.gz") else MAX_LINE_BYTES
 
 
 def result_key(upload_id: str) -> str:
@@ -1365,7 +1375,7 @@ def authorize_mod(body: dict, store, presign, now: float | None = None,
     upload_id = secrets.token_urlsafe(12)
     return {"uploadId": upload_id, "maxBytes": MOD_UPLOAD_MAX_BYTES,
             "slug": _unpack(record[0])["slug"] if record else None,
-            **presign(raw_key(steam_id, upload_id, now), MOD_UPLOAD_MAX_BYTES, UPLOAD_URL_SECONDS)}
+            **presign(raw_key(steam_id, upload_id, now, mod=True), MOD_UPLOAD_MAX_BYTES, UPLOAD_URL_SECONDS)}
 
 
 # ---------------------------------------------------------------------------
@@ -1476,10 +1486,12 @@ def migrate_profile(store, slug: str) -> bool:
     return True
 
 
-def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name) -> dict:
+def _merge_upload(store, steam_id: str, body: bytes, now: float, lookup_name,
+                  *, max_line_bytes: int = MAX_LINE_BYTES) -> dict:
     with Spool() as spool:
         held = {}
-        good, rejected, run_shaped, skipped_early = spool_upload(body, steam_id, spool, held)
+        good, rejected, run_shaped, skipped_early = spool_upload(
+            body, steam_id, spool, held, max_line_bytes=max_line_bytes)
         if not run_shaped:
             raise IngestError(400, "no_runs", "None of those files could be read as runs.")
         slug, etag, doc = _read_profile(store, steam_id)
@@ -1603,7 +1615,8 @@ def process_upload(key: str, store, now: float | None = None, lookup_name=None) 
     steam_id, _, upload_id = m.groups()
     now = time.time() if now is None else now
     try:
-        result = _merge_upload(store, steam_id, got[0], now, lookup_name or lookup_steam_name)
+        result = _merge_upload(store, steam_id, got[0], now, lookup_name or lookup_steam_name,
+                               max_line_bytes=raw_line_limit(key))
     except IngestError as e:
         if e.status >= 500:
             raise
@@ -1620,7 +1633,7 @@ def _raw_uploads(store, steam_id: str):
     for key in sorted(store.list(f"raw/{steam_id}/")):
         got = store.get(key) if RAW_KEY_RE.match(key) else None
         if got is not None:
-            yield got[0]
+            yield key, got[0]
 
 
 def _replay_raw(store, steam_id: str, now: float, dry_run: bool, lookup_name, strict: bool = False) -> dict:
@@ -1628,15 +1641,16 @@ def _replay_raw(store, steam_id: str, now: float, dry_run: bool, lookup_name, st
     they sent was held (or unreadable). Each upload goes through again as if
     just sent, which makes the profile and counts the runs in the site stats."""
     added, held, unreadable, slug = 0, 0, 0, None
-    for body in _raw_uploads(store, steam_id):
+    for key, body in _raw_uploads(store, steam_id):
         try:
             if dry_run:
                 with Spool() as spool:
                     h = {}
-                    spool_upload(body, steam_id, spool, h)
+                    spool_upload(body, steam_id, spool, h, max_line_bytes=raw_line_limit(key))
                     added, held = added + len(spool.ts), held + h.get("runs", 0)
                 continue
-            res = _merge_upload(store, steam_id, body, now, lookup_name or lookup_steam_name)
+            res = _merge_upload(store, steam_id, body, now, lookup_name or lookup_steam_name,
+                                max_line_bytes=raw_line_limit(key))
         except IngestError as exc:
             if strict and (exc.status >= 500 or exc.status == 409):
                 raise
@@ -1664,9 +1678,9 @@ def rebuild_profile(store, steam_id: str, now: float | None = None, dry_run: boo
         return _replay_raw(store, steam_id, time.time() if now is None else now, dry_run, lookup_name, strict)
     unreadable, held = 0, {}
     with Spool() as spool:
-        for body in _raw_uploads(store, steam_id):  # oldest first: later copies win
+        for key, body in _raw_uploads(store, steam_id):  # oldest first: later copies win
             try:
-                spool_upload(body, steam_id, spool, held)
+                spool_upload(body, steam_id, spool, held, max_line_bytes=raw_line_limit(key))
             except IngestError:
                 unreadable += 1
         no_raw = _no_raw(doc) - spool.ts
@@ -1824,7 +1838,7 @@ def remove_runs(store, slug: str, ts_list, dry_run: bool = False) -> dict:
             rec = store.get(key) if RAW_KEY_RE.match(key) else None
             if rec is None:
                 continue
-            lines = list(iter_upload_lines(rec[0]))
+            lines = list(iter_upload_lines(rec[0], raw_line_limit(key)))
             keep = [ln for ln in lines if _line_ts(ln) not in want]
             if len(keep) == len(lines):
                 continue

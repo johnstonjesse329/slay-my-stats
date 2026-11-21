@@ -508,7 +508,7 @@ class AuthorizeModTests(Uploads, unittest.TestCase):
 
     def test_hands_out_one_raw_key(self):
         auth = self.authorize_mod()
-        self.assertEqual(auth["fields"]["key"], handler.raw_key(STEAM_ID, auth["uploadId"], NOW))
+        self.assertEqual(auth["fields"]["key"], handler.raw_key(STEAM_ID, auth["uploadId"], NOW, mod=True))
         self.assertEqual((auth["maxBytes"], auth["slug"]), (handler.MOD_UPLOAD_MAX_BYTES, None))
 
     def test_upload_lands_on_the_same_profile_as_the_site(self):
@@ -573,7 +573,7 @@ class AuthorizeModTests(Uploads, unittest.TestCase):
         # No list to be on: whoever Steam vouches for gets an upload.
         other = "76561198000000002"
         auth = self.authorize_mod(steam_id=other)
-        self.assertEqual(auth["fields"]["key"], handler.raw_key(other, auth["uploadId"], NOW))
+        self.assertEqual(auth["fields"]["key"], handler.raw_key(other, auth["uploadId"], NOW, mod=True))
 
     def test_someone_elses_ticket(self):
         # An id claimed with a real ticket for another account.
@@ -649,6 +649,20 @@ class ModRunsTests(Uploads, unittest.TestCase):
 
 
 class ProcessTests(Uploads, unittest.TestCase):
+    def test_larger_run_allowed_only_for_mod_uploads(self):
+        run_data = minimal_run(1700000001)
+        run_data["telemetry"] = {"padding": "x" * handler.MAX_LINE_BYTES}
+        body = body_of(run_data)
+        for mod, expected in ((False, "failed"), (True, "done")):
+            with self.subTest(mod=mod):
+                key = handler.raw_key(STEAM_ID, "abcDEF123456abcd", NOW, mod=mod)
+                self.store.put(key, body, {}, None)
+                self.assertEqual(self.process(key)["status"], expected)
+        run_data["telemetry"]["padding"] = "x" * handler.MOD_MAX_LINE_BYTES
+        key = handler.raw_key(STEAM_ID, "abcDEF123456abcd", NOW + 1, mod=True)
+        self.store.put(key, body_of(run_data), {}, None)
+        self.assertEqual(self.process(key)["error"], "bad_body")
+
     def result(self, key=None):
         m = handler.RAW_KEY_RE.match(key or self.last_key)
         return self.store.json(handler.result_key(m.group(3)))
