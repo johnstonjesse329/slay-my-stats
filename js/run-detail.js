@@ -497,6 +497,15 @@ function renderDetailRunList() {
 
 // ---- Run header ----
 
+const detailSectionNav = document.querySelector(".detail-section-nav");
+detailSectionNav.addEventListener("click", event => {
+  const button = event.target.closest("[data-section]");
+  if (!button) return;
+  const section = document.getElementById(button.dataset.section);
+  section.focus({ preventScroll: true });
+  section.scrollIntoView({ block: "start" });
+});
+
 // Shows `run` (one of this profile's) in the copy its party tabs pick: the profile's own, a
 // partner's, or the whole party's (see detailView). A partner's copy is fetched first; the tabs
 // say which is coming meanwhile, and a later pick wins over one still loading.
@@ -799,6 +808,9 @@ function showRunCopy(run, owner, note = "", players = null) {
   if (players) renderPartyCharts(players);
   document.getElementById("detail-keep-heading").hidden = document.getElementById("detail-keep-box").style.display === "none";
   renderDetailDeckRelics(run);
+  for (const button of detailSectionNav.querySelectorAll("[data-section]")) {
+    button.hidden = !document.getElementById(button.dataset.section).firstElementChild;
+  }
 }
 
 // A run's floor-by-floor changes, or null when it has no deck history (or one that doesn't fit).

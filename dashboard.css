@@ -3235,3 +3235,12 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   .detail-floor-controls { padding-block: 4px; }
   .party-floor-player .chart-wrap { height: 153px; }
 }
+
+
+.detail-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+#detail-content [tabindex="-1"] { scroll-margin-top: 1rem; }

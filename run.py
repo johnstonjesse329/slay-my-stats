@@ -1750,11 +1750,18 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <div id="detail-main">
     <div id="detail-placeholder" class="detail-placeholder">Select a run from the list to view its timeline.</div>
     <div id="detail-content" style="display:none">
-      <div id="detail-run-header"></div>
-      <div id="detail-deck-relics"></div>
-      <div id="detail-timeline"></div>
-      <div id="detail-maps"></div>
-      <section id="detail-floor-charts" aria-label="Floor charts">
+      <nav class="detail-section-nav" aria-label="Run sections">
+        <button type="button" class="toggle-btn" data-section="detail-run-header">Run summary</button>
+        <button type="button" class="toggle-btn" data-section="detail-deck-relics">Final deck</button>
+        <button type="button" class="toggle-btn" data-section="detail-timeline">Timeline</button>
+        <button type="button" class="toggle-btn" data-section="detail-maps">Act maps</button>
+        <button type="button" class="toggle-btn" data-section="detail-floor-charts">Floor charts</button>
+      </nav>
+      <div id="detail-run-header" tabindex="-1"></div>
+      <div id="detail-deck-relics" tabindex="-1"></div>
+      <div id="detail-timeline" tabindex="-1"></div>
+      <div id="detail-maps" tabindex="-1"></div>
+      <section id="detail-floor-charts" tabindex="-1" aria-label="Floor charts">
       <h2 id="detail-keep-heading">Keeping Up by Floor</h2>
       <div class="detail-floor-controls">
         <div id="detail-party-toggle" class="party-toggle" role="group" aria-label="Charts show"></div>
