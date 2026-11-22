@@ -63,6 +63,10 @@ def main():
             if page.locator("#shared-filter-summary").get_attribute("aria-expanded") != "true":
                 page.locator("#shared-filter-summary").click()
 
+        def assert_run_matches(count):
+            assert page.locator(".detail-run-item").count() == min(100, count)
+            assert f"{count} of " in page.locator("#shared-filter-summary").inner_text()
+
         load()
         full_stats = page.locator(".pb-table").inner_text()
         total_runs = page.evaluate("DATA.runsData.length")
@@ -114,7 +118,7 @@ def main():
         assert "filters=" not in page.url
         load()
         tab("detail")
-        assert page.locator(".detail-run-item").count() == standard_runs
+        assert_run_matches(standard_runs)
         expand()
         page.locator("#shared-filter-presets").select_option("preset:Patch 107")
         assert page.locator(".detail-run-item").count() == 34
@@ -141,13 +145,13 @@ def main():
                       {**state, "builds": ["unavailable-build"]})
         load(args.other_profile)
         tab("detail")
-        assert page.locator(".detail-run-item").count() == page.evaluate("overviewRuns().length")
+        assert_run_matches(page.evaluate("overviewRuns().length"))
         # All builds means all future builds, even with an older saved list.
         all_state = {**state, "allBuilds": True}
         page.evaluate("state => localStorage.setItem('sts2_filter_prefs', JSON.stringify(state))", all_state)
         load()
         tab("detail")
-        assert page.locator(".detail-run-item").count() == standard_runs
+        assert_run_matches(standard_runs)
         # URL wins over saved defaults; intentional empty selection remains empty.
         empty = {**state, "builds": [], "char": "FOOL", "players": "multi",
                  "modes": [], "mods": "modded", "ascGranular": True, "ascs": [],
