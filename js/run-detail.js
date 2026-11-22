@@ -4173,17 +4173,21 @@ function keepIncomingTip(r, mp = false) {
   if (r.grossTaken === undefined) return "";
   const k = KEEP_SPLIT;
   const share = v => r.grossArrived ? `<small>${Math.round(v / r.grossArrived * 100)}%</small>` : "";
+  const benchmark = r.winGross && r.winN
+    ? `Damage taken benchmark: ${r.winN} recorded fights from winning runs on this encounter and ascension tier. Average incoming damage, block and healing are unavailable.`
+    : "No damage taken benchmark for this fight. Average incoming damage, block and healing are unavailable.";
+  const coverage = `<div class="ft-cap">${benchmark}</div>`;
   const through = frow(keepIcon("taken", k.through), `Damage taken ${share(r.grossTaken)}`, r.grossTaken, one(r.grossRate),
-    r.winGross ? Math.round(r.winGross.total) : "", one(r.winGrossRate), "ft-through");
-  const healed = r.healedAll ? frow(keepIcon("healed", k.healed), "Healed", r.healedAll, one(r.healedAll / r.turns), "", "") : "";
-  if (r.grossArrived === undefined) return `<table>${fightHead}${healed}${through}</table>${mp ? COOP_BLOCK_NOTICE : ""}`;
+    r.winGross ? one(r.winGross.total) : "—", one(r.winGrossRate) ?? "—", "ft-through");
+  const healed = r.healedAll ? frow(keepIcon("healed", k.healed), "Healed", r.healedAll, one(r.healedAll / r.turns), "—", "—") : "";
+  if (r.grossArrived === undefined) return `<table>${fightHead}${healed}${through}</table>${coverage}${mp ? COOP_BLOCK_NOTICE : ""}`;
   const seg = (v, color, what) => v > 0 ? `<span style="flex:${v} 1 0;background:${color}" title="${what}"></span>` : "";
   return `<div class="ft-split" role="img" aria-label="${Math.round(r.grossBlocked)} blocked, ${r.grossTaken} HP lost">` +
     seg(r.grossBlocked, k.blocked, "Blocked") + seg(r.grossTaken, k.through, "HP lost") + `</div>` +
     `<table>${fightHead}` +
-    frow(swatch(KEEP_DEMAND_COLOR), "Arrived", Math.round(r.grossArrived), one(r.grossArrived / r.turns), "", "") +
-    frow(keepIcon("blocked", k.blocked), `Blocked ${share(r.grossBlocked)}`, Math.round(r.grossBlocked), one(r.grossBlocked / r.turns), "", "") +
-    healed + through + `</table>`;
+    frow(swatch(KEEP_DEMAND_COLOR), "Arrived", Math.round(r.grossArrived), one(r.grossArrived / r.turns), "—", "—") +
+    frow(keepIcon("blocked", k.blocked), `Blocked ${share(r.grossBlocked)}`, Math.round(r.grossBlocked), one(r.grossBlocked / r.turns), "—", "—") +
+    healed + through + `</table>${coverage}`;
 }
 
 function keepShareTip(r, color = KEEP_LINES.taken.color) {
