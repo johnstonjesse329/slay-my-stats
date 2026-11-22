@@ -141,37 +141,7 @@ def load_runs():
     return dict(g.load())
 
 
-def align(fights, timeline):
-    """Pairs the log's fights with the run's combat nodes by encounter id, in order.
-
-    A fight can exist in one list and not the other -- a run written by an older
-    parser may lack a fight the log has -- so this aligns on content rather than
-    assuming the two lists line up. Sequence alignment keeps the order and skips
-    whichever side is missing an entry.
-    """
-    combats = [n for n in timeline if n.get("turns") or str(n.get("enc") or "").startswith("ENCOUNTER.")]
-    a = [f.get("enc") or "" for f in fights]
-    b = [n.get("fight") or n.get("enc") or "" for n in combats]
-
-    # Longest common subsequence on the encounter ids: O(len(a)*len(b)), and both
-    # lists are under a few hundred.
-    n, m = len(a), len(b)
-    table = [[0] * (m + 1) for _ in range(n + 1)]
-    for i in range(n - 1, -1, -1):
-        for j in range(m - 1, -1, -1):
-            table[i][j] = (table[i + 1][j + 1] + 1 if a[i] and a[i] == b[j]
-                           else max(table[i + 1][j], table[i][j + 1]))
-    pairs, i, j = [], 0, 0
-    while i < n and j < m:
-        if a[i] and a[i] == b[j]:
-            pairs.append((fights[i], combats[j]))
-            i += 1
-            j += 1
-        elif table[i + 1][j] >= table[i][j + 1]:
-            i += 1
-        else:
-            j += 1
-    return pairs
+align = dt.align_fights
 
 
 def costs_of(deck):

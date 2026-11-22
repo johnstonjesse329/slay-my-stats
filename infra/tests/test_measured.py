@@ -46,6 +46,28 @@ LOCAL = _local()
 
 
 class PartyDamage(unittest.TestCase):
+    def test_resume_uses_completed_retry_and_keeps_repeated_floors(self):
+        enc = "ENCOUNTER.TEST_SUBJECT"
+        events = []
+        for attempt, (damage, closed) in enumerate(((141, False), (1560, True), (200, True), (30, False))):
+            args = [
+                ("fight0", {"enc": enc, "damageSlots": 2}),
+                ("turn0", {}),
+                ("hp", {"c": "enemy", "enemy": True, "d": -damage}),
+                ("hit", {"by": "P", "t": "enemy", "sourceSlot": 0, "enemy": True, "unb": damage - 1}),
+                ("hit", {"by": "P", "t": "enemy", "sourceSlot": 1, "enemy": True, "unb": 1}),
+            ]
+            if closed:
+                args.append(("fight1", {}))
+            events.extend({"k": kind, "a": data, "t": 1, "f": attempt} for kind, data in args)
+
+        nodes = [{"floor": floor, "turns": 1, "fight": enc} for floor in (44, 47, 50)]
+        log = handler.clean_event_log({"v": 3, "log": events})
+        rows = measured.measured(log, nodes)
+        self.assertEqual([(r["floor"], r["removed"], r.get("damageBySlot")) for r in rows], [
+            (45, 1560, [1559, 1]), (48, 200, [199, 1]), (51, 30, None),
+        ])
+
     def test_incoming_damage_requires_reconciled_player_slots(self):
         # Both players are named P, including when one player hits the other.
         # The lethal hit has no recv, while the blocked hit appears in both hooks.

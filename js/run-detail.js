@@ -880,7 +880,6 @@ function partyHpComparison(players, i, history) {
 }
 
 const COOP_BLOCK_NOTICE = '<div class="ft-cap">A mod update is coming to record block for each player in new co-op runs. This fight has no verified player breakdown.</div>';
-const COOP_DAMAGE_UPDATE = "A mod update is coming to record damage dealt by each player in new co-op runs.";
 
 function partyIncomingComparison(players, rows, average) {
   const table = partyFloorTable(players, ["Arrived", "Blocked", "Healed", "Damage taken"], p => {
@@ -3520,15 +3519,15 @@ function partyDamageFallback(run, nodes, sources, totals) {
   });
   const tip = i => fights[i]
     ? `<div class="ft-cap">${fights[i].estimated ? "Estimated party total" : "Party total"} <b>${Math.round(fights[i].total)} HP · ${rates[i].toFixed(1)}/turn</b></div>
-      <div class="ft-cap">${COOP_DAMAGE_UPDATE} This fight has no verified player breakdown.</div>`
+      <div class="ft-cap">This fight has no verified player breakdown.</div>`
     : "";
   const logged = fights.some(fight => fight && !fight.estimated);
   const hasLog = sources.some(source => source.size);
   const hasMod = [run, detailOwnerRun].some(copy => copy?.mods?.some(mod => mod.id === "SlayMyStats"));
   const linkMod = !hasLog && !hasMod;
   const notice = !missing ? "" : logged
-    ? `The combat log gives party totals for fights without a player breakdown. ${COOP_DAMAGE_UPDATE}`
-    : !linkMod ? `${lines.length ? "Some party totals are estimated from enemy HP." : "Damage data is missing for some fights."} ${COOP_DAMAGE_UPDATE}`
+    ? "The combat log gives party totals for fights without a player breakdown."
+    : !linkMod ? (lines.length ? "Some party totals are estimated from enemy HP." : "Damage data is missing for some fights.")
     : lines.length ? "Some party totals are estimated. To record combat logs, use the"
       : "Damage data is missing for some fights. To record combat logs, use the";
   return { lines, rates, tip, notice, linkMod, partySize };
@@ -4088,7 +4087,7 @@ function keepDamageTip(r, mp, color = KEEP_LINES.damage.color) {
     : frow(swatch(color), "Damage done", r.damageDone, one(r.doing), r.ask === undefined ? "" : hp, one(r.ask));
   return `<table>${fightHead}${done}` +
     frow(swatch(KEEP_DEMAND_COLOR), "Fight turns", r.turns, "", r.ask === undefined ? "" : +r.winTurns.toFixed(1), "") +
-    `</table>${wins}${missing ? `<div class="ft-cap">${mp ? `${COOP_DAMAGE_UPDATE} This fight has no verified player breakdown.` : "Damage done wasn’t recorded."}</div>` : ""}`;
+    `</table>${wins}${missing ? `<div class="ft-cap">${mp ? "This fight has no verified player breakdown." : "Damage done wasn’t recorded."}</div>` : ""}`;
 }
 
 // Incoming damage splits into blocked damage and HP lost. Healing is reported separately.

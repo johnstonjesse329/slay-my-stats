@@ -406,8 +406,8 @@ Upload limits, from the top of `handler.py`:
 ### Mod uploads
 
 Any Steam account can upload through a game mod instead (its own repo, [slay-my-stats-mod](https://github.com/johnstonjesse329/slay-my-stats-mod)), which
-sends each run as it ends. It's the same upload through a different door: the mod POSTs to the mod function's
-`/mod` path, and from the presigned POST on, everything above is unchanged.
+sends each run as it ends. The mod POSTs to the mod function's `/mod` path for a presigned S3 upload
+with a 5 MiB compressed limit. The processing Lambda accepts up to 64 MiB per decompressed mod run record.
 
 - **Who is playing.** Instead of the browser sign-in, the mod asks the Steam client the game is running under
   for a Web API ticket and sends it with the player's Steam ID. The mod Lambda has Steam confirm the ticket (`ISteamUserAuth/AuthenticateUserTicket`, with the same

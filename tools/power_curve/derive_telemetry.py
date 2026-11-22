@@ -119,6 +119,44 @@ def _new_fight(fight, first):
     }
 
 
+def align_fights(fights, timeline):
+    """Match encounters in order, favoring completed attempts when a floor was retried."""
+    combats = [n for n in timeline if n.get("turns") or str(n.get("enc") or "").startswith("ENCOUNTER.")]
+    fight_ids = [f.get("enc") for f in fights]
+    node_ids = [n.get("fight") or n.get("enc") for n in combats]
+
+    # An extra matched floor outweighs any number of completed attempts. Matching
+    # a readable, completed attempt breaks ties between alignments of equal length.
+    n, m = len(fights), len(combats)
+    weights = [2 * (m + 1 + bool(f.get("closed") and f.get("turns"))) for f in fights]
+
+    def match_weight(i, j):
+        # If repeated encounters leave a tie, keep the unfinished final fight
+        # on the final combat floor instead of using an earlier abandoned attempt.
+        return weights[i] + (i == n - 1 and j == m - 1 and not fights[i].get("closed"))
+
+    table = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n - 1, -1, -1):
+        for j in range(m - 1, -1, -1):
+            best = max(table[i + 1][j], table[i][j + 1])
+            if fight_ids[i] and fight_ids[i] == node_ids[j]:
+                best = max(best, table[i + 1][j + 1] + match_weight(i, j))
+            table[i][j] = best
+
+    pairs, i, j = [], 0, 0
+    while i < n and j < m:
+        if (fight_ids[i] and fight_ids[i] == node_ids[j]
+                and table[i][j] == table[i + 1][j + 1] + match_weight(i, j)):
+            pairs.append((fights[i], combats[j]))
+            i += 1
+            j += 1
+        elif table[i + 1][j] >= table[i][j + 1]:
+            i += 1
+        else:
+            j += 1
+    return pairs
+
+
 def derive(log, moves=None):
     """{"fights": [...], "checks": [...]} for one run's log object.
 

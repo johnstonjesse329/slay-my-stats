@@ -507,9 +507,16 @@ class AuthorizeModTests(Uploads, unittest.TestCase):
         return cm.exception
 
     def test_hands_out_one_raw_key(self):
-        auth = self.authorize_mod()
+        auth = handler.authorize_mod(
+            {"steamId": STEAM_ID, "ticket": TICKET}, self.store,
+            lambda key, max_bytes, expires: {
+                **fake_presign(key, max_bytes, expires), "signedMaxBytes": max_bytes,
+            },
+            now=NOW, verify=lambda ticket: STEAM_ID,
+        )
         self.assertEqual(auth["fields"]["key"], handler.raw_key(STEAM_ID, auth["uploadId"], NOW, mod=True))
-        self.assertEqual((auth["maxBytes"], auth["slug"]), (handler.MOD_UPLOAD_MAX_BYTES, None))
+        self.assertEqual((auth["maxBytes"], auth["slug"]), (5 * 1024 * 1024, None))
+        self.assertEqual(auth["signedMaxBytes"], auth["maxBytes"])
 
     def test_upload_lands_on_the_same_profile_as_the_site(self):
         self.ingest(body_of(minimal_run(1700000001)))
@@ -651,14 +658,16 @@ class ModRunsTests(Uploads, unittest.TestCase):
 class ProcessTests(Uploads, unittest.TestCase):
     def test_larger_run_allowed_only_for_mod_uploads(self):
         run_data = minimal_run(1700000001)
-        run_data["telemetry"] = {"padding": "x" * handler.MAX_LINE_BYTES}
+        run_data["telemetry"] = {"padding": ""}
+        limit = 64 * 1024 * 1024
+        run_data["telemetry"]["padding"] = "x" * (limit - len(json.dumps(run_data).encode()))
         body = body_of(run_data)
         for mod, expected in ((False, "failed"), (True, "done")):
             with self.subTest(mod=mod):
                 key = handler.raw_key(STEAM_ID, "abcDEF123456abcd", NOW, mod=mod)
                 self.store.put(key, body, {}, None)
                 self.assertEqual(self.process(key)["status"], expected)
-        run_data["telemetry"]["padding"] = "x" * handler.MOD_MAX_LINE_BYTES
+        run_data["telemetry"]["padding"] += "x"
         key = handler.raw_key(STEAM_ID, "abcDEF123456abcd", NOW + 1, mod=True)
         self.store.put(key, body_of(run_data), {}, None)
         self.assertEqual(self.process(key)["error"], "bad_body")
@@ -1829,6 +1838,16 @@ class EventLogTests(Uploads, unittest.TestCase):
         wide = {"cards": [f"CARD.{i}" for i in range(handler.TELEMETRY_MAX_LIST + 50)]}
         cleaned = handler.clean_event_log({"v": 3, "log": [{"q": 1, "k": "snap", "a": wide}]})
         self.assertEqual(len(cleaned["log"][0]["a"]["cards"]), handler.TELEMETRY_MAX_LIST)
+
+    def test_long_trace_retains_damage_calculation_and_fight_end(self):
+        args = {"before": 4, "after": 6, "modifiers": [{"model": "POWER.VULNERABLE", "sourceSlot": 0}]}
+        events = [{"k": "hp", "a": {"d": -1}}] * 146_494
+        events.extend([{"k": "damageCalc", "a": args}, {"k": "fight1", "a": {}}])
+        cleaned = handler.clean_event_log({"v": 3, "log": events})
+        self.assertFalse(cleaned["truncated"])
+        self.assertEqual(len(cleaned["log"]), len(events))
+        self.assertEqual(cleaned["log"][-2]["a"], args)
+        self.assertEqual(cleaned["log"][-1]["k"], "fight1")
 
     def test_capped_and_marked(self):
         log = {"v": 3, "log": [{"q": i, "k": "hp", "a": {"d": -1}} for i in range(handler.TELEMETRY_MAX_EVENTS + 10)]}
