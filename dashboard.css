@@ -189,13 +189,14 @@ h1 {
 .pb-table thead th.pb-total { font-size: var(--fs-sm); font-weight: 600; }
 .pb-char-icon { width: 22px; height: 22px; vertical-align: middle; margin-right: 0.4rem; }
 .pb-table tr.pb-tier th { padding-left: 1.25rem; font-size: var(--fs-sm); border-bottom: 0; }
-.pb-table tr.pb-tier td { font-size: var(--fs-sm); color: var(--text-dim); padding-block: 0.45rem; }
+.pb-table tr.pb-tier td { font-size: var(--fs-sm); color: var(--text-dim); padding-block: 0.65rem; }
+.pb-table tr.pb-tier + tr:not(.pb-tier) > * { border-top: 1px solid var(--hairline); }
 .pb-table tr:not(.pb-tier) + tr.pb-tier td, .pb-table tr:not(.pb-tier) + tr.pb-tier th { padding-top: 0.3rem; }
 .pb-table tr.pb-win-total th { padding-left: 0.5rem; color: var(--text); font-weight: 700; }
 .pb-table tr.pb-tier-dread th { color: #87ceeb; font-weight: 700; letter-spacing: 0.04em; }
 .pb-win-line, .pb-win-modes { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4em; white-space: normal; }
 .pb-win-line { color: var(--text); font-variant-numeric: tabular-nums; }
-.pb-win-modes { font-size: var(--fs-xs); }
+.pb-win-modes { font-size: var(--fs-xs); margin: 0.2rem 0 0.35rem; }
 .pb-win-modes span + span::before { content: "·"; margin-right: 0.4em; color: var(--text-faint); }
 .pb-bar { display: block; height: 5.33px; width: min(100%, 7rem); margin: 3px auto 0; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
 .pb-bar i { display: block; height: 100%; border-radius: inherit; }
@@ -227,7 +228,7 @@ h1 {
   .pb-table th, .pb-table td { padding: 0.4rem 0.1rem; }
   .pb-table thead th:first-child { width: 4.5rem; }
   .pb-table tbody th { padding-left: 0; white-space: normal; line-height: 1.2; }
-  .pb-table tr.pb-tier th { padding-left: 0.6rem; }
+  .pb-table tr.pb-tier th { padding-inline: 0.4rem; overflow-wrap: anywhere; }
   .pb-char-icon { margin-right: 0; }
   .pb-char-name { display: none; }
   .pb-table thead th.pb-total { font-size: var(--fs-xs); }
@@ -403,10 +404,10 @@ h1 {
   /* Smaller tiles than under a row: the whole deck should fit beside the list. */
   .seeds-preview .seed-detail-panel { padding-top: 0; }
 }
-/* Cards and Seeds: the column headings stay put while the rows scroll.
+/* Cards, Relics and Seeds: the column headings stay put while the rows scroll.
    box-shadow, not a border: a collapsed border stays behind when the cell sticks. */
-#cards-table-main thead, #seeds-table thead { position: sticky; top: 0; z-index: 2; }
-#cards-table-main thead th, #seeds-table thead th { background: var(--panel-2); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--hairline); }
+#cards-table-main thead, #seeds-table thead, #relics-table thead { position: sticky; top: 0; z-index: 2; }
+#cards-table-main thead th, #seeds-table thead th, #relics-table thead th { background: var(--panel-2); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--hairline); }
 .cards-thumb-wrap { --cards-thumb-w: 62px; display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
 .cards-thumb-wrap .cardface { width: var(--cards-thumb-w); display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
 .cards-hi { font-size: var(--fs-md); }
@@ -807,6 +808,9 @@ h1 {
 }
 /* The shared bar sits right under the tabs, so the open tab runs into it. */
 #shared-filter-bar { border-top: 0; border-radius: 0 0 8px 8px; }
+@media (min-width: 1000px) and (min-height: 600px) {
+  body:has(#tab-cards.active) #shared-filter-bar { position: sticky; top: 0; z-index: 220; }
+}
 .filter-bar-2row {
   flex-direction: column;
   align-items: stretch;
@@ -1342,6 +1346,10 @@ h1 {
   padding: 0.5rem 0;
 }
 
+.detail-act-filter { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; font-size: var(--fs-sm); color: var(--text-dim); }
+.detail-act-filter .seeds-input { width: auto; }
+.detail-run-pagination:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.35rem; }
+.detail-run-pagination { margin-top: 0.45rem; font-size: var(--fs-sm); color: var(--text-dim); }
 #detail-run-list {
   background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);

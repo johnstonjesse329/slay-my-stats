@@ -81,6 +81,20 @@ const detailTags = new Set();
 // Players picked under "Played with" (profile slugs); a run shows when all of them have a
 // copy of it linked to this one (run.coop, from boot.js).
 const detailPartners = new Set();
+const detailActReached = document.getElementById("detail-act-reached");
+detailActReached.addEventListener("change", () => renderDetailRunList());
+const DETAIL_RUNS_PER_PAGE = 100;
+const detailRunPagination = document.getElementById("detail-run-pagination");
+const detailRunsPrevious = document.getElementById("detail-runs-previous");
+const detailRunsNext = document.getElementById("detail-runs-next");
+const detailRunsPage = document.getElementById("detail-runs-page");
+detailRunsPrevious.addEventListener("click", () => renderDetailRunList(-1));
+detailRunsNext.addEventListener("click", () => renderDetailRunList(1));
+
+function matchesDetailAct(run) {
+  const act = Number(detailActReached.value);
+  return !act || (run.timeline || []).some(node => node.act === act);
+}
 let detailSortAsc = false;
 const DETAIL_SORT_FNS = {
   char:  (a, b) => fmtCharName(a.char).localeCompare(fmtCharName(b.char)),
@@ -94,7 +108,8 @@ const DETAIL_SORT_FNS = {
 
 function getDetailRuns() {
   const fn = DETAIL_SORT_FNS[detailSortCol];
-  return filterRuns().sort((a, b) => (detailSortAsc ? fn(a, b) : fn(b, a)) || b.ts - a.ts);
+  return filterRuns().filter(matchesDetailAct)
+    .sort((a, b) => (detailSortAsc ? fn(a, b) : fn(b, a)) || b.ts - a.ts);
 }
 
 // "Modded" tag for a run the game mod reported loaded mods for (run.mods, from
@@ -412,17 +427,28 @@ document.querySelector("#detail-tag-filter .tag-filter-clear")?.addEventListener
   renderDetailRunList();
 });
 
-function renderDetailRunList() {
+function renderDetailRunList(pageStep = 0) {
   const filtered = getDetailRuns();
   renderDetailTagFilter(filtered);
   renderDetailPartnerFilter(filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t))));
   const runs = filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t)) && playedWithAll(r));
   const container = document.getElementById("detail-run-list");
+  detailRunPagination.hidden = runs.length <= DETAIL_RUNS_PER_PAGE;
 
   if (runs.length === 0) {
     container.innerHTML = `<div style="color:var(--text-dim);padding:1rem;font-size:var(--fs-sm)">No runs match the current filters.</div>`;
     return;
   }
+
+  const selectedIndex = Math.max(0, runs.findIndex(r => r.ts === detailSelectedTs));
+  const pageCount = Math.ceil(runs.length / DETAIL_RUNS_PER_PAGE);
+  const page = Math.max(0, Math.min(pageCount - 1, Math.floor(selectedIndex / DETAIL_RUNS_PER_PAGE) + pageStep));
+  const firstIndex = page * DETAIL_RUNS_PER_PAGE;
+  const selected = runs[pageStep ? firstIndex : selectedIndex];
+  detailSelectedTs = selected.ts;
+  detailRunsPrevious.disabled = page === 0;
+  detailRunsNext.disabled = page === pageCount - 1;
+  detailRunsPage.textContent = `${firstIndex + 1}–${Math.min(firstIndex + DETAIL_RUNS_PER_PAGE, runs.length)} of ${runs.length}`;
 
   const fmtDate = ts => { const d = new Date(ts * 1000); return `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`; };
 
@@ -441,7 +467,7 @@ function renderDetailRunList() {
     ${sortHead("floor", "Floor")}
     ${sortHead("read", "+/–", `Hype, Mid or Rough against the average win on this run's fights.\nOP: Hype in Acts ${KEEP_OP_ACTS.join(" and ")}.`)}
     ${sortHead("date", "Date")}
-  </div>` + runs.map((run, i) => {
+  </div>` + runs.slice(firstIndex, firstIndex + DETAIL_RUNS_PER_PAGE).map(run => {
     const won    = run.won;
     const active = run.ts === detailSelectedTs;
     // A multiplayer run names its party's characters, so show their heads; a solo run is one head.
@@ -483,14 +509,11 @@ function renderDetailRunList() {
     bindEnterSpace(el);
   });
 
-  // Render whichever run is currently selected — falls back to the first
-  // run if nothing is selected or the prior selection isn't in this list
-  // (e.g. filters changed). A caller can pre-set detailSelectedTs before
-  // switching to this page (see jumpToRun) to land directly on a specific
-  // run instead of always defaulting to the first.
-  const selected = runs.find(r => r.ts === detailSelectedTs) || runs[0];
-  detailSelectedTs = selected.ts;
-  container.querySelector(`.detail-run-item[data-ts="${selected.ts}"]`).classList.add("active");
+  if (pageStep) {
+    container.scrollTop = 0;
+    if (document.activeElement === detailRunsPrevious && detailRunsPrevious.disabled) detailRunsNext.focus();
+    if (document.activeElement === detailRunsNext && detailRunsNext.disabled) detailRunsPrevious.focus();
+  }
   syncRunHash();
   renderDetailRun(selected);
 }

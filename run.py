@@ -1744,8 +1744,22 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="tag-filter-chips"></div>
     </div>
+    <div class="detail-act-filter">
+      <label for="detail-act-reached">Act reached</label>
+      <select class="seeds-input" id="detail-act-reached">
+        <option value="0">Any act</option>
+        <option value="1">Act 1</option>
+        <option value="2">Act 2</option>
+        <option value="3">Act 3</option>
+      </select>
+    </div>
     <div id="detail-jump-notice" role="status" hidden></div>
     <div id="detail-run-list"></div>
+    <nav class="detail-run-pagination" id="detail-run-pagination" aria-label="Run list pages" hidden>
+      <button type="button" class="toggle-btn" id="detail-runs-previous">Previous</button>
+      <span id="detail-runs-page" role="status"></span>
+      <button type="button" class="toggle-btn" id="detail-runs-next">Next</button>
+    </nav>
   </div>
   <div id="detail-main">
     <div id="detail-placeholder" class="detail-placeholder">Select a run from the list to view its timeline.</div>
