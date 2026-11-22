@@ -1774,6 +1774,42 @@ function mapAsWalked(m, floors) {
   return { ...m, nodes, h: bossAt ? bossAt[0] : top + 1, ...(bossAt ? { boss: bossAt } : {}) };
 }
 
+// Compare routes at the same depth, so a run that ended mid-act isn't measured
+// against a route all the way to the boss.
+function actRouteComparison(map) {
+  const types = [["Elite", "Elites"], ["Shop", "Shops"], ["RestSite", "Rest sites"],
+    ["Unknown", "Unknown rooms"], ["Fork", "Forks"]];
+  const taken = map.path.filter(([row]) => row > 0 && row < map.h);
+  if (!taken.length) return "";
+  const depth = taken.at(-1)[0];
+  const key = coords => coords.join(",");
+  const toBoss = map.boss && map.path.some(coords => key(coords) === key(map.boss));
+  const reachable = new Map();
+  const nodes = map.nodes.filter(([row]) => row <= depth).sort((a, b) => b[0] - a[0]);
+  for (const [row, col, type, exits] of nodes) {
+    const children = exits.filter(([next]) => next > row)
+      .map(coords => reachable.get(key(coords))).filter(Boolean);
+    if (row === depth ? toBoss && !exits.some(coords => key(coords) === key(map.boss)) : !children.length) continue;
+    const counts = types.map(([name]) => Number(name === type || (name === "Fork" && children.length > 1)));
+    const min = counts.map((count, i) => count + (children.length ? Math.min(...children.map(c => c.min[i])) : 0));
+    const max = counts.map((count, i) => count + (children.length ? Math.max(...children.map(c => c.max[i])) : 0));
+    reachable.set(key([row, col]), { row, children, counts, min, max });
+  }
+  const starts = [...reachable.values()].filter(node => node.row === 1);
+  const visited = taken.map(coords => reachable.get(key(coords)));
+  if (!starts.includes(visited[0]) || visited.some((node, i) => !node || (i > 0 && !visited[i - 1].children.includes(node)))) return "";
+  return `<div class="act-map-route"><table class="detail-summary-table">
+    <caption>Routes through row ${depth}</caption>
+    <thead><tr><th scope="col">Map stop</th><th scope="col">Taken</th><th scope="col">Range</th></tr></thead>
+    <tbody>${types.map(([, label], i) => {
+      const count = visited.reduce((sum, node) => sum + node.counts[i], 0);
+      const min = Math.min(...starts.map(node => node.min[i]));
+      const max = Math.max(...starts.map(node => node.max[i]));
+      return `<tr><th scope="row">${label}</th><td>${count}</td><td>${min === max ? min : `${min}–${max}`}</td></tr>`;
+    }).join("")}</tbody>
+  </table></div>`;
+}
+
 function renderDetailMaps(run) {
   const box = document.getElementById("detail-maps");
   if (!box) return;
@@ -1789,10 +1825,11 @@ function renderDetailMaps(run) {
     // run ended first); older uploads only know the ones fought.
     const fought = floors.filter(n => n.type === "boss").map(n => n.enc);
     const bossKeys = [m.bossEnc || fought[0], m.boss2Enc || fought[1]].filter(Boolean);
-    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed)}</div></section>`;
+    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed)}</div>${m === sent ? actRouteComparison(m) : ""}</section>`;
   }).join("") + `</div></div>` : "";
-  // The whole card opens it (the header button is the keyboard way in).
-  for (const c of box.querySelectorAll(".act-map")) c.addEventListener("click", () => openActMap(c));
+  for (const card of box.querySelectorAll(".act-map")) card.addEventListener("click", event => {
+    if (!event.target.closest(".act-map-route")) openActMap(card);
+  });
 }
 
 // One act's map over the page, as tall as the window allows. Click outside it, or Escape, to close.
