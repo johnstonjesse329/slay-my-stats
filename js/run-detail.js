@@ -3536,6 +3536,9 @@ function measuredStrengthByNode(run, nodes) {
 }
 
 const damageFloorKey = n => `${n.floor}:${keepFight(n)}`;
+const hasPartyDamage = run => run?.measured?.some(row =>
+  Array.isArray(row.damageBySlot) && row.damageBySlot.length === run.party?.length);
+
 const hasCompletePartyCombat = run => {
   const fights = (run.timeline || []).filter(keepFight);
   const measured = measuredStrengthByNode(run, fights);
@@ -3682,6 +3685,21 @@ const keepWinners = (run, d) => {
 // the event, because the map still shows it as the event.
 const keepFight = n => n.turns ? n.fight || n.enc : "";
 
+function furCoatPickupFloor(run) {
+  const id = "RELIC.FUR_COAT";
+  const finalIndex = run.finalRelics?.findIndex(relic => relic.id === id);
+  const added = run.relicsAdded?.[finalIndex];
+  const lost = run.relicsLost?.find(([relic]) => relic === id)?.[1];
+  const picked = run.timeline?.find(n => n.relicPicked === id);
+  return added ?? lost ?? (picked && picked.floor + 1) ?? Infinity;
+}
+
+// A completed one-turn fight after pickup with no more than 1 HP removed per enemy
+// provides evidence that Fur Coat marked the room. Keep the measured numbers visible.
+const furCoatFight = (node, measured, count, pickup, completed) =>
+  completed && node.floor + 1 > pickup && node.turns === 1 &&
+  count > 0 && measured?.removed > 0 && measured.removed <= count;
+
 // Whatever the map called the room: a "?" room or an event can hide a fight of either kind.
 const keepRank = n => n.type === "boss" ? "Boss" : /_ELITE$/.test(keepFight(n)) ? "Elite" : "";
 
@@ -3712,17 +3730,19 @@ function fightReadings(run, nodes, measured, partyDamage = null, partySources = 
   const demand = DATA.fightDemand.encounters;
   const tough = +(run.asc >= 8);
   const lastFight = nodes.findLastIndex(keepFight);
+  const furCoat = furCoatPickupFloor(run);
   const rows = nodes.map((n, i) => {
     if (!keepFight(n)) return null;
     const d = demand[keepFight(n)];
     const table = d ? d.pool[tough] * keepShare(run, n) : 0;
     const lost = !run.won && i === lastFight;
     const dealt = partyDamage?.[i];
-    const how = d && keepWinners(run, d);
     const sample = measured?.[i];
+    const furCoatAffected = furCoatFight(n, sample, d?.count, furCoat, !lost);
+    const how = d && !furCoatAffected && keepWinners(run, d);
     const m = run.mp ? null : sample;
     const pool = !m ? table : lost ? Math.max(table, m.removed) : m.removed;
-    const row = { pool, lost, turns: n.turns, many: d?.many, count: d?.count };
+    const row = { pool, lost, turns: n.turns, many: d?.many, count: d?.count, furCoatAffected };
     if (how) { row.winTurns = how.turns; row.winN = how.n; if (pool) row.ask = pool / how.turns; }
     if (run.mp ? dealt != null : m || !lost) {
       row.damageDone = run.mp ? dealt : m ? m.removed : pool;
@@ -3784,7 +3804,7 @@ function keepRanges(run, nodes, rows) {
   const done = [], taken = [];
   nodes.forEach((n, i) => {
     const r = rows[i], d = demand[keepFight(n)], how = r && d && keepWinners(run, d);
-    const ok = how && how.n >= KEEP_RANGE_MIN;
+    const ok = how && !r.furCoatAffected && how.n >= KEEP_RANGE_MIN;
     done.push(ok && r.ask !== undefined && how.slow && how.fast ? { bad: r.pool / how.slow, good: r.pool / how.fast } : null);
     taken.push(ok && how.gross ? { bad: how.gross.heavy, good: how.gross.light } : null);
   });
@@ -3832,11 +3852,18 @@ function actReadings(run, nodes, measured, partyCosts = null) {
   if (!DATA.fightDemand?.cuts) return [];
   const demand = DATA.fightDemand.encounters;
   const lastFight = nodes.findLastIndex(keepFight);
+  const furCoat = furCoatPickupFloor(run);
+  const evidence = measured || (Number.isFinite(furCoat) && measuredStrengthByNode(run, nodes));
+  const omitted = new Map();
   const acts = new Map();
   nodes.forEach((n, i) => {
     const d = demand[keepFight(n)];
     const how = d && keepWinners(run, d);
     if (!how || (!run.won && i === lastFight)) return;
+    if (furCoatFight(n, evidence?.[i], d.count, furCoat, true)) {
+      omitted.set(n.act, (omitted.get(n.act) || 0) + 1);
+      return;
+    }
     if (!acts.has(n.act)) acts.set(n.act, { act: n.act, fights: 0, kinds: {}, turns: 0, winTurns: 0, taken: 0, healed: 0, winTaken: 0, log: null });
     const a = acts.get(n.act);
     a.fights++;
@@ -3865,7 +3892,8 @@ function actReadings(run, nodes, measured, partyCosts = null) {
     const cut = keepActCut(a.act);
     const speed = keepMark(pace, cut.pace), held = keepMark(guard, cut.guard);
     const verdict = keepVerdict(pace, guard, cut);
-    return { ...a, cut, pace, guard, each, speed, held, verdict, lacking: verdict === "behind" ? short(pace, each) : null };
+    return { ...a, cut, pace, guard, each, speed, held, verdict, furCoatOmitted: omitted.get(a.act) || 0,
+      lacking: verdict === "behind" ? short(pace, each) : null };
   });
 }
 
@@ -4076,7 +4104,9 @@ function renderKeepActs(run, nodes, measured) {
         perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)}`) +
         perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, "") +
         perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") + `</div>` : "") +
-      `</div></div>`;
+      `</div>` +
+      (a.furCoatOmitted ? `<p class="chart-caption">Fur Coat: ${a.furCoatOmitted} marked ${a.furCoatOmitted === 1 ? "fight excluded" : "fights excluded"}.</p>` : "") +
+      `</div>`;
   }).join("");
 }
 
@@ -4176,7 +4206,8 @@ const one = v => v === undefined ? undefined : v.toFixed(1);
 const fightKind = (n, r) => {
   const count = r?.count;
   const ofMany = count > 1 ? `${count} enemies` : r?.many ? "Multi-enemy" : "";
-  const text = r && r.many !== undefined ? [keepRank(n), ofMany].filter(Boolean).join(" · ") : "";
+  const text = r && r.many !== undefined
+    ? [keepRank(n), ofMany, r.furCoatAffected ? "Fur Coat fight excluded from win comparison" : ""].filter(Boolean).join(" · ") : "";
   return text ? `<div class="ft-cap">${text}</div>` : "";
 };
 

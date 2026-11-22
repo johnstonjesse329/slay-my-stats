@@ -125,6 +125,16 @@ class RunFights(unittest.TestCase):
         self.assertFalse(fights[0]["died"])
 
 
+    def test_fur_coat_removes_only_one_turn_benchmarks_after_pickup(self):
+        raw = run([room(["MONSTER.A"], turns) for turns in (1, 2, 1, 5, 6, 7, 1)])
+        raw["players"][0]["relics"] = [{"id": fd.FUR_COAT, "floor_added_to_deck": 2}]
+        sample = fd.run_fights({"one": raw})[0]
+        self.assertEqual([f["possible_fur_coat"] for f in sample], [False, False, True, False, False, False, True])
+        line = line_of([sample])
+        self.assertEqual(line["n"], 5)
+        self.assertEqual(line["turns"], 4.2)
+
+
 class Table(unittest.TestCase):
     def test_pool_sums_every_body_at_each_difficulty(self):
         d = demand_of([[fight(ids=("MONSTER.A", "MONSTER.B"))]])["ENCOUNTER.X"]
