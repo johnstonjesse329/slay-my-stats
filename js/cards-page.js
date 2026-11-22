@@ -476,9 +476,7 @@ function favCellHtml(kind, item, winPct, detail) {
   return `<td class="fav-cell">${favItemHtml(kind, item, winPct, detail)}</td>`;
 }
 
-// The item itself, without its cell: favCellHtml wraps one, the by-character
-// grid stacks yours above everybody's in one cell.
-function favItemHtml(kind, item, winPct, detail, extraClass = "") {
+function favItemHtml(kind, item, winPct, detail, { cohort = "", comparison = null } = {}) {
   const isCard = kind === "cards";
   const label = isCard ? fmtCardLabel(item.id) : fmtRelicLabel(item.id);
   const src = isCard ? cardImgSrc(item.id) : relicImgSrc(item.id);
@@ -487,13 +485,18 @@ function favItemHtml(kind, item, winPct, detail, extraClass = "") {
   const pic = face
     ? `<span class="fav-item-face">${face}</span>`
     : src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="fav-pic">` : "";
-  const rate = winPct == null ? "—" : `${Math.round(winPct)}%`;
-  return `<span class="fav-item${extraClass}" tabindex="0" data-fav-kind="${kind}" data-fav-id="${item.id}" aria-label="${label}, ${detail}, ${rate} won">
+  const figures = [{ cohort, winPct, detail }];
+  if (comparison) figures.push(comparison);
+  const rateText = pct => pct == null ? "—" : `${Math.round(pct)}%`;
+  const accessible = figures.map(f => [f.cohort, f.detail, `${rateText(f.winPct)} won`].filter(Boolean).join(", "));
+  return `<span class="fav-item" role="group" tabindex="0" data-fav-kind="${kind}" data-fav-id="${item.id}" aria-label="${escapeHtml([label, ...accessible].join(", "))}">
     <span class="fav-icon">${pic}</span>
     <span class="fav-text">
-      <span class="fav-name">${label}</span>
-      <span class="fav-detail"><span class="fav-rate${winPct >= 50 ? " fav-hi" : ""}">${rate}</span><span class="fav-won"> won</span></span>
-      <span class="fav-count">${detail}</span>
+      <span class="fav-name">${escapeHtml(label)}</span>
+      ${figures.map(f => `<span class="fav-figures">
+        <span class="fav-detail">${f.cohort ? `<span class="fav-cohort${f.cohort === "All players" ? " fav-cohort-all" : ""}">${f.cohort}</span> ` : ""}<span class="fav-rate${f.winPct >= 50 ? " fav-hi" : ""}">${rateText(f.winPct)}</span><span class="fav-won"> won</span></span>
+        <span class="fav-count">${f.detail}</span>
+      </span>`).join("")}
     </span>
   </span>`;
 }
@@ -521,8 +524,7 @@ function favPanelHtml(title, tallies, chars) {
 // With every character in view, one row per character instead of one pool
 // for all of them: the columns are the slots (the rarities, and Multi), and a
 // switch picks which of the three choices (most picked, best win %, most
-// bought) fills them. Your block of slots sits beside all players', as on
-// the Relics tab; below 1620px a You / All players switch shows one at a time.
+// bought) fills them. Each rarity compares the two favorites in the same cell.
 let favByCharMetric = "picked";
 const FAV_METRICS = [
   { key: "picked", label: "Most picked" },
@@ -544,33 +546,45 @@ function favByCharHtml(you, all) {
   // Characters with runs in either set, in the site's roster order.
   const chars = DATA.characters.filter(c => you.runs[c] || (all && all.runs[c]));
   const slots = favSlots();
-  const cls = (who, i) => ` fav-${who}${who === "all" && i === 0 ? " fav-all-start" : ""}`;
-  const block = (tallies, char, who) => slots.map((slot, i) => {
-    const it = tallies && favPicksFor(tallies, slot, [char])[favByCharMetric];
-    if (!it) return `<td class="fav-cell fav-empty${cls(who, i)}">—</td>`;
-    const [rate, detail] = favMetricFigures(favByCharMetric, it);
-    return `<td class="fav-cell${cls(who, i)}">${favItemHtml(slot.kind, it, rate, detail)}</td>`;
-  }).join("");
-  const heads = who => slots.map((s, i) => `<th class="${cls(who, i).trim()}">${s.label}</th>`).join("");
-  const groups = all ? `<tr class="fav-groups"><th></th>
-    <th class="fav-group-you" colspan="${slots.length}">Your runs</th>
-    <th class="fav-group-all fav-all-start" colspan="${slots.length}">All players</th></tr>` : "";
+  const cell = (slot, char) => {
+    const mine = favPicksFor(you, slot, [char])[favByCharMetric];
+    const theirs = all && favPicksFor(all, slot, [char])[favByCharMetric];
+    if (!mine && !theirs) return `<td class="fav-cell fav-empty">—</td>`;
+    const myFigures = favMetricFigures(favByCharMetric, mine);
+    if (!all) return favCellHtml(slot.kind, mine, ...myFigures);
+    const allFigures = favMetricFigures(favByCharMetric, theirs);
+    if (mine && theirs && mine.id === theirs.id) {
+      const [winPct, detail] = allFigures;
+      return `<td class="fav-cell fav-card-shared">${favItemHtml(slot.kind, mine, ...myFigures, {
+        cohort: "You", comparison: { cohort: "All players", winPct, detail },
+      })}</td>`;
+    }
+    const entry = (item, figures, cohort) => item
+      ? favItemHtml(slot.kind, item, ...figures, { cohort })
+      : `<span class="fav-empty" aria-label="${cohort}: no favorite">${cohort} —</span>`;
+    return `<td class="fav-cell"><div class="fav-card-pair">
+      <div class="fav-card-you">${entry(mine, myFigures, "You")}</div>
+      <div class="fav-card-all">${entry(theirs, allFigures, "All players")}</div>
+    </div></td>`;
+  };
   const rows = chars.map(char => {
     const n = you.runs[char] || 0;
-    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${block(you, char, "you")}${all ? block(all, char, "all") : ""}</tr>`;
+    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${slots.map(slot => cell(slot, char)).join("")}</tr>`;
   }).join("");
   const switcher = `<div class="filter-group fav-metric">${FAV_METRICS.map(m =>
     `<button class="toggle-btn${m.key === favByCharMetric ? " active" : ""}" data-fav-metric="${m.key}">${m.label}</button>`).join("")}</div>`;
-  const who = all ? `<div class="filter-group fav-who">${["you", "all"].map(w =>
-    `<button class="toggle-btn${(w === "all") === favByCharShowAll ? " active" : ""}" data-fav-who="${w}">${w === "all" ? "All players" : "You"}</button>`).join("")}</div>` : "";
+  const who = all ? `<div class="filter-group fav-who" role="group" aria-label="Favorites population">${["you", "all"].map(w => {
+    const active = (w === "all") === favByCharShowAll;
+    return `<button type="button" class="toggle-btn${active ? " active" : ""}" aria-pressed="${active}" data-fav-who="${w}">${w === "all" ? "All players" : "You"}</button>`;
+  }).join("")}</div>` : "";
   return `<div class="fav-bychar">
     <div class="fav-bychar-bar">${switcher}${who}</div>
-    <div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-blocks-table${favByCharShowAll && all ? " show-all" : ""}${slots.length > 3 ? " fav-wide" : ""}">
-      <thead>${groups}<tr><th></th>${heads("you")}${all ? heads("all") : ""}</tr></thead><tbody>${rows}</tbody>
+    <div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-card-table${favByCharShowAll && all ? " show-all" : ""}">
+      <thead><tr><th></th>${slots.map(slot => `<th scope="col">${slot.label}</th>`).join("")}</tr></thead><tbody>${rows}</tbody>
     </table></div>
   </div>`;
 }
-let favByCharShowAll = false; // once the blocks don't fit side by side: which one shows
+let favByCharShowAll = false; // which distinct pick to show when both cannot fit
 
 const favCoopNote = () => favSlots().some(s => s.coop) ? ", and of the cards only multiplayer runs offer (Multi)" : "";
 
@@ -589,7 +603,12 @@ function renderCardFavorites() {
     }));
     box.querySelectorAll("[data-fav-who]").forEach(btn => btn.addEventListener("click", () => {
       favByCharShowAll = btn.dataset.favWho === "all";
-      renderCardFavorites();
+      box.querySelector(".fav-card-table").classList.toggle("show-all", favByCharShowAll);
+      box.querySelectorAll("[data-fav-who]").forEach(control => {
+        const active = control === btn;
+        control.classList.toggle("active", active);
+        control.setAttribute("aria-pressed", String(active));
+      });
     }));
   } else {
     box.classList.remove("fav-panels-bychar");
