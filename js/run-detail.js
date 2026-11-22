@@ -3458,6 +3458,9 @@ function measuredStrengthByNode(run, nodes) {
 }
 
 const damageFloorKey = n => `${n.floor}:${keepFight(n)}`;
+const hasPartyDamage = run => run?.measured?.some(row =>
+  Array.isArray(row.damageBySlot) && row.damageBySlot.length === run.party?.length);
+
 const hasCompletePartyCombat = run => {
   const fights = (run.timeline || []).filter(keepFight);
   const measured = measuredStrengthByNode(run, fights);
