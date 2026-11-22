@@ -103,6 +103,7 @@ SPAWNS_LISTED = (0, 106)
 TIER_NAMES = ("under 8", "8 and up")
 # What the game data gives a pet (see PETS). On anything else, a patch has added one.
 PLACEHOLDER_HP = 9999
+FUR_COAT = "RELIC.FUR_COAT"
 
 
 @lru_cache
@@ -154,11 +155,21 @@ def run_fights(runs):
         if raw.get("game_mode", "standard") != "standard":
             continue
         build = tuple(int(n) for n in re.findall(r"\d+", raw.get("build_id") or ""))
+        coat_floor = min(
+            (relic["floor_added_to_deck"] for player in raw["players"] for relic in (player.get("relics") or ())
+             if relic.get("id") == FUR_COAT and type(relic.get("floor_added_to_deck")) is int),
+            default=math.inf,
+        )
         fights = []
+        floor = 0
         for act, points in enumerate(raw.get("map_point_history") or []):
             for point in points:
+                floor += 1
                 stats = point.get("player_stats") or [{}]
                 kind = point.get("map_point_type")
+                if any(choice.get("choice") == FUR_COAT and choice.get("was_picked")
+                       for player in stats for choice in (player.get("relic_choices") or ())):
+                    coat_floor = min(coat_floor, floor)
                 for room in point.get("rooms") or []:
                     if room.get("monster_ids") and room.get("turns_taken"):
                         fights.append({
@@ -174,6 +185,9 @@ def run_fights(runs):
                             "act": act,
                             "coop": party > 1,
                             "share": hp_share(act, kind) if party > 1 else 1,
+                            # Older run files don't identify marked rooms. After
+                            # this pickup, one-turn wins can be 1 HP fights.
+                            "possible_fur_coat": floor > coat_floor and room["turns_taken"] == 1,
                             "died": False,
                         })
         if fights:
@@ -302,7 +316,7 @@ def table(runs, logged=None):
         won = not fights[-1]["died"]
         for f in fights:
             rooms[f["enc"]].append(f)
-            if won:
+            if won and not f.get("possible_fur_coat"):
                 wins[f["enc"]].append(f)
 
     out = {}
@@ -332,6 +346,8 @@ def readings(fights, demand):
     """
     out = []
     for f in fights:
+        if f.get("possible_fur_coat"):
+            continue
         d = demand.get(f["enc"])
         pool = d and d["pool"][f["asc"] >= TOUGH] * f["share"]
         how = pool and winners_of(f, d)
@@ -352,7 +368,8 @@ def act_totals(fights, demand, taken=lambda f: f["taken"]):
     lost run would read behind for it."""
     out = []
     for act in sorted({f["act"] for f in fights}):
-        part = [(f, how) for f in fights if f["act"] == act and not f["died"] and f["enc"] in demand
+        part = [(f, how) for f in fights if f["act"] == act and not f["died"] and not f.get("possible_fur_coat")
+                and f["enc"] in demand
                 and (how := winners_of(f, demand[f["enc"]]))]
         if len(part) < ACT_MIN:
             continue
