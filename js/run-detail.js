@@ -516,7 +516,7 @@ function renderDetailRun(run) {
   content.classList.remove("party-loading");
   if (!detailView.who) {
     showRunCopy(run, run);
-    if (partners.length && !hasPartyDamage(run)) {
+    if (partners.length && !hasCompletePartyCombat(run)) {
       Promise.all(partners.map(p => loadPartnerCopy(p.slug, p.ts))).then(copies => {
         if (token !== detailRenderToken || !copies.some(copy => copy?.measured?.length)) return;
         detailDamageRuns = copies;
@@ -879,7 +879,7 @@ function partyHpComparison(players, i, history) {
   });
 }
 
-const COOP_BLOCK_NOTICE = '<div class="ft-cap">A mod update is coming to record block for each player in new co-op runs. This fight has no verified player breakdown.</div>';
+const COOP_BLOCK_NOTICE = '<div class="ft-cap">This fight has no verified block breakdown for every player.</div>';
 
 function partyIncomingComparison(players, rows, average) {
   const table = partyFloorTable(players, ["Arrived", "Blocked", "Healed", "Damage taken"], p => {
@@ -971,7 +971,8 @@ function renderPartyCharts(players) {
   const damageSources = partyDamageSources(players.map(p => p.run));
   const damageTotals = roster.map(p => partyDamageByFloor(damageSources, nodes, p.slot));
   const readings = new Map(players.map(p => [p.slot,
-    fightReadings(p.run, tl(p), measuredStrengthByNode(p.run, tl(p)), partyDamageByFloor(damageSources, tl(p), p.slot))]));
+    fightReadings(p.run, tl(p), measuredStrengthByNode(p.run, tl(p)),
+      partyDamageByFloor(damageSources, tl(p), p.slot), damageSources)]));
   const benchmarkPlayer = players.findIndex(p => tl(p) === nodes);
   const benchmarkRows = readings.get(players[benchmarkPlayer]?.slot);
   const readingAt = (p, i) => readings.get(p.slot)?.[i];
@@ -3457,8 +3458,12 @@ function measuredStrengthByNode(run, nodes) {
 }
 
 const damageFloorKey = n => `${n.floor}:${keepFight(n)}`;
-const hasPartyDamage = run => run?.measured?.some(row =>
-  Array.isArray(row.damageBySlot) && row.damageBySlot.length === run.party?.length);
+const hasCompletePartyCombat = run => {
+  const fights = (run.timeline || []).filter(keepFight);
+  const measured = measuredStrengthByNode(run, fights);
+  return run.party?.length && fights.length && measured?.every(row =>
+    row?.damageBySlot?.length === run.party?.length && row?.incomingBySlot?.length === run.party?.length);
+};
 
 function partyDamageSources(runs) {
   return [...new Set(runs)].filter(r => r?.mp).map(run => {
@@ -3470,7 +3475,9 @@ function partyDamageSources(runs) {
       if (!row || !keepFight(n)) return;
       const bySlot = Array.isArray(row.damageBySlot) && row.damageBySlot.length === run.party?.length
         ? row.damageBySlot : null;
-      samples.set(damageFloorKey(n), { bySlot, total: row.removed });
+      const incoming = Array.isArray(row.incomingBySlot) && row.incomingBySlot.length === run.party?.length
+        ? row.incomingBySlot : null;
+      samples.set(damageFloorKey(n), { bySlot, incoming, total: row.removed });
     });
     return samples;
   });
@@ -3622,7 +3629,7 @@ function keepDamageMarkers(nodes, values, canvas, getChart) {
 // came off. That floor gets a row even when the
 // data has no HP for the fight. Damage taken is the run file's on every run, because
 // winners' is: all of it, whatever its source, with what the floor healed off it.
-function fightReadings(run, nodes, measured, partyDamage = null) {
+function fightReadings(run, nodes, measured, partyDamage = null, partySources = []) {
   if (!DATA.fightDemand) return null;
   const demand = DATA.fightDemand.encounters;
   const tough = +(run.asc >= 8);
@@ -3662,9 +3669,19 @@ function fightReadings(run, nodes, measured, partyDamage = null) {
       // What the log blocked, and what arrived is that and all of what got through, so
       // the hover box adds up.
       const slot = run.coop?.i ?? run.partySlot;
-      const incoming = run.mp && Array.isArray(sample?.incomingBySlot) &&
+      const ownIncoming = run.mp && Array.isArray(sample?.incomingBySlot) &&
         sample.incomingBySlot.length === run.party?.length ? sample.incomingBySlot[slot] : null;
-      if (incoming?.taken === recordedDamage && Number.isSafeInteger(incoming.blocked) && incoming.blocked >= 0) {
+      const validIncoming = value => n.dmg != null && value?.taken === recordedDamage &&
+        Number.isSafeInteger(value.blocked) && value.blocked >= 0;
+      let incoming = validIncoming(ownIncoming) ? ownIncoming : null;
+      if (!incoming && run.mp) {
+        const key = damageFloorKey(n);
+        for (const source of partySources) {
+          const candidate = source.get(key)?.incoming?.[slot];
+          if (validIncoming(candidate)) { incoming = candidate; break; }
+        }
+      }
+      if (incoming) {
         row.grossBlocked = incoming.blocked;
         row.grossArrived = row.grossBlocked + row.grossTaken;
       } else if (damageLog) {
@@ -4143,7 +4160,7 @@ function renderDetailKeepCharts(run) {
   const damageSources = run.mp ? partyDamageSources([run, owner, ...detailDamageRuns]) : [];
   const partyDamage = run.mp ? partyDamageByFloor(damageSources, nodes, slot) : null;
   const fallback = run.mp ? partyDamageFallback(run, nodes, damageSources, [partyDamage]) : null;
-  const rows = fightReadings(run, nodes, measured, partyDamage) || (fallback?.lines.length ? nodes.map(() => null) : null);
+  const rows = fightReadings(run, nodes, measured, partyDamage, damageSources) || (fallback?.lines.length ? nodes.map(() => null) : null);
   document.getElementById("detail-keep-damage-caption").textContent = run.mp
     ? partyDamageCaption(fallback)
     : "Enemy HP lost per fight turn. The white line shows the average win.";
