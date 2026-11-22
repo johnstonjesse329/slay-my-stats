@@ -807,6 +807,7 @@ function showRunCopy(run, owner, note = "", players = null) {
   renderDetailKeepCharts(run);
   if (players) renderPartyCharts(players);
   document.getElementById("detail-keep-heading").hidden = document.getElementById("detail-keep-box").style.display === "none";
+  renderDeckActCounts(run, players);
   renderDetailDeckRelics(run);
   for (const button of detailSectionNav.querySelectorAll("[data-section]")) {
     button.hidden = !document.getElementById(button.dataset.section).firstElementChild;
@@ -3315,6 +3316,34 @@ function renderDetailDeckChart(run, panel = null) {
     floorLegendRow("▼ Rarity", rKeys, R.color) +
     floorMarkerRow(["Uncommon", "Rare"], R.color);
   return chart;
+}
+
+function renderDeckActCounts(run, players) {
+  const box = document.getElementById("detail-deck-act-counts");
+  const rows = (players || [{ label: fmtCharName(run.char), run }]).map(player => {
+    const { timeline = [], finalDeck = [], deckAdded, cardsLost = [] } = player.run;
+    const floors = new Map();
+    for (const node of timeline) floors.set(node.act, node.floor + 1);
+    const items = Array.isArray(deckAdded) && deckAdded.length === finalDeck.length
+      ? heldItems(finalDeck, deckAdded, cardsLost) : null;
+    return { label: player.label, floors, items };
+  });
+  const acts = Array.from(new Set(rows.flatMap(row => [...row.floors.keys()]))).sort((a, b) => a - b);
+  if (!acts.length || !rows.some(row => row.items)) {
+    box.innerHTML = "";
+    return;
+  }
+  box.innerHTML = `<table class="detail-summary-table">
+    <caption>Cards at the last recorded floor of each act</caption>
+    <thead><tr><th scope="col">Player</th>${acts.map(act => `<th scope="col">${ACT_LABELS[act] || `Act ${act}`}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(({ label, floors, items }) => `<tr><th scope="row">${escapeHtml(label)}</th>
+      ${acts.map(act => {
+        const floor = floors.get(act);
+        if (!floor || !items) return '<td aria-label="Unavailable">—</td>';
+        const count = items.filter(item => item.added <= floor && item.removed > floor).length;
+        return `<td title="Floor ${floor}">${count}</td>`;
+      }).join("")}</tr>`).join("")}</tbody>
+  </table>`;
 }
 
 function renderDetailRelicChart(run, panel = null) {

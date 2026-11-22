@@ -3244,3 +3244,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   margin-bottom: 0.75rem;
 }
 #detail-content [tabindex="-1"] { scroll-margin-top: 1rem; }
+.detail-summary-table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: var(--fs-sm); }
+.detail-summary-table caption { text-align: left; color: var(--text-dim); margin-bottom: 0.3rem; }
+.detail-summary-table :is(th, td) { padding: 0.35rem 0.25rem; text-align: right; border-bottom: 1px solid var(--hairline); }
+.detail-summary-table th:first-child { text-align: left; overflow-wrap: anywhere; }

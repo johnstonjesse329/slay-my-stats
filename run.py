@@ -1822,6 +1822,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-deck-box" style="margin-top:16px">
         <h2>Deck by Floor</h2>
+        <div id="detail-deck-act-counts"></div>
         <p class="chart-caption">Both halves add up to the deck size on every floor. Rarity uses the game's colours (grey, blue, gold).</p>
         <div class="chart-wrap chart-wrap-tall"><canvas id="detail-deck-chart"></canvas></div>
         <div class="floor-legend" id="detail-deck-legend"></div>
