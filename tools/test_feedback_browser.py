@@ -202,6 +202,7 @@ def main():
 
             about = {'me': 'test', 'env': 'gamma', 'envs': ['gamma', 'prod'], 'admin': True}
             paging = {'split': False}
+            vote_response = {}
 
             def route(request):
                 url = urlsplit(request.request.url)
@@ -213,6 +214,9 @@ def main():
                             if body['on'] != note.get('plus_mine', False):
                                 note['plus_count'] = note.get('plus_count', 0) + (1 if body['on'] else -1)
                             note['plus_mine'] = body['on']
+                            if vote_response.pop('delay', False):
+                                vote_response.update(route=request, payload={**about, 'note': dict(note)})
+                                return
                         elif body.get('action') == 'edit':
                             note = next(item for item in notes if item['id'] == body['id'])
                             note['comment'] = body['comment'].strip()
@@ -326,9 +330,14 @@ def main():
             upvote.click()
             expect(upvote).to_have_attribute('aria-pressed', 'false')
             expect(page.get_by_label('Edit note text')).to_have_value('Edited feedback')
+            vote_response['delay'] = True
             upvote.click()
-            expect(upvote).to_have_attribute('aria-pressed', 'true')
             page.get_by_role('button', name='Save changes', exact=True).click()
+            expect(page.locator('.note-comment')).to_have_text('Edited feedback')
+            # Keep the edited text when a delayed vote response arrives with the old comment.
+            expect(upvote).to_be_disabled()
+            vote_response['route'].fulfill(json=vote_response['payload'])
+            expect(upvote).to_have_attribute('aria-pressed', 'true')
             expect(page.locator('.note-comment')).to_have_text('Edited feedback')
             page.get_by_role('button', name='Refresh', exact=True).click()
             expect(page.locator('.note-comment')).to_have_text('Edited feedback')

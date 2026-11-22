@@ -397,9 +397,11 @@
   const author = (note, field = 'author') => nameOf(note, field) || 'Steam …' + String(note[field]).slice(-4);
   const OUTCOMES = {done:'Done',declined:'Declined',duplicate:'Duplicate'};
   const editDrafts = new Map();
+  const pendingVotes = new Set();
   const voteTotal = note => (note.plus_count || 0) + (note.plus_count === 1 ? ' vote' : ' votes');
-  function replaceNote(updated) {
-    const swap=list=>list.map(item=>item.id===updated.id?updated:item);
+  // Edits and votes can finish out of order, so those callers merge only the fields they change.
+  function replaceNote(updated, fields) {
+    const swap=list=>list.map(item=>item.id===updated.id?(fields?{...item,...fields}:updated):item);
     notes=swap(notes);
     pageCache=swap(pageCache);
   }
@@ -427,14 +429,16 @@
     count.className='vote-count';count.id='votes-'+note.id;count.textContent=voteTotal(note);
     plus.setAttribute('aria-describedby',count.id);
     plus.title=!here?'Only on '+(ENV_NAMES[note.env]||note.env):mine?'Take back your +1':'Add your +1';
-    plus.disabled=!here;
+    plus.disabled=!here||pendingVotes.has(note.id);
     plus.onclick=async()=>{
+      pendingVotes.add(note.id);
       plus.disabled=true;
       try {
         const {note:updated}=await api({action:'plus',id:note.id,env:note.env,on:!mine});
-        replaceNote(updated);renderInbox();
+        pendingVotes.delete(note.id);
+        replaceNote(updated,{plus_count:updated.plus_count,plus_mine:updated.plus_mine});renderInbox();
         if(!root.activeElement?.closest('.note-editor')) focusNoteAction(updated,'.plus');
-      } catch(e){ say(e.message,'inbox'); plus.disabled=false; }
+      } catch(e){ pendingVotes.delete(note.id);renderInbox();say(e.message,'inbox'); }
     };
     vote.className='note-vote';vote.append(plus,count);
     if(fbId(note)){const id=document.createElement('span');id.className='fbid';id.textContent=fbId(note);head.append(id);}
@@ -528,7 +532,7 @@
           try {
             const {note:updated}=await api({action:'edit',id:note.id,env:note.env,comment:draft.text});
             editDrafts.delete(note.id);
-            replaceNote(updated);renderInbox();renderPrior();focusNoteAction(updated,'.edit-note');
+            replaceNote(updated,{comment:updated.comment});renderInbox();renderPrior();focusNoteAction(updated,'.edit-note');
             say('Changes saved.','inbox');
           } catch(e){
             draft.saving=false;
