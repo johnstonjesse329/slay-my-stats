@@ -2,6 +2,13 @@
 // Run Detail page
 // =========================================================================
 
+// A scroll dismisses an explicitly reopened boon tooltip, just as it dismisses
+// the other CSS tooltips. Do not clear the page-wide hover suppression here.
+window.addEventListener("scroll", () => {
+  document.querySelectorAll("#detail-run-header .run-boon-wrap.boon-reopened")
+    .forEach(wrap => wrap.classList.remove("boon-reopened"));
+}, { passive: true });
+
 const NODE_ICONS = {
   monster:   "⚔",
   elite:     "💀",
@@ -760,6 +767,12 @@ function showRunCopy(run, owner, note = "", players = null) {
   document.querySelectorAll("#detail-run-header .run-boon-wrap").forEach(wrap => {
     const tipEl = wrap.querySelector(".relic-tooltip-wrap");
     if (!tipEl) return;
+    // A new tap or focus may reopen just this tooltip after scroll or Escape.
+    // Other hover tooltips stay suppressed until the mouse moves.
+    const reveal = () => wrap.classList.add("boon-reopened");
+    wrap.addEventListener("pointerdown", reveal);
+    wrap.addEventListener("focusin", reveal);
+    wrap.addEventListener("focusout", () => wrap.classList.remove("boon-reopened"));
     const fit = () => {
       tipEl.style.transform = "";
       const r = tipEl.getBoundingClientRect();

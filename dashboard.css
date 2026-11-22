@@ -2690,6 +2690,11 @@ body.suppress-hover-tooltips .node-tooltip {
   visibility: hidden !important;
   display: none !important;
 }
+/* An intentional tap or focus reopens only that boon after scroll/Escape. */
+body.suppress-hover-tooltips .run-boon-wrap.boon-reopened:focus-within .relic-tooltip-wrap {
+  visibility: visible !important;
+  display: block !important;
+}
 .relic-tooltip {
   width: 180px;
   background: var(--bg-deep);
