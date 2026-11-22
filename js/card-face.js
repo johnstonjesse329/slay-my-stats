@@ -404,7 +404,7 @@ function renderDeckLinksHtml(deck, relics, character) {
     "creation": "Created cards trigger rewards and scale damage.",
     "block scaling": "Block feeds damage, doubling, retention, and triggered rewards.",
     "HP loss": "Losing your HP triggers rewards and scales damage.",
-    "power:Strength": "Strength boosts each hit and Strength-scaling damage.",
+    "power:Strength": "Strength boosts each hit, including hits from generated Attacks.",
     "power:Vulnerable": "Vulnerable enables these bonuses and scaling effects.",
     "power:Weak": "Weak enables these conditional bonuses.",
     "shiv": "Shivs enable damage bonuses and triggered rewards.",
