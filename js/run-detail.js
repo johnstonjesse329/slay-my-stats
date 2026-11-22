@@ -927,7 +927,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
   const datasets = [...(extra.lines || []), ...players.map((p, j) => series[j] ? {
     label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color,
     borderWidth: 2, pointRadius: extra.recordedOnly ? 3 : 0, pointHoverRadius: 0,
-    spanGaps: !extra.recordedOnly, cubicInterpolationMode: "monotone",
+    spanGaps: true, cubicInterpolationMode: "monotone",
     ...(icon && j === iconJ ? nodePoints(nodes, () => chart, icon) : {}),
   } : null)].filter(Boolean);
   if (extra.fightMarkers) datasets.push(keepDamageMarkers(nodes, extra.fightMarkers, canvas, () => chart));
@@ -1073,9 +1073,10 @@ function renderPartyCharts(players) {
         detail: (p, i) => { const row = readingAt(p, i); return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
       (p, i, value) => value == null ? "No data" : `${value.toFixed(1)} / turn (${damageTotals[p.slot][i]} HP)`,
-      false, null, { ...damageHistory, lines: [...damageHistory.lines, ...partyDamage.lines],
+      false, null, { ...damageHistory, lines: [...damageHistory.lines, ...partyDamage.chartLines],
         recordedOnly: true, fightRows: benchmarkRows, overview: partyDamage.tip, summaryOnly: partyDamage.partySize > 1,
-        fightMarkers: nodes.map((_, i) => partyDamage.rates[i] ?? benchmarkRows?.[i]?.ask ?? damageRates.find(series => series?.[i] != null)?.[i]),
+        fightMarkers: nodes.map((_, i) => damageHistory.lines[0]?.data[i] ??
+          (partyDamage.partySize > 1 ? partyDamage.rates[i] : damageRates.find(series => series?.[i] != null)?.[i])),
         compare: (party, i) => {
           const r = benchmarkRows?.[i];
           if (partyDamage.partySize > 1) return partyDamageBenchmarkTip(r, partyDamage.partySize);
@@ -2785,7 +2786,11 @@ function showFloorTip(context, html) {
 
 const floorTipHead = (node, total, unit) => {
   const enc = node.enc ? fmtNodeLabel(node.enc) : titleCaseId(node.type || "");
-  return `<div class="ft-head"><b>Floor ${node.floor + 1}</b> — ${enc}${total == null ? "" : ` · ${total} ${unit}`}</div>`;
+  const fight = keepFight(node);
+  const kind = node.type === "boss" ? "boss" : keepRank(node) ? "elite" : "monster";
+  const key = DATA.nodeIcons?.[fight] ? fight : kind;
+  const icon = fight ? nodeIconHtml(key, 24, kind) + " " : "";
+  return `<div class="ft-head">${icon}<b>Floor ${node.floor + 1}</b> — ${enc}${total == null ? "" : ` · ${total} ${unit}`}</div>`;
 };
 const floorTipCaption = (m, colors) =>
   `<div class="ft-cap">Gained${m.count > 1 ? " ×" + m.count : ""} · ` +
@@ -3506,7 +3511,8 @@ function partyDamageFallback(run, nodes, sources, totals) {
     return { total: pool * keepShare(run, n) * run.party.length, estimated: true };
   });
   const rates = fights.map((fight, i) => fight ? fight.total / nodes[i].turns : null);
-  const partySize = totals.some(row => row.some(value => value != null)) ? 1 : run.party?.length || 1;
+  const hasPlayerDamage = totals.some(row => row.some(value => value != null));
+  const partySize = hasPlayerDamage ? 1 : run.party?.length || 1;
   const color = "#c8dd8a";
   const lines = [false, true].flatMap(estimated => {
     const data = rates.map((rate, i) => fights[i]?.estimated === estimated ? rate : null);
@@ -3514,7 +3520,7 @@ function partyDamageFallback(run, nodes, sources, totals) {
       label: estimated ? "Party total (estimated)" : "Party total", data,
       borderColor: color, borderWidth: 2, borderDash: estimated ? [4, 4] : [],
       pointBackgroundColor: estimated ? "transparent" : color,
-      order: 2, pointRadius: 3, spanGaps: data.filter(rate => rate != null).length === nodes.filter(keepFight).length,
+      order: 2, pointRadius: 3, spanGaps: true,
     }] : [];
   });
   const tip = i => fights[i]
@@ -3526,11 +3532,12 @@ function partyDamageFallback(run, nodes, sources, totals) {
   const hasMod = [run, detailOwnerRun].some(copy => copy?.mods?.some(mod => mod.id === "SlayMyStats"));
   const linkMod = !hasLog && !hasMod;
   const notice = !missing ? "" : logged
-    ? "The combat log gives party totals for fights without a player breakdown."
+    ? hasPlayerDamage ? "Fight tooltips show party totals where a player breakdown is unavailable."
+      : "The combat log gives party totals for fights without a player breakdown."
     : !linkMod ? (lines.length ? "Some party totals are estimated from enemy HP." : "Damage data is missing for some fights.")
     : lines.length ? "Some party totals are estimated. To record combat logs, use the"
       : "Damage data is missing for some fights. To record combat logs, use the";
-  return { lines, rates, tip, notice, linkMod, partySize };
+  return { lines, chartLines: hasPlayerDamage ? [] : lines, rates, tip, notice, linkMod, partySize };
 }
 
 function partyDamageHistory(history, fallback) {
@@ -3598,7 +3605,7 @@ const keepIconKey = n => n.type === "boss" ? nodeIconKey(n) : keepRank(n) ? "eli
 
 function keepDamageMarkers(nodes, values, canvas, getChart) {
   const view = actView(nodes);
-  const size = keepIconSize(canvas.clientWidth, view ? view.to - view.from + 1 : nodes.length);
+  const size = keepIconSize(canvas.parentElement.clientWidth, view ? view.to - view.from + 1 : nodes.length);
   return {
     label: "Fight markers",
     data: nodes.map((n, i) => keepFight(n) ? values[i] ?? 0 : null),
@@ -4251,13 +4258,14 @@ function renderDetailKeepCharts(run) {
   }
 
   const damage = run.mp
-    ? { ...line(damageLine, r => r.doing), pointRadius: 3, spanGaps: false }
+    ? { ...line(damageLine, r => r.doing), pointRadius: 3 }
     : line(damageLine, r => r.doing, "damage");
   const damageCanvas = document.getElementById("detail-keep-damage-chart");
-  const markers = run.mp ? [keepDamageMarkers(nodes, rows.map((r, i) => fallback.rates[i] ?? r?.ask ?? r?.doing), damageCanvas, () => Chart.getChart(damageCanvas))] : [];
   const damageHistory = partyDamageHistory({ lines: [winners(r => r.ask)], ranges: ranges.done }, fallback);
+  const markers = run.mp ? [keepDamageMarkers(nodes, rows.map((r, i) => damageHistory.lines[0]?.data[i] ??
+    (fallback.partySize > 1 ? fallback.rates[i] : r?.doing)), damageCanvas, () => Chart.getChart(damageCanvas))] : [];
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
-    ...damageHistory.lines, ...(fallback?.lines || []), ...markers], damageTip, damageHistory.ranges);
+    ...damageHistory.lines, ...(fallback?.chartLines || []), ...markers], damageTip, damageHistory.ranges);
   chart("in", [line(takenLine, r => r.grossRate, "in"), winners(r => r.winGrossRate)], inTip, ranges.taken, true);
 
   // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:
