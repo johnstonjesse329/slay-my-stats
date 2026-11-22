@@ -297,7 +297,7 @@ function renderDetailDeckRelics(run) {
   const relicHtml  = renderRelicTiles(relics);
 
   document.getElementById("detail-deck-relics").innerHTML = `
-    <div class="detail-section-heading">Final deck ${tagChipsHtml(runTags(run))}</div>${renderDeckLinksHtml(deck, relics, run.char)}
+    <div class="detail-section-heading">Final deck</div>${renderDeckLinksHtml(deck, relics, run.char)}
     ${groupsHtml}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
@@ -326,8 +326,6 @@ function runTags(run) {
   if (!run._tags) run._tags = deckTags(run.char, run.finalDeck || []);
   return run._tags;
 }
-
-const tagChipsHtml = tags => tags.map(t => `<span class="run-tag">${escapeHtml(t)}</span>`).join("");
 
 // Cards and relics in this run that feed each other: one makes a thing (Strength,
 // Poison, Osty, Shiv...) and another needs it. Listed, not scored. DATA.synergy
