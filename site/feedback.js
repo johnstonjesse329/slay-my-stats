@@ -29,6 +29,7 @@
     #grip:hover::before,#grip.dragging::before{background:#edc782;opacity:1}
     article.focused{outline:2px solid #edc782;outline-offset:4px;border-radius:4px}
     .bucket-snippet{display:block;color:#bcb8b0;font-size:12px;font-weight:400;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .bucket-author{display:block;margin-top:2px;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .bucket > summary::before{content:'▸';color:#edc782;flex:none;margin-right:2px}
     .bucket[open] > summary::before{content:'▾'}
     .bucket-text{min-width:0;flex:1}
@@ -72,7 +73,7 @@
     .bucket > summary::-webkit-details-marker{display:none}
     .bucket[open] > summary{border-bottom:1px solid #2a2740}
     .bucket-label{font-weight:700;line-height:1.3}
-    .bucket-meta{color:#bcb8b0;font-size:11px;white-space:nowrap}
+    .bucket-meta{color:#bcb8b0;font-size:11px;text-align:right}
     .bucket-body{padding:2px 11px 10px}
     article{padding:10px 0;border-top:1px solid #2a2740}article:first-child{border-top:0}
     #kinds{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
@@ -81,7 +82,7 @@
     .pill.kind{background:#2a2740;color:#e8e4f4}
     .note-comment{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere}
     .note-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 4px;font-size:12px;color:#bcb8b0}
-    .note-who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f4f0e7;font-weight:600}
+    .note-who{min-width:0;margin-right:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f4f0e7;font-weight:600}
     .note-who.bare{color:#8f8a80;font-weight:400}
     .note-head time{flex:none;white-space:nowrap}
     .note-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0;font-size:11px;color:#bcb8b0}
@@ -99,20 +100,21 @@
     .close-form div{display:flex;gap:8px}
     .close-form select{background:#101316;color:#fff;border:1px solid #82735b;padding:7px 9px;border-radius:6px;font:inherit}
     #filters{display:flex;gap:8px;margin:0 0 8px}
-    #find{display:flex;gap:8px;margin:0 0 8px}
-    #find input,#find select{min-width:0;background:#101316;color:#fff;border:1px solid #82735b;padding:6px 8px;border-radius:6px;font:inherit}
+    #find{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+    #find input,#find select{min-width:90px;background:#101316;color:#fff;border:1px solid #82735b;padding:6px 8px;border-radius:6px;font:inherit}
     #find input{flex:2}#find select{flex:1}
-    .plus{flex:none;display:inline-flex;gap:4px;align-items:center;padding:1px 8px;border-radius:999px;border:1px solid #4a4666;background:transparent;color:#e8e4f4;font:inherit;font-size:11px;font-weight:700;cursor:pointer;text-decoration:none!important}
+    .note-vote{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+    .plus{padding:3px 9px;border-radius:999px;border:1px solid #82735b;color:#f4f0e7;font-size:12px;font-weight:700}
     .plus[aria-pressed="true"]{background:#d4af37;border-color:#d4af37;color:#16141f}
     .plus:disabled{opacity:.6;cursor:default}
-    .note-head .head-right{display:flex;gap:8px;align-items:center;flex:none}
     #filters select{flex:1;background:#101316;color:#fff;border:1px solid #82735b;padding:6px 8px;border-radius:6px;font:inherit}
     #load-more{width:100%;margin:4px 0 0;background:#101316}
     #inbox-foot{display:flex;justify-content:space-between;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid #2a2740}
     #inbox-foot button{background:none;border:0;padding:0;color:#edc782;text-decoration:underline;font-size:12px}
     #inbox-foot button:hover{background:none;color:#f4f0e7}
     [hidden]{display:none!important}
-    #hint{background:#191c20;padding:12px;max-width:320px;border:1px solid #edc782;border-radius:8px;order:0}
+    #hint{display:grid;justify-items:start;gap:8px;background:#191c20;padding:12px;max-width:min(320px,calc(100vw - 24px));border:1px solid #edc782;border-radius:8px;order:0}
+    #cancel{min-height:40px;justify-self:end}
     @media(max-height:520px){:host{bottom:8px;right:8px}#panel{max-height:calc(100dvh - 78px);width:460px}textarea{min-height:64px}#launcher{padding:9px 14px;font-size:14px}}
     @media(max-width:600px){
       :host{left:0;right:0;bottom:0;padding:0 12px calc(12px + env(safe-area-inset-bottom));align-items:flex-end}
@@ -130,7 +132,7 @@
       #launcher{padding:10px 16px}
     }
   </style>
-  <div id="hint" hidden>Click near what you mean, or drag across it. Press Escape to cancel. <button id="cancel" type="button">Cancel</button></div>
+  <div id="hint" hidden><span id="pick-instructions">Click or tap to select an element, or drag to select an area. Press Escape to cancel.</span><button id="cancel" type="button" aria-describedby="pick-instructions">Cancel</button></div>
   <section id="panel" role="dialog" aria-label="Feedback" hidden>
     <header><h2>Feedback</h2><button id="close" type="button" aria-label="Close feedback" title="Close">✕</button></header>
     <div id="tabs" role="tablist"><button id="tab-inbox" type="button" role="tab" aria-selected="true" aria-controls="view-inbox">Inbox</button><button id="tab-compose" type="button" role="tab" aria-selected="false" aria-controls="view-compose">New note</button></div>
@@ -149,7 +151,7 @@
       <div id="summary-row"><p id="summary"></p><button id="toggle-all" type="button">Expand all</button></div>
       <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-site" type="button" aria-pressed="true">Whole site</button><button id="scope-page" type="button" aria-pressed="false">This page</button></div>
       <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="backlog">Backlog</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option><option value="kudos">Kudos</option></select><select id="filter-env" aria-label="Environment" hidden></select></div>
-      <div id="find"><input id="search" type="search" placeholder="Search notes" aria-label="Search notes"><select id="filter-author" aria-label="Author"><option value="">Anyone</option></select></div>
+      <div id="find"><input id="search" type="search" placeholder="Search notes" aria-label="Search notes"><select id="filter-author" aria-label="Author"><option value="">Anyone</option></select><select id="sort" aria-label="Sort by"><option value="newest">Newest</option><option value="votes">Most upvotes</option></select></div>
       <div id="notes"></div>
       <button id="load-more" type="button" hidden>Load the next 25</button>
       <p id="inbox-status" role="status"></p>
@@ -275,7 +277,17 @@
     }
     box.append(title,list);box.hidden=false;
   }
-  function stop() { picking=false; document.documentElement.style.touchAction=oldTouchAction; start=null; mark.style.display='none'; $('hint').hidden=true; $('launcher').hidden=false; openPanel(); }
+  function stop() {
+    picking=false;
+    document.documentElement.style.touchAction=oldTouchAction;
+    start=null;
+    mark.style.display='none';
+    $('hint').hidden=true;
+    $('launcher').hidden=false;
+    $('panel').hidden=false;
+    keepOnScreen();
+    $('pick').focus();
+  }
   function selector(el) {
     const parts=[];
     for(let node=el;node && node!==document.body;node=node.parentElement) {
@@ -298,7 +310,8 @@
     else if(e.target instanceof Element) rect(e.target.getBoundingClientRect());
   },{capture:true,passive:false});
   document.addEventListener('pointerup',e=>{
-    if(!picking || !start || e.composedPath().includes(host)) return;
+    if(!picking || !start) return;
+    if(e.composedPath().includes(host)){start=null;mark.style.display='none';return;}
     e.preventDefault();e.stopImmediatePropagation();
     const area=box(start,point(e)), el=document.elementFromPoint(start.x,start.y);
     if(!el) return;
@@ -307,6 +320,7 @@
       rect:area.width>12 || area.height>12?area:Object.fromEntries(['x','y','width','height'].map(k=>[k,el.getBoundingClientRect()[k]]))};
     stop();composer();$('target').textContent=`Pinned: ${target.text.slice(0,100) || el.localName}`; syncClear(); $('comment').focus();
   },true);
+  document.addEventListener('pointercancel',()=>{if(picking){start=null;mark.style.display='none';}},true);
   // Consume the synthetic click following selection, including links and buttons.
   let suppressClick=false;
   document.addEventListener('click',e=>{if(suppressClick && !e.composedPath().includes(host)){e.preventDefault();e.stopImmediatePropagation();suppressClick=false;}},true);
@@ -353,6 +367,10 @@
             label:page?'Whole page':(note.target?.text||'').replace(/\s+/g,' ').trim().slice(0,110)||selector||'Unknown element'};
   }
   function buckets(list) {
+    if (sort === 'votes') {
+      return [...list].sort((a,b)=>(b.plus_count||0)-(a.plus_count||0)||b.created-a.created||a.id.localeCompare(b.id))
+        .map(note=>({...bucketOf(note),key:'vote:'+note.id,notes:[note],open:Number(stateOf(note)==='open')}));
+    }
     const map=new Map();
     for(const note of list) {
       const bucket=bucketOf(note);
@@ -378,6 +396,16 @@
   };
   const author = (note, field = 'author') => nameOf(note, field) || 'Steam …' + String(note[field]).slice(-4);
   const OUTCOMES = {done:'Done',declined:'Declined',duplicate:'Duplicate'};
+  const editDrafts = new Map();
+  const voteTotal = note => (note.plus_count || 0) + (note.plus_count === 1 ? ' vote' : ' votes');
+  function replaceNote(updated) {
+    const swap=list=>list.map(item=>item.id===updated.id?updated:item);
+    notes=swap(notes);
+    pageCache=swap(pageCache);
+  }
+  function focusNoteAction(note, action) {
+    $('notes').querySelector(`article[data-id="${CSS.escape(note.id)}"] ${action}`)?.focus();
+  }
   function noteArticle(note) {
     const article=document.createElement('article');article.dataset.id=note.id;
     const comment=document.createElement('p'),meta=document.createElement('p'),
@@ -392,37 +420,39 @@
     // +1: one per person, tapped again to take back. The count is everyone who has agreed.
     // A note from another environment is shown read-only: its +1 and actions belong there.
     const here=!note.env||note.env===writeEnv;
-    const plus=document.createElement('button'),mine=!!note.plus_mine,count=note.plus_count||0,right=document.createElement('span');
+    const plus=document.createElement('button'),mine=!!note.plus_mine,vote=document.createElement('span'),count=document.createElement('span');
     plus.type='button';plus.className='plus';plus.setAttribute('aria-pressed',String(mine));
-    plus.textContent='+1'+(count?' · '+count:'');
+    plus.textContent=mine?'✓ +1':'+1';
+    plus.setAttribute('aria-label','Upvote');
+    count.className='vote-count';count.id='votes-'+note.id;count.textContent=voteTotal(note);
+    plus.setAttribute('aria-describedby',count.id);
     plus.title=!here?'Only on '+(ENV_NAMES[note.env]||note.env):mine?'Take back your +1':'Add your +1';
     plus.disabled=!here;
     plus.onclick=async()=>{
       plus.disabled=true;
       try {
         const {note:updated}=await api({action:'plus',id:note.id,env:note.env,on:!mine});
-        const swap=list=>list.map(item=>item.id===updated.id?updated:item);
-        notes=swap(notes);pageCache=swap(pageCache);renderInbox();
+        replaceNote(updated);renderInbox();
+        if(!root.activeElement?.closest('.note-editor')) focusNoteAction(updated,'.plus');
       } catch(e){ say(e.message,'inbox'); plus.disabled=false; }
     };
-    right.className='head-right';right.append(plus,time);
+    vote.className='note-vote';vote.append(plus,count);
     if(fbId(note)){const id=document.createElement('span');id.className='fbid';id.textContent=fbId(note);head.append(id);}
-    head.append(who,right);
+    head.append(who,time);
     const openUrl=new URL(note.path,ORIGIN);openUrl.searchParams.set('feedback',note.id);
     if(openUrl.origin===new URL(ORIGIN).origin)place.href=openUrl.href;place.textContent='Open location';
     meta.className='note-meta';
     meta.append(pill);
     if(note.env&&envs.length>1){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=ENV_NAMES[note.env]||note.env;meta.append(tag);}
     if(note.category){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=KINDS[note.category]||note.category;meta.append(tag);}
-    meta.append(place);
+    meta.append(vote,place);
     url.className='note-url';url.textContent=note.url || ORIGIN + note.path;
     resolve.textContent=note.resolved?'Reopen':'Resolve';
     const send=async(fields,button)=>{
       button.disabled=true;
       try {
         const {note:updated}=await api({action:'resolve',id:note.id,env:note.env,...fields});
-        const swap=list=>list.map(item=>item.id===updated.id?updated:item);
-        notes=swap(notes).filter(matchesFilter);pageCache=swap(pageCache);
+        replaceNote(updated);notes=notes.filter(matchesFilter);
         renderInbox();renderPrior();updateCount();
       } catch(e){ say(e.message,'inbox'); button.disabled=false; }
     };
@@ -459,8 +489,7 @@
       button.disabled=true;
       try {
         const {note:updated}=await api({action:'backlog',id:note.id,env:note.env,on,reason});
-        const swap=list=>list.map(item=>item.id===updated.id?updated:item);
-        notes=swap(notes).filter(matchesFilter);pageCache=swap(pageCache);
+        replaceNote(updated);notes=notes.filter(matchesFilter);
         renderInbox();renderPrior();updateCount();
       } catch(e){ say(e.message,'inbox'); button.disabled=false; }
     };
@@ -476,8 +505,51 @@
     const copyOne=document.createElement('button');copyOne.type='button';copyOne.textContent='Copy details';
     copyOne.title='Copy just this note';
     copyOne.onclick=()=>copyText(report(note),'Copied this note.');
-    actions.className='note-actions';actions.append(resolve,later,copyOne);
-    article.append(head,comment,meta,url);
+    actions.className='note-actions';
+    article.append(head,comment);
+    if(here&&String(note.author)===me) {
+      const edit=document.createElement('button');
+      edit.type='button';edit.className='edit-note';edit.textContent='Edit note';
+      const showEditor=(draft,focus=false)=>{
+        const form=document.createElement('form'),text=document.createElement('textarea'),row=document.createElement('div'),
+          save=document.createElement('button'),cancel=document.createElement('button');
+        form.className='close-form note-editor';
+        text.value=draft.text;text.maxLength=4000;text.setAttribute('aria-label','Edit note text');
+        text.oninput=()=>{draft.text=text.value;};
+        save.type='submit';save.textContent='Save changes';
+        cancel.type='button';cancel.textContent='Cancel';
+        save.disabled=cancel.disabled=text.readOnly=draft.saving;
+        cancel.onclick=()=>{editDrafts.delete(note.id);form.remove();comment.hidden=false;edit.hidden=false;edit.focus();};
+        form.onsubmit=async event=>{
+          event.preventDefault();
+          if(draft.saving) return;
+          if(!text.value.trim()){say('Add a comment first.','inbox');text.focus();return;}
+          save.disabled=cancel.disabled=text.readOnly=draft.saving=true;
+          try {
+            const {note:updated}=await api({action:'edit',id:note.id,env:note.env,comment:draft.text});
+            editDrafts.delete(note.id);
+            replaceNote(updated);renderInbox();renderPrior();focusNoteAction(updated,'.edit-note');
+            say('Changes saved.','inbox');
+          } catch(e){
+            draft.saving=false;
+            renderInbox();focusNoteAction(note,'.note-editor textarea');say(e.message,'inbox');
+          }
+        };
+        row.append(save,cancel);form.append(text,row);
+        comment.hidden=true;edit.hidden=true;comment.after(form);
+        if(focus) text.focus();
+      };
+      edit.onclick=()=>{
+        const draft={text:note.comment,saving:false};
+        editDrafts.set(note.id,draft);
+        showEditor(draft,true);
+      };
+      actions.append(edit);
+      const draft=editDrafts.get(note.id);
+      if(draft) showEditor(draft);
+    }
+    actions.append(resolve,later,copyOne);
+    article.append(meta,url);
     if(note.backlog){
       const line=document.createElement('p');line.className='note-resolution';
       line.textContent=['Backlog '+when(note.backlog.at),note.backlog.reason].filter(Boolean).join(' - ');
@@ -525,10 +597,15 @@
     for(const d of all) d.open=open;
   };
   // Search and author narrow the notes already loaded; Load more brings in older ones.
-  let me='',query='',filterAuthor='';
+  let me='',query='',filterAuthor='',sort='newest';
   const searchable=note=>[note.comment,note.close_note,note.target?.text,note.path,author(note),author(note,'resolved_by')].filter(Boolean).join(' ').toLowerCase();
   const shown=()=>notes.filter(note=>(!filterAuthor||String(note.author)===filterAuthor)&&(!query||searchable(note).includes(query)));
   function renderInbox() {
+    if(loading) return;
+    const active=root.activeElement;
+    const editing=active?.matches('.note-editor textarea')
+      ? {id:active.closest('article').dataset.id,start:active.selectionStart,end:active.selectionEnd}
+      : null;
     const authors=new Map();
     for(const note of notes) authors.set(String(note.author),author(note));
     const select=$('filter-author');
@@ -540,21 +617,29 @@
     $('notes').replaceChildren();
     for(const bucket of groups) {
       const details=document.createElement('details'),summary=document.createElement('summary'),text=document.createElement('span'),
-        label=document.createElement('span'),snippet=document.createElement('span'),meta=document.createElement('span'),body=document.createElement('div');
+        label=document.createElement('span'),by=document.createElement('span'),snippet=document.createElement('span'),
+        meta=document.createElement('span'),body=document.createElement('div');
       details.className='bucket'+(bucket.open?'':' resolved');
       if(focusId&&bucket.notes.some(n=>n.id===focusId)) expanded.add(bucket.key);
       details.open=expanded.has(bucket.key);
       label.className='bucket-label';label.textContent=bucket.label;
       const latest=bucket.notes[0];
-      snippet.className='bucket-snippet';snippet.textContent=`${author(latest)} · ${latest.comment.replace(/\s+/g,' ')}`;
-      text.className='bucket-text';text.append(label,snippet);
-      meta.className='bucket-meta';meta.textContent=`${bucket.kind} · ${bucket.notes.length} note${bucket.notes.length===1?'':'s'} · ${bucket.open} open`;
+      by.className='bucket-author';by.textContent=author(latest);
+      snippet.className='bucket-snippet';snippet.textContent=latest.comment.replace(/\s+/g,' ');
+      text.className='bucket-text';text.append(label,by,snippet);
+      meta.className='bucket-meta';
+      meta.textContent=sort==='votes'?`${voteTotal(latest)} · ${stateOf(latest)}`:`${bucket.kind} · ${bucket.notes.length} note${bucket.notes.length===1?'':'s'} · ${bucket.open} open`;
       summary.append(text,meta);
       body.className='bucket-body';
       for(const note of bucket.notes) body.append(noteArticle(note));
       details.append(summary,body);
       details.addEventListener('toggle',()=>{if(details.open) expanded.add(bucket.key); else expanded.delete(bucket.key); syncToggleAll();});
       $('notes').append(details);
+    }
+    if(editing) {
+      const editor=$('notes').querySelector(`article[data-id="${CSS.escape(editing.id)}"] .note-editor textarea`);
+      editor?.focus({preventScroll:true});
+      editor?.setSelectionRange(editing.start,editing.end);
     }
     syncToggleAll();
     if(focusId) {
@@ -564,7 +649,8 @@
     }
     const open=visible.filter(note=>stateOf(note)==='open').length,backlogged=visible.filter(note=>stateOf(note)==='backlog').length;
     $('filter-status').value=status;$('filter-kind').value=filterKind;
-    $('summary').innerHTML=`<b>${visible.length}</b> note${visible.length===1?'':'s'}${nextCursor?'+':''}${visible.length<notes.length?` of ${notes.length} loaded`:''} · ${open} open${backlogged?` · ${backlogged} backlog`:''} · ${groups.length} ${groups.length===1?'place':'places'}`;
+    const places=new Set(visible.map(note=>bucketOf(note).key)).size;
+    $('summary').innerHTML=`<b>${visible.length}</b> note${visible.length===1?'':'s'}${nextCursor?'+':''}${visible.length<notes.length?` of ${notes.length} loaded`:''} · ${open} open${backlogged?` · ${backlogged} backlog`:''} · ${places} ${places===1?'place':'places'}`;
     $('load-more').hidden=!nextCursor;
     $('copy').textContent=visible.length?`Copy all notes (${visible.length}${nextCursor?' loaded':''})`:'Copy all notes';
     $('copy').disabled=!visible.length;
@@ -585,28 +671,56 @@
     if(!$('panel').hidden&&view==='inbox'&&scope==='page') load(true);
   });
   // Only the newest request may fill the list: two quick loads (tab then filter) must not both append.
-  let loadId=0;
+  let loadId=0,loading=false;
   async function load(reset=true) {
     const mine=++loadId;
     $('scope-page').setAttribute('aria-pressed',String(scope==='page'));
     $('scope-site').setAttribute('aria-pressed',String(scope==='site'));
-    if(reset){notes=[];nextCursor=null;$('summary').textContent='Loading…';say('','inbox');}
+    loading=true;
+    $('load-more').disabled=true;
+    if(reset){
+      notes=[];nextCursor=null;$('summary').textContent='Loading…';say('','inbox');
+      $('notes').replaceChildren();$('load-more').hidden=true;syncToggleAll();
+    }
     try {
       const params={scope,status};
       if(filterKind) params.category=filterKind;
       if(envFilter) params.env=envFilter;
       if(scope==='page') params.path=currentPath();
-      if(nextCursor) params.cursor=nextCursor;
-      const data=await api(null,params);
+      // Rank every matching note, using the same bounded requests as the default inbox.
+      const allPages=sort==='votes',found=[];
+      let cursor=nextCursor;
+      do {
+        if(cursor) params.cursor=cursor;
+        const data=await api(null,params);
+        if(mine!==loadId) return;
+        found.push(...data.notes);
+        cursor=data.next||null;
+      } while(allPages&&cursor);
+      notes=notes.concat(found);nextCursor=cursor;loading=false;renderInbox();
+    } catch(e){
       if(mine!==loadId) return;
-      notes=notes.concat(data.notes);nextCursor=data.next||null;renderInbox();
-    } catch(e){ if(mine!==loadId) return; $('summary').textContent='';say(e.message,'inbox'); }
+      loading=false;
+      if(reset) $('summary').textContent='';
+      say(e.message,'inbox');
+    } finally {
+      if(mine===loadId) $('load-more').disabled=false;
+    }
   }
   $('launcher').onclick=()=>signedOut?signIn():openPanel();
   $('close').onclick=closePanel;$('cancel').onclick=stop;
   $('tab-compose').onclick=()=>showView('compose');
   $('tab-inbox').onclick=()=>showView('inbox');
-  $('pick').onclick=()=>{picking=true;oldTouchAction=document.documentElement.style.touchAction;document.documentElement.style.touchAction='none';$('panel').hidden=true;$('launcher').hidden=true;$('hint').hidden=false;};
+  $('pick').onclick=()=>{
+    picking=true;
+    oldTouchAction=document.documentElement.style.touchAction;
+    document.documentElement.style.touchAction='none';
+    $('panel').hidden=true;
+    syncGrip();
+    $('launcher').hidden=true;
+    $('hint').hidden=false;
+    $('cancel').focus();
+  };
   $('page').onclick=()=>{target={kind:'page',viewport:{width:innerWidth,height:innerHeight}};composer();$('target').textContent='Whole page';syncClear();$('comment').focus();};
   $('clear').onclick=resetNote;
   $('comment').addEventListener('input',syncClear);
@@ -619,6 +733,7 @@
   $('filter-env').onchange=e=>{envFilter=e.target.value===writeEnv?'':e.target.value;load(true);};
   $('search').oninput=e=>{query=e.target.value.trim().toLowerCase();renderInbox();};
   $('filter-author').onchange=e=>{filterAuthor=e.target.value;renderInbox();};
+  $('sort').onchange=e=>{sort=e.target.value;load(true);};
   $('kinds').onclick=e=>{const b=e.target.closest('button');if(b)setKind(b.dataset.kind);};
   $('save').onclick=async()=>{
     if(!kind){say('Pick a type first: bug, feature request, improvement idea or kudos.');return;}

@@ -328,18 +328,32 @@ def _read(db, table, plan, cursor):
     return page, (_encode_cursor(following) if following else None)
 
 
-def _with_votes(db, table, notes, steam):
-    """Each note as sent: +1 count and whether this player gave one, never who the others are."""
-    keys = [vote_key(n["env"], n["id"], steam) for n in notes]
-    mine = set()
+def _with_votes(db, table, notes, steam, refresh=False):
+    """Read personal votes, and refresh note bodies and totals for lists read from an index."""
+    pairs = [(note, vote_key(note["env"], note["id"], steam)) for note in notes]
+    keys = [vote for _, vote in pairs]
+    if refresh:
+        keys.extend({"env": {"S": note["env"]}, "sk": {"S": note["id"]}} for note, _ in pairs)
+    items = {}
     while keys:
         batch, keys = keys[:100], keys[100:]
-        request = {table: {"Keys": batch, "ProjectionExpression": "sk"}}
+        request = {table: {"Keys": batch, "ProjectionExpression": "env, sk, #body, plus_count",
+                           "ExpressionAttributeNames": {"#body": "body"}, "ConsistentRead": True}}
         while request:
             got = db.batch_get_item(RequestItems=request)
-            mine.update(item["sk"]["S"] for item in got.get("Responses", {}).get(table, []))
+            for item in got.get("Responses", {}).get(table, []):
+                items[item["env"]["S"], item["sk"]["S"]] = item
             request = got.get("UnprocessedKeys") or None
-    return [_named({**n, "plus_mine": f"vote#{n['id']}#{steam}" in mine}) for n in notes]
+    result = []
+    for note, vote in pairs:
+        env = note["env"]
+        if refresh:
+            current = items.get((env, note["id"]))
+            if not current:
+                continue
+            note = _from_item(current)
+        result.append(_named({**note, "plus_mine": (env, vote["sk"]["S"]) in items}))
+    return result
 
 
 def _get(db, table, env, note_id):
@@ -375,14 +389,15 @@ def _throttle(db, table, env, steam, creating):
 
 
 def _change(db, table, env, note_id, steam, change):
-    """Apply change(note) -> bool to a stored note, on condition its state is still the one read,
-    so two reviewers cannot overwrite each other. Only the body and the state keys are written;
+    """Apply change(note) -> bool on condition its body and state are still the ones read.
+    An edit cannot overwrite a concurrent edit or moderation action. The body and state keys are written;
     plus_count is left to the +1 transactions."""
     item = _get(db, table, env, note_id)
     note = json.loads(item["body"]["S"])
     if not change(note):
         return
     names, values = {"#b": "body", "#st": "st"}, {":b": {"S": json.dumps(note)}, ":was": item["st"],
+                                                   ":old": item["body"],
                                                    ":st": {"S": _index_keys(note)["st"]}}
     update = "SET #b = :b, #st = :st"
     if "stcat" in item:
@@ -391,7 +406,8 @@ def _change(db, table, env, note_id, steam, change):
         update += ", #sc = :sc"
     try:
         db.update_item(TableName=table, Key={"env": {"S": env}, "sk": {"S": note_id}}, UpdateExpression=update,
-                       ConditionExpression="#st = :was", ExpressionAttributeNames=names, ExpressionAttributeValues=values)
+                       ConditionExpression="#st = :was AND #b = :old",
+                       ExpressionAttributeNames=names, ExpressionAttributeValues=values)
     except Exception as error:
         if _code(error) != "ConditionalCheckFailedException":
             raise
@@ -492,7 +508,11 @@ def _get_view(db, table, readable, env, steam, event):
     plan = _plan(scope, params.get("path", ""), status, category)
     cursor = _decode_cursor(params["cursor"], envs, plan) if params.get("cursor") else {e: None for e in envs}
     notes, following = _read(db, table, plan, cursor)
-    return {"notes": _with_votes(db, table, notes, steam), "next": following, "scope": scope}
+    current = _with_votes(db, table, notes, steam, refresh=True)
+    # The index can still point to a note that has since left this state. Keep its cursor position.
+    notes = [note for note in current if (status == "all" or _state(note) == status)
+             and (not category or note.get("category") == category)]
+    return {"notes": notes, "next": following, "scope": scope}
 
 
 def _post(db, table, env, steam, admin, origin, event):
@@ -503,7 +523,7 @@ def _post(db, table, env, steam, admin, origin, event):
             raise ValueError()
         data = json.loads(base64.b64decode(raw) if event.get("isBase64Encoded") else raw)
         action = data.get("action", "create") if isinstance(data, dict) else "create"
-        if action not in ("create", "plus", "resolve", "backlog"):
+        if action not in ("create", "edit", "plus", "resolve", "backlog"):
             raise ValueError()
         if action != "create":
             note_id = data.get("id", "")
@@ -513,7 +533,13 @@ def _post(db, table, env, steam, admin, origin, event):
                 raise Refused(403, f"Notes from {data.get('env')} can only be changed there.")
             if action in ("resolve", "backlog") and not admin:
                 raise Refused(403, "Only the site's admin can resolve or backlog notes.")
-        if action == "resolve":
+        if action == "edit":
+            try:
+                comment = _comment(data)
+            except ValueError:
+                raise Refused(400, "Use a comment of 1–4000 characters.")
+            change = lambda note: _edit(note, steam, comment)
+        elif action == "resolve":
             resolved = bool(data.get("resolved"))
             fields = _outcome(data) if resolved else {}
             change = lambda note: _changed(note, lambda n: _resolve(n, steam, resolved, fields))
@@ -547,16 +573,33 @@ def _changed(note, change):
     return json.dumps(note, sort_keys=True) != before
 
 
-def _new_note(data, steam, origin):
+def _comment(data):
     comment = data.get("comment", "")
+    if not isinstance(comment, str):
+        raise ValueError()
+    comment = comment.strip()
+    if not 1 <= len(comment) <= 4000:
+        raise ValueError()
+    return comment
+
+
+def _edit(note, steam, comment):
+    if str(note.get("author")) != steam:
+        raise Refused(403, "Only the author can edit this note.")
+    if note["comment"] == comment:
+        return False
+    note["comment"] = comment
+    return True
+
+
+def _new_note(data, steam, origin):
+    comment = _comment(data)
     category = data.get("category")  # notes from before categories have none
     if category is not None and category not in CATEGORIES:
         raise ValueError()
     path = data.get("path", "")
     target = data.get("target", {})
-    if (not isinstance(comment, str) or not 1 <= len(comment.strip()) <= 4000
-            or not _valid_path(path)
-            or not isinstance(target, dict) or len(json.dumps(target)) > 12000):
+    if not _valid_path(path) or not isinstance(target, dict) or len(json.dumps(target)) > 12000:
         raise ValueError()
     # The exact page URL, so a report can be reopened without guessing the host.
     # Older clients send only the path; those notes still get one.
@@ -566,7 +609,7 @@ def _new_note(data, steam, origin):
         raise ValueError()
     now = int(time.time())
     note = {"id": f"feedback/{9999999999 - now:010d}-{uuid.uuid4().hex}.json", "created": now, "author": steam,
-            "comment": comment.strip(), "path": path, "url": url, "target": target, "resolved": False}
+            "comment": comment, "path": path, "url": url, "target": target, "resolved": False}
     if category:
         note["category"] = category
     return note

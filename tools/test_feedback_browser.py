@@ -54,6 +54,9 @@ def check_note_layout(page, notes, name):
         });
     }""")
     assert [b['who'] for b in boxes] == ['Jess', 'Jess', 'Steam …7252'], boxes
+    expect(page.locator('.bucket-author')).to_have_text('Jess')
+    expect(page.locator('.bucket-snippet')).to_contain_text('Typed, named.')
+    expect(page.get_by_role('button', name='Edit note', exact=True)).to_have_count(0)
     for b in boxes[1:]:
         assert abs(b['left'] - boxes[0]['left']) < 1 and abs(b['top'] - boxes[0]['top']) <= 1.5, boxes
         assert abs(b['timeRight'] - boxes[0]['timeRight']) < 1 and abs(b['timeTop'] - boxes[0]['timeTop']) <= 1.5, boxes
@@ -62,7 +65,7 @@ def check_note_layout(page, notes, name):
     page.screenshot(path=str(out))
 
 
-def check_find_and_plus(page, name):
+def check_find_and_plus(page, notes, name):
     """Search and the author filter narrow the loaded notes; +1 is one per person and can be taken back."""
     page.get_by_label('Status').select_option('all')
     wait_summary(page, '3 notes · 2 open · 1 place')
@@ -74,16 +77,66 @@ def check_find_and_plus(page, name):
     page.get_by_label('Author').select_option('')
     wait_summary(page, '3 notes · 2 open · 1 place')
     plus = page.locator('.plus').first
-    assert plus.inner_text() == '+1' and plus.get_attribute('aria-pressed') == 'false'
+    count = page.locator('.vote-count').first
+    expect(plus).to_have_attribute('aria-pressed', 'false')
+    expect(count).to_have_text('0 votes')
     plus.click()
-    page.wait_for_function("document.getElementById('gamma-feedback').shadowRoot"
-                           ".querySelector('.plus').textContent === '+1 · 1'")
-    assert page.locator('.plus').first.get_attribute('aria-pressed') == 'true'
+    expect(plus).to_have_text('✓ +1')
+    expect(plus).to_have_attribute('aria-pressed', 'true')
+    expect(count).to_have_text('1 vote')
     out = ROOT / 'local_data' / 'feedback' / 'evidence' / f'23-search-author-plus-{name}.png'
     page.screenshot(path=str(out))
-    page.locator('.plus').first.click()
-    page.wait_for_function("document.getElementById('gamma-feedback').shadowRoot"
-                           ".querySelector('.plus').textContent === '+1'")
+    plus.click()
+    expect(plus).to_have_attribute('aria-pressed', 'false')
+    expect(count).to_have_text('0 votes')
+    notes[0]['plus_count'] = 1
+    page.get_by_role('button', name='Refresh', exact=True).click()
+    expect(count).to_have_text('1 vote')
+    plus.click()
+    expect(plus).to_have_attribute('aria-pressed', 'true')
+    expect(count).to_have_text('2 votes')
+    plus.click()
+    expect(plus).to_have_attribute('aria-pressed', 'false')
+    expect(count).to_have_text('1 vote')
+    page.get_by_role('button', name='Refresh', exact=True).click()
+    expect(plus).to_have_attribute('aria-pressed', 'false')
+    expect(count).to_have_text('1 vote')
+
+
+def check_vote_sort(page, notes, paging):
+    """Ranks all pages with the selected scope and filters, then restores the location view."""
+    notes[0]['plus_count'], notes[1]['plus_count'], notes[2]['plus_count'] = 2, 2, 5
+    outside = {**notes[2], 'id': 'feedback/1800000700-' + 'f' * 32 + '.json', 'created': 1800000700,
+               'plus_count': 10, 'resolved': False, 'path': '/elsewhere', 'comment': 'Another page'}
+    notes.append(outside)
+    sort = page.get_by_label('Sort by')
+    paging['split'] = True
+    page.get_by_role('button', name='This page', exact=True).click()
+    sort.select_option('votes')
+
+    def order(expected):
+        assert page.locator('article').evaluate_all('(articles) => articles.map(a => a.dataset.id)') == [
+            item['id'] for item in expected]
+
+    wait_summary(page, '3 notes · 2 open · 1 place')
+    order([notes[2], notes[0], notes[1]])
+    expect(page.locator('.bucket-meta').first).to_contain_text('5 votes')
+    expect(page.locator('.bucket-author').first).to_have_text('Steam …7252')
+    page.get_by_role('button', name='Whole site', exact=True).click()
+    wait_summary(page, '4 notes · 3 open · 2 places')
+    order([outside, notes[2], notes[0], notes[1]])
+    page.get_by_label('Status').select_option('open')
+    wait_summary(page, '3 notes · 3 open · 2 places')
+    order([outside, notes[0], notes[1]])
+    page.get_by_role('button', name='This page', exact=True).click()
+    wait_summary(page, '2 notes · 2 open · 1 place')
+    order([notes[0], notes[1]])
+    notes.pop()
+    paging['split'] = False
+    sort.select_option('newest')
+    expect(page.locator('.bucket')).to_have_count(1)
+    if page.get_by_role('button', name='Expand all').count():
+        page.get_by_role('button', name='Expand all').click()
 
 
 def check_backlog(page):
@@ -125,7 +178,8 @@ def check_other_env(page, notes):
     expect(article).to_have_count(1)
     expect(article.locator('.pill.kind').filter(has_text='Prod')).to_have_count(1)
     expect(article.locator('.plus')).to_be_disabled()
-    expect(article.locator('.plus')).to_have_text('+1 · 2')
+    expect(article.locator('.vote-count')).to_have_text('2 votes')
+    expect(article.get_by_role('button', name='Edit note', exact=True)).to_be_hidden()
     expect(article.get_by_role('button', name='Resolve', exact=True)).to_be_hidden()
     expect(article.get_by_role('button', name='Backlog', exact=True)).to_be_hidden()
     env.select_option('gamma')
@@ -147,6 +201,7 @@ def main():
                               'target': {'kind': 'page'}}], []
 
             about = {'me': 'test', 'env': 'gamma', 'envs': ['gamma', 'prod'], 'admin': True}
+            paging = {'split': False}
 
             def route(request):
                 url = urlsplit(request.request.url)
@@ -158,6 +213,9 @@ def main():
                             if body['on'] != note.get('plus_mine', False):
                                 note['plus_count'] = note.get('plus_count', 0) + (1 if body['on'] else -1)
                             note['plus_mine'] = body['on']
+                        elif body.get('action') == 'edit':
+                            note = next(item for item in notes if item['id'] == body['id'])
+                            note['comment'] = body['comment'].strip()
                         elif body.get('action') == 'backlog':
                             note = next(item for item in notes if item['id'] == body['id'])
                             if body['on']:
@@ -187,7 +245,12 @@ def main():
                                  and params.get('env', 'gamma') in ('both', item.get('env', 'gamma'))]
                         if 'id' in params:
                             shown = [item for item in notes if item['id'] == params['id']]
-                        request.fulfill(json={**about, 'notes': shown, 'next': None, 'scope': params.get('scope', 'site')})
+                        cursor = None
+                        if 'cursor' in params:
+                            shown = shown[2:]
+                        elif paging['split'] and len(shown) > 2:
+                            shown, cursor = shown[:2], 'later'
+                        request.fulfill(json={**about, 'notes': shown, 'next': cursor, 'scope': params.get('scope', 'site')})
                     return
                 file = DIST / ('index.html' if url.path == '/' else url.path.lstrip('/'))
                 if file.is_file():
@@ -246,11 +309,31 @@ def main():
             assert 'Whole page' in page.locator('.bucket summary').first.inner_text()
             # Groups start collapsed, showing the newest comment; one button opens or closes them all.
             assert page.locator('.bucket[open]').count() == 0
-            assert 'Steam …test · Make this clearer' in page.locator('.bucket-snippet').first.inner_text()
+            expect(page.locator('.bucket-author').first).to_have_text('Steam …test')
+            expect(page.locator('.bucket-snippet').first).to_have_text('Make this clearer')
             assert page.locator('#toggle-all').inner_text() == 'Expand all'
             page.locator('#toggle-all').click()
             assert page.locator('.bucket[open]').count() == 1
             expect(page.locator('#toggle-all')).to_have_text('Collapse all')
+            edit = page.get_by_role('button', name='Edit note', exact=True)
+            edit.click()
+            page.get_by_label('Edit note text').fill('This draft will be dropped')
+            page.get_by_role('button', name='Cancel', exact=True).click()
+            expect(page.locator('.note-comment')).to_have_text('Make this clearer')
+            edit.click()
+            page.get_by_label('Edit note text').fill('Edited feedback')
+            upvote = page.get_by_role('button', name='Upvote', exact=True)
+            upvote.click()
+            expect(upvote).to_have_attribute('aria-pressed', 'false')
+            expect(page.get_by_label('Edit note text')).to_have_value('Edited feedback')
+            upvote.click()
+            expect(upvote).to_have_attribute('aria-pressed', 'true')
+            page.get_by_role('button', name='Save changes', exact=True).click()
+            expect(page.locator('.note-comment')).to_have_text('Edited feedback')
+            page.get_by_role('button', name='Refresh', exact=True).click()
+            expect(page.locator('.note-comment')).to_have_text('Edited feedback')
+            expect(page.locator('.vote-count')).to_have_text('1 vote')
+            expect(page.locator('.pill.open')).to_have_text('Open')
             # The inbox follows the site's tabs: a note filed on another page shows when you move there.
             page.evaluate("location.hash = '#elsewhere'")
             wait_summary(page, '0 notes · 0 open · 0 places')
@@ -310,6 +393,27 @@ def main():
             page.get_by_label('Status').select_option('open')
             wait_summary(page, '1 note · 1 open · 1 place')
             page.get_by_role('tab', name='New note', exact=True).click()
+            draft = page.get_by_label('What should change?')
+            draft.fill('Draft before picking')
+            page.get_by_role('button', name='Pick on page', exact=True).click()
+            guidance = page.locator('#pick-instructions').bounding_box()
+            cancel = page.get_by_role('button', name='Cancel', exact=True)
+            button = cancel.bounding_box()
+            assert guidance['y'] + guidance['height'] <= button['y']
+            for bounds in (guidance, button):
+                assert bounds['x'] >= 0 and bounds['y'] >= 0
+                assert bounds['x'] + bounds['width'] <= page.evaluate('innerWidth')
+                assert bounds['y'] + bounds['height'] <= page.evaluate('innerHeight')
+            expect(page.locator('#grip')).to_be_hidden()
+            if name == 'desktop':
+                cancel.click()
+                page.get_by_role('button', name='Pick on page', exact=True).click()
+                page.keyboard.press('Escape')
+            else:
+                cancel.tap()
+            expect(panel).to_be_visible()
+            expect(page.get_by_role('button', name='Pick on page', exact=True)).to_be_focused()
+            expect(draft).to_have_value('Draft before picking')
             page.get_by_role('button', name='Pick on page', exact=True).click()
             heading = page.locator('h1:visible, h2:visible').first
             heading.click()
@@ -343,7 +447,8 @@ def main():
             assert bounds['x'] + bounds['width'] <= page.evaluate('innerWidth')
             assert bounds['y'] + bounds['height'] <= page.evaluate('innerHeight')
             check_note_layout(page, notes, name)
-            check_find_and_plus(page, name)
+            check_find_and_plus(page, notes, name)
+            check_vote_sort(page, notes, paging)
             check_backlog(page)
             check_other_env(page, notes)
             page.evaluate("""() => {

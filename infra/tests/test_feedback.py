@@ -278,12 +278,44 @@ class FeedbackTest(unittest.TestCase):
     def test_prod_notes_are_read_only_from_gamma(self):
         nid = self.put(1, env='prod')
         for body in ({'action': 'plus', 'id': nid, 'on': True, 'env': 'prod'},
+                     {'action': 'edit', 'id': nid, 'env': 'prod', 'comment': 'new text'},
                      {'action': 'resolve', 'id': nid, 'env': 'prod', 'resolved': True, 'outcome': 'declined', 'close_note': 'x'},
                      {'action': 'backlog', 'id': nid, 'env': 'prod', 'on': True}):
             self.assertEqual(self.call(body)[0], 403, body)
         # without env, the write env is meant: no gamma note by that id
         self.assertEqual(self.call({'action': 'plus', 'id': nid, 'on': True})[0], 404)
         self.assertEqual(self.stored(nid, 'prod')['plus_count'], {'N': '0'})
+
+    def test_the_author_can_edit_only_the_comment(self):
+        nid = self.put(1, plus=3, author=OTHER, category='bug', resolved=True,
+                       outcome='done', close_note='fixed', resolved_by=ADMIN, history=[{'close_note': 'earlier'}])
+        saved = self.stored(nid)
+        body = {'action': 'edit', 'id': nid, 'comment': '  new\ntext  ', 'path': '/new',
+                'category': 'kudos', 'author': ADMIN, 'plus_count': 0, 'resolved': False}
+        self.assertEqual(self.call(body)[0], 403)  # even an admin cannot edit someone else's note
+        self.assertEqual(self.stored(nid), saved)
+        for bad in (' ', 'x' * 4001, 3, None):
+            self.assertEqual(self.call({**body, 'comment': bad}, steam=OTHER)[0], 400)
+        note = self.note(body, steam=OTHER)
+        self.assertEqual(note['comment'], 'new\ntext')
+        saved_body = json.loads(saved.pop('body')['S'])
+        edited = self.stored(nid)
+        self.assertEqual(json.loads(edited.pop('body')['S']), {**saved_body, 'comment': 'new\ntext'})
+        self.assertEqual(edited, saved)
+
+    def test_inbox_hydrates_fresh_text_and_votes_when_an_index_lags(self):
+        nid = self.put(1, plus=1)
+        moved = self.put(2)
+        old = [feedback._from_item(self.stored(note)) for note in (nid, moved)]
+        self.note({'action': 'edit', 'id': nid, 'comment': 'updated'})
+        self.note({'action': 'plus', 'id': nid, 'on': True})
+        self.note({'action': 'backlog', 'id': moved, 'on': True})
+        with patch.object(feedback, '_read', return_value=(old, 'cursor')):
+            status, data = self.call(query='scope=page&path=%2Fa&status=open')
+        self.assertEqual((status, data['next']), (200, 'cursor'))
+        self.assertEqual([note['id'] for note in data['notes']], [nid])
+        note = data['notes'][0]
+        self.assertEqual((note['comment'], note['plus_count'], note['plus_mine']), ('updated', 2, True))
 
     # --- resolve / backlog ---------------------------------------------------------------
 
@@ -377,6 +409,17 @@ class FeedbackTest(unittest.TestCase):
             feedback._change(self.db, TABLE_NAME, 'gamma', nid, ADMIN, meanwhile)
         self.assertEqual(refused.exception.status, 409)
         self.assertNotIn('backlog', json.loads(self.stored(nid)['body']['S']))
+
+    def test_a_concurrent_comment_edit_conflicts_even_when_the_state_is_unchanged(self):
+        nid = self.put(1)
+        def meanwhile(note):
+            self.note({'action': 'edit', 'id': nid, 'comment': 'committed first'})
+            note['comment'] = 'stale'
+            return True
+        with self.assertRaises(feedback.Refused) as refused:
+            feedback._change(self.db, TABLE_NAME, 'gamma', nid, ADMIN, meanwhile)
+        self.assertEqual(refused.exception.status, 409)
+        self.assertEqual(json.loads(self.stored(nid)['body']['S'])['comment'], 'committed first')
 
     def test_resolve_keeps_a_plus_count_that_moved(self):
         nid = self.put(1, plus=1)
