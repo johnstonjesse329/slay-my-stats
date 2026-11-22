@@ -2754,6 +2754,14 @@ body.suppress-hover-tooltips .node-tooltip {
   background: none;
   border: none;
 }
+.tile-face-art { position: relative; }
+.tile-added-floors {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 .card-tile-face .tile-badges {
   position: absolute;
   /* A face image carries a 16px transparent margin (332px wide for a 300px card),
