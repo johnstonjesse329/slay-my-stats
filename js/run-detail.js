@@ -530,6 +530,7 @@ function renderDetailRun(run) {
         if (token !== detailRenderToken || !copies.some(copy => copy?.measured?.length)) return;
         detailDamageRuns = copies;
         renderDetailKeepCharts(run);
+        renderPartyCombatRates(run, run);
       });
     }
     return;
@@ -807,6 +808,7 @@ function showRunCopy(run, owner, note = "", players = null) {
   renderDetailKeepCharts(run);
   if (players) renderPartyCharts(players);
   document.getElementById("detail-keep-heading").hidden = document.getElementById("detail-keep-box").style.display === "none";
+  renderPartyCombatRates(run, owner, players);
   renderDeckActCounts(run, players);
   renderDetailDeckRelics(run);
   for (const button of detailSectionNav.querySelectorAll("[data-section]")) {
@@ -3575,6 +3577,58 @@ function partyDamageByFloor(sources, nodes, slot) {
   });
 }
 
+function recordedPartyIncoming(run, node, sample, partySources) {
+  if (!run.mp || node.dmg == null) return null;
+  const slot = run.coop?.i ?? run.partySlot;
+  const own = Array.isArray(sample?.incomingBySlot) && sample.incomingBySlot.length === run.party?.length
+    ? sample.incomingBySlot[slot] : null;
+  const valid = value => value?.taken === node.dmg && Number.isSafeInteger(value.blocked) && value.blocked >= 0;
+  if (valid(own)) return own;
+  for (const source of partySources) {
+    const candidate = source.get(damageFloorKey(node))?.incoming?.[slot];
+    if (valid(candidate)) return candidate;
+  }
+  return null;
+}
+
+function renderPartyCombatRates(run, owner, players = null) {
+  const box = document.getElementById("detail-party-combat-rates");
+  box.hidden = !run.mp;
+  if (box.hidden) return;
+  const roster = partyRoster(owner);
+  const slot = chartPartySlot(run, owner);
+  const visible = players
+    ? roster.map(player => ({ ...player, run: players.find(p => p.slot === player.slot)?.run }))
+    : [{ label: roster[slot]?.label || fmtCharName(run.char), slot, run }];
+  const sources = partyDamageSources([run, owner, ...(players || []).map(p => p.run), ...detailDamageRuns]);
+  const rows = visible.map(player => {
+    const nodes = (player.run?.timeline || owner.timeline || []).filter(keepFight);
+    const dealt = partyDamageByFloor(sources, nodes, player.slot);
+    const measured = player.run && measuredStrengthByNode(player.run, nodes);
+    const blocked = nodes.map((node, i) => player.run &&
+      recordedPartyIncoming(player.run, node, measured?.[i], sources)?.blocked);
+    const lost = nodes.map(node => player.run && node.dmg);
+    const rate = values => {
+      let total = 0, turns = 0, fights = 0;
+      values.forEach((value, i) => {
+        if (!Number.isFinite(value) || value < 0) return;
+        total += value;
+        turns += nodes[i].turns;
+        fights++;
+      });
+      if (!turns) return '<td aria-label="Unavailable">—</td>';
+      const coverage = fights < nodes.length ? `<small>${fights}/${nodes.length} fights</small>` : "";
+      return `<td>${(total / turns).toFixed(1)}${coverage}</td>`;
+    };
+    return `<tr><th scope="row">${escapeHtml(player.label)}</th>${[dealt, lost, blocked].map(rate).join("")}</tr>`;
+  });
+  box.innerHTML = `<table class="detail-summary-table">
+    <caption>Combat rates per fight turn</caption>
+    <thead><tr><th scope="col">Player</th><th scope="col">Damage done</th><th scope="col">HP lost</th><th scope="col">Damage blocked</th></tr></thead>
+    <tbody>${rows.join("")}</tbody></table>
+    <p class="chart-caption">Cards and energy aren't recorded separately for each player.</p>`;
+}
+
 function showKeepNotice(chart, message, linkMod = false) {
   const note = document.getElementById(`detail-keep-${chart}-note`);
   note.querySelector("span").textContent = message;
@@ -3766,19 +3820,7 @@ function fightReadings(run, nodes, measured, partyDamage = null, partySources = 
       if (how) row.winTotal = how.taken;
       // What the log blocked, and what arrived is that and all of what got through, so
       // the hover box adds up.
-      const slot = run.coop?.i ?? run.partySlot;
-      const ownIncoming = run.mp && Array.isArray(sample?.incomingBySlot) &&
-        sample.incomingBySlot.length === run.party?.length ? sample.incomingBySlot[slot] : null;
-      const validIncoming = value => n.dmg != null && value?.taken === recordedDamage &&
-        Number.isSafeInteger(value.blocked) && value.blocked >= 0;
-      let incoming = validIncoming(ownIncoming) ? ownIncoming : null;
-      if (!incoming && run.mp) {
-        const key = damageFloorKey(n);
-        for (const source of partySources) {
-          const candidate = source.get(key)?.incoming?.[slot];
-          if (validIncoming(candidate)) { incoming = candidate; break; }
-        }
-      }
+      const incoming = recordedPartyIncoming(run, n, sample, partySources);
       if (incoming) {
         row.grossBlocked = incoming.blocked;
         row.grossArrived = row.grossBlocked + row.grossTaken;

@@ -1767,6 +1767,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div id="detail-party-toggle" class="party-toggle" role="group" aria-label="Charts show"></div>
         <div class="keep-actpick" id="detail-keep-actpick"></div>
       </div>
+      <section class="chart-box" id="detail-party-combat-rates" aria-label="Player combat rates" hidden></section>
       <div class="chart-box" id="detail-keep-box">
         <p class="chart-caption">This data highlights how your deck is performing per act against broad buckets of effectiveness: how much damage you put out and how much you mitigate. Slower decks with more turns per fight aren't penalized if damage taken is low.</p>
         <dl class="chart-caption keep-key">

@@ -3250,3 +3250,5 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .detail-summary-table caption { text-align: left; color: var(--text-dim); margin-bottom: 0.3rem; }
 .detail-summary-table :is(th, td) { padding: 0.35rem 0.25rem; text-align: right; border-bottom: 1px solid var(--hairline); }
 .detail-summary-table th:first-child { text-align: left; overflow-wrap: anywhere; }
+#detail-party-combat-rates { margin-bottom: 1rem; }
+#detail-party-combat-rates td small { display: block; color: var(--text-dim); }
