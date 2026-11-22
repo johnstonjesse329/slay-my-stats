@@ -2271,6 +2271,24 @@ h1 {
   color: var(--text-dim);
   font-weight: 400;
 }
+#overview-synergies { margin-block: 1rem; }
+#overview-synergies > summary { cursor: pointer; }
+#overview-synergies > summary h3 { display: inline; }
+.overview-synergy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  align-items: start;
+  gap: 1rem;
+}
+.overview-synergy-table caption {
+  font-weight: 700;
+  text-align: left;
+  padding: 0.5rem;
+}
+.overview-synergy-table { width: 100%; table-layout: fixed; }
+.overview-synergy-table th { padding-inline: 0.35rem; white-space: normal; overflow-wrap: anywhere; }
+.overview-synergy-table th:first-child { width: 60%; text-align: left; }
+.overview-synergy-table td { text-align: center; }
 .deck-tile-row {
   display: flex;
   flex-wrap: wrap;

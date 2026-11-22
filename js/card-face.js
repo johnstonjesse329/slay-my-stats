@@ -380,6 +380,50 @@ function deckLinks(deck, relics) {
 }
 
 const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const synergyLabel = key => key.replace(/^power:/, "").replace(/^./, c => c.toUpperCase());
+const SYNERGY_FAMILIES = {
+  IRONCLAD: { Strength: ["power:Strength"], Exhaust: ["exhaust", "exhaust skills", "exhaust attacks", "Skill Exhaust"], Block: ["block scaling", "card Block"], "Self-damage": ["HP loss"], Vulnerable: ["power:Vulnerable"] },
+  SILENT: { Shiv: ["shiv"], Poison: ["power:Poison"], Discard: ["discard"] },
+  DEFECT: { Lightning: ["lightning", "lightning focus", "lightning slots", "lightning evoke", "lightning passive"], Frost: ["frost", "frost focus", "frost slots", "frost evoke", "frost passive"], Dark: ["dark", "dark focus", "dark slots", "dark evoke", "dark passive"], Plasma: ["plasma slots", "plasma evoke", "plasma passive"], "Zero-cost": ["zero-cost", "zero-cost attacks"], Status: ["status"] },
+  NECROBINDER: { Doom: ["power:Doom", "Doom application"], Osty: ["Osty health", "Osty attacks", "Osty damage"], Souls: ["souls"], Ethereal: ["ethereal"] },
+  REGENT: { Stars: ["stars", "star spending", "star gain", "star-cost cards"], Forge: ["forge", "blade upgrades"], Creation: ["creation", "colorless", "minion"] },
+  FOOL: { Shots: ["aim", "shots", "arrows"], Impale: ["impale", "dislodge"], Melodies: ["melodies", "wah melody", "cho melody", "ki melody", "wah cards", "cho cards", "ki cards"], Sadness: ["sadness"], Stretch: ["stretch"] },
+};
+
+const overviewSynergies = document.getElementById("overview-synergies");
+const overviewSynergyCache = new WeakMap();
+overviewSynergies?.addEventListener("toggle", () => renderOverviewSynergies(overviewRuns()));
+
+function renderOverviewSynergies(runs) {
+  if (!overviewSynergies?.open) return;
+  const byChar = new Map();
+  for (const run of runs) {
+    if (typeof run.won !== "boolean") continue;
+    if (!overviewSynergyCache.has(run)) {
+      const families = Object.entries(SYNERGY_FAMILIES[run.char] || {});
+      const names = deckLinks(run.finalDeck || [], run.finalRelics || []).map(({ key }) =>
+        families.find(([, keys]) => keys.includes(key))?.[0] || synergyLabel(key));
+      overviewSynergyCache.set(run, new Set(names));
+    }
+    for (const name of overviewSynergyCache.get(run)) {
+      if (!byChar.has(run.char)) byChar.set(run.char, new Map());
+      const records = byChar.get(run.char);
+      if (!records.has(name)) records.set(name, [0, 0]);
+      records.get(name)[run.won ? 0 : 1]++;
+    }
+  }
+  const characters = [...byChar.keys()].sort((a, b) => fmtCharName(a).localeCompare(fmtCharName(b)));
+  overviewSynergies.querySelector(".overview-synergy-grid").innerHTML = characters.map(char => {
+    const records = [...byChar.get(char)].sort(([nameA, [winsA, lossesA]], [nameB, [winsB, lossesB]]) =>
+      winsB + lossesB - winsA - lossesA || nameA.localeCompare(nameB));
+    return `<table class="pivot overview-synergy-table">
+      <caption>${charIconHtml(char)} ${escapeHtml(fmtCharName(char))}</caption>
+      <thead><tr><th scope="col">Synergy</th><th scope="col">Wins</th><th scope="col">Losses</th></tr></thead>
+      <tbody>${records.map(([name, [wins, losses]]) =>
+        `<tr><th scope="row">${escapeHtml(name)}</th><td>${wins}</td><td>${losses}</td></tr>`).join("")}</tbody>
+    </table>`;
+  }).join("") || "<p>No detected synergies in the selected runs.</p>";
+}
 
 function renderDeckLinksHtml(deck, relics, character) {
   const links = deckLinks(deck, relics);
@@ -436,15 +480,6 @@ function renderDeckLinksHtml(deck, relics, character) {
     "Doom application": "Applying Doom triggers these rewards, including when applied to yourself.",
     "power:Poison": "Poison enables scaling and additional Poison triggers."
 };
-  const families = {
-    IRONCLAD: { Strength: ["power:Strength"], Exhaust: ["exhaust", "exhaust skills", "exhaust attacks", "Skill Exhaust"], Block: ["block scaling", "card Block"], "Self-damage": ["HP loss"], Vulnerable: ["power:Vulnerable"] },
-    SILENT: { Shiv: ["shiv"], Poison: ["power:Poison"], Discard: ["discard"] },
-    DEFECT: { Lightning: ["lightning", "lightning focus", "lightning slots", "lightning evoke", "lightning passive"], Frost: ["frost", "frost focus", "frost slots", "frost evoke", "frost passive"], Dark: ["dark", "dark focus", "dark slots", "dark evoke", "dark passive"], Plasma: ["plasma slots", "plasma evoke", "plasma passive"], "Zero-cost": ["zero-cost", "zero-cost attacks"], Status: ["status"] },
-    NECROBINDER: { Doom: ["power:Doom", "Doom application"], Osty: ["Osty health", "Osty attacks", "Osty damage"], Souls: ["souls"], Ethereal: ["ethereal"] },
-    REGENT: { Stars: ["stars", "star spending", "star gain", "star-cost cards"], Forge: ["forge", "blade upgrades"], Creation: ["creation", "colorless", "minion"] },
-    FOOL: { Shots: ["aim", "shots", "arrows"], Impale: ["impale", "dislodge"], Melodies: ["melodies", "wah melody", "cho melody", "ki melody", "wah cards", "cho cards", "ki cards"], Sadness: ["sadness"], Stretch: ["stretch"] },
-  };
-  const label = key => key.replace(/^power:/, "").replace(/^./, c => c.toUpperCase());
   const image = item => {
     const src = item.id.startsWith("RELIC.") ? relicImgSrc(item.id) : cardImgSrc(item.id);
     return src ? `<img loading="lazy" src="${escapeHtml(src)}" alt="">` : `<span aria-hidden="true">?</span>`;
@@ -467,11 +502,11 @@ function renderDeckLinksHtml(deck, relics, character) {
     explanations[orb + " evoke"] = `These cards Evoke ${name} Orbs for their immediate effect.`;
     explanations[orb + " passive"] = `These effects trigger ${name}'s passive again.`;
   }
-  const connection = link => `<div class="synergy-connection"><div class="synergy-connection-heading"><b>${escapeHtml(label(link.key))}</b>
+  const connection = link => `<div class="synergy-connection"><div class="synergy-connection-heading"><b>${escapeHtml(synergyLabel(link.key))}</b>
     ${explanations[link.key] ? `<span class="synergy-reason">${escapeHtml(explanations[link.key])}</span>` : ""}</div>
     <div class="synergy-flow" style="--synergy-payoff-columns:${Math.min(3, link.users.length)}"><div><div class="synergy-lane-label">Sources · ${link.feeders.length}</div><div class="synergy-items">${link.feeders.map(tile).join("")}</div></div><span class="synergy-flow-arrow" aria-hidden="true">→</span><div><div class="synergy-lane-label">Payoffs · ${link.users.length}</div><div class="synergy-items">${link.users.map(tile).join("")}</div></div></div></div>`;
   const assigned = new Set();
-  const groups = Object.entries(families[character] || {}).map(([name, keys]) => {
+  const groups = Object.entries(SYNERGY_FAMILIES[character] || {}).map(([name, keys]) => {
     const matches = links.filter(l => keys.includes(l.key));
     matches.forEach(l => assigned.add(l.key));
     return [name, matches];
