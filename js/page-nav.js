@@ -94,7 +94,7 @@ function updateFilterSummary() {
   document.querySelector("#shared-filter-summary .filter-label").textContent =
     locked ? "Filters locked" : active ? "Filters applied" : "Default filters applied";
   const summary = locked
-    ? "Overview · Full history · Standard + Dread"
+    ? `Overview · ${overviewMode.selectedOptions[0].text} · ${overviewBuild.selectedOptions[0].text}`
     : `${visible} of ${DATA.runsData.length} runs · ${parts.join(" · ")}`;
   const summaryText = document.querySelector("#shared-filter-summary .filter-summary-text");
   summaryText.textContent = summary;

@@ -169,6 +169,9 @@ h1 {
    leads with each character's win rate, its tiers as bars, then one short
    figure per cell; counts are on hover. */
 #personal-bests-cards { margin-bottom: 2rem; }
+.overview-filters { display: flex; flex-wrap: wrap; gap: 0.55rem 1rem; margin-bottom: 1rem; }
+.overview-filters label { display: flex; align-items: center; gap: 0.45rem; }
+.overview-filters .seeds-input { width: auto; }
 .filter-presets { flex-wrap: wrap; }
 .filter-presets select, .filter-presets input { min-width: 0; max-width: 100%; padding: 0.4rem 0.6rem; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 4px; font: inherit; font-size: var(--fs-sm); }
 .filter-actions #shared-filters-status { font-size: var(--fs-sm); color: var(--text-dim); margin-left: 0.4rem; }

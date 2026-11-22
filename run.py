@@ -1397,7 +1397,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <span class="filter-summary-text"></span>
     <span class="filter-summary-caret" aria-hidden="true">▾</span>
   </button>
-  <p class="filter-lock-note">Overview always shows the full history. These saved selections are preserved for Runs, Cards and Seeds.</p>
+  <p class="filter-lock-note">Overview has its own mode and game build filters. These saved selections are preserved for Runs, Cards, Relics and Seeds.</p>
 
   <div class="filter-row">
     <div class="filter-group">
@@ -1479,14 +1479,25 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <main id="main-content">
 <div id="page-overview">
 <p id="overview-history-summary"></p>
-<p class="chart-caption">Full history across all characters, builds, dates, mods and party sizes. Stats and charts cover Standard and Dread runs. Daily, Custom and Blitz are counted separately above.</p>
+<div class="overview-filters" aria-label="Overview filters">
+  <label for="overview-mode">Mode <select class="seeds-input" id="overview-mode">
+    <option value="standard-dread">Standard + Dread</option>
+    <option value="standard">Standard</option>
+    <option value="dread">Dread</option>
+    <option value="daily">Daily</option>
+    <option value="blitz">Blitz</option>
+  </select></label>
+  <label for="overview-build">Game build <select class="seeds-input" id="overview-build">
+    <option value="">All builds</option>
+  </select></label>
+</div>
 <div class="cards" id="summary-cards"></div>
 <div class="grid-1">
   <div class="chart-box">
     <div class="asc-head">
       <div>
         <h2>Ascension tracker</h2>
-        <p class="chart-caption">Where each character stands on the climb to A10. Standard runs only.</p>
+        <p class="chart-caption">Where each character stands on the climb to A10 across their full Standard history.</p>
       </div>
       <div class="asc-stats" id="asc-tracker-stats"></div>
     </div>

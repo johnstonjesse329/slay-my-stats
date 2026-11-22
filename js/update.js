@@ -160,13 +160,23 @@ function runPassesFilters(run, fromOther = false) {
   return modeShowsRun(sharedActivePlayers, sharedActiveModes, run) && modsShowRun(sharedActiveMods, run);
 }
 
+const overviewMode = document.getElementById("overview-mode");
+const overviewBuild = document.getElementById("overview-build");
+for (const build of [...new Set([...DATA.runsData].sort((a, b) => b.ts - a.ts).map(run => run.build))]) {
+  if (build) overviewBuild.add(new Option(build, build));
+}
+for (const control of [overviewMode, overviewBuild]) {
+  control.addEventListener("change", () => rerenderCurrentPage());
+}
+
 function overviewRuns() {
-  return DATA.runsData.filter(run => ["standard", "dread"].includes(runModeOf(run)));
+  const modes = overviewMode.value === "standard-dread" ? ["standard", "dread"] : [overviewMode.value];
+  return DATA.runsData.filter(run => modes.includes(runModeOf(run))
+    && (!overviewBuild.value || run.build === overviewBuild.value));
 }
 
 function filterRuns() {
-  // Overview is a fixed history summary. Shared selections belong only to
-  // Runs, Cards and Seeds and remain intact when passing through Overview.
+  // Overview has independent controls. Keep the other pages' shared selections.
   return currentPage === "overview" ? overviewRuns() : DATA.runsData.filter(run => runPassesFilters(run));
 }
 
