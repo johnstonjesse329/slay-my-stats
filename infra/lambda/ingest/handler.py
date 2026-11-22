@@ -1098,6 +1098,7 @@ PAIR_KEYS = ("chars", "cards", "relics")
 # favourites and offer/pick-rate columns. Totals recounted before the last two
 # were added carry four numbers; the page reads the missing two as unknown.
 PICK_SLOTS = 6
+ASC_PICK_VERSION = 1
 PICK_KINDS = (("cards", "cardsOffered"), ("relics", "relicsOffered"))
 
 
@@ -1127,7 +1128,8 @@ def _tally_picks(picks: dict, r: dict, won: bool) -> None:
 def empty_stats() -> dict:
     # pickSlots says the picks carry offers too: only a total counted from empty
     # has it, so one recounted before offers were kept never reads as complete.
-    return {"v": 1, "pickSlots": PICK_SLOTS, "allRuns": 0, **{m: _empty_mode() for m in MODES}}
+    return {"v": 1, "pickSlots": PICK_SLOTS, "ascPickVersion": ASC_PICK_VERSION,
+            "allRuns": 0, **{m: _empty_mode() for m in MODES}}
 
 
 def _bump(pairs: dict, key, won: bool) -> None:
@@ -1166,6 +1168,12 @@ def tally(runs: list[dict], slug: str) -> dict:
         for rid in {c.get("id") for c in r.get("finalRelics") or []} - {None}:
             _bump(m["relics"], rid, won)
         _tally_picks(m["picks"], r, won)
+        asc = r.get("asc")
+        cohort = ("dread" if r.get("mode") == "dread" else str(asc)
+                  if type(asc) is int and asc >= 0 else "unknown")
+        grouped = m.setdefault("ascPicks", {}).setdefault(cohort, {"chars": {}, "picks": {}})
+        _bump(grouped["chars"], r.get("char") or "UNKNOWN", won)
+        _tally_picks(grouped["picks"], r, won)
         fights = r.get("fights") or []
         if not won and fights and fights[-1].get("won") is False and fights[-1].get("enc"):
             enc = fights[-1]["enc"]
@@ -1173,6 +1181,17 @@ def tally(runs: list[dict], slug: str) -> dict:
         if won and mins > 0:
             _offer_fastest(m["records"], {"slug": slug, "char": r.get("char"), "mins": mins, "ts": r.get("ts")})
     return stats
+
+
+def _merge_picks(total: dict, delta: dict) -> None:
+    for char, kinds in delta.items():
+        for kind, by_id in kinds.items():
+            into = total.setdefault(char, {}).setdefault(kind, {})
+            for item_id, q in by_id.items():
+                have = into.setdefault(item_id, [0] * PICK_SLOTS)
+                have.extend([0] * (PICK_SLOTS - len(have)))  # a total from before offers were kept
+                for i, n in enumerate(q):
+                    have[i] += n
 
 
 def merge_stats(total: dict, delta: dict) -> dict:
@@ -1188,15 +1207,17 @@ def merge_stats(total: dict, delta: dict) -> dict:
                 pair = pairs.setdefault(key, [0, 0])
                 pair[0] += n
                 pair[1] += w
-        picks = t.setdefault("picks", {})
-        for char, kinds in d.get("picks", {}).items():
-            for kind, by_id in kinds.items():
-                into = picks.setdefault(char, {}).setdefault(kind, {})
-                for item_id, q in by_id.items():
-                    have = into.setdefault(item_id, [0] * PICK_SLOTS)
-                    have.extend([0] * (PICK_SLOTS - len(have)))  # a total from before offers were kept
-                    for i, n in enumerate(q):
-                        have[i] += n
+        _merge_picks(t.setdefault("picks", {}), d.get("picks", {}))
+        # Only a full recount can establish historical coverage.
+        if total.get("ascPickVersion") == ASC_PICK_VERSION:
+            cohorts = t.setdefault("ascPicks", {})
+            for cohort, grouped in d.get("ascPicks", {}).items():
+                into = cohorts.setdefault(cohort, {"chars": {}, "picks": {}})
+                for char, (n, w) in grouped["chars"].items():
+                    pair = into["chars"].setdefault(char, [0, 0])
+                    pair[0] += n
+                    pair[1] += w
+                _merge_picks(into["picks"], grouped["picks"])
         killers = t.setdefault("killers", {})
         for enc, n in d.get("killers", {}).items():
             killers[enc] = killers.get(enc, 0) + n

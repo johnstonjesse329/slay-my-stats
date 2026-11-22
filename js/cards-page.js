@@ -404,15 +404,27 @@ function favTalliesYou() {
   return { picks, runs };
 }
 
-// The same from the site-wide totals, for the Players filter's runs (all = solo
-// plus multiplayer). Only while Standard is ticked: there are no totals for the
-// other modes.
+// The public cohorts track Standard by exact ascension and Dread separately.
+// Compare only when the remaining filters match the population counted.
 function favTalliesAll() {
-  if (!siteStatsForFavs || !sharedActiveModes.has("standard")) return null;
-  const modes = sharedActivePlayers === "all" ? ["solo", "multi"] : [sharedActivePlayers];
+  if (!siteStatsForFavs || !sharedActiveModes.size
+      || [...sharedActiveModes].some(mode => !["standard", "dread"].includes(mode))
+      || sharedActiveBuilds.size !== DATA.builds.length || sharedActiveMods !== "all"
+      || sharedTsFrom !== 0 || sharedTsTo !== TS_NO_UPPER_BOUND) return null;
+  const allAscs = sharedActiveAscs.size === DATA.ascensions.length;
+  const exact = siteStatsForFavs.ascPickVersion === 1;
+  if (!exact && (!allAscs || sharedActiveModes.size !== 2)) return null;
+  const parties = sharedActivePlayers === "all" ? ["solo", "multi"] : [sharedActivePlayers];
   const picks = {}, runs = {};
-  modes.forEach(mode => {
-    const m = siteStatsForFavs[mode] || {};
+  parties.flatMap(party => {
+    const mode = siteStatsForFavs[party] || {};
+    if (!exact) return [mode];
+    const cohorts = Object.entries(mode.ascPicks || {});
+    return cohorts.filter(([key]) => key === "dread"
+      ? sharedActiveModes.has("dread") && (allAscs || sharedActiveAscs.has(DREAD_ASC))
+      : sharedActiveModes.has("standard") && (allAscs || sharedActiveAscs.has(Number(key))))
+      .map(([, cohort]) => cohort);
+  }).forEach(m => {
     Object.entries(m.chars || {}).forEach(([char, pair]) => { runs[char] = (runs[char] || 0) + pair[0]; });
     Object.entries(m.picks || {}).forEach(([char, kinds]) => {
       const into = picks[char] || (picks[char] = { cards: {}, relics: {} });
@@ -422,7 +434,7 @@ function favTalliesAll() {
       }));
     });
   });
-  return { picks, runs };
+  return Object.keys(runs).length ? { picks, runs } : null;
 }
 
 // The three picks for one slot, over the characters in view. Each item's
@@ -583,7 +595,7 @@ function renderCardFavorites() {
     box.classList.remove("fav-panels-bychar");
     const chars = [sharedActiveChar];
     box.innerHTML = favPanelHtml("You", favTalliesYou(), chars) + (all ? favPanelHtml("All players", all, chars) : "");
-    if (caption) caption.textContent = `Your most-picked, best win rate and most-bought card of each rarity${favCoopNote()}, beside the same for all players. Every card shows its win rate, with the count behind it underneath.`;
+    if (caption) caption.textContent = `Your most-picked, best win rate and most-bought card of each rarity${favCoopNote()}${all ? ", beside the same for all players" : ""}. Every card shows its win rate, with the count behind it underneath.`;
   }
   box.querySelectorAll(".fav-item[data-fav-id]").forEach(el => {
     const show = () => showFloatingHtmlTooltip(el, el.dataset.favKind === "cards"
