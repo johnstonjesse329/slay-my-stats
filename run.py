@@ -1500,11 +1500,11 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <h2 class="group-head">Run statistics</h2>
 <div class="chart-box" id="personal-bests-cards"></div>
 
-<details class="chart-box" id="overview-synergies">
-  <summary><h3>Synergy records by character</h3></summary>
+<div class="chart-box" id="overview-synergies">
+  <h3>Win % by synergy</h3>
   <p class="chart-caption">Wins and losses when the final deck had these connections. A run can count toward several synergies.</p>
   <div class="overview-synergy-grid"></div>
-</details>
+</div>
 
 <div class="grid-1">
   <div class="chart-box">
@@ -1791,7 +1791,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div id="detail-party-toggle" class="party-toggle" role="group" aria-label="Charts show"></div>
         <div class="keep-actpick" id="detail-keep-actpick"></div>
       </div>
-      <section class="chart-box" id="detail-party-combat-rates" aria-label="Player combat rates" hidden></section>
       <div class="chart-box" id="detail-keep-box">
         <p class="chart-caption">This data highlights how your deck is performing per act against broad buckets of effectiveness: how much damage you put out and how much you mitigate. Slower decks with more turns per fight aren't penalized if damage taken is low.</p>
         <dl class="chart-caption keep-key">
