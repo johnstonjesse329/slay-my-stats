@@ -1781,16 +1781,24 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <div id="detail-main">
     <div id="detail-placeholder" class="detail-placeholder">Select a run from the list to view its timeline.</div>
     <div id="detail-content" style="display:none">
-      <div id="detail-run-header"></div>
-      <div id="detail-deck-relics"></div>
-      <div id="detail-timeline"></div>
-      <div id="detail-maps"></div>
-      <section id="detail-floor-charts" aria-label="Floor charts">
+      <nav class="detail-section-nav" aria-label="Run sections">
+        <button type="button" class="toggle-btn" data-section="detail-run-header">Run summary</button>
+        <button type="button" class="toggle-btn" data-section="detail-deck-relics">Final deck</button>
+        <button type="button" class="toggle-btn" data-section="detail-timeline">Timeline</button>
+        <button type="button" class="toggle-btn" data-section="detail-maps">Act maps</button>
+        <button type="button" class="toggle-btn" data-section="detail-floor-charts">Floor charts</button>
+      </nav>
+      <div id="detail-run-header" tabindex="-1"></div>
+      <div id="detail-deck-relics" tabindex="-1"></div>
+      <div id="detail-timeline" tabindex="-1"></div>
+      <div id="detail-maps" tabindex="-1"></div>
+      <section id="detail-floor-charts" tabindex="-1" aria-label="Floor charts">
       <h2 id="detail-keep-heading">Keeping Up by Floor</h2>
       <div class="detail-floor-controls">
         <div id="detail-party-toggle" class="party-toggle" role="group" aria-label="Charts show"></div>
         <div class="keep-actpick" id="detail-keep-actpick"></div>
       </div>
+      <section class="chart-box" id="detail-party-combat-rates" aria-label="Player combat rates" hidden></section>
       <div class="chart-box" id="detail-keep-box">
         <p class="chart-caption">This data highlights how your deck is performing per act against broad buckets of effectiveness: how much damage you put out and how much you mitigate. Slower decks with more turns per fight aren't penalized if damage taken is low.</p>
         <dl class="chart-caption keep-key">
@@ -1846,6 +1854,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-deck-box" style="margin-top:16px">
         <h2>Deck by Floor</h2>
+        <div id="detail-deck-act-counts"></div>
         <p class="chart-caption">Both halves add up to the deck size on every floor. Rarity uses the game's colours (grey, blue, gold).</p>
         <div class="chart-wrap chart-wrap-tall"><canvas id="detail-deck-chart"></canvas></div>
         <div class="floor-legend" id="detail-deck-legend"></div>
