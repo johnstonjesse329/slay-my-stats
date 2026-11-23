@@ -48,6 +48,7 @@ DRAWN = {
     "DigestFunction": "daily digest",
     "BenchmarkFunction": "fight benchmark",
     "DigestLogGroup": "CloudWatch",
+    "DigestDomainIdentity": "Amazon SES",
     "Dashboard": "dashboard",
 }
 NOT_DRAWN = {  # plumbing inside a drawn box, or an output
@@ -58,6 +59,7 @@ NOT_DRAWN = {  # plumbing inside a drawn box, or an output
     "SeedFunction": "gamma-only nightly copy of prod's data; the diagram shows production",
     "SeedSchedule": "gamma-only nightly copy of prod's data; the diagram shows production",
     "DigestSchedule": "the 8 AM schedule is noted inside the Digest box",
+    "DigestRecipientIdentity": "the sandbox recipient is part of the SES box",
     "BenchmarkSchedule": "the daily timing is noted in the benchmark box",
 }
 OUTPUT_ID = re.compile(r"(Name|Domain\w*|Url)$")

@@ -629,24 +629,41 @@ def all_notes(db, table, env):
         args["ExclusiveStartKey"] = page["LastEvaluatedKey"]
 
 
-def _line(note, origin):
-    text = " ".join(note.get("comment", "").split())
-    text = text if len(text) <= 100 else text[:99] + "…"
-    kind = CATEGORIES.get(note.get("category"))
-    text = f"[{kind}] {text}" if kind else text
-    text = f"FB-{note['seq']} {text}" if isinstance(note.get("seq"), int) else text
-    who = _named(note).get("author_name") or "…" + str(note.get("author", "?"))[-4:]
-    return f"{who}: {text}\n  {note.get('url') or origin + note.get('path', '')}"
+def _line(row):
+    text = row["text"] if len(row["text"]) <= 100 else row["text"][:99] + "…"
+    text = f"[{row['kind']}] {text}" if row["kind"] else text
+    text = f"FB-{row['seq']} {text}" if row["seq"] is not None else text
+    return f"{row['who']}: {text}\n  {row['url']}"
 
 
-def build_report(notes, now, period, origin, label):
-    """One site's (`label`: "Prod", "Gamma") section of the owner's morning email, as
-    (headline, body), or None when there is nothing worth sending.
+def touched(note):
+    """When an open note last changed state: filed, reopened, or put in the backlog.
+    Comment edits and +1s leave no timestamp, so they don't count."""
+    times = [note.get("created", 0), (note.get("backlog") or {}).get("at", 0)]
+    times += [h.get("reopened_at") or 0 for h in note.get("history", [])]
+    return max(times)
+
+
+def preview_row(note, origin):
+    """One note as the digest shows it: FB number, category, comment, author, +1s and link."""
+    return {"seq": note.get("seq") if isinstance(note.get("seq"), int) else None,
+            "kind": CATEGORIES.get(note.get("category")),
+            "text": " ".join(note.get("comment", "").split()),
+            "who": _named(note).get("author_name") or "…" + str(note.get("author", "?"))[-4:],
+            "plus": int(note.get("plus_count") or 0),
+            "url": note.get("url") or origin + note.get("path", "")}
+
+
+def report_data(notes, now, period, origin, label, preview=None):
+    """One site's (`label`: "Prod", "Gamma") part of the owner's morning email, as counts and
+    rows, or None when there is nothing worth sending. build_report writes it as text,
+    digest_html as tables.
 
     "daily" lists what came in over the last day and sends nothing on a quiet day. "weekly"
     always sends: how many notes are open, how many came in and how many were resolved over
-    the week, and the open ones. Notes resolved before resolutions were timestamped have no
-    date, so they are not counted as resolved this week.
+    the week, and the open ones: all of them oldest first or, with `preview` set, that many,
+    most recently touched first, with the rest only counted. Notes resolved before
+    resolutions were timestamped have no date, so they are not counted as resolved this week.
     """
     window = 86400 if period == "daily" else 7 * 86400
     since = now - window
@@ -657,12 +674,34 @@ def build_report(notes, now, period, origin, label):
     if period == "daily":
         if not new:
             return None
-        head = f"New feedback in the last day: {len(new)}. Open in total: {len(opened)}, backlog: {len(later)}.\n\n"
-        return (f"{label} feedback: {len(new)} new, {len(opened)} open",
-                head + "\n".join(_line(n, origin) for n in new))
-    body = (f"Open in total: {len(opened)}, backlog: {len(later)}\nCame in this week: {len(new)}\n"
-            f"Resolved this week: {len(closed)}\n")
-    if opened:
-        oldest_first = sorted(opened, key=lambda n: n.get("created", 0))
-        body += "\nStill open:\n" + "\n".join(_line(n, origin) for n in oldest_first)
-    return f"{label} feedback, this week: {len(opened)} open, {len(new)} in, {len(closed)} resolved", body
+        shown, listed = new, "new"
+    elif preview:
+        shown, listed = sorted(opened, key=lambda n: -touched(n))[:preview], "recent"
+    else:
+        shown, listed = sorted(opened, key=lambda n: n.get("created", 0)), "open"
+    return {"label": label, "period": period, "open": len(opened), "backlog": len(later),
+            "new": len(new), "resolved": len(closed), "listed": listed,
+            "rows": [preview_row(n, origin) for n in shown],
+            "more": len(opened) - len(shown) if listed == "recent" else 0}
+
+
+def build_report(notes, now, period, origin, label, preview=None, data=None):
+    """One site's section of the morning email as (headline, plain text), or None (see
+    report_data, or pass its result as `data`)."""
+    data = data or report_data(notes, now, period, origin, label, preview)
+    if data is None:
+        return None
+    lines = "\n".join(_line(row) for row in data["rows"])
+    if period == "daily":
+        head = (f"New feedback in the last day: {data['new']}. Open in total: {data['open']}, "
+                f"backlog: {data['backlog']}.\n\n")
+        return f"{label} feedback: {data['new']} new, {data['open']} open", head + lines
+    body = (f"Open in total: {data['open']}, backlog: {data['backlog']}\nCame in this week: {data['new']}\n"
+            f"Resolved this week: {data['resolved']}\n")
+    if data["rows"]:
+        title = "Open, most recently touched" if data["listed"] == "recent" else "Still open"
+        body += f"\n{title}:\n" + lines
+        if data["more"]:
+            body += f"\n…and {data['more']} more open"
+    return (f"{label} feedback, this week: {data['open']} open, {data['new']} in, {data['resolved']} resolved",
+            body)

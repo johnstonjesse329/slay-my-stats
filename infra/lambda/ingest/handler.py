@@ -99,6 +99,7 @@ from pathlib import Path
 
 # Bundled next to this file in the Lambda asset (see the stack's bundling);
 # on the dev server the repo root is on sys.path instead.
+import digest_html
 import measured
 import views
 import run
@@ -2198,12 +2199,14 @@ def _upload_via(store, upload_id: str, at: float) -> str:
     return "?"
 
 
-def build_digest(store, now: float, tally: dict | None = None) -> tuple[str, str]:
-    """The subject and body of the email covering the day before `now`:
+def build_digest(store, now: float, tally: dict | None = None,
+                 data: dict | None = None) -> tuple[str, str]:
+    """The subject and plain-text body of the email covering the day before `now`:
     each player's new runs, new players, held runs, failed uploads and the site's
     totals. Reads the upload results (kept 7 days), so it needs no record
     of its own. A `tally` dict, when given, is filled with the day's adoption
-    numbers (see record_adoption)."""
+    numbers (see record_adoption); a `data` dict with the same as rows, for
+    digest_html."""
     since = now - DIGEST_WINDOW_S
     players, failed, held_ids, held_unnamed = {}, [], {}, 0
     for key in store.list("users/_uploads/"):
@@ -2235,8 +2238,10 @@ def build_digest(store, now: float, tally: dict | None = None) -> tuple[str, str
         p["held"] += res.get("held", 0)
 
     added = sum(p["added"] for p in players.values())
+    ranked = sorted(players.items(), key=lambda kv: -kv[1]["added"])
+    held_ranked = sorted(held_ids, key=lambda i: (-held_ids[i], i))
     lines = []
-    for slug, p in sorted(players.items(), key=lambda kv: -kv[1]["added"]):
+    for slug, p in ranked:
         note = " - new player" if p["new"] else ""
         note += f", {p['held']} held" if p["held"] else ""
         how = "/".join(sorted(p["via"]))
@@ -2245,18 +2250,26 @@ def build_digest(store, now: float, tally: dict | None = None) -> tuple[str, str
     if held_unnamed:
         lines.append(f"Players with no profile yet: {held_unnamed} run(s), all held")
     if held_ids:
-        top = sorted(held_ids, key=lambda i: (-held_ids[i], i))[:15]
         lines.append("\nHeld runs name content the game data doesn't have (a mod, or a newer patch):\n  "
-                     + ", ".join(top))
+                     + ", ".join(held_ranked[:15]))
     if failed:
         lines.append(f"\nFailed uploads: {len(failed)} ({', '.join(sorted(set(failed)))})")
 
     stats = store.get(STATS_KEY)
     total_runs = _unpack(stats[0]).get("allRuns", 0) if stats else 0
     total_players = len(_read_index(store)[0])
+    day = datetime.fromtimestamp(since, timezone.utc).strftime("%Y-%m-%d")
+    if data is not None:
+        data.update({
+            "day": day, "added": added, "total_runs": total_runs, "total_players": total_players,
+            "held_unnamed": held_unnamed, "failed": failed, "held_ids": held_ranked,
+            "players": [{"slug": slug, "name": p["name"], "added": p["added"], "uploads": p["uploads"],
+                         "via": "/".join(sorted(p["via"])), "new": p["new"], "held": p["held"]}
+                        for slug, p in ranked],
+        })
     if tally is not None:
         tally.update({
-            "day": datetime.fromtimestamp(since, timezone.utc).strftime("%Y-%m-%d"),
+            "day": day,
             "TotalPlayers": total_players, "TotalRuns": total_runs,
             "ActivePlayersSite": sum("site" in p["via"] for p in players.values()),
             "ActivePlayersMod": sum("mod" in p["via"] for p in players.values()),
@@ -2271,12 +2284,18 @@ def build_digest(store, now: float, tally: dict | None = None) -> tuple[str, str
     return subject, "\n".join(lines) + "\n" + footer
 
 
-def feedback_sections(now: float, query=None, tally: dict | None = None) -> list[tuple[str, str]]:
+FEEDBACK_PREVIEW = {"prod": 10}  # Monday's open notes shown per site; the rest are counted
+
+
+def feedback_sections(now: float, query=None, tally: dict | None = None,
+                      data: list | None = None) -> list[tuple[str, str]]:
     """The feedback part of the morning email: for each site in FEEDBACK_DIGEST_SITES
     ("prod=https://slay-my-stats.com,gamma=https://gamma..."), what came in over the last day, or
-    on Mondays the open, incoming and resolved counts. Quiet sites add nothing. A `tally`
-    dict, when given, gets FeedbackFiled: the notes filed on prod over that day."""
-    from feedback import all_notes, build_report
+    on Mondays the open, incoming and resolved counts and the open notes (prod's: the ten
+    most recently touched). Quiet sites add nothing. A `tally` dict, when given, gets
+    FeedbackFiled: the notes filed on prod over that day. A `data` list gets each site's
+    report_data, for digest_html."""
+    from feedback import all_notes, build_report, report_data
     if query is None:
         import boto3
         db = boto3.client("dynamodb")
@@ -2289,9 +2308,11 @@ def feedback_sections(now: float, query=None, tally: dict | None = None) -> list
         notes = query(env)
         if tally is not None and env == "prod":
             tally["FeedbackFiled"] = sum(now - DIGEST_WINDOW_S <= n.get("created", 0) < now for n in notes)
-        report = build_report(notes, now, period, origin, env.capitalize())
-        if report:
-            sections.append(report)
+        rows = report_data(notes, now, period, origin, env.capitalize(), FEEDBACK_PREVIEW.get(env))
+        if rows:
+            sections.append(build_report(notes, now, period, origin, rows["label"], data=rows))
+            if data is not None:
+                data.append(rows)
     return sections
 
 
@@ -2333,13 +2354,14 @@ VIEWS_KEY = "analytics/views/{day}.json.gz"
 
 
 def views_section(store, day: str, logs=None, log_prefix: str | None = None,
-                  tally: dict | None = None) -> tuple[str, str]:
+                  tally: dict | None = None, counted: list | None = None) -> tuple[str, str]:
     """The morning email's page views: the view pings and page loads in the access logs for
     `day` (UTC, YYYY-MM-DD), counted (views.py) and kept as analytics/views/<day>.json.gz,
     then shown next to the six days before it that were kept. `logs` is a store over the
     access-log bucket; CloudFront names each file <prefix><distribution>.<day>-<hour>...,
     so one listing finds the day's. The day's totals go into `tally` as PageViews and
-    Visitors, for the adoption row and the dashboard."""
+    Visitors, for the adoption row and the dashboard; `counted` gets the day's counts and the
+    earlier days', for digest_html."""
     if logs is None:
         logs = S3Store(os.environ["ACCESS_LOG_BUCKET"])
     prefix = (log_prefix if log_prefix is not None else os.environ.get("ACCESS_LOG_PREFIX", "")) + day
@@ -2361,12 +2383,15 @@ def views_section(store, day: str, logs=None, log_prefix: str | None = None,
         got = store.get(VIEWS_KEY.format(day=d))
         if got:
             earlier.append(_unpack(got[0]))
+    if counted is not None:
+        counted[:] = [today, earlier]
     return views.format_views(today, earlier, SITE_DOMAIN)
 
 
 def digest_handler(event, context):
     """Run by EventBridge Scheduler each morning (prod only): yesterday's uploads, then the
-    feedback from both sites, then the page views, in one email; and the day's adoption
+    feedback from both sites, then the page views, in one email (SES, HTML from digest_html with
+    the text beside it; SNS text if that fails); and the day's adoption
     numbers and page views, kept (the totals also as dashboard metrics).
     Invoked by hand with {"adoptionBackfill": n}, it instead records the n days before
     yesterday (at most 6: upload results are kept a week), sends no email, and leaves out
@@ -2383,15 +2408,15 @@ def digest_handler(event, context):
             record_adoption(tally, now - (days + 0.5) * DIGEST_WINDOW_S)
             print(json.dumps({"adoption_backfill": tally}))
         return
-    tally = {}
-    subject, body = build_digest(store, now, tally)
-    sections = feedback_sections(now, tally=tally)
+    tally, uploads, sites, counted = {}, {}, [], []
+    subject, body = build_digest(store, now, tally, uploads)
+    sections = feedback_sections(now, tally=tally, data=sites)
     # Page views are counted before the adoption numbers are kept, so they're kept with them.
     # Best effort: the email still goes.
     views_part = ""
     if os.environ.get("ACCESS_LOG_BUCKET"):
         try:
-            headline, text = views_section(store, tally["day"], tally=tally)
+            headline, text = views_section(store, tally["day"], tally=tally, counted=counted)
             views_part = f"\n\n{headline}\n{'-' * len(headline)}\n{text}"
         except Exception as e:  # noqa: BLE001
             print(json.dumps({"views_failed": type(e).__name__, "detail": str(e)[:200]}))
@@ -2411,4 +2436,28 @@ def digest_handler(event, context):
     # Page views go last and stay out of the subject.
     body += views_part
     print(json.dumps({"digest": subject}))
-    _alert(subject, body)
+    try:
+        html = digest_html.render(uploads, sites, tuple(counted) if counted else None, SITE_DOMAIN)
+    except Exception as e:  # noqa: BLE001
+        print(json.dumps({"digest_html_failed": type(e).__name__, "detail": str(e)[:200]}))
+        html = None
+    _send_digest(subject, body, html)
+
+
+def _send_digest(subject: str, text: str, html: str | None) -> None:
+    """The morning email goes through SES, so it can carry the HTML tables with the plain
+    text beside them. SNS email is text only, so it stays the fallback: on the dev server
+    (no DIGEST_FROM), when the HTML couldn't be built, or when SES refuses."""
+    sender, to = os.environ.get("DIGEST_FROM"), os.environ.get("DIGEST_TO")
+    if sender and to and html:
+        try:
+            import boto3  # only on Lambda
+            boto3.client("sesv2").send_email(
+                FromEmailAddress=sender, Destination={"ToAddresses": [to]},
+                Content={"Simple": {"Subject": {"Data": subject[:200], "Charset": "UTF-8"},
+                                    "Body": {"Text": {"Data": text, "Charset": "UTF-8"},
+                                             "Html": {"Data": html, "Charset": "UTF-8"}}}})
+            return
+        except Exception as e:  # noqa: BLE001
+            print(json.dumps({"digest_ses_failed": type(e).__name__, "detail": str(e)[:200]}))
+    _alert(subject, text)
