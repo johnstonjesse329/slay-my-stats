@@ -207,7 +207,7 @@ function openRunLink(ts, view = "") {
     if (!modsShowRun(state.mods, run)) widen.mods = "all";
     if (![...detailTags].every(t => runTags(run).includes(t))) { detailTags.clear(); changed.push("tags"); }
     if (!playedWithAll(run)) { detailPartners.clear(); changed.push("played with"); }
-    if (!matchesDetailAct(run)) { detailActReached.value = "0"; changed.push("act reached"); }
+    if (!matchesDetailAct(run)) { detailActs.clear(); changed.push("act reached"); }
     const names = { char: "character", ascGranular: "ascension", builds: "build", tsFrom: "date", players: "players", modes: "mode", mods: "mods" };
     Object.keys(names).forEach(key => { if (key in widen) changed.push(names[key]); });
     if (Object.keys(widen).length > 0) {
@@ -437,12 +437,8 @@ ALL_MODES.forEach(mode => {
   label.querySelector("input").addEventListener("change", e => {
     const next = new Set(sharedActiveModes);
     if (e.target.checked) next.add(mode); else next.delete(mode);
-    if (currentPage === "overview") {
-      // Standard and Dread read together; Daily, Blitz and Custom each stand alone there.
-      const together = ["standard", "dread"];
-      if (e.target.checked) next.forEach(m => { if (m !== mode && !(together.includes(m) && together.includes(mode))) next.delete(m); });
-      if (!next.size) next.add(mode);
-    }
+    // Overview always reads at least one mode.
+    if (currentPage === "overview" && !next.size) next.add(mode);
     setSharedModes(next);
     rerenderCurrentPage();
   });
@@ -661,6 +657,9 @@ document.getElementById("shared-filters-reset").addEventListener("click", () => 
   url.searchParams.delete("filters");
   history.replaceState(null, "", url);
   applySharedFilterState(SHARED_FILTER_HARDCODED_DEFAULTS);
+  // On Overview the other pages' filters sit in the stash, and Overview keeps its own copy.
+  if (pageFilterStash) pageFilterStash = { ...SHARED_FILTER_HARDCODED_DEFAULTS };
+  overviewFilterState = null;
   rerenderCurrentPage();
   showFilterStatus("Filters reset — saved default cleared");
   updateUnsavedIndicator();
