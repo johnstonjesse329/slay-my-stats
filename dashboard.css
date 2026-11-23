@@ -3221,7 +3221,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .act-map-body { padding: 0 14px 14px; display: flex; justify-content: center; }
 .act-map-body svg { border-radius: 8px; width: min(340px, calc((100vh - 7rem) * 0.4757)); max-width: 100%; height: auto; }
 .act-map-route { margin: 0 14px 10px; cursor: auto; }
-.act-map-styles { margin-top: 6px; font-weight: 600; text-align: center; }
+.act-map-head .act-map-styles { color: var(--gold, #e8c46a); font-weight: 600; }
 .act-map-overlay { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; background: rgba(8, 6, 20, 0.82); }
 .act-map-large { background: var(--panel-2, #211e36); border: 1px solid var(--border, #3a3560); border-radius: 10px; padding-bottom: 12px; max-width: 96vw; }
 .act-map-large-head { align-items: center; }

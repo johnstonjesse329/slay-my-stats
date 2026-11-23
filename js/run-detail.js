@@ -1772,7 +1772,7 @@ function actMapSvg(m, act, bossKeys, floors, seed, coatedPath = new Set()) {
     body += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(gauss() * 8).toFixed(1)})">${img(art[key], -46, -46, 92, 92, lit ? "" : ' opacity="0.5"')}<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></g>`;
     if (coatedPath.has(m.path.findIndex(c => c[0] === n[0] && c[1] === n[1]))) {
       // The game's own red X (its quest marker) across the fight's icon.
-      rings += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">${img(art.marked_x, -27, -24, 54, 48)}<title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
+      rings += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">${img(art.marked_x, -18, -16, 36, 32)}<title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
     }
     if (lit) {
       const size = 200 * (0.85 + rnd() * 0.05);
@@ -1824,7 +1824,7 @@ function actRouteComparison(map) {
   const types = [["Elite", "Elites"], ["Shop", "Shops"], ["RestSite", "Rest sites"],
     ["Unknown", "Unknown rooms"], ["Fork", "Forks"]];
   const taken = map.path.filter(([row]) => row > 0 && row < map.h);
-  if (!taken.length) return "";
+  if (!taken.length) return null;
   const depth = taken.at(-1)[0];
   const key = coords => coords.join(",");
   const toBoss = map.boss && map.path.some(coords => key(coords) === key(map.boss));
@@ -1841,17 +1841,17 @@ function actRouteComparison(map) {
   }
   const starts = [...reachable.values()].filter(node => node.row === 1);
   const visited = taken.map(coords => reachable.get(key(coords)));
-  if (!starts.includes(visited[0]) || visited.some((node, i) => !node || (i > 0 && !visited[i - 1].children.includes(node)))) return "";
+  if (!starts.includes(visited[0]) || visited.some((node, i) => !node || (i > 0 && !visited[i - 1].children.includes(node)))) return null;
   const taken_ = types.map((_, i) => visited.reduce((sum, node) => sum + node.counts[i], 0));
   const at = name => taken_[types.findIndex(([n]) => n === name)];
   // Broad route styles, any that fit (a route can earn more than one).
   const styles = [["Restful", at("RestSite") >= 4], ["Ambitious", at("Elite") >= 3],
     ["Fortuitous", at("Shop") >= 2], ["Curious", at("Unknown") >= 4]].filter(([, on]) => on).map(([name]) => name);
-  return `<div class="act-map-route"><table class="detail-summary-table">
+  return { styles: styles.length ? `<small class="act-map-styles">Path style: ${styles.join(" · ")}</small>` : "", table: `<div class="act-map-route"><table class="detail-summary-table">
     <caption>Route through row ${depth}</caption>
     <thead><tr><th scope="col">Map stop</th><th scope="col">Taken</th></tr></thead>
     <tbody>${types.map(([, label], i) => `<tr><th scope="row">${label}</th><td>${taken_[i]}</td></tr>`).join("")}</tbody>
-  </table>${styles.length ? `<div class="act-map-styles">${styles.join(" · ")}</div>` : ""}</div>`;
+  </table></div>` };
 }
 
 // Fur Coat's own icon beside the Map by Act header, with the relic's usual hover tooltip,
@@ -1880,7 +1880,8 @@ function renderDetailMaps(run) {
     const bossKeys = [m.bossEnc || fought[0], m.boss2Enc || fought[1]].filter(Boolean);
     const coated = floors.length === m.path.length ? furCoatNodes(run, run.timeline || [], null) : new Set();
     const coatedPath = new Set(floors.flatMap((n, i) => coated.has(run.timeline.indexOf(n)) ? [i] : []));
-    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed, coatedPath)}</div>${m === sent ? actRouteComparison(m) : ""}</section>`;
+    const route = m === sent ? actRouteComparison(m) : null;
+    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small>${route ? route.styles : ""}<svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed, coatedPath)}</div>${route ? route.table : ""}</section>`;
   }).join("") + `</div></div>` : "";
   for (const card of box.querySelectorAll(".act-map")) card.addEventListener("click", event => {
     if (!event.target.closest(".act-map-route")) openActMap(card);
