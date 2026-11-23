@@ -94,7 +94,7 @@ function updateFilterSummary() {
   document.querySelector("#shared-filter-summary .filter-label").textContent =
     locked ? "Filters locked" : active ? "Filters applied" : "Default filters applied";
   const summary = locked
-    ? "Overview · Full history · Standard + Dread"
+    ? `Overview · ${overviewMode.selectedOptions[0].text} · ${overviewBuild.selectedOptions[0].text}`
     : `${visible} of ${DATA.runsData.length} runs · ${parts.join(" · ")}`;
   const summaryText = document.querySelector("#shared-filter-summary .filter-summary-text");
   summaryText.textContent = summary;
@@ -179,6 +179,7 @@ function openRunLink(ts, view = "") {
     if (!modsShowRun(state.mods, run)) widen.mods = "all";
     if (![...detailTags].every(t => runTags(run).includes(t))) { detailTags.clear(); changed.push("tags"); }
     if (!playedWithAll(run)) { detailPartners.clear(); changed.push("played with"); }
+    if (!matchesDetailAct(run)) { detailActReached.value = "0"; changed.push("act reached"); }
     const names = { char: "character", ascGranular: "ascension", builds: "build", tsFrom: "date", players: "players", modes: "mode", mods: "mods" };
     Object.keys(names).forEach(key => { if (key in widen) changed.push(names[key]); });
     if (Object.keys(widen).length > 0) {

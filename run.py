@@ -1397,7 +1397,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <span class="filter-summary-text"></span>
     <span class="filter-summary-caret" aria-hidden="true">▾</span>
   </button>
-  <p class="filter-lock-note">Overview always shows the full history. These saved selections are preserved for Runs, Cards and Seeds.</p>
+  <p class="filter-lock-note">Overview has its own mode and game build filters. These saved selections are preserved for Runs, Cards, Relics and Seeds.</p>
 
   <div class="filter-row">
     <div class="filter-group">
@@ -1479,14 +1479,25 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <main id="main-content">
 <div id="page-overview">
 <p id="overview-history-summary"></p>
-<p class="chart-caption">Full history across all characters, builds, dates, mods and party sizes. Stats and charts cover Standard and Dread runs. Daily, Custom and Blitz are counted separately above.</p>
+<div class="overview-filters" aria-label="Overview filters">
+  <label for="overview-mode">Mode <select class="seeds-input" id="overview-mode">
+    <option value="standard-dread">Standard + Dread</option>
+    <option value="standard">Standard</option>
+    <option value="dread">Dread</option>
+    <option value="daily">Daily</option>
+    <option value="blitz">Blitz</option>
+  </select></label>
+  <label for="overview-build">Game build <select class="seeds-input" id="overview-build">
+    <option value="">All builds</option>
+  </select></label>
+</div>
 <div class="cards" id="summary-cards"></div>
 <div class="grid-1">
   <div class="chart-box">
     <div class="asc-head">
       <div>
         <h2>Ascension tracker</h2>
-        <p class="chart-caption">Where each character stands on the climb to A10. Standard runs only.</p>
+        <p class="chart-caption">Where each character stands on the climb to A10 across their full Standard history.</p>
       </div>
       <div class="asc-stats" id="asc-tracker-stats"></div>
     </div>
@@ -1750,8 +1761,22 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="tag-filter-chips"></div>
     </div>
+    <div class="detail-act-filter">
+      <label for="detail-act-reached">Act reached</label>
+      <select class="seeds-input" id="detail-act-reached">
+        <option value="0">Any act</option>
+        <option value="1">Act 1</option>
+        <option value="2">Act 2</option>
+        <option value="3">Act 3</option>
+      </select>
+    </div>
     <div id="detail-jump-notice" role="status" hidden></div>
     <div id="detail-run-list"></div>
+    <nav class="detail-run-pagination" id="detail-run-pagination" aria-label="Run list pages" hidden>
+      <button type="button" class="toggle-btn" id="detail-runs-previous">Previous</button>
+      <span id="detail-runs-page" role="status"></span>
+      <button type="button" class="toggle-btn" id="detail-runs-next">Next</button>
+    </nav>
   </div>
   <div id="detail-main">
     <div id="detail-placeholder" class="detail-placeholder">Select a run from the list to view its timeline.</div>

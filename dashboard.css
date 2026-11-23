@@ -169,6 +169,9 @@ h1 {
    leads with each character's win rate, its tiers as bars, then one short
    figure per cell; counts are on hover. */
 #personal-bests-cards { margin-bottom: 2rem; }
+.overview-filters { display: flex; flex-wrap: wrap; gap: 0.55rem 1rem; margin-bottom: 1rem; }
+.overview-filters label { display: flex; align-items: center; gap: 0.45rem; }
+.overview-filters .seeds-input { width: auto; }
 .filter-presets { flex-wrap: wrap; }
 .filter-presets select, .filter-presets input { min-width: 0; max-width: 100%; padding: 0.4rem 0.6rem; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 4px; font: inherit; font-size: var(--fs-sm); }
 .filter-actions #shared-filters-status { font-size: var(--fs-sm); color: var(--text-dim); margin-left: 0.4rem; }
@@ -189,13 +192,14 @@ h1 {
 .pb-table thead th.pb-total { font-size: var(--fs-sm); font-weight: 600; }
 .pb-char-icon { width: 22px; height: 22px; vertical-align: middle; margin-right: 0.4rem; }
 .pb-table tr.pb-tier th { padding-left: 1.25rem; font-size: var(--fs-sm); border-bottom: 0; }
-.pb-table tr.pb-tier td { font-size: var(--fs-sm); color: var(--text-dim); padding-block: 0.45rem; }
+.pb-table tr.pb-tier td { font-size: var(--fs-sm); color: var(--text-dim); padding-block: 0.65rem; }
+.pb-table tr.pb-tier + tr:not(.pb-tier) > * { border-top: 1px solid var(--hairline); }
 .pb-table tr:not(.pb-tier) + tr.pb-tier td, .pb-table tr:not(.pb-tier) + tr.pb-tier th { padding-top: 0.3rem; }
 .pb-table tr.pb-win-total th { padding-left: 0.5rem; color: var(--text); font-weight: 700; }
 .pb-table tr.pb-tier-dread th { color: #87ceeb; font-weight: 700; letter-spacing: 0.04em; }
 .pb-win-line, .pb-win-modes { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4em; white-space: normal; }
 .pb-win-line { color: var(--text); font-variant-numeric: tabular-nums; }
-.pb-win-modes { font-size: var(--fs-xs); }
+.pb-win-modes { font-size: var(--fs-xs); margin: 0.2rem 0 0.35rem; }
 .pb-win-modes span + span::before { content: "·"; margin-right: 0.4em; color: var(--text-faint); }
 .pb-bar { display: block; height: 5.33px; width: min(100%, 7rem); margin: 3px auto 0; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
 .pb-bar i { display: block; height: 100%; border-radius: inherit; }
@@ -227,7 +231,7 @@ h1 {
   .pb-table th, .pb-table td { padding: 0.4rem 0.1rem; }
   .pb-table thead th:first-child { width: 4.5rem; }
   .pb-table tbody th { padding-left: 0; white-space: normal; line-height: 1.2; }
-  .pb-table tr.pb-tier th { padding-left: 0.6rem; }
+  .pb-table tr.pb-tier th { padding-inline: 0.4rem; overflow-wrap: anywhere; }
   .pb-char-icon { margin-right: 0; }
   .pb-char-name { display: none; }
   .pb-table thead th.pb-total { font-size: var(--fs-xs); }
@@ -279,8 +283,7 @@ h1 {
   .fav-table .fav-item { --fav-face-w: 34px; grid-template-columns: auto auto; column-gap: 0.4rem; min-height: 48px; }
   .fav-table .fav-name, .fav-table .fav-won, .fav-table .fav-count { display: none; }
 }
-/* All characters: one row per character (favByCharHtml), the slots as
-   columns. The blocks are styled with .fav-blocks-table below. */
+/* All characters: one row per character, with favorites grouped by rarity. */
 .fav-panels.fav-panels-bychar { display: block; }
 .fav-bychar-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; margin-bottom: 0.6rem; }
 .fav-bychar-bar .fav-metric { margin: 0; }
@@ -293,18 +296,12 @@ h1 {
 .fav-bychar-table td { vertical-align: top; }
 .fav-bychar-table .fav-item { min-height: 54px; padding: 0.15rem 0 0.15rem 0.5rem; border-left: 3px solid transparent; }
 @media (max-width: 700px) {
-  /* Phones: a narrow name column, so one block of the cards' four columns
-     or the relics' three fits the screen. */
+  /* Phones: a narrow name column leaves room for the other columns. */
   .fav-bychar-table th:first-child { width: 4.6rem; }
   .fav-bychar-table tbody th .char-label { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; overflow-wrap: anywhere; }
   .pivot.fav-bychar-table { min-width: 460px; }
   .fav-bychar-table .fav-item { padding-left: 0.3rem; column-gap: 0.25rem; }
   .fav-bychar-table .fav-pic { width: 28px; height: 28px; }
-  /* The cards' four columns: each rate under its card, so a row fits 393px. */
-  .fav-blocks-table.fav-wide th, .fav-blocks-table.fav-wide td { padding-left: 0.2rem; padding-right: 0.2rem; }
-  .fav-blocks-table.fav-wide thead th:not(:first-child) { text-align: center; }
-  .fav-blocks-table.fav-wide .fav-item { grid-template-columns: auto; justify-items: center; row-gap: 0.15rem; padding-left: 0; }
-  .fav-blocks-table.fav-wide .fav-text { align-items: center; }
 }
 .fav-pic { width: 34px; height: 34px; object-fit: contain; border-radius: 4px; }
 .fav-icon { display: flex; align-items: center; justify-content: center; }
@@ -345,10 +342,8 @@ h1 {
 #relics-table th.cards-all-col { background: #2e2a4c; }
 #relics-tbody td.cards-all { background: rgba(157, 184, 240, 0.06); }
 #relics-table .cards-all-start { border-left: 1px solid rgba(157, 184, 240, 0.35); }
-/* Favorites by character (cards and relics): your block of picks beside all
-   players', headed and tinted like the offer tables' two blocks. */
+/* Relic favorites use the same two population blocks as the offer table. */
 .pivot.fav-blocks-table { min-width: 1000px; }
-.pivot.fav-blocks-table.fav-wide { min-width: 1500px; }
 .fav-blocks-table thead th { text-align: left; }
 .fav-blocks-table .fav-groups th { padding: 0.5rem 0.6rem 0.15rem; font-size: var(--fs-sm); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
 .fav-blocks-table .fav-group-you { color: var(--gold); }
@@ -359,20 +354,25 @@ h1 {
 .fav-blocks-table td.fav-cell { vertical-align: middle; }
 .fav-blocks-table td.fav-empty { color: var(--text-dim); }
 .fav-blocks-table .fav-item { border-left: 0; padding-left: 0; }
-/* The You / All players switch: only once both blocks no longer fit in the
-   panel (a 1000px table for the relics' three columns, 1500px for the cards'
-   four, plus about 120px of page and panel padding); then one block shows at
-   a time. */
+/* On narrower screens one distinct favorite per rarity is visible at a time. */
 #relics-who, .fav-bychar-bar .fav-who { display: none; margin-bottom: 0.6rem; }
 .fav-bychar-bar .fav-who { margin: 0; }
+.pivot.fav-card-table { min-width: 0; }
+.fav-card-table .fav-item { --fav-face-w: 60px; padding-left: 0; border-left: 0; }
+.fav-card-table .fav-card-shared .fav-item { --fav-face-w: 74px; }
+.fav-card-table .fav-pic { width: var(--fav-face-w); height: auto; }
+.fav-card-table .fav-cell { vertical-align: middle; }
+.fav-card-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 0.45rem; }
+.fav-card-pair > div { min-width: 0; color: var(--text-dim); }
+.fav-card-table .fav-text { gap: 0.2rem; }
+.fav-card-table .fav-detail { white-space: normal; }
+.fav-card-table .fav-cohort { color: var(--gold); }
+.fav-card-table .fav-cohort-all { color: #9db8f0; }
+.fav-card-table .fav-count { display: block; }
 @media (max-width: 1620px) {
   .fav-bychar-bar .fav-who { display: flex; }
-  .pivot.fav-blocks-table.fav-wide { min-width: 0; }
-  .fav-blocks-table.fav-wide .fav-groups { display: none; }
-  .fav-blocks-table.fav-wide:not(.show-all) .fav-all, .fav-blocks-table.fav-wide.show-all .fav-you { display: none; }
-  .fav-blocks-table.fav-wide .fav-all-start { border-left: 0; }
-  /* A long name (Bloodletting) would otherwise break mid-word. */
-  .fav-blocks-table.fav-wide .fav-name { font-size: var(--fs-xs); overflow-wrap: normal; }
+  .fav-card-pair { display: block; }
+  .fav-card-table:not(.show-all) .fav-card-all, .fav-card-table.show-all .fav-card-you { display: none; }
 }
 @media (max-width: 1120px) {
   #relics-who:not([hidden]) { display: flex; }
@@ -380,6 +380,19 @@ h1 {
   .fav-blocks-table .fav-groups { display: none; }
   .fav-blocks-table:not(.show-all) .fav-all, .fav-blocks-table.show-all .fav-you { display: none; }
   .fav-blocks-table .fav-all-start { border-left: 0; }
+}
+@media (max-width: 700px), (max-width: 950px) and (max-height: 500px) and (orientation: landscape) {
+  .fav-card-table th, .fav-card-table td { padding-inline: 0.2rem; }
+  .fav-card-table thead th:not(:first-child) { text-align: center; }
+  .fav-card-table .fav-item { --fav-face-w: 44px; grid-template-columns: minmax(0, 1fr); justify-items: center; row-gap: 0.25rem; }
+  .fav-card-table .fav-card-shared .fav-item { --fav-face-w: 50px; }
+  .fav-card-table .fav-icon:empty { display: none; }
+  .fav-card-table .fav-icon:empty + .fav-text .fav-name { display: -webkit-box; }
+  .fav-card-table .fav-text { align-items: center; text-align: center; }
+  .fav-card-table .fav-detail, .fav-card-table .fav-count { font-size: var(--fs-xs); }
+  .fav-card-table .fav-cohort { display: block; white-space: normal; }
+  .fav-card-table .fav-count { white-space: normal; }
+  .fav-card-table .fav-won { display: none; }
 }
 /* A co-op-only card's rarity carries a small Co-op tag (isCoopCard). */
 .cards-coop-tag { display: inline-block; margin-left: 0.4rem; padding: 0 0.35rem; border: 1px solid rgba(157, 184, 240, 0.45); border-radius: 4px; color: #9db8f0; font-size: var(--fs-xs); line-height: 1.4; vertical-align: 1px; }
@@ -403,10 +416,10 @@ h1 {
   /* Smaller tiles than under a row: the whole deck should fit beside the list. */
   .seeds-preview .seed-detail-panel { padding-top: 0; }
 }
-/* Cards and Seeds: the column headings stay put while the rows scroll.
+/* Cards, Relics and Seeds: the column headings stay put while the rows scroll.
    box-shadow, not a border: a collapsed border stays behind when the cell sticks. */
-#cards-table-main thead, #seeds-table thead { position: sticky; top: 0; z-index: 2; }
-#cards-table-main thead th, #seeds-table thead th { background: var(--panel-2); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--hairline); }
+#cards-table-main thead, #seeds-table thead, #relics-table thead { position: sticky; top: 0; z-index: 2; }
+#cards-table-main thead th, #seeds-table thead th, #relics-table thead th { background: var(--panel-2); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--hairline); }
 .cards-thumb-wrap { --cards-thumb-w: 62px; display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
 .cards-thumb-wrap .cardface { width: var(--cards-thumb-w); display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
 .cards-hi { font-size: var(--fs-md); }
@@ -537,6 +550,7 @@ h1 {
 .asc-reading-bar-hype { background: var(--win); } .asc-reading-bar-op { background: #69b9d4; }
 .asc-reading-bar-unrated { background: #747382; }
 .asc-readings-grid-layout > .chart-box:last-child { grid-column: 1 / -1; }
+#asc-readings-chart[hidden] { display: none; }
 @media (max-width: 700px) {
   .asc-readings-legend { grid-template-columns: minmax(0, 1fr); }
   .asc-readings-legend-items { grid-column: 1; justify-content: flex-start; gap: 0.3rem 0.9rem; }
@@ -807,6 +821,9 @@ h1 {
 }
 /* The shared bar sits right under the tabs, so the open tab runs into it. */
 #shared-filter-bar { border-top: 0; border-radius: 0 0 8px 8px; }
+@media (min-width: 1000px) and (min-height: 600px) {
+  body:has(#tab-cards.active) #shared-filter-bar { position: sticky; top: 0; z-index: 220; }
+}
 .filter-bar-2row {
   flex-direction: column;
   align-items: stretch;
@@ -1342,6 +1359,10 @@ h1 {
   padding: 0.5rem 0;
 }
 
+.detail-act-filter { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; font-size: var(--fs-sm); color: var(--text-dim); }
+.detail-act-filter .seeds-input { width: auto; }
+.detail-run-pagination:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.35rem; }
+.detail-run-pagination { margin-top: 0.45rem; font-size: var(--fs-sm); color: var(--text-dim); }
 #detail-run-list {
   background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);

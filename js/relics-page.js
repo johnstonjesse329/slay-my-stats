@@ -98,18 +98,22 @@ function renderRelicsTable() {
   const relicData = DATA.relicData || {};
   const rows = Object.entries(raw).map(([id, b]) => {
     const g = global && global[id];
+    const rarity = relicData[id]?.rarity || "—";
+    // Run history records Ancient selections without the full list of
+    // alternatives, so these records cannot supply an offer denominator.
+    const hasOffers = rarity !== "Ancient";
     return {
       id,
       title:      fmtRelicLabel(id),
-      rarity:     (relicData[id] || {}).rarity || "—",
-      offered:    b.offered,
-      pickRate:   winPctNum(b.picked, b.offered),
+      rarity,
+      offered:    hasOffers ? b.offered : null,
+      pickRate:   hasOffers ? winPctNum(b.picked, b.offered) : null,
       winPicked:  winPctNum(b.wonWhenPicked, b.picked),
-      winSkipped: winPctNum(b.wonWhenSkipped, b.skipped),
-      gOffered:    g ? g[4] : null,
-      gPickRate:   g ? winPctNum(g[0], g[4]) : null,
+      winSkipped: hasOffers ? winPctNum(b.wonWhenSkipped, b.skipped) : null,
+      gOffered:    g && hasOffers ? g[4] : null,
+      gPickRate:   g && hasOffers ? winPctNum(g[0], g[4]) : null,
       gWinPicked:  g ? winPctNum(g[1], g[0]) : null,
-      gWinSkipped: g ? winPctNum(g[5], g[4] - g[0]) : null,
+      gWinSkipped: g && hasOffers ? winPctNum(g[5], g[4] - g[0]) : null,
     };
   }).filter(r => !relicsNameFilter || r.title.toLowerCase().includes(relicsNameFilter));
 
@@ -124,7 +128,8 @@ function renderRelicsTable() {
 
   const scope = sharedActiveChar === "ALL" ? "all characters" : fmtCharName(sharedActiveChar);
   document.getElementById("relics-caption").textContent =
-    `${rows.length} relic${rows.length !== 1 ? "s" : ""} offered under the current filters (${scope}).`;
+    `${rows.length} relic${rows.length !== 1 ? "s" : ""} recorded under the current filters (${scope}).`
+    + (rows.some(r => r.rarity === "Ancient") ? " Ancient records show the selected relics. Offer, pick and skip rates need the full set of choices." : "");
 
   const cols = [
     { key: "title",      label: "Relic",         align: "left" },
@@ -170,7 +175,7 @@ function renderRelicsTable() {
     return `<tr>
       <td><span class="fav-item relics-name" data-relic-id="${r.id}" tabindex="0">${pic}${r.title}</span></td>
       <td style="color:${RELIC_RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}</td>
-      <td class="relics-num" style="color:var(--text-dim)">${r.offered}</td>
+      <td class="relics-num" style="color:var(--text-dim)">${r.offered ?? "—"}</td>
       <td class="relics-num">${pct(r.pickRate, "#ccc")}</td>
       <td class="relics-num">${pct(r.winPicked, "#ccc")}</td>
       <td class="relics-num">${pct(r.winSkipped, "#ccc")}</td>${global ? `
