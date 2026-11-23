@@ -396,18 +396,17 @@ Upload limits, from the top of `handler.py`:
 | Sign-in age | 30 minutes (±5 minutes clock skew) |
 | Upload URLs | 5 per IP address (per /64 for IPv6) per hour, and 60 seconds apart per Steam account |
 | Upload URL lifetime | 10 minutes |
-| Upload size | 100 MB gzip'd (~35,000 runs) |
-| Decompressed upload | 2 GB, 4 MB per line |
+| Upload size | 100 MB gzip'd (~35,000 runs), enforced by S3 |
+| Decompressed upload | 2 GB |
 | Runs / months per upload | 20,000 / 240 |
 | Runs per profile | no cap (stored a month at a time) |
-| Parsed run size | 1 MB |
 | Strings in a run | `[A-Za-z0-9_.-]`, up to 80 characters |
 
 ### Mod uploads
 
 Any Steam account can upload through a game mod instead (its own repo, [slay-my-stats-mod](https://github.com/johnstonjesse329/slay-my-stats-mod)), which
 sends each run as it ends. The mod POSTs to the mod function's `/mod` path for a presigned S3 upload
-with a 5 MiB compressed limit. The processing Lambda accepts up to 64 MiB per decompressed mod run record.
+with a 5 MiB compressed limit.
 
 - **Who is playing.** Instead of the browser sign-in, the mod asks the Steam client the game is running under
   for a Web API ticket and sends it with the player's Steam ID. The mod Lambda has Steam confirm the ticket (`ISteamUserAuth/AuthenticateUserTicket`, with the same

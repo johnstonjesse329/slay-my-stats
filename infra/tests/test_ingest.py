@@ -308,9 +308,11 @@ class BodyTests(unittest.TestCase):
             handler.MAX_DECOMPRESSED_BYTES = old
         self.assertEqual(cm.exception.code, "too_large")
 
-    def test_huge_line(self):
-        with self.assertRaises(handler.IngestError):
-            list(handler.iter_upload_lines(gzip.compress(b"x" * (handler.MAX_LINE_BYTES + 10))))
+    def test_long_line_is_read_whole(self):
+        # Size is capped at the S3 front door, not per line: a 12 MB run (real
+        # mod uploads reach that) comes through in one piece.
+        line = b"x" * (12 * 1024 * 1024)
+        self.assertEqual(list(handler.iter_upload_lines(gzip.compress(line + b"\n{}"))), [line, b"{}"])
 
 
 class SafetyTests(unittest.TestCase):
@@ -656,21 +658,17 @@ class ModRunsTests(Uploads, unittest.TestCase):
 
 
 class ProcessTests(Uploads, unittest.TestCase):
-    def test_larger_run_allowed_only_for_mod_uploads(self):
+    def test_large_run_processed_from_either_door(self):
+        # Size is capped by S3 at upload; a 12 MB run (real mod uploads reach
+        # that) goes through from the site and from the mod alike.
         run_data = minimal_run(1700000001)
-        run_data["telemetry"] = {"padding": ""}
-        limit = 64 * 1024 * 1024
-        run_data["telemetry"]["padding"] = "x" * (limit - len(json.dumps(run_data).encode()))
+        run_data["telemetry"] = {"padding": "x" * (12 * 1024 * 1024)}
         body = body_of(run_data)
-        for mod, expected in ((False, "failed"), (True, "done")):
+        for n, mod in enumerate((False, True)):
             with self.subTest(mod=mod):
-                key = handler.raw_key(STEAM_ID, "abcDEF123456abcd", NOW, mod=mod)
+                key = handler.raw_key(STEAM_ID, "abcDEF123456abcd", NOW + n, mod=mod)
                 self.store.put(key, body, {}, None)
-                self.assertEqual(self.process(key)["status"], expected)
-        run_data["telemetry"]["padding"] += "x"
-        key = handler.raw_key(STEAM_ID, "abcDEF123456abcd", NOW + 1, mod=True)
-        self.store.put(key, body_of(run_data), {}, None)
-        self.assertEqual(self.process(key)["error"], "bad_body")
+                self.assertEqual(self.process(key)["status"], "done")
 
     def result(self, key=None):
         m = handler.RAW_KEY_RE.match(key or self.last_key)
