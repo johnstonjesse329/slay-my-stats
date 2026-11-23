@@ -190,6 +190,7 @@
       cardCoop: catalog.cardCoop || [],
       cardVariants: catalog.cardVariants,
       measuredRuns: catalog.measuredRuns,
+      runRecords: catalog.runRecords,
       fightDemand: catalog.fightDemand,
       synergy: catalog.synergy,
       archetypes: catalog.archetypes,

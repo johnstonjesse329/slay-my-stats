@@ -1048,6 +1048,7 @@ _JS_MODULES = [
     "relics-page.js",
     "seeds.js",
     "run-detail.js",
+    "run-records.js",
     "card-face.js",
     "map-bg.js",
 ]
@@ -1785,6 +1786,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div id="detail-deck-relics" tabindex="-1"></div>
       <div id="detail-timeline" tabindex="-1"></div>
       <div id="detail-maps" tabindex="-1"></div>
+      <div id="detail-records"></div>
       <section id="detail-floor-charts" tabindex="-1" aria-label="Floor charts">
       <h2 id="detail-keep-heading">Keeping Up by Floor</h2>
       <div class="detail-floor-controls">
