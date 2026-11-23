@@ -24,8 +24,12 @@ change shipped there quickly, with a short checklist for the owner.
 
 ## Commands
 
-The CLI and checkpoint live in the repo folder. Run from `E:\GitHub repos\slay-my-stats`:
-`infra/.venv/Scripts/python.exe -X utf8 tools/feedback_batch.py <cmd>`
+The checkpoint (`batch.json`), handoffs and group worktrees live in the repo folder's
+`local_data/feedback/`; the CLI finds them from its own path. Run the repo folder's copy
+by absolute path, without `cd`:
+`"E:/GitHub repos/slay-my-stats/infra/.venv/Scripts/python.exe" -X utf8 "E:/GitHub repos/slay-my-stats/tools/feedback_batch.py" <cmd>`
+Below, "the repo folder" means `E:/GitHub repos/slay-my-stats`; `local_data/...` paths are under it.
+Never run `pull` or the CLI from a worktree copy: that makes a second, empty checkpoint.
 
 - `queue --env prod --ids`: groups and status, no report text. Start here.
 - `pull --env prod`: fetch new reports (only when asked for new intake).
@@ -65,6 +69,10 @@ output to a file); a single class takes seconds.
    branch(es), run the full suite once, then deploy (below).
 4. Report to the owner: one table row per FB-n with the gamma URL and what to
    look at; one line per blocked report with the input needed. Then stop.
+
+When the lead hands you one group, do only that group and make the step-4 report
+your final message (under 30 lines). Don't ask questions mid-run: anything that needs
+the owner (a `[-]` destroy, a blocked fix) goes in the report, and you stop there.
 
 ## Deploy to gamma (never main)
 
