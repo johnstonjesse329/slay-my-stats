@@ -341,10 +341,15 @@ class SlayMyStatsStack(Stack):
                 event_type=cloudfront.FunctionEventType.VIEWER_REQUEST,
             ),
         ] if gamma else None
+        # Gamma caches nothing at the edge, so a deploy shows at once with no invalidation (each
+        # invalidated path counts against the account's 1,000 free a month, prod's included).
+        # Browsers still follow the files' own Cache-Control. Prod caches and invalidates on deploy.
+        site_cache_policy = (cloudfront.CachePolicy.CACHING_DISABLED if gamma
+                             else cloudfront.CachePolicy.CACHING_OPTIMIZED)
         page_behavior = cloudfront.BehaviorOptions(
             origin=site_origin,
             viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-            cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
+            cache_policy=site_cache_policy,
             function_associations=[
                 cloudfront.FunctionAssociation(
                     function=page_url_rewrite_fn,
@@ -376,7 +381,7 @@ class SlayMyStatsStack(Stack):
             default_behavior=cloudfront.BehaviorOptions(
                 origin=site_origin,
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
+                cache_policy=site_cache_policy,
                 function_associations=gate_associations,
             ),
             additional_behaviors={

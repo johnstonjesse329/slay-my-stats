@@ -12,9 +12,11 @@ Steps:
      `cdk deploy`. No changes -> skip straight to the site.
   2. `build_site.py`, then upload only changed site files and art. Site files are compared
      with top-level S3 objects. Art is compared with the stage's content manifest.
-  3. CloudFront invalidation of just the uploaded paths (or /* past ten of
-     them), so index.html/app.js don't serve stale. Nothing uploaded, no
-     invalidation. The first 1,000 paths a month are free.
+  3. Prod only: CloudFront invalidation of the uploaded paths that keep their
+     name (index.html, the manifest, art; /* past ten of them). Content-hashed
+     files are new names, never cached, so they're left out. Gamma's CloudFront
+     caches nothing, so it never invalidates. The first 1,000 paths a month are
+     free, across both stages.
 
 Neither upload re-sends a file whose bytes didn't change, so a new
 Cache-Control value won't reach what's already up there. Push it to the whole
@@ -158,7 +160,7 @@ ART_CACHE_CONTROL = "public, max-age=2592000"
 # moving around the site doesn't re-ask for 600 KB of script and catalog, short
 # enough that a deploy reaches someone already on the site almost at once.
 # HTML is the entry point, so browsers always check it (a 304 when unchanged).
-# s-maxage is for CloudFront alone: every deploy invalidates what it uploads,
+# s-maxage is for CloudFront alone: every prod deploy invalidates what it uploads,
 # so the edge can hold a file for a day rather than going back to S3 every
 # five minutes -- or on every single request, for the HTML.
 DIST_CACHE_CONTROL = "public, max-age=300, s-maxage=86400"
@@ -620,10 +622,10 @@ def upload_art_object(s3, key: str, digest: str) -> None:
                       ContentType=content_type, ContentMD5=base64.b64encode(bytes.fromhex(digest)).decode())
 
 
-def reheader() -> None:
+def reheader(stage: str) -> None:
     """
     Set the Cache-Control values above on everything already in the bucket,
-    then invalidate it.
+    then invalidate it (prod; gamma's CloudFront caches nothing).
 
     A normal deploy only sends files whose content
     changed, so anything uploaded before these headers existed -- and any art
@@ -667,7 +669,8 @@ def reheader() -> None:
                  "--metadata-directive", "REPLACE",
                  "--content-type", CONTENT_TYPES[ext],
                  "--cache-control", ART_CACHE_CONTROL], stream=True)
-    invalidate(["/*"])
+    if stage == "prod":
+        invalidate(["/*"])
 
 
 def invalidate(paths: list[str]) -> None:
@@ -815,14 +818,18 @@ def deploy_site(stage: str) -> None:
 
     print("Site: uploading changed dist/ files...", flush=True)
     changed = [*changed_art, *upload_changed_dist()]
-    if not changed:
-        print("Site: no changes, skipping CloudFront invalidation.")
-        return
-    # Each listed path counts against the 1,000 free a month, so past a
-    # handful one wildcard is cheaper. /u/* profile URLs are cached under
-    # /index.html (the viewer-request rewrite runs before the cache lookup),
-    # so invalidating /index.html covers them.
-    invalidate(["/*"] if len(changed) > 10 else ["/" + key for key in changed])
+    # A content-hashed name was never requested before this upload, so no edge holds it.
+    stale = [key for key in changed if not _HASHED_KEY.search(key)]
+    if not stale:
+        print("Site: nothing cached changed, skipping CloudFront invalidation.")
+    elif stage != "prod":
+        print(f"Site: {stage}'s CloudFront caches nothing, so no invalidation.")
+    else:
+        # Each listed path counts against the 1,000 free a month, so past a
+        # handful one wildcard is cheaper. /u/* profile URLs are cached under
+        # /index.html (the viewer-request rewrite runs before the cache lookup),
+        # so invalidating /index.html covers them.
+        invalidate(["/*"] if len(stale) > 10 else ["/" + key for key in stale])
     if changed_art:
         save_art_manifest(s3, bucket, {**deployed_art, **changed_art}, art_etag)
 
@@ -896,7 +903,7 @@ def main() -> int:
             print(f"Deploying to {stage}: {DOMAIN_NAME}")
         if "--reheader" in sys.argv:
             with deploy_lock(f"{stage} reheader", None):
-                reheader()
+                reheader(stage)
             print("Re-headed and invalidated. Browsers that already hold a copy "
                   "keep it until they next ask.")
             return 0

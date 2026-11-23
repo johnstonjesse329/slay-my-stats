@@ -284,6 +284,9 @@ scripts read).
 
 `ids/*` in the data bucket has no behavior, so it's unreachable from outside.
 
+That is production. Gamma caches nothing at the edge: every behavior is **disabled**, so a deploy shows there
+at once with no invalidation.
+
 Inside the page, `site/boot.js` decides what to draw from `location.pathname`: the player finder and
 site-wide stats on `/`, a hand-written page on `/<page>` (fetched from `/page-<page>.html`; on `/whats-new/<id>`,
 What's new scrolled to that post), or a
@@ -658,7 +661,7 @@ flowchart TB
     smoke{"ingest function answers an<br/>empty POST below 500?"} -- no --> abort3["push aborted"]
     smoke -- yes --> build
     build["build_site.py<br/>(ingest URL from stack outputs)"] --> upload["Upload changed site files and art<br/>using top-level S3 ETags<br/>and the stage's art manifest"]
-    upload --> inval["CloudFront invalidation<br/>of just those paths (/* past 10)"]
+    upload --> inval["prod: CloudFront invalidation of the changed<br/>files that keep their name (/* past 10)"]
     inval --> visit{"tools/smoke_site.py: the site loads<br/>for a visitor, fast, with other hosts hanging?"}
     visit -- no --> abort4["deploy fails"]
     visit -- yes --> done["push goes through"]
@@ -674,7 +677,8 @@ is served at its root), and anything under 500 passes; a 5xx, or no answer, stop
 That is what a bundle that crashes on import looks like (a 502 for every upload from the mod), and the
 tests alone can't see it, since they import the code from the repo rather than from the Lambda's flat layout.
 After the site goes up, `tools/smoke_site.py` loads it as a visitor would, retrying for four minutes while
-CloudFront finishes invalidating: the pages answer, every script and stylesheet is served with the right type,
+CloudFront finishes invalidating (prod only; gamma caches nothing, and content-hashed files are new names, so
+neither needs one; the first 1,000 invalidated paths a month are free across both stages): the pages answer, every script and stylesheet is served with the right type,
 nothing that blocks rendering comes from another host, and `catalog.json` parses. With Playwright installed
 (`pip install playwright`, `playwright install chromium`) it also opens the home page in Chromium with every
 request to another host left hanging and fails unless content is on screen within two seconds; that is what a
