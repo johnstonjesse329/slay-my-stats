@@ -1782,6 +1782,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <div id="detail-placeholder" class="detail-placeholder">Select a run from the list to view its timeline.</div>
     <div id="detail-content" style="display:none">
       <nav class="detail-section-nav" aria-label="Run sections">
+        <span class="detail-section-nav-label">Jump to</span>
         <button type="button" class="toggle-btn" data-section="detail-run-header">Run summary</button>
         <button type="button" class="toggle-btn" data-section="detail-deck-relics">Final deck</button>
         <button type="button" class="toggle-btn" data-section="detail-timeline">Timeline</button>

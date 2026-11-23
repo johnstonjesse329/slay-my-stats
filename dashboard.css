@@ -3293,13 +3293,38 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 }
 
 
+/* Section jump bar: stays at the top of the viewport while the run scrolls, so a reader can
+   jump from anywhere. The floor-chart controls dock just below it. */
 .detail-section-nav {
+  --detail-nav-h: 46px;
+  position: sticky;
+  top: 0;
+  z-index: 7;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--gold);
+  border-radius: 9px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-#detail-content [tabindex="-1"] { scroll-margin-top: 1rem; }
+.detail-section-nav::-webkit-scrollbar { display: none; }
+.detail-section-nav-label { flex: none; color: var(--gold); font-weight: 600; font-size: var(--fs-sm); }
+.detail-section-nav .toggle-btn { flex: none; white-space: nowrap; }
+#detail-content { --detail-nav-h: 46px; }
+#detail-content .detail-floor-controls { top: var(--detail-nav-h); }
+#detail-content .keep-actpick { top: var(--detail-nav-h); }
+@media (max-width: 760px) {
+  .detail-section-nav { gap: 0.35rem; padding: 0.4rem; }
+  .detail-section-nav-label { display: none; }
+  .detail-section-nav .toggle-btn { padding: 0.3rem 0.45rem; font-size: 0.8rem; }
+  #detail-content, .detail-section-nav { --detail-nav-h: 40px; }
+}
+#detail-content [tabindex="-1"] { scroll-margin-top: calc(var(--detail-nav-h) + 1rem); }
 .detail-summary-table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: var(--fs-sm); }
 .detail-summary-table caption { text-align: left; color: var(--text-dim); margin-bottom: 0.3rem; }
 .detail-summary-table :is(th, td) { padding: 0.35rem 0.25rem; text-align: right; border-bottom: 1px solid var(--hairline); }

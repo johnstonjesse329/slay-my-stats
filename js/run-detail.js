@@ -535,6 +535,19 @@ detailSectionNav.addEventListener("click", event => {
   section.focus({ preventScroll: true });
   section.scrollIntoView({ block: "start" });
 });
+// Marks the section nearest the top as the current one.
+function markDetailSection() {
+  if (!detailSectionNav.offsetParent) return;
+  const line = detailSectionNav.offsetHeight + 24;
+  let current = null;
+  const buttons = detailSectionNav.querySelectorAll("[data-section]");
+  for (const b of buttons) {
+    const el = document.getElementById(b.dataset.section);
+    if (el && el.getBoundingClientRect().top <= line) current = b;
+  }
+  for (const b of buttons) b.classList.toggle("active", b === current);
+}
+window.addEventListener("scroll", markDetailSection, { passive: true });
 
 // Shows `run` (one of this profile's) in the copy its party tabs pick: the profile's own, a
 // partner's, or the whole party's (see detailView). A partner's copy is fetched first; the tabs
