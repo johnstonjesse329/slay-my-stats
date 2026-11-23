@@ -1903,6 +1903,21 @@ class EventLogTests(Uploads, unittest.TestCase):
         self.assertEqual(len(cleaned["log"]), handler.TELEMETRY_MAX_EVENTS)
         self.assertTrue(cleaned["truncated"])
 
+    def test_a_fight_quit_partway_and_started_again_is_dropped(self):
+        def fight(enc, *, ended):
+            return ([("fight0", {"enc": enc}), ("hp", {"d": -3})]
+                    + ([("fight1", {}), ("pile", {"to": "Deck"})] if ended else []))
+        events = (fight("ENCOUNTER.A", ended=True) + fight("ENCOUNTER.BOSS", ended=False)
+                  + fight("ENCOUNTER.BOSS", ended=False) + fight("ENCOUNTER.BOSS", ended=True)
+                  + fight("ENCOUNTER.C", ended=False))
+        log = [{"q": q, "k": k, "a": a} for q, (k, a) in enumerate(events, 1)]
+        cleaned = handler.clean_event_log({"v": 3, "log": log})
+        starts = [(e["q"], e["a"]["enc"]) for e in cleaned["log"] if e["k"] == "fight0"]
+        # Both cut-off boss attempts go; the death that ends the run keeps its place.
+        self.assertEqual(starts, [(1, "ENCOUNTER.A"), (9, "ENCOUNTER.BOSS"), (13, "ENCOUNTER.C")])
+        self.assertEqual([e["q"] for e in cleaned["log"]], [1, 2, 3, 4, 9, 10, 11, 12, 13, 14])
+        self.assertFalse(cleaned["truncated"])
+
     def test_a_log_with_no_usable_events_is_refused(self):
         self.assertIsNone(handler.clean_event_log({"v": 3, "log": []}))
         self.assertIsNone(handler.clean_event_log({"v": 3, "log": "nope"}))
