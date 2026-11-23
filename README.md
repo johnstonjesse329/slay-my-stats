@@ -588,6 +588,7 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
   month files, kept raw uploads and telemetry, so a rebuild can't bring them back. `--dry-run` lists first. Delete the
   `.run` file from the game's history folder too, or the next upload sends it again.
 - `tools/rebuild_stats.py` recounts the site-wide stats and rewrites every player's seed file. Run it after any of the above.
+- Gamma's `SeedFunction` runs the same copy nightly at 3 AM Central (changed objects only, no rebuild).
 - `tools/seed_gamma.py` copies prod's run data into gamma's bucket as prod built it (adds only, never deletes). The
   process Lambda fires on uploads only, so the copied raw uploads aren't processed again. `--rebuild` then rebuilds
   gamma's profiles and stats with the checkout's own code, so a change can be checked on gamma against real data;
