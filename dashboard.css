@@ -1921,6 +1921,7 @@ h1 {
 .floor-tip.above::before { top: auto; bottom: -12px; }
 .floor-tip .ft-row { display: flex; gap: 14px; align-items: flex-start; }
 .floor-tip .ft-head { margin-bottom: 6px; font-size: 1rem; white-space: nowrap; }
+.floor-tip .ft-head .node-icon-img { vertical-align: middle; }
 .floor-tip:not(.docked):has(.ft-party-player, .ft-party-overall) { max-height: min(420px, calc(100dvh - 16px)); overflow: auto; overscroll-behavior: contain; }
 .ft-party-player + .ft-party-player { border-top: 1px solid var(--hairline); }
 .ft-party-player summary { cursor: pointer; padding: 4px 0; }
