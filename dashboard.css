@@ -3305,3 +3305,4 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .detail-summary-table th:first-child { text-align: left; overflow-wrap: anywhere; }
 #detail-party-combat-rates { margin-bottom: 1rem; }
 #detail-party-combat-rates td small { display: block; color: var(--text-dim); }
+.act-maps h2 .act-maps-relic { margin-left: 8px; vertical-align: middle; }

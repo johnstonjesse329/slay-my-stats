@@ -1772,7 +1772,7 @@ function actMapSvg(m, act, bossKeys, floors, seed, coatedPath = new Set()) {
     body += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(gauss() * 8).toFixed(1)})">${img(art[key], -46, -46, 92, 92, lit ? "" : ' opacity="0.5"')}<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></g>`;
     if (coatedPath.has(m.path.findIndex(c => c[0] === n[0] && c[1] === n[1]))) {
       // The game's own red X (its quest marker) across the fight's icon.
-      rings += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">${img(art.marked_x, -45, -40, 90, 80)}<title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
+      rings += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">${img(art.marked_x, -27, -24, 54, 48)}<title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
     }
     if (lit) {
       const size = 200 * (0.85 + rnd() * 0.05);
@@ -1854,13 +1854,22 @@ function actRouteComparison(map) {
   </table></div>`;
 }
 
+// Fur Coat's own icon beside the Map by Act header, with the relic's usual hover tooltip,
+// so the red X on the marked fights reads at once.
+function furCoatBadge(run) {
+  if (!Number.isFinite(furCoatPickupFloor(run))) return "";
+  const id = "RELIC.FUR_COAT", src = relicImgSrc(id), tip = buildRelicTooltip(id);
+  if (!src) return "";
+  return ` <span class="run-boon-wrap act-maps-relic" tabindex="0"><img loading="lazy" class="run-boon-icon" src="${thumbSrc(src)}" alt="Fur Coat">${tip ? `<span class="relic-tooltip-wrap">${tip}</span>` : ""}</span>`;
+}
+
 function renderDetailMaps(run) {
   const box = document.getElementById("detail-maps");
   if (!box) return;
   const maps = run.maps || [];
   // Each map has a fixed size in CSS pixels, so browser zoom scales them with the rest of the
   // page. Clicking one opens it large.
-  box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act</h2><div class="act-maps-row">` + maps.map(sent => {
+  box.innerHTML = maps.length ? `<div class="chart-box act-maps"><h2>Map by Act${furCoatBadge(run)}</h2><div class="act-maps-row">` + maps.map(sent => {
     const floors = (run.timeline || []).filter(n => n.act === sent.act + 1);
     const m = mapAsWalked(sent, floors);
     const visited = m.path.length;
