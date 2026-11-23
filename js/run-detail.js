@@ -1842,16 +1842,16 @@ function actRouteComparison(map) {
   const starts = [...reachable.values()].filter(node => node.row === 1);
   const visited = taken.map(coords => reachable.get(key(coords)));
   if (!starts.includes(visited[0]) || visited.some((node, i) => !node || (i > 0 && !visited[i - 1].children.includes(node)))) return "";
+  const taken_ = types.map((_, i) => visited.reduce((sum, node) => sum + node.counts[i], 0));
+  const at = name => taken_[types.findIndex(([n]) => n === name)];
+  // Broad route styles, any that fit (a route can earn more than one).
+  const styles = [["Restful", at("RestSite") >= 4], ["Ambitious", at("Elite") >= 3],
+    ["Fortuitous", at("Shop") >= 2], ["Curious", at("Unknown") >= 4]].filter(([, on]) => on).map(([name]) => name);
   return `<div class="act-map-route"><table class="detail-summary-table">
-    <caption>Routes through row ${depth}</caption>
-    <thead><tr><th scope="col">Map stop</th><th scope="col">Taken</th><th scope="col">Range</th></tr></thead>
-    <tbody>${types.map(([, label], i) => {
-      const count = visited.reduce((sum, node) => sum + node.counts[i], 0);
-      const min = Math.min(...starts.map(node => node.min[i]));
-      const max = Math.max(...starts.map(node => node.max[i]));
-      return `<tr><th scope="row">${label}</th><td>${count}</td><td>${min === max ? min : `${min}–${max}`}</td></tr>`;
-    }).join("")}</tbody>
-  </table></div>`;
+    <caption>Route through row ${depth}</caption>
+    <thead><tr><th scope="col">Map stop</th><th scope="col">Taken</th></tr></thead>
+    <tbody>${types.map(([, label], i) => `<tr><th scope="row">${label}</th><td>${taken_[i]}</td></tr>`).join("")}</tbody>
+  </table>${styles.length ? `<div class="act-map-styles">${styles.join(" · ")}</div>` : ""}</div>`;
 }
 
 // Fur Coat's own icon beside the Map by Act header, with the relic's usual hover tooltip,
