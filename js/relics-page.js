@@ -168,8 +168,8 @@ function renderRelicsTable() {
     bindEnterSpace(th);
   });
 
-  const pct = (v, color) => v == null
-    ? `<span style="color:var(--text-dim)">—</span>`
+  const pct = (v, color, none = "—") => v == null
+    ? `<span style="color:var(--text-dim)">${none}</span>`
     : `<span style="color:${color};font-weight:${v >= 50 ? "800" : "400"}"${v >= 50 ? ` class="cards-hi"` : ""}>${v}%</span>`;
   const tbody = document.getElementById("relics-tbody");
   tbody.innerHTML = rows.map(r => {
@@ -182,12 +182,12 @@ function renderRelicsTable() {
       <td class="relics-num" style="color:var(--text-dim)">${r.picked}</td>
       <td class="relics-num">${pct(r.pickRate, "#ccc")}</td>
       <td class="relics-num">${pct(r.winPicked, "#ccc")}</td>
-      <td class="relics-num">${pct(r.winSkipped, "#ccc")}</td>${global ? `
+      <td class="relics-num">${pct(r.winSkipped, "#ccc", r.offered ? "never" : "—")}</td>${global ? `
       <td class="relics-num cards-all cards-all-start" style="color:var(--text-dim)">${r.gOffered ?? "—"}</td>
       <td class="relics-num cards-all" style="color:var(--text-dim)">${r.gPicked ?? "—"}</td>
       <td class="relics-num cards-all">${pct(r.gPickRate, "#aaa")}</td>
       <td class="relics-num cards-all">${pct(r.gWinPicked, "#aaa")}</td>
-      <td class="relics-num cards-all">${pct(r.gWinSkipped, "#aaa")}</td>` : ""}
+      <td class="relics-num cards-all">${pct(r.gWinSkipped, "#aaa", r.gOffered ? "never" : "—")}</td>` : ""}
     </tr>`;
   }).join("");
   bindRelicTips(tbody, "[data-relic-id]", el => el.dataset.relicId);
