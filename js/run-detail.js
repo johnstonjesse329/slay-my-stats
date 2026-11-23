@@ -599,6 +599,42 @@ function renderDetailRun(run) {
   });
 }
 
+// Touch of Orobas swaps the starter relic for its Ancient version. The game's own
+// text only says that, so the tooltip says what the new relic does instead.
+const OROBAS_UPGRADES = {
+  "RELIC.BURNING_BLOOD": "RELIC.BLACK_BLOOD",
+  "RELIC.RING_OF_THE_SNAKE": "RELIC.RING_OF_THE_DRAKE",
+  "RELIC.CRACKED_CORE": "RELIC.INFUSED_CORE",
+  "RELIC.BOUND_PHYLACTERY": "RELIC.PHYLACTERY_UNBOUND",
+  "RELIC.DIVINE_RIGHT": "RELIC.DIVINE_DESTINY",
+  "RELIC.SONG_BOW": "RELIC.STORYTELLER",
+};
+
+function relicLine(id) {
+  const p = relicTextParts(id);
+  return p ? `<b>${p.name}</b>: ${p.desc}` : "";
+}
+
+// Tooltip text for the relics that replace something, or "" to keep the relic's own.
+function swapRelicDesc(run, id) {
+  if (id === "RELIC.TOUCH_OF_OROBAS") {
+    const lost = (run.relicsLost || []).map(l => l[0]).find(r => OROBAS_UPGRADES[r]);
+    const pairs = lost ? [[lost, OROBAS_UPGRADES[lost]]] : Object.entries(OROBAS_UPGRADES);
+    const lines = pairs.map(([from, to]) => lost ? relicLine(to) : `${relicLine(to)}`);
+    if (lost) return `Your starter relic is now ${lines[0]}`;
+    return "Your starter relic becomes its stronger version:<br>" + lines.join("<br>");
+  }
+  if (id === "RELIC.ARCHAIC_TOOTH") {
+    const added = (run.finalDeck || []).map((c, i) => ({ id: c.id, f: (run.deckAdded || [])[i] }))
+      .filter(c => cardInfo(c.id)?.rarity === "Ancient");
+    const lost = (run.cardsLost || []).find(([cid, , r]) => added.some(a => a.f === r) && cardInfo(cid)?.rarity === "Basic");
+    const to = lost && added.find(a => a.f === lost[2]);
+    const info = to && cardInfo(to.id);
+    if (info) return `A starter card (${cardInfo(lost[0]).title}) is now <b>${info.title}</b>: ${substituteDescVars(info.desc, info.vars, { pool: info.pool }).replace(/\n/g, "<br>")}`;
+  }
+  return "";
+}
+
 // What a run adds up to, for its header and the party's side-by-side table.
 function runTotals(run) {
   const tl = run.timeline || [];
@@ -754,7 +790,7 @@ function showRunCopy(run, owner, note = "", players = null) {
   const ancientBoonsHtml = ancientRelics.length > 0
     ? `<span class="run-headline-stat run-boon-stat"><span class="run-boon-icons">${ancientRelics.map(id => {
         const src = relicImgSrc(id);
-        const tip = buildRelicTooltip(id);
+        const tip = buildRelicTooltip(id, swapRelicDesc(run, id));
         // The id comes from the uploaded run, so its label is escaped before
         // it goes into the markup.
         const safeLabel = String(fmtRelicLabel(id)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

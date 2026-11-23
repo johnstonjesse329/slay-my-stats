@@ -172,10 +172,13 @@ function relicTextParts(id) {
   };
 }
 
-function buildRelicTooltip(id) {
+// `descOverride` swaps in a description built by the caller (the Ancient swap relics,
+// whose own text only says what they replace).
+function buildRelicTooltip(id, descOverride) {
   const parts = relicTextParts(id);
   if (!parts) return "";
-  const { name, rarHtml, desc } = parts;
+  const { name, rarHtml } = parts;
+  const desc = descOverride || parts.desc;
   const src  = relicImgSrc(id);
   const artHtml = src ? `<img loading="lazy" class="rt-art" ${imgSrcAttr(src, true)} alt="${name}">` : "";
   const descHtml = desc ? `<div class="rt-desc">${desc}</div>` : "";
