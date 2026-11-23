@@ -297,6 +297,33 @@ function renderRelicTiles(relics) {
   }).join("");
 }
 
+// The deck view picked, kept across runs.
+let deckView = "type";
+document.addEventListener("click", e => {
+  const button = e.target.closest("[data-deck-view]");
+  if (!button) return;
+  deckView = button.dataset.deckView;
+  const root = button.closest("#detail-deck-relics");
+  root.querySelectorAll("[data-deck-view]").forEach(b => b.setAttribute("aria-pressed", String(b === button)));
+  root.querySelectorAll("[data-deck-panel]").forEach(panel => { panel.hidden = panel.dataset.deckPanel !== deckView; });
+});
+
+// The deck as it was gathered: the starting cards, then each floor's pickups in order, with
+// no card types.
+function renderCardsByFloorHtml(deck, added) {
+  const byFloor = new Map();
+  deck.forEach((c, i) => {
+    const floor = Number.isInteger(added[i]) && added[i] >= 1 ? added[i] : 0;
+    if (!byFloor.has(floor)) byFloor.set(floor, []);
+    byFloor.get(floor).push(c);
+  });
+  return [...byFloor].sort(([a], [b]) => a - b).map(([floor, cards]) =>
+    `<div class="deck-group">
+      <div class="deck-group-label">${floor ? `Floor ${floor}` : "Starting deck"} <span class="deck-group-count">${cards.length}</span></div>
+      <div class="deck-tile-row">${dedupeCardCounts(cards, null).map(renderCardTile).join("")}</div>
+    </div>`).join("");
+}
+
 function renderDetailDeckRelics(run) {
   const deck   = run.finalDeck   || [];
   // Rarest first; Array.sort is stable, so the order picked up in is kept within a rarity.
@@ -309,11 +336,19 @@ function renderDetailDeckRelics(run) {
   }
 
   const groupsHtml = renderCardGroupsHtml(dedupeCardCounts(deck, run.deckAdded));
+  // Only a run that says when each card came has a second view to offer.
+  const hasFloors = Array.isArray(run.deckAdded) && run.deckAdded.length === deck.length;
+  const view = hasFloors ? deckView : "type";
+  const tabs = hasFloors ? `<div class="party-toggle deck-view-tabs" role="group" aria-label="Deck view">` +
+    [["type", "By type"], ["floor", "By floor added"]].map(([id, label]) =>
+      `<button type="button" data-deck-view="${id}" aria-pressed="${view === id}">${label}</button>`).join("") + `</div>` : "";
   const relicHtml  = renderRelicTiles(relics);
 
   document.getElementById("detail-deck-relics").innerHTML = `
     ${renderDeckLinksHtml(deck, relics, run.char)}
-    ${groupsHtml}
+    ${tabs}
+    <div data-deck-panel="type"${view === "type" ? "" : " hidden"}>${groupsHtml}</div>
+    ${hasFloors ? `<div data-deck-panel="floor"${view === "floor" ? "" : " hidden"}>${renderCardsByFloorHtml(deck, run.deckAdded)}</div>` : ""}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
   // The explorer's relic panels carry their art as deferred data-src.
@@ -392,10 +427,9 @@ const SYNERGY_FAMILIES = {
 
 const overviewSynergies = document.getElementById("overview-synergies");
 const overviewSynergyCache = new WeakMap();
-overviewSynergies?.addEventListener("toggle", () => renderOverviewSynergies(overviewRuns()));
 
 function renderOverviewSynergies(runs) {
-  if (!overviewSynergies?.open) return;
+  if (!overviewSynergies) return;
   const byChar = new Map();
   for (const run of runs) {
     if (typeof run.won !== "boolean") continue;
@@ -417,10 +451,13 @@ function renderOverviewSynergies(runs) {
     const records = [...byChar.get(char)].sort(([nameA, [winsA, lossesA]], [nameB, [winsB, lossesB]]) =>
       winsB + lossesB - winsA - lossesA || nameA.localeCompare(nameB));
     return `<table class="pivot overview-synergy-table">
-      <caption>${charIconHtml(char)} ${escapeHtml(fmtCharName(char))}</caption>
-      <thead><tr><th scope="col">Synergy</th><th scope="col">Wins</th><th scope="col">Losses</th></tr></thead>
-      <tbody>${records.map(([name, [wins, losses]]) =>
-        `<tr><th scope="row">${escapeHtml(name)}</th><td>${wins}</td><td>${losses}</td></tr>`).join("")}</tbody>
+      <caption>${charIconHtml(char)} <span class="char-label" style="--char-color:${charColor(char)}">${escapeHtml(fmtCharName(char))}</span></caption>
+      <thead><tr><th scope="col">Synergy</th><th scope="col">W–L</th><th scope="col">Win %</th></tr></thead>
+      <tbody>${records.map(([name, [wins, losses]]) => {
+        const pct = Math.round(wins / (wins + losses) * 100);
+        return `<tr><th scope="row">${escapeHtml(name)}</th><td class="osyn-record"><b class="osyn-w">${wins}</b>–<b class="osyn-l">${losses}</b></td>` +
+          `<td class="osyn-pct"><span class="osyn-bar" role="img" aria-label="${pct}% won"><i style="width:${pct}%"></i></span>${pct}%</td></tr>`;
+      }).join("")}</tbody>
     </table>`;
   }).join("") || "<p>No detected synergies in the selected runs.</p>";
 }

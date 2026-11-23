@@ -573,7 +573,6 @@ function renderDetailRun(run) {
         if (token !== detailRenderToken || !copies.some(copy => copy?.measured?.length)) return;
         detailDamageRuns = copies;
         renderDetailKeepCharts(run);
-        renderPartyCombatRates(run, run);
       });
     }
     return;
@@ -893,7 +892,6 @@ function showRunCopy(run, owner, note = "", players = null) {
   renderDetailKeepCharts(run);
   if (players) renderPartyCharts(players);
   document.getElementById("detail-keep-heading").hidden = document.getElementById("detail-keep-box").style.display === "none";
-  renderPartyCombatRates(run, owner, players);
   renderDeckActCounts(run, players);
   renderRelicActCounts(run, players);
   renderDetailDeckRelics(run);
@@ -1027,7 +1025,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
   const iconJ = series.findIndex(Boolean);   // icons ride one player's line: the fights are the same for all
   const datasets = [...(extra.lines || []), ...players.map((p, j) => series[j] ? {
     label: p.label, data: series[j], borderColor: p.color, backgroundColor: p.color,
-    borderWidth: 2, pointRadius: extra.recordedOnly ? 3 : 0, pointHoverRadius: 0,
+    borderWidth: 2, pointRadius: 3, pointHoverRadius: 5,
     spanGaps: true, cubicInterpolationMode: "monotone",
     ...(icon && j === iconJ ? nodePoints(nodes, () => chart, icon) : {}),
   } : null)].filter(Boolean);
@@ -1247,7 +1245,7 @@ function renderPartyComposition(run, panel) {
   const changed = floorChangeTip(runFloorChanges(run));
   const datasets = keys.map(key => ({
     label: key, data: counts[key], borderColor: T.color[key], borderWidth: 2,
-    pointRadius: 0, pointHoverRadius: 4, cubicInterpolationMode: "monotone",
+    pointRadius: 3, pointHoverRadius: 5, cubicInterpolationMode: "monotone",
   }));
   const tip = context => showFloorTip(context, i => {
     const table = keys.filter(key => counts[key][i] > 0).map(key =>
@@ -3474,21 +3472,23 @@ function renderActCounts(boxId, players, run, noun, held) {
     const { timeline = [] } = player.run;
     const floors = new Map();
     for (const node of timeline) floors.set(node.act, node.floor + 1);
-    return { label: player.label, floors, items: held(player.run) };
+    return { label: player.label, color: player.color, floors, items: held(player.run) };
   });
   const acts = Array.from(new Set(rows.flatMap(row => [...row.floors.keys()]))).sort((a, b) => a - b);
   if (!acts.length || !rows.some(row => row.items)) {
     box.innerHTML = "";
     return;
   }
-  box.innerHTML = `<div class="act-counts">${acts.map(act => {
-    const counts = rows.map(({ label, floors, items }) => {
+  const many = rows.length > 1;
+  const who = (label, color) => many ? `<span class="act-count-who">${color ? `<span class="fl-swatch" style="border-top:3px solid ${color};height:0"></span>` : ""}${escapeHtml(label)}</span>` : "";
+  box.innerHTML = `<p class="chart-caption">${noun[0].toUpperCase() + noun.slice(1)} held at the end of each act</p><div class="act-counts">${acts.map(act => {
+    const counts = rows.map(({ label, color, floors, items }) => {
       const floor = floors.get(act);
-      if (!floor || !items) return `<span class="act-count" aria-label="Unavailable">${rows.length > 1 ? `${escapeHtml(label)} ` : ""}—</span>`;
+      if (!floor || !items) return `<span class="act-count" aria-label="Unavailable">${who(label, color)}<b>—</b></span>`;
       const n = items.filter(item => item.added <= floor && item.removed > floor).length;
-      return `<span class="act-count" title="Floor ${floor}">${rows.length > 1 ? `${escapeHtml(label)} ` : ""}<b>${n}</b>${rows.length > 1 ? "" : ` ${noun}`}</span>`;
+      return `<span class="act-count" title="Floor ${floor}">${who(label, color)}<span><b>${n}</b> ${noun}</span></span>`;
     }).join("");
-    return `<span class="act-counts-act"><span class="act-counts-label">${ACT_LABELS[act] || `Act ${act}`}</span>${counts}</span>`;
+    return `<span class="act-counts-act"><span class="act-counts-label">${ACT_LABELS[act] || `Act ${act}`}</span><span class="act-counts-list">${counts}</span></span>`;
   }).join("")}</div>`;
 }
 
@@ -3704,42 +3704,53 @@ function recordedPartyIncoming(run, node, sample, partySources) {
   return null;
 }
 
-function renderPartyCombatRates(run, owner, players = null) {
-  const box = document.getElementById("detail-party-combat-rates");
-  box.hidden = !run.mp;
-  if (box.hidden) return;
-  const roster = partyRoster(owner);
-  const slot = chartPartySlot(run, owner);
-  const visible = players
-    ? roster.map(player => ({ ...player, run: players.find(p => p.slot === player.slot)?.run }))
-    : [{ label: roster[slot]?.label || fmtCharName(run.char), slot, run }];
-  const sources = partyDamageSources([run, owner, ...(players || []).map(p => p.run), ...detailDamageRuns]);
-  const rows = visible.map(player => {
-    const nodes = (player.run?.timeline || owner.timeline || []).filter(keepFight);
-    const dealt = partyDamageByFloor(sources, nodes, player.slot);
-    const measured = player.run && measuredStrengthByNode(player.run, nodes);
-    const blocked = nodes.map((node, i) => player.run &&
-      recordedPartyIncoming(player.run, node, measured?.[i], sources)?.blocked);
-    const lost = nodes.map(node => player.run && node.dmg);
-    const rate = values => {
-      let total = 0, turns = 0, fights = 0;
-      values.forEach((value, i) => {
-        if (!Number.isFinite(value) || value < 0) return;
-        total += value;
-        turns += nodes[i].turns;
-        fights++;
-      });
-      if (!turns) return '<td aria-label="Unavailable">—</td>';
-      const coverage = fights < nodes.length ? `<small>${fights}/${nodes.length} fights</small>` : "";
-      return `<td>${(total / turns).toFixed(1)}${coverage}</td>`;
-    };
-    return `<tr><th scope="row">${escapeHtml(player.label)}</th>${[dealt, lost, blocked].map(rate).join("")}</tr>`;
-  });
-  box.innerHTML = `<table class="detail-summary-table">
-    <caption>Combat rates per fight turn</caption>
-    <thead><tr><th scope="col">Player</th><th scope="col">Damage done</th><th scope="col">HP lost</th><th scope="col">Damage blocked</th></tr></thead>
-    <tbody>${rows.join("")}</tbody></table>
-    <p class="chart-caption">Cards and energy aren't recorded separately for each player.</p>`;
+// What one player's deck did per fight turn over the fights an act is rated on. Damage and
+// block are the party log's, by seat; cards and energy are the logging player's own hand, so
+// they come only from that player's own copy of the run. Anything not recorded stays null.
+function actFlow(copy, slot, nodes, idx, sources) {
+  const own = copy.timeline || [];
+  const byKey = new Map(own.map((n, j) => [damageFloorKey(n), j]));
+  const measured = measuredStrengthByNode(copy, own);
+  const damage = partyDamageByFloor(sources, own, slot);
+  const sum = { damage: [0, 0], blocked: [0, 0], drawn: [0, 0], played: [0, 0], energy: [0, 0], spent: [0, 0] };
+  const add = (k, v, turns) => { if (Number.isFinite(v) && v >= 0) { sum[k][0] += v; sum[k][1] += turns; } };
+  for (const i of idx) {
+    const j = byKey.get(damageFloorKey(nodes[i]));
+    if (j === undefined) continue;
+    const n = own[j], m = measured?.[j], turns = n.turns;
+    add("damage", damage[j], turns);
+    add("blocked", recordedPartyIncoming(copy, n, m, sources)?.blocked, turns);
+    if (m) {
+      add("drawn", m.draw * turns, turns);
+      add("played", m.played * turns, turns);
+      add("energy", m.listPrice * turns, turns);
+      add("spent", m.spent * turns, turns);
+    }
+  }
+  const out = {};
+  for (const k in sum) out[k] = sum[k][1] ? sum[k][0] / sum[k][1] : null;
+  return Object.values(out).some(v => v !== null) ? out : null;
+}
+
+// The act card's per-turn numbers for a multiplayer run: one player, as a solo run shows
+// them, or every player side by side.
+function partyActFlowHtml(a, nodes, run, owner, row) {
+  const sources = partyDamageSources([run, owner, ...(detailParty || []).map(p => p.run), ...detailDamageRuns]);
+  const fmt = v => v === null ? "—" : v.toFixed(1);
+  const lines = [["damage", "Damage", KEEP_LINES.damage.color], ["blocked", "Block", KEEP_SPLIT.blocked],
+    ["energy", "Card cost", KEEP_LINES.energy.color], ["drawn", "Draw", KEEP_LINES.drawn.color], ["played", "Cards played", KEEP_LINES.played.color]];
+  if (detailParty?.length > 1) {
+    const rows = detailParty.map(p => ({ p, f: actFlow(p.run, p.slot, nodes, a.idx, sources) })).filter(r => r.f);
+    if (!rows.length) return "";
+    return `<table class="ka-party"><caption>Per fight turn</caption><thead><tr><th scope="col">Player</th>` +
+      lines.map(([, label]) => `<th scope="col">${label}</th>`).join("") + `</tr></thead><tbody>` +
+      rows.map(({ p, f }) => `<tr><th scope="row">${partyChartSwatch(p)} ${escapeHtml(p.label)}</th>` +
+        lines.map(([key]) => `<td>${fmt(f[key])}</td>`).join("") + `</tr>`).join("") + `</tbody></table>`;
+  }
+  const f = actFlow(run, chartPartySlot(run, owner), nodes, a.idx, sources);
+  if (!f) return "";
+  return `<div class="ka-half ka-flow">` + lines.filter(([key]) => f[key] !== null).map(([key, label, color]) =>
+    row(keepIcon(key, color), label, `${f[key].toFixed(1)}<small>/turn</small>`, { note: key === "energy" && f.spent !== null ? `paid ${f.spent.toFixed(1)}` : "" })).join("") + `</div>`;
 }
 
 function showKeepNotice(chart, message, linkMod = false) {
@@ -4033,9 +4044,10 @@ function actReadings(run, nodes, measured, partyCosts = null) {
       omitted.set(n.act, (omitted.get(n.act) || 0) + 1);
       return;
     }
-    if (!acts.has(n.act)) acts.set(n.act, { act: n.act, fights: 0, kinds: {}, turns: 0, winTurns: 0, taken: 0, healed: 0, winTaken: 0, log: null });
+    if (!acts.has(n.act)) acts.set(n.act, { act: n.act, fights: 0, kinds: {}, turns: 0, winTurns: 0, taken: 0, healed: 0, winTaken: 0, log: null, idx: [] });
     const a = acts.get(n.act);
     a.fights++;
+    a.idx.push(i);
     const key = keepIconKey(n);
     a.kinds[key] = (a.kinds[key] || 0) + 1;
     a.turns += n.turns;
@@ -4276,7 +4288,7 @@ function renderKeepActs(run, nodes, measured) {
       row(keepIcon("taken", KEEP_LINES.taken.color), "Damage taken", Math.round(a.taken),
         { mark: keepSignal(a.held, `Damage taken: ${KEEP_WORDS[a.held]}`), vs: vs(a.winTaken, "damage") }) +
       meter(Math.round(a.taken), dmgCuts.hype >= 0 ? dmgCuts.hype + 1 : 0, dmgCuts.low, `Damage taken ${Math.round(a.taken)}: ${KEEP_WORDS[a.held]}. ${keepRule(a.winTaken, a.cut)}`) + `</div>` +
-      (log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
+      (run.mp ? partyActFlowHtml(a, nodes, run, detailOwnerRun || run, row) : log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
         perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)}`) +
         perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, "") +
         perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") + `</div>` : "") +
@@ -4507,7 +4519,7 @@ function renderDetailKeepCharts(run) {
   const line = ({ label, color, dash }, pick, icons) => ({
     label, data: rows.map(r => { const v = r ? pick(r) : null; return v === undefined ? null : v; }),
     borderColor: color, pointHoverBackgroundColor: color,
-    borderWidth: 2, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 4, spanGaps: true,
+    borderWidth: 2, borderDash: dash || [], pointRadius: 3, pointHoverRadius: 5, spanGaps: true,
     cubicInterpolationMode: "monotone",
     ...(icons && nodePoints(nodes, () => detailKeepCharts.find(c => c.canvas.id === `detail-keep-${icons}-chart`),
       (n, key, i) => rows[i] && pick(rows[i]) !== undefined, iconSize, keepIconKey)),
@@ -4557,7 +4569,7 @@ function renderDetailKeepCharts(run) {
       `<table>${tKeys.filter(k => byT[k][i] > 0).map(k => row(k, T.color[k], byT[k][i])).join("")}</table>${changed(i)}`);
     const deckLine = (label, color, data, dash) => ({
       label, data, borderColor: color, pointHoverBackgroundColor: color,
-      borderWidth: 2, borderDash: dash || [], pointRadius: 0, pointHoverRadius: 4,
+      borderWidth: 2, borderDash: dash || [], pointRadius: 3, pointHoverRadius: 5,
       cubicInterpolationMode: "monotone",
     });
     chart("deck", tKeys.map(k => deckLine(k, T.color[k], byT[k])), deckTip);
