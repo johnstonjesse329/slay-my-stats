@@ -167,7 +167,7 @@ function renderPersonalBests() {
 
   // [label, cell, row class]
   const rows = [
-    ["All ascensions", (b, c) => tierBar(b.tiers.all, c), "pb-tier pb-win-total"],
+    [`All<span class="pb-wide-only"> ascensions</span>`, (b, c) => tierBar(b.tiers.all, c), "pb-tier pb-win-total"],
     // The ascension tiers the other tables split by (ascColumns).
     ...(currentPage === "overview" ? ASC_RANGES : ascColumns())
       .map(col => [col.label, (b, c) => tierBar(b.tiers[col.key], c), "pb-tier"]),
