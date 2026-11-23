@@ -23,6 +23,7 @@ from aws_cdk import (
     aws_s3_notifications as s3n,
     aws_scheduler as scheduler,
     aws_scheduler_targets as scheduler_targets,
+    aws_ses as ses,
     aws_sns as sns,
     aws_sns_subscriptions as subscriptions,
     aws_ssm as ssm,
@@ -637,8 +638,9 @@ class SlayMyStatsStack(Stack):
                                   f"{period.to_minutes()} minutes. Details are in ModIngestLogGroup.",
             ).add_alarm_action(cloudwatch_actions.SnsAction(alert_topic))
 
-        # Every morning at 8 AM Central, an email of the day's uploads: who
-        # added how many runs, new players, failures, the site's totals. It
+        # Every morning at 8 AM Central, an email (SES: HTML tables, plain text beside
+        # them) of the day's uploads: who added how many runs, new players, failures,
+        # the site's totals. It
         # reads the upload results the bucket already keeps for a week, so
         # nothing new is recorded. Prod only: gamma's uploads are testing.
         # Below them, the new feedback on prod and on gamma (Mondays: the open,
@@ -659,6 +661,18 @@ class SlayMyStatsStack(Stack):
                 deletion_protection=True,
                 removal_policy=RemovalPolicy.RETAIN,
             )
+            # The digest goes by SES, so it can carry HTML tables (SNS email is text only).
+            # The domain is verified through its DKIM records in the hosted zone; while the
+            # account is in the SES sandbox the recipient must be verified too, which sends
+            # alert_email a one-time confirmation link. Alerts stay on SNS.
+            digest_from = ses.EmailIdentity(
+                self, "DigestDomainIdentity",
+                identity=ses.Identity.public_hosted_zone(hosted_zone),
+            )
+            digest_to = ses.EmailIdentity(
+                self, "DigestRecipientIdentity",
+                identity=ses.Identity.email(alert_email),
+            )
             digest_log_group = logs.LogGroup(
                 self, "DigestLogGroup",
                 retention=logs.RetentionDays.ONE_MONTH,
@@ -678,8 +692,14 @@ class SlayMyStatsStack(Stack):
                              "ADOPTION_TABLE": adoption_table.table_name,
                              # Page views (views.py): the site's access logs, one day's at a time.
                              "ACCESS_LOG_BUCKET": log_bucket.bucket_name,
-                             "ACCESS_LOG_PREFIX": f"site/{distribution.distribution_id}."},
+                             "ACCESS_LOG_PREFIX": f"site/{distribution.distribution_id}.",
+                             # The HTML email (digest_html.py); SNS text if SES refuses.
+                             "DIGEST_FROM": f"digest@{domain_name}", "DIGEST_TO": alert_email},
             )
+            digest_fn.add_to_role_policy(iam.PolicyStatement(
+                actions=["ses:SendEmail"],
+                resources=[digest_from.email_identity_arn, digest_to.email_identity_arn],
+            ))
             adoption_table.grant(digest_fn, "dynamodb:PutItem")
             digest_fn.add_to_role_policy(iam.PolicyStatement(
                 actions=["cloudwatch:PutMetricData"], resources=["*"],  # it takes no resource

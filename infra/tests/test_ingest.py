@@ -12,7 +12,7 @@ import sys
 import tempfile
 import unittest
 import urllib.parse
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,6 +22,8 @@ sys.path[:0] = [str(REPO), str(REPO / "infra" / "lambda" / "ingest"), str(REPO /
 import handler  # noqa: E402
 import run  # noqa: E402
 import validate_parser  # noqa: E402
+import digest_html  # noqa: E402
+import feedback  # noqa: E402
 
 STEAM_ID = "76561198000000001"
 NOW = 1_800_000_000.0
@@ -1519,6 +1521,54 @@ class DigestTests(Uploads, unittest.TestCase):
         self.ingest(body_of(minimal_run(1700000000)))
         subject, _ = handler.build_digest(self.store, NOW + 2 * 86400)
         self.assertEqual(subject, "Slay My Stats: no uploads yesterday")
+
+
+class DigestHtmlTests(Uploads, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.store.clock = NOW
+
+    def test_held_ids_group_by_mod(self):
+        ids = ["CARD.ACME-ZAP", "CARD.NEWCARD", "RELIC.ACME-ORB", "CARD.SOLO-ONE", "CARD.OTHER-TWO"]
+        self.assertEqual(digest_html.held_groups(ids), [
+            ("ACME", "ZAP, ORB"), ("Other mods", "SOLO-ONE, OTHER-TWO"), ("No mod prefix", "NEWCARD")])
+
+    def test_the_email_renders_from_the_digest_data(self):
+        self.ingest(body_of(minimal_run(1700000000), minimal_run(1700000100)))
+        data = {}
+        subject, _ = handler.build_digest(self.store, NOW + 3600, data=data)
+        self.assertEqual(data["added"], 2)
+        self.assertEqual([p["slug"] for p in data["players"]], ["mrbean"])
+        notes = [{"created": NOW, "author": "1234", "comment": "<script>x</script>", "path": "/",
+                  "seq": 7, "category": "bug"}]
+        sites = [feedback.report_data(notes, NOW + 3600, "daily", "https://prod.test", "Prod")]
+        today = {"views": 5, "visitors": 2, "loads": 3, "pages": {"/u/<player>": 4, "/": 1},
+                 "tabs": {"detail": 3}, "players": {"mrbean": 4}, "runs": {"mrbean#123": 2}}
+        html = digest_html.render(data, sites, (today, []), "slay.test")
+        self.assertIn('href="https://slay.test/u/mrbean"', html)
+        self.assertIn("FB-7", html)
+        self.assertNotIn("<script>", html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertIn("Runs", html)  # the detail tab, by its name
+
+    def test_the_digest_goes_by_ses_with_sns_as_fallback(self):
+        sent, alerts = [], []
+        client = MagicMock()
+        client.send_email.side_effect = lambda **kw: sent.append(kw)
+        env = {"DIGEST_FROM": "digest@slay.test", "DIGEST_TO": "me@slay.test"}
+        with patch.dict(os.environ, env), patch("boto3.client", return_value=client),                 patch.object(handler, "_alert", side_effect=lambda *a: alerts.append(a)):
+            handler._send_digest("Subj", "text", "<p>html</p>")
+            self.assertEqual(sent[0]["Content"]["Simple"]["Body"]["Html"]["Data"], "<p>html</p>")
+            self.assertEqual(sent[0]["Content"]["Simple"]["Body"]["Text"]["Data"], "text")
+            self.assertEqual(alerts, [])
+            handler._send_digest("Subj", "text", None)  # no HTML: SNS text
+            client.send_email.side_effect = RuntimeError("sandbox")
+            handler._send_digest("Subj", "text", "<p>html</p>")  # SES refused: SNS text
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DIGEST_FROM", None)
+            with patch.object(handler, "_alert", side_effect=lambda *a: alerts.append(a)):
+                handler._send_digest("Subj", "text", "<p>html</p>")  # not configured: SNS text
+        self.assertEqual(alerts, [("Subj", "text")] * 3)
 
 
 class DirStoreTests(unittest.TestCase):

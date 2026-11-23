@@ -139,7 +139,7 @@ class DigestEmail(unittest.TestCase):
         env = {"ACCESS_LOG_BUCKET": "logs"}
         with patch.dict(os.environ, env), patch.object(handler, "_get_store", return_value=MemStore()), \
              patch.object(handler, "views_section", views_section), \
-             patch.object(handler, "feedback_sections", lambda now, tally=None: []), \
+             patch.object(handler, "feedback_sections", lambda now, tally=None, data=None: []), \
              patch.object(handler, "_alert", lambda s, b: sent.append((s, b))):
             handler.digest_handler({}, None)
         return sent[0]
@@ -152,7 +152,7 @@ class DigestEmail(unittest.TestCase):
 
     def test_views_are_kept_with_the_adoption_numbers(self):
         kept = []
-        def counted(store, day, tally=None):
+        def counted(store, day, tally=None, **kw):
             tally.update(PageViews=5, Visitors=2)
             return "Page views: 5 yesterday, 5 in 1 day", ""
         with patch.object(handler, "record_adoption", lambda tally, at, **kw: kept.append(dict(tally))):

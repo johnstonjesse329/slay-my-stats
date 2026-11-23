@@ -530,6 +530,25 @@ class FeedbackTest(unittest.TestCase):
         self.assertEqual(feedback.build_report([], now, 'weekly', 'https://gamma.test', 'Gamma')[0],
                          'Gamma feedback, this week: 0 open, 0 in, 0 resolved')
 
+    def test_prod_preview_lists_the_most_recently_touched(self):
+        now, day = 1_800_000_000, 86400
+        notes = [{'created': now - (30 - i) * day, 'author': ADMIN, 'comment': f'n{i}', 'path': '/',
+                  'seq': i, 'resolved': False} for i in range(14)]
+        notes[0]['history'] = [{'reopened_at': now - 100}]  # oldest filed, reopened last
+        notes[1]['backlog'] = {'at': now - 50}  # backlogged notes aren't open
+        self.assertEqual(feedback.touched(notes[0]), now - 100)
+        data = feedback.report_data(notes, now, 'weekly', 'https://prod.test', 'Prod', preview=10)
+        self.assertEqual(data['listed'], 'recent')
+        self.assertEqual([r['seq'] for r in data['rows']], [0, 13, 12, 11, 10, 9, 8, 7, 6, 5])
+        self.assertEqual(data['more'], 3)
+        _, body = feedback.build_report(notes, now, 'weekly', 'https://prod.test', 'Prod', preview=10)
+        self.assertIn('Open, most recently touched:', body)
+        self.assertIn('…and 3 more open', body)
+        # Without a preview (gamma), every open note, oldest first.
+        data = feedback.report_data(notes, now, 'weekly', 'https://gamma.test', 'Gamma')
+        self.assertEqual([r['seq'] for r in data['rows']], [0] + list(range(2, 14)))
+        self.assertEqual(data['more'], 0)
+
     def test_morning_email_carries_both_sites(self):
         import handler
         monday, day = 1_799_020_800 + 13 * 3600, 86400  # Monday 2027-01-04, 13:00 UTC
