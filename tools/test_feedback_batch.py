@@ -88,6 +88,46 @@ class FeedbackBatchTest(unittest.TestCase):
         self.assertEqual(batch._queue_checkpoint(entry), "candidate")
         self.assertEqual(entry["status"], "built")
 
+    def test_backlog_dry_run_then_apply_on_each_source(self):
+        entries = batch._load()
+        for e in entries["entries"]:
+            e.update(id=f"note-{e['seq']}", author="author-1")
+        batch._save(entries)
+        notes = {"note-1": {}, "note-2": {}}
+        calls = []
+
+        def change(db, table, env, note_id, steam, fn):
+            calls.append((env, note_id))
+            fn(notes[note_id])
+
+        with patch.object(batch, "_db", return_value=object()), patch.object(batch.feedback, "_change", change):
+            batch.backlog(["FB-1", "FB-2"], "  After the chart rework  ")
+            self.assertEqual(calls, [])
+            batch.backlog(["FB-1", "FB-2"], "  After the chart rework  ", apply=True)
+            self.assertEqual(calls, [("prod", "note-1"), ("gamma", "note-2")])
+            self.assertEqual(notes["note-1"]["backlog"]["reason"], "After the chart rework")
+            self.assertEqual([e["inbox_status"] for e in batch._load()["entries"]], ["backlog", "backlog"])
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                batch.queue()
+            self.assertIn("0 active", output.getvalue())
+
+            batch.backlog(["FB-1"], apply=True)  # already there: no second write
+            self.assertEqual(len(calls), 2)
+            batch.backlog(["FB-1"], on=False, apply=True)
+            self.assertNotIn("backlog", notes["note-1"])
+            self.assertEqual(batch._load()["entries"][0]["inbox_status"], "open")
+
+    def test_backlog_skips_resolved_and_long_reasons(self):
+        entries = batch._load()
+        entries["entries"][0].update(id="note-1", author="1", inbox_status="resolved")
+        batch._save(entries)
+        with patch.object(batch, "_db") as db:
+            with self.assertRaises(SystemExit):
+                batch.backlog(["FB-1"], "x" * 501, apply=True)
+            batch.backlog(["FB-1"], apply=True)
+        self.assertNotIn("backlog", batch._load()["entries"][0].get("inbox_status", ""))
+        db.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
