@@ -356,17 +356,22 @@ h1 {
 #relics-who, .fav-bychar-bar .fav-who { display: none; margin-bottom: 0.6rem; }
 .fav-bychar-bar .fav-who { margin: 0; }
 .pivot.fav-card-table { min-width: 0; }
-.fav-card-table .fav-item { --fav-face-w: 60px; padding-left: 0; border-left: 0; }
-.fav-card-table .fav-card-shared .fav-item { --fav-face-w: 74px; }
+.fav-card-table .fav-item { --fav-face-w: 74px; align-items: start; padding-left: 0; border-left: 0; }
 .fav-card-table .fav-pic { width: var(--fav-face-w); height: auto; }
 .fav-card-table .fav-cell { vertical-align: middle; }
-.fav-card-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 0.45rem; }
+.fav-card-table .fav-icon { align-self: center; }
+/* Every favorite is drawn the same size. Two different favorites sit side by side, You then All players; one both
+   share is drawn once, its two sets of figures side by side under the name. */
+.fav-card-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 0.6rem; }
 .fav-card-pair > div { min-width: 0; color: var(--text-dim); }
 .fav-card-table .fav-text { gap: 0.2rem; }
+.fav-card-table .fav-figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.3rem 0.8rem; }
+.fav-card-table .fav-figures { display: flex; flex-direction: column; min-width: 0; }
 .fav-card-table .fav-detail { white-space: normal; }
-.fav-card-table .fav-cohort { color: var(--gold); }
+.fav-card-table .fav-cohort { display: block; color: var(--gold); font-weight: 600; }
 .fav-card-table .fav-cohort-all { color: #9db8f0; }
 .fav-card-table .fav-count { display: block; }
+.fav-card-table .fav-empty { text-align: left; padding-left: 0.5rem; }
 @media (max-width: 1620px) {
   .fav-bychar-bar .fav-who { display: flex; }
   .fav-card-pair { display: block; }
@@ -383,7 +388,6 @@ h1 {
   .fav-card-table th, .fav-card-table td { padding-inline: 0.2rem; }
   .fav-card-table thead th:not(:first-child) { text-align: center; }
   .fav-card-table .fav-item { --fav-face-w: 44px; grid-template-columns: minmax(0, 1fr); justify-items: center; row-gap: 0.25rem; }
-  .fav-card-table .fav-card-shared .fav-item { --fav-face-w: 50px; }
   .fav-card-table .fav-icon:empty { display: none; }
   .fav-card-table .fav-icon:empty + .fav-text .fav-name { display: -webkit-box; }
   .fav-card-table .fav-text { align-items: center; text-align: center; }
