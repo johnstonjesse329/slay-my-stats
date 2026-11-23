@@ -88,8 +88,8 @@ const detailTags = new Set();
 // Players picked under "Played with" (profile slugs); a run shows when all of them have a
 // copy of it linked to this one (run.coop, from boot.js).
 const detailPartners = new Set();
-const detailActReached = document.getElementById("detail-act-reached");
-detailActReached.addEventListener("change", () => renderDetailRunList());
+// Acts picked under "Act reached"; a run shows when it reached every picked act.
+const detailActs = new Set();
 const DETAIL_RUNS_PER_PAGE = 100;
 const detailRunPagination = document.getElementById("detail-run-pagination");
 const detailRunsPrevious = document.getElementById("detail-runs-previous");
@@ -99,8 +99,7 @@ detailRunsPrevious.addEventListener("click", () => renderDetailRunList(-1));
 detailRunsNext.addEventListener("click", () => renderDetailRunList(1));
 
 function matchesDetailAct(run) {
-  const act = Number(detailActReached.value);
-  return !act || (run.timeline || []).some(node => node.act === act);
+  return [...detailActs].every(act => (run.timeline || []).some(node => node.act === act));
 }
 let detailSortAsc = false;
 const DETAIL_SORT_FNS = {
@@ -329,6 +328,31 @@ document.querySelector("#detail-partner-filter .tag-filter-clear")?.addEventList
   renderDetailRunList();
 });
 
+// The acts as toggles behind the "Act reached" line, counted over the runs the other filters leave.
+function renderDetailActFilter(runs) {
+  const box = document.getElementById("detail-act-filter");
+  box.querySelector(".tag-filter-text").textContent = detailActs.size
+    ? [...detailActs].sort().map(a => `Act ${a}`).join(" + ") : "Any act";
+  box.querySelector(".tag-filter-clear").hidden = detailActs.size === 0;
+  box.querySelector(".tag-filter-chips").innerHTML = `<div class="tag-filter-tags">` + [1, 2, 3].map(a =>
+    `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailActs.has(a)}" data-act="${a}">Act ${a} <span class="run-tag-n">${runs.filter(r => (r.timeline || []).some(n => n.act === a)).length}</span></button>`).join("") + `</div>`;
+  box.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
+    const a = Number(btn.dataset.act);
+    if (detailActs.has(a)) detailActs.delete(a); else detailActs.add(a);
+    renderDetailRunList();
+  }));
+}
+
+document.querySelector("#detail-act-filter .tag-filter-summary")?.addEventListener("click", e => {
+  const open = document.getElementById("detail-act-filter").classList.toggle("expanded");
+  e.currentTarget.setAttribute("aria-expanded", String(open));
+});
+
+document.querySelector("#detail-act-filter .tag-filter-clear")?.addEventListener("click", () => {
+  detailActs.clear();
+  renderDetailRunList();
+});
+
 const playedWithAll = run => !detailPartners.size
   || (run.coop && [...detailPartners].every(s => run.coop.with.some(w => w.slug === s)));
 
@@ -436,6 +460,7 @@ document.querySelector("#detail-tag-filter .tag-filter-clear")?.addEventListener
 
 function renderDetailRunList(pageStep = 0) {
   const filtered = getDetailRuns();
+  renderDetailActFilter(filterRuns());
   renderDetailTagFilter(filtered);
   renderDetailPartnerFilter(filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t))));
   const runs = filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t)) && playedWithAll(r));
@@ -538,7 +563,7 @@ detailSectionNav.addEventListener("click", event => {
 // Marks the section nearest the top as the current one.
 function markDetailSection() {
   if (!detailSectionNav.offsetParent) return;
-  const line = detailSectionNav.offsetHeight + 24;
+  const line = detailSectionNav.offsetHeight + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--filter-bar-h")) || 0) + 24;
   let current = null;
   const buttons = detailSectionNav.querySelectorAll("[data-section]");
   for (const b of buttons) {

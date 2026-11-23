@@ -182,7 +182,7 @@ h1 {
 /* The character row stays in view while the long table scrolls past (most of all on a phone).
    The panel's own colour, so rows slide under it; a shadow stands in for the border, which a
    sticky cell's collapsed border doesn't carry. */
-.pb-table thead th { position: sticky; top: 0; z-index: 2; background: var(--panel); box-shadow: inset 0 -2px 0 var(--hairline); }
+.pb-table thead th { position: sticky; top: var(--filter-bar-h, 0px); z-index: 2; background: var(--panel); box-shadow: inset 0 -2px 0 var(--hairline); }
 .pb-table thead th:first-child { width: 11rem; }
 .pb-table tbody th { text-align: left; color: var(--text-dim); font-weight: 500; }
 .pb-table td { text-align: center; color: var(--text); font-weight: 500; }
@@ -414,7 +414,7 @@ h1 {
 .seeds-list { flex: 1 1 auto; min-width: 0; }
 .seeds-preview { display: none; }
 @media (min-width: 1100px) {
-  .seeds-list { flex: 0 1 auto; max-width: 60%; max-height: min(70vh, 720px); overflow-y: auto; position: sticky; top: 1rem; align-self: flex-start; }
+  .seeds-list { flex: 0 1 auto; max-width: 60%; max-height: min(70vh, 720px); overflow-y: auto; position: sticky; top: calc(var(--filter-bar-h, 0px) + 1rem); align-self: flex-start; }
   #seeds-table { width: auto; }
   #seeds-table .seed-expand-arrow { display: none; }
   #seeds-tbody tr.seed-current td { background: rgba(255,255,255,.06); }
@@ -425,6 +425,12 @@ h1 {
 /* Cards, Relics and Seeds: the column headings stay put while the rows scroll.
    box-shadow, not a border: a collapsed border stays behind when the cell sticks. */
 #cards-table-main thead, #seeds-table thead, #relics-table thead { position: sticky; top: 0; z-index: 2; }
+/* Where the filter bar always sticks, the Cards and Relics lists flow with the page (clip, not
+   scroll, so the headings stick to the viewport) and their headings sit just under the bar. */
+@media (min-width: 1000px) and (min-height: 600px) {
+  .relics-list, .cards-list { max-height: none; overflow: clip; contain: none; }
+  #cards-table-main thead, #relics-table thead { top: var(--filter-bar-h, 0px); }
+}
 #cards-table-main thead th, #seeds-table thead th, #relics-table thead th { background: var(--panel-2); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--hairline); }
 .cards-thumb-wrap { --cards-thumb-w: 62px; display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
 .cards-thumb-wrap .cardface { width: var(--cards-thumb-w); display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
@@ -1306,14 +1312,14 @@ h1 {
    scrolls (desktop; a phone stacks them, see the phone block). */
 #detail-side {
   position: sticky;
-  top: 0.75rem;
-  max-height: calc(100vh - 1.5rem);
+  top: calc(var(--filter-bar-h, 0px) + 0.75rem);
+  max-height: calc(100vh - var(--filter-bar-h, 0px) - 1.5rem);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
 }
-#detail-tag-filter, #detail-partner-filter {
+#detail-tag-filter, #detail-partner-filter, #detail-act-filter {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -1341,9 +1347,9 @@ h1 {
 .tag-filter-text { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-filter-caret { color: var(--text-dim); transition: transform 0.15s; }
 .tag-filter-summary:hover .tag-filter-caret { color: var(--text); }
-#detail-tag-filter.expanded .tag-filter-caret, #detail-partner-filter.expanded .tag-filter-caret { transform: rotate(180deg); }
+#detail-tag-filter.expanded .tag-filter-caret, #detail-partner-filter.expanded .tag-filter-caret, #detail-act-filter.expanded .tag-filter-caret { transform: rotate(180deg); }
 .tag-filter-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--hairline); }
-#detail-tag-filter:not(.expanded) .tag-filter-chips, #detail-partner-filter:not(.expanded) .tag-filter-chips { display: none; }
+#detail-tag-filter:not(.expanded) .tag-filter-chips, #detail-partner-filter:not(.expanded) .tag-filter-chips, #detail-act-filter:not(.expanded) .tag-filter-chips { display: none; }
 .tag-filter-chips { flex-direction: column; flex-wrap: nowrap; gap: 0.4rem; }
 .tag-filter-group { display: grid; grid-template-columns: 8.5rem 1fr; align-items: start; gap: 0.3rem 0.6rem; }
 .tag-filter-char { display: flex; align-items: center; min-height: 1.7rem; white-space: nowrap; }
@@ -1381,14 +1387,6 @@ h1 {
   padding: 0.5rem 0;
 }
 
-/* Styled like the archetype and played-with boxes above it. */
-.detail-act-filter {
-  display: flex; align-items: center; gap: 0.5rem;
-  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px;
-  padding: 0.5rem 0.75rem; font-size: var(--fs-sm);
-}
-.detail-act-filter .filter-label { font-size: var(--fs-sm); color: var(--text-dim); padding-right: 0.7rem; border-right: 1px solid var(--hairline); }
-.detail-act-filter .seeds-input { flex: 1; min-width: 0; width: auto; padding: 0; background: none; border: 0; font-weight: 600; cursor: pointer; }
 .detail-run-pagination:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.35rem; }
 .detail-run-pagination { margin-top: 0.45rem; font-size: var(--fs-sm); color: var(--text-dim); }
 #detail-run-list {
@@ -1620,7 +1618,7 @@ h1 {
 .range-player { margin-top: 0.6rem; }
 .range-who { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; border-left: 3px solid; padding-left: 0.5rem; }
 .range-who-name { font-weight: 600; }
-#detail-partner-filter .tag-filter-chips { flex-direction: row; }
+#detail-partner-filter .tag-filter-chips, #detail-act-filter .tag-filter-chips { flex-direction: row; }
 .partner-filter-none { color: var(--text-dim); font-size: var(--fs-sm); }
 
 .detail-run-headline-stats {
@@ -1829,7 +1827,7 @@ h1 {
    Stays at the top of the screen while the charts scroll under it. */
 .keep-actpick { display: none; }
 @media (max-width: 700px) {
-  .keep-actpick { display: flex; gap: 0.4rem; position: sticky; top: 0; z-index: 5; padding: 0.4rem 0; margin-bottom: 0.4rem; background: var(--panel); }
+  .keep-actpick { display: flex; gap: 0.4rem; position: sticky; top: var(--filter-bar-h, 0px); z-index: 5; padding: 0.4rem 0; margin-bottom: 0.4rem; background: var(--panel); }
   .keep-actpick button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.1rem; padding: 0.4rem 0.3rem; font: inherit; font-size: var(--fs-md); font-weight: 600; color: var(--text-dim); background: transparent; border: 1px solid var(--hairline); border-radius: 8px; cursor: pointer; }
   .keep-actpick button small { font-size: var(--fs-xs); font-weight: 400; color: var(--text-faint); }
   .keep-actpick button.on { color: var(--gold-bright); border-color: var(--gold); background: var(--panel-2); }
@@ -3296,7 +3294,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 
 /* The player and act controls share a sticky row bounded by the floor charts. */
 #detail-keep-heading { margin: 16px 0 8px; }
-.detail-floor-controls { position: sticky; top: 0; z-index: 6; background: var(--panel); border: 1px solid var(--hairline); border-radius: 9px; padding: 7px 10px; margin-bottom: 8px; }
+.detail-floor-controls { position: sticky; top: var(--filter-bar-h, 0px); z-index: 6; background: var(--panel); border: 1px solid var(--hairline); border-radius: 9px; padding: 7px 10px; margin-bottom: 8px; }
 .detail-floor-controls:has(.party-toggle:empty):not(:has(.keep-actpick button)) { display: none; }
 .detail-floor-controls .party-toggle { display: flex; flex-wrap: wrap; margin: 0; }
 .detail-floor-controls .party-toggle:empty { display: none; }
@@ -3331,7 +3329,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .detail-section-nav {
   --detail-nav-h: 46px;
   position: sticky;
-  top: 0;
+  top: var(--filter-bar-h, 0px);
   z-index: 7;
   display: flex;
   align-items: center;
@@ -3349,15 +3347,15 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .detail-section-nav-label { flex: none; color: var(--gold); font-weight: 600; font-size: var(--fs-sm); }
 .detail-section-nav .toggle-btn { flex: none; white-space: nowrap; }
 #detail-content { --detail-nav-h: 46px; }
-#detail-content .detail-floor-controls { top: var(--detail-nav-h); }
-#detail-content .keep-actpick { top: var(--detail-nav-h); }
+#detail-content .detail-floor-controls { top: calc(var(--filter-bar-h, 0px) + var(--detail-nav-h)); }
+#detail-content .keep-actpick { top: calc(var(--filter-bar-h, 0px) + var(--detail-nav-h)); }
 @media (max-width: 760px) {
   .detail-section-nav { gap: 0.35rem; padding: 0.4rem; }
   .detail-section-nav-label { display: none; }
   .detail-section-nav .toggle-btn { padding: 0.3rem 0.45rem; font-size: 0.8rem; }
   #detail-content, .detail-section-nav { --detail-nav-h: 40px; }
 }
-#detail-content [tabindex="-1"] { scroll-margin-top: calc(var(--detail-nav-h) + 1rem); }
+#detail-content [tabindex="-1"] { scroll-margin-top: calc(var(--filter-bar-h, 0px) + var(--detail-nav-h) + 1rem); }
 .detail-summary-table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: var(--fs-sm); }
 .detail-summary-table caption { text-align: left; color: var(--text-dim); margin-bottom: 0.3rem; }
 .detail-summary-table :is(th, td) { padding: 0.35rem 0.25rem; text-align: right; border-bottom: 1px solid var(--hairline); }

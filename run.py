@@ -1056,6 +1056,7 @@ _JS_MODULES = [
     "fight-tables.js",
     "update.js",
     "page-nav.js",
+    "sticky-offsets.js",
     "cards-page.js",
     "relics-page.js",
     "seeds.js",
@@ -1410,7 +1411,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <span class="filter-summary-text"></span>
     <span class="filter-summary-caret" aria-hidden="true">▾</span>
   </button>
-  <p class="filter-lock-note">Greyed-out filters apply on the other pages.</p>
+  <p class="filter-lock-note">Greyed-out filters are locked on this page.</p>
 
   <div class="filter-row">
     <span class="filter-section">Runs</span>
@@ -1485,7 +1486,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <div class="filter-group filter-actions">
       <button class="toggle-btn" id="shared-filters-save" title="Remember the current filters as your default in this browser">Save as default</button>
       <button type="button" class="toggle-btn" id="shared-filter-copy-link">Copy filter link</button>
-      <button class="toggle-btn" id="shared-filters-reset" title="Restore built-in filters and clear your saved default in this browser">Reset filters</button>
+      <button class="toggle-btn" id="shared-filters-reset" data-overview="unlocked" title="Restore built-in filters and clear your saved default in this browser">Reset filters</button>
       <span id="shared-filters-unsaved" title="You've changed filters since your last save — click Save as default to keep them" hidden>!</span>
       <span id="shared-filters-status" role="status"></span>
     </div>
@@ -1766,14 +1767,16 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="tag-filter-chips"></div>
     </div>
-    <div class="detail-act-filter">
-      <label class="filter-label" for="detail-act-reached">Act reached</label>
-      <select class="seeds-input" id="detail-act-reached">
-        <option value="0">Any act</option>
-        <option value="1">Act 1</option>
-        <option value="2">Act 2</option>
-        <option value="3">Act 3</option>
-      </select>
+    <div id="detail-act-filter">
+      <div class="tag-filter-head">
+        <button type="button" class="tag-filter-summary" aria-expanded="false">
+          <span class="filter-label">Act reached</span>
+          <span class="tag-filter-text"></span>
+          <span class="tag-filter-caret" aria-hidden="true">▾</span>
+        </button>
+        <button type="button" class="toggle-btn tag-filter-clear" hidden>Clear</button>
+      </div>
+      <div class="tag-filter-chips"></div>
     </div>
     <div id="detail-jump-notice" role="status" hidden></div>
     <div id="detail-run-list"></div>
