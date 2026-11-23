@@ -1703,7 +1703,7 @@ function unknownRoom(t) {
 // `act` is the scroll's name (overgrowth, underdocks, hive, glory); bossKeys the boss's
 // encounter id, and the second boss's on an Ascension 10 final act; floors the run's floors
 // in this act; seed the run's seed.
-function actMapSvg(m, act, bossKeys, floors, seed) {
+function actMapSvg(m, act, bossKeys, floors, seed, coatedPath = new Set()) {
   const art = DATA.mapArt || {};
   const [bg, todo, walkedColor] = (ACT_MAP_COLORS[act] || ACT_MAP_COLORS.overgrowth)
     .map(h => [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255));
@@ -1770,6 +1770,9 @@ function actMapSvg(m, act, bossKeys, floors, seed) {
       if (room) key = `node_${act}_unknown_${room}`;
     }
     body += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(gauss() * 8).toFixed(1)})">${img(art[key], -46, -46, 92, 92, lit ? "" : ' opacity="0.5"')}<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></g>`;
+    if (coatedPath.has(m.path.findIndex(c => c[0] === n[0] && c[1] === n[1]))) {
+      rings += `<g transform="translate(${(x + 40).toFixed(1)} ${(y - 40).toFixed(1)})"><circle r="30" fill="#c0392b" stroke="#fff" stroke-width="6"/><text y="14" text-anchor="middle" font-size="42" font-weight="700" fill="#fff">FC</text><title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
+    }
     if (lit) {
       const size = 200 * (0.85 + rnd() * 0.05);
       rings += img(art.circle, -size / 2, -size / 2, size, size, ` opacity="0.95" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(rnd() * 360).toFixed(0)})"`);
@@ -1865,7 +1868,9 @@ function renderDetailMaps(run) {
     // run ended first); older uploads only know the ones fought.
     const fought = floors.filter(n => n.type === "boss").map(n => n.enc);
     const bossKeys = [m.bossEnc || fought[0], m.boss2Enc || fought[1]].filter(Boolean);
-    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed)}</div>${m === sent ? actRouteComparison(m) : ""}</section>`;
+    const coated = floors.length === m.path.length ? furCoatNodes(run, run.timeline || [], null) : new Set();
+    const coatedPath = new Set(floors.flatMap((n, i) => coated.has(run.timeline.indexOf(n)) ? [i] : []));
+    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed, coatedPath)}</div>${m === sent ? actRouteComparison(m) : ""}</section>`;
   }).join("") + `</div></div>` : "";
   for (const card of box.querySelectorAll(".act-map")) card.addEventListener("click", event => {
     if (!event.target.closest(".act-map-route")) openActMap(card);
@@ -3790,6 +3795,20 @@ const furCoatFight = (node, measured, count, pickup, completed) =>
   completed && node.floor + 1 > pickup && node.turns === 1 &&
   count > 0 && measured?.removed > 0 && measured.removed <= count;
 
+// The timeline indexes of every Fur Coat-marked fight in a run, from the log's evidence.
+function furCoatNodes(run, nodes, measured) {
+  const marked = new Set();
+  const pickup = furCoatPickupFloor(run);
+  if (!Number.isFinite(pickup) || !DATA.fightDemand) return marked;
+  const evidence = measured || measuredStrengthByNode(run, nodes);
+  const lastFight = nodes.findLastIndex(keepFight);
+  nodes.forEach((n, i) => {
+    const d = DATA.fightDemand.encounters[keepFight(n)];
+    if (d && (run.won || i !== lastFight) && furCoatFight(n, evidence?.[i], d.count, pickup, true)) marked.add(i);
+  });
+  return marked;
+}
+
 // Whatever the map called the room: a "?" room or an event can hide a fight of either kind.
 const keepRank = n => n.type === "boss" ? "Boss" : /_ELITE$/.test(keepFight(n)) ? "Elite" : "";
 
@@ -3927,7 +3946,7 @@ const keepVerdict = (pace, guard, cut) => {
 // from them. A log adds what a run file can't say.
 function actReadings(run, nodes, measured, partyCosts = null) {
   // A fight_demand.json from before the quarters has nothing to read an act against.
-  if (!DATA.fightDemand?.cuts) return [];
+  if (!DATA.fightDemand?.cuts) return Object.assign([], { unrated: [] });
   const demand = DATA.fightDemand.encounters;
   const lastFight = nodes.findLastIndex(keepFight);
   const furCoat = furCoatPickupFloor(run);
@@ -3965,7 +3984,10 @@ function actReadings(run, nodes, measured, partyCosts = null) {
     a.log.spent += m.spent * n.turns;
   });
   const short = (pace, each) => pace < each ? "damage" : "block";
-  return [...acts.values()].filter(a => a.fights >= KEEP_ACT_MIN).map(a => {
+  const rated = [...acts.values()].filter(a => a.fights >= KEEP_ACT_MIN);
+  // An act whose marked fights leave too few to rate still says what was left out.
+  const unrated = [...omitted].filter(([act]) => !rated.some(a => a.act === act)).map(([act, n]) => ({ act, n }));
+  const readings = rated.map(a => {
     const pace = a.winTurns / a.turns, guard = (a.winTaken + 1) / (a.taken + 1), each = guard / pace;
     const cut = keepActCut(a.act);
     const speed = keepMark(pace, cut.pace), held = keepMark(guard, cut.guard);
@@ -3973,6 +3995,8 @@ function actReadings(run, nodes, measured, partyCosts = null) {
     return { ...a, cut, pace, guard, each, speed, held, verdict, furCoatOmitted: omitted.get(a.act) || 0,
       lacking: verdict === "behind" ? short(pace, each) : null };
   });
+  readings.unrated = unrated;
+  return readings;
 }
 
 // fight_demand.py's run_reading: keep them together. A run as a whole, its acts' totals
@@ -4104,7 +4128,7 @@ function renderKeepActs(run, nodes, measured) {
   const coverage = document.getElementById("detail-keep-party-coverage");
   coverage.hidden = !party || !acts.length;
   coverage.textContent = party ? `Party average · ${party.length} of ${partyRoster(run).length} run copies` : "";
-  box.style.display = acts.length ? "" : "none";
+  box.style.display = acts.length || acts.unrated.length ? "" : "none";
   // One metric on one line, as cells of the half-card's grid: icon and label take the slack,
   // then the figure and either its mark and the average win's, or (a per-turn figure) its
   // note. A sub line, when there is one, runs the half's width under it.
@@ -4162,6 +4186,8 @@ function renderKeepActs(run, nodes, measured) {
   const wholeCard = whole ? `<div class="keep-run keep-act"><h3><span class="ka-title">Run rating</span>${runReadingHtml(run)}</h3>` +
     `<p class="kr-desc">Damage taken and fight turns from every act added up, against the average win on the same fights. OP means a Hype rating in both Acts ${KEEP_OP_ACTS.join(" and ")} which signals a consistently strong deck through mid and late game.</p>` +
     `<div class="kr-meters">${wholeMeters.damage}${wholeMeters.turns}</div></div>` : "";
+  const unratedCards = acts.unrated.map(u => `<div class="keep-act"><h3><span class="ka-title">Act ${u.act}</span></h3>` +
+    `<p class="chart-caption">Fur Coat: ${u.n} marked ${u.n === 1 ? "fight" : "fights"} left out (enemies started at 1 HP each), too few other fights to rate this act.</p></div>`).join("");
   box.innerHTML = wholeCard + acts.map(a => {
     const log = a.log;
     const perTurn = v => (v / log.turns).toFixed(1);
@@ -4183,9 +4209,9 @@ function renderKeepActs(run, nodes, measured) {
         perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, "") +
         perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") + `</div>` : "") +
       `</div>` +
-      (a.furCoatOmitted ? `<p class="chart-caption">Fur Coat: ${a.furCoatOmitted} marked ${a.furCoatOmitted === 1 ? "fight excluded" : "fights excluded"}.</p>` : "") +
+      (a.furCoatOmitted ? `<p class="chart-caption">Fur Coat: ${a.furCoatOmitted} marked ${a.furCoatOmitted === 1 ? "fight" : "fights"} (enemies started at 1 HP each) left out of this act's averages and rating; the other ${a.fights} still count.</p>` : "") +
       `</div>`;
-  }).join("");
+  }).join("") + unratedCards;
 }
 
 // What each floor added and removed, per timeline node, as { cards, relics } lists of
