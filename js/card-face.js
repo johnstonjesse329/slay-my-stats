@@ -132,7 +132,7 @@ function renderCardTile(c) {
   // green "Strike+" title, so a separate +1 chip would just repeat it.
   const countLabel = c.count > 1 ? `<span class="tile-count">×${c.count}</span>` : "";
   const floors = [...(c.addedFloors || [])].sort(([a], [b]) => a - b);
-  const floorLabel = floors.length
+  const floorLabel = c.seqMark ? `<div class="tile-added-floors">${c.seqMark}</div>` : floors.length
     ? `<div class="tile-added-floors">Added ${floors.map(([floor, count]) =>
         `F${floor}${count > 1 ? ` ×${count}` : ""}`).join(" · ")}</div>`
     : "";
@@ -308,8 +308,8 @@ document.addEventListener("click", e => {
   root.querySelectorAll("[data-deck-panel]").forEach(panel => { panel.hidden = panel.dataset.deckPanel !== deckView; });
 });
 
-// The deck as it was gathered: the starting cards, then each floor's pickups in order, with
-// no card types.
+// The deck as it was gathered: one run of cards in the order they came, the starting cards
+// first, with the floor as a small marker under each (a card marked "F12" came on floor 12).
 function renderCardsByFloorHtml(deck, added) {
   const byFloor = new Map();
   deck.forEach((c, i) => {
@@ -317,11 +317,9 @@ function renderCardsByFloorHtml(deck, added) {
     if (!byFloor.has(floor)) byFloor.set(floor, []);
     byFloor.get(floor).push(c);
   });
-  return [...byFloor].sort(([a], [b]) => a - b).map(([floor, cards]) =>
-    `<div class="deck-group">
-      <div class="deck-group-label">${floor ? `Floor ${floor}` : "Starting deck"} <span class="deck-group-count">${cards.length}</span></div>
-      <div class="deck-tile-row">${dedupeCardCounts(cards, null).map(renderCardTile).join("")}</div>
-    </div>`).join("");
+  const tiles = [...byFloor].sort(([a], [b]) => a - b).flatMap(([floor, cards]) =>
+    dedupeCardCounts(cards, null).map(c => renderCardTile({ ...c, seqMark: floor ? `F${floor}` : "Start" })));
+  return `<div class="deck-tile-row deck-sequence">${tiles.join("")}</div>`;
 }
 
 function renderDetailDeckRelics(run) {

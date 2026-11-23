@@ -996,19 +996,21 @@ function partyIncomingComparison(players, rows, average) {
 // Touch tooltips use the same individual breakdowns as the separate run view.
 // FB-62 proof of concept: "orig", "flip" (best on top, negative ticks) or "score" (higher = better).
 const FB62 = (() => { try { return localStorage.getItem("fb62") || "orig"; } catch { return "orig"; } })();
-const fb62Neg = v => v ? "−" + +Math.abs(v).toFixed(2) : "0";
+// Flipped keeps the figures as they are and only turns the axis over (0 on top), so a tick reads as
+// the same number the average line and the hover box show: 1× is the average win, never -1.
+const fb62Tick = unit => v => `${+v.toFixed(2)}${unit === "×" ? "×" : ""}`;
 // Score guard: both sides get +1 (so a near-zero denominator can't blow up), and the score stops at 4.
 const FB62_CAP = 4;
 const fb62Ratio = (win, own) => win == null || own == null || Number.isNaN(win) || Number.isNaN(own) ? undefined : Math.min(FB62_CAP, (win + 1) / (own + 1));
 const fb62Cap = v => v == null ? v : Math.min(FB62_CAP, v);
 const FB62_NAME = { flip: "Flipped", score: "Score" };
-const FB62_CAPTION = { orig: "Lower is better.", flip: "Higher is better (0 is best).", score: "Higher is better." };
+const FB62_CAPTION = { orig: "Lower is better.", flip: "Higher on the chart is better.", score: "Higher is better." };
 // A plotted value as the mode shows it.
 const fb62Show = (v, unit) => FB62 === "score" ? (v >= FB62_CAP ? `≥${FB62_CAP}×` : `${v.toFixed(2)}×`)
-  : `${FB62 === "flip" ? "−" : ""}${unit === "×" ? v.toFixed(2) : v.toFixed(1)}${unit === "×" ? "×" : " / turn"}`;
+  : `${unit === "×" ? v.toFixed(2) : v.toFixed(1)}${unit === "×" ? "×" : " / turn"}`;
 // Tooltip line: the mode's value, with the original beside it in Flipped.
-const fb62Cell = (label, v, orig, unit) => v == null ? "" :
-  `<div class="ft-cap">${label} ${FB62_NAME[FB62]} <b>${fb62Show(v, unit)}</b>${FB62 === "flip" ? ` · original ${fb62Show(orig ?? v, unit).replace("−", "")}` : ""}</div>`;
+const fb62Cell = (label, v, orig, unit) => v == null || FB62 === "flip" ? "" :
+  `<div class="ft-cap">${label} ${FB62_NAME[FB62]} <b>${fb62Show(v, unit)}</b></div>`;
 function fb62Toggle() {
   const cap = [...document.querySelectorAll("#detail-keep-box .chart-caption")].find(c => c.firstChild?.textContent.includes("compared with an average win"))?.firstChild;
   if (cap?.nodeType === 3) cap.textContent = cap.textContent.replace(/(Lower|Higher) is better[^.]*\.|Closer[^.]*\./, FB62_CAPTION[FB62]);
@@ -1056,7 +1058,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
   });
   const base = iconAxis({ min: 0 });
   const y = { ...base, stacked: false, reverse, ticks: { ...base.ticks, maxTicksLimit: 5 } };
-  if (extra.fb62 && FB62 === "flip") y.ticks.callback = fb62Neg;
+  if (extra.fb62 && FB62 === "flip") y.ticks.callback = fb62Tick(extra.fb62unit);
   if (extra.floorAtZero) {
     const stretch = y.afterDataLimits;
     y.afterDataLimits = scale => { if (stretch) stretch(scale); scale.min = Math.max(0, scale.min); };
@@ -1174,7 +1176,7 @@ function renderPartyCharts(players) {
     return null;
   });
   const asMode = r => FB62 === "score" ? fb62Cap(1 / r) : r;
-  const times = v => v == null ? "–" : FB62 === "score" ? fb62Show(v, "×") : `${FB62 === "flip" ? "−" : ""}${v.toFixed(2)}×`;
+  const times = v => v == null ? "–" : FB62 === "score" ? fb62Show(v, "×") : `${v.toFixed(2)}×`;
   const share = build("detail-keep-share-chart", "detail-keep-share-legend",
     perFight(r => r.winTotal === undefined ? undefined : FB62 === "score" ? fb62Ratio(r.winTotal, r.total) : (r.total + 1) / (r.winTotal + 1)),
     (p, i, v) => times(v), FB62 === "flip", fightIcon, {
@@ -1189,7 +1191,7 @@ function renderPartyCharts(players) {
         const r = benchmarkRows?.[i];
         const turns = r?.winTurns === undefined ? "" :
           `<div class="ft-cap">Fight turns <b>${r.turns}</b> · ${times(fb62Cap(turnsShare[i]))} avg win · Avg win ${+r.winTurns.toFixed(1)}</div>`;
-        return turns + partyFloorTable(party, ["Damage taken", FB62 === "orig" ? "× avg win" : FB62_NAME[FB62]], p => {
+        return turns + partyFloorTable(party, ["Damage taken", FB62 === "score" ? FB62_NAME.score : "× avg win"], p => {
           const row = readingAt(p, i);
           return [row?.total, row?.winTotal === undefined ? null : times(asMode((row.total + 1) / (row.winTotal + 1)))];
         }, r?.winTotal === undefined ? null : [Math.round(r.winTotal), times(1)]);
@@ -2092,8 +2094,8 @@ function nodePoints(nodes, getChart, highlight, size = nodePointSize(), keyOf = 
       if (!img.complete) img.addEventListener("load", () => getChart()?.update("none"), { once: true });
       return img;
     }),
-    pointRadius: srcs.map(src => src ? size / 2 : 0),
-    pointHoverRadius: srcs.map(src => src ? size / 2 : 4),
+    // A floor without an icon still gets the charts' small dot, so every floor reads as a point.
+    pointHoverRadius: srcs.map(src => src ? size / 2 : 5),
     // An icon on the first or last floor overhangs the plot's side edge. Not where the chart shows
     // one act of the run (iconClip), whose neighbouring floors sit past the edge.
     clip: iconClip(),
@@ -2795,8 +2797,9 @@ function floorBands(bands) {
       backgroundColor: isStarter(key) ? hatchPattern(color) : color + "4d",
       borderWidth: 2,
       borderDash: isStarter(key) ? [5, 4] : [],
-      pointRadius: 0,
-      pointHoverRadius: 0,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      pointBackgroundColor: color,
       // Monotone curves never overshoot, so a band only moves on a floor
       // where something changed.
       cubicInterpolationMode: "monotone",
@@ -3617,7 +3620,7 @@ const KEEP_AVERAGE_STYLE = {
 };
 const KEEP_TURN_STYLE = {
   label: "Fight turns", borderColor: "#9aa9bf", borderWidth: 1.75, borderDash: [6, 4],
-  order: 5, pointRadius: 0, pointHoverRadius: 0,
+  order: 5, pointRadius: 3, pointHoverRadius: 5,
 };
 const keepAverageGuide = {
   id: "keepAverageGuide",
@@ -4478,8 +4481,8 @@ function keepIncomingTip(r, mp = false) {
 
 function keepShareTip(r, color = KEEP_LINES.taken.color) {
   if (r.winTurns === undefined) return "";
-  const mult = v => FB62 === "score" ? fb62Show(fb62Cap(1 / v), "×") : `${FB62 === "flip" ? "−" : ""}${v.toFixed(2)}×`;
-  return `<table><tr><th></th><th>This run</th><th>${FB62 === "orig" ? "× avg win" : FB62_NAME[FB62]}</th><th class="ft-win">Avg win</th></tr>` +
+  const mult = v => FB62 === "score" ? fb62Show(fb62Cap(1 / v), "×") : `${v.toFixed(2)}×`;
+  return `<table><tr><th></th><th>This run</th><th>${FB62 === "score" ? FB62_NAME.score : "× avg win"}</th><th class="ft-win">Avg win</th></tr>` +
     `<tr><td>${swatch(color)}Damage taken</td><td><b>${Math.round(r.total)}</b></td>` +
     `<td>${mult((r.total + 1) / (r.winTotal + 1))}</td><td class="ft-win">${Math.round(r.winTotal)}</td></tr>` +
     `<tr><td>${swatch(KEEP_TURN_STYLE.borderColor)}Fight turns</td><td><b>${r.turns}</b></td>` +
@@ -4588,7 +4591,7 @@ function renderDetailKeepCharts(run) {
     const fb = id === "in" || id === "share";
     const yAxis = { ...base, stacked: false, ticks: { ...base.ticks, maxTicksLimit: 5 },
       reverse: fb && FB62 === "flip" ? true : fb && FB62 === "score" ? false : !!up };
-    if (fb && FB62 === "flip") yAxis.ticks.callback = fb62Neg;
+    if (fb && FB62 === "flip") yAxis.ticks.callback = fb62Tick(id === "share" ? "×" : "");
     const stretch = yAxis.afterDataLimits;
     yAxis.afterDataLimits = scale => {
       const v = actView(nodes);   // only the bars in view, on a phone showing one act
