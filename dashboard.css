@@ -395,6 +395,10 @@ h1 {
   .fav-card-table .fav-cohort { display: block; white-space: normal; }
   .fav-card-table .fav-count { white-space: normal; }
   .fav-card-table .fav-won { display: none; }
+  /* A card both sets share keeps its two figures in the narrow column, one
+     over the other, instead of two 5.5rem columns spilling over the neighbours. */
+  .fav-card-table .fav-figs { grid-template-columns: minmax(0, 1fr); gap: 0.35rem; justify-items: center; }
+  .fav-card-table .fav-cohort { font-size: var(--fs-xs); overflow-wrap: anywhere; }
 }
 /* A co-op-only card's rarity carries a small Co-op tag (isCoopCard). */
 .cards-coop-tag { display: inline-block; margin-left: 0.4rem; padding: 0 0.35rem; border: 1px solid rgba(157, 184, 240, 0.45); border-radius: 4px; color: #9db8f0; font-size: var(--fs-xs); line-height: 1.4; vertical-align: 1px; }

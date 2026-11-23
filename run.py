@@ -942,10 +942,22 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
             for cid, count in bought.items():       # buys with no shelf entry
                 for _ in range(count):
                     cards_offered.setdefault(cid, []).append({**loc, "picked": True})
+            seen_relics = set()
             for rc in ps.get("relic_choices", []):
                 rid = rc.get("choice", "")
                 if rid:
+                    seen_relics.add(rid)
                     relics_offered.setdefault(rid, []).append({**loc, "picked": bool(rc.get("was_picked"))})
+            # An ancient (Neow and the others) lists the whole offer in
+            # ancient_choice with was_chosen on the pick, while relic_choices
+            # keeps only the pick. The turned-down ones are tallied as skipped,
+            # so an ancient relic has an offer count and a skip rate like any other.
+            for ac in ps.get("ancient_choice", []):
+                key = ac.get("TextKey", "")
+                rid = key if key.startswith("RELIC.") else f"RELIC.{key}"
+                if key and rid not in seen_relics:
+                    seen_relics.add(rid)
+                    relics_offered.setdefault(rid, []).append({**loc, "picked": bool(ac.get("was_chosen"))})
             if ntype == "rest_site":
                 act_choices = rest_choices.setdefault(act_num, {})
                 for choice in ps.get("rest_site_choices", []):
