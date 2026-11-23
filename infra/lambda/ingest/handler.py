@@ -139,7 +139,8 @@ STEAM_ID_RE = re.compile(r"^\d{17}$")
 # Hex, as the Web API wants it. Steam's buffer for one is 2560 bytes.
 TICKET_RE = re.compile(r"^[0-9A-Fa-f]{32,5120}$")
 
-# Upload limits. A real run is 28-63 KB raw and ~2.7 KB once a whole history
+# Upload limits. A real run is usually tens of KB raw, but some reach ~12 MB
+# (measured over ~12,000 uploaded runs), and ~2.7 KB once a whole history
 # is gzip'd together, so 100 MB holds ~35,000 runs: any real history in one
 # go. Decompressed, 20,000 runs is ~1.3 GB; the cap bounds memory against a
 # decompression bomb, and parsing streams, so it never all sits in memory.
