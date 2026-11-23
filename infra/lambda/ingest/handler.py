@@ -704,6 +704,10 @@ def clean_event_log(obj) -> dict | None:
     checked and the values are bounded -- this arrives from a game process, so it
     is untrusted input like the rest of the upload -- and nothing is summed or
     interpreted here, so a wrong reading later costs a re-derive, not another run.
+
+    The one thing dropped is a fight that never ended (no `fight1`) with another
+    fight after it: an attempt the player quit out of, which the game replays from
+    the start. Only the run's last fight may lack its end -- a death has none.
     """
     if not isinstance(obj, dict) or obj.get("v") != 3:
         return None
@@ -727,9 +731,24 @@ def clean_event_log(obj) -> dict | None:
         args = _sanitize(e.get("a")) or {}
         out.append({"q": num(e.get("q")), "f": num(e.get("f")), "t": num(e.get("t")),
                     "k": kind, "a": args if isinstance(args, dict) else {}})
+    truncated = bool(obj.get("truncated")) or len(log) > len(out)
+    out = _drop_abandoned_fights(out)
     if not out:
         return None
-    return {"v": 3, "log": out, "truncated": bool(obj.get("truncated")) or len(log) > len(out)}
+    return {"v": 3, "log": out, "truncated": truncated}
+
+
+def _drop_abandoned_fights(events: list[dict]) -> list[dict]:
+    """The log without fights that were quit partway and started again: each runs from
+    its `fight0` up to the next `fight0`, and goes when no `fight1` came between."""
+    starts = [i for i, e in enumerate(events) if e["k"] == "fight0"]
+    kept, at = [], 0
+    for start, end in zip(starts, starts[1:]):
+        if not any(e["k"] == "fight1" for e in events[start:end]):
+            kept.extend(events[at:start])
+            at = end
+    kept.extend(events[at:])
+    return kept
 
 
 def clean_telemetry(obj) -> dict | None:
