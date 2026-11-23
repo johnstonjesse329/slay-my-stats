@@ -5,7 +5,7 @@ from functools import partial
 import json
 
 from handler import (RAW_KEY_RE, IngestError, _get_store, _pack, _unpack, blob_key, id_key,
-                     iter_upload_lines, raw_line_limit)
+                     iter_upload_lines)
 from tools.power_curve.fight_demand import cuts_of, run_fights, table
 
 
@@ -33,7 +33,7 @@ def upload_fights(store, published, key):
         raise RuntimeError("An upload disappeared during the benchmark refresh")
     fights = {}
     try:
-        for line in iter_upload_lines(body[0], raw_line_limit(key)):
+        for line in iter_upload_lines(body[0]):
             try:
                 raw = json.loads(line)
             except (ValueError, RecursionError):
