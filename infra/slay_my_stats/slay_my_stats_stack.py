@@ -66,7 +66,7 @@ POST_PAGES = [name for name in ("whats-new",) if name in SITE_PAGES]
 @jsii.implements(ILocalBundling)
 class _CopyIngestSources:
     def try_bundle(self, output_dir: str, *, image=None, **_kwargs) -> bool:
-        for name in ("handler.py", "measured.py", "feedback.py", "reactions.py", "session.py", "views.py", "benchmark.py"):
+        for name in ("handler.py", "measured.py", "feedback.py", "reactions.py", "session.py", "views.py", "benchmark.py", "seed.py"):
             shutil.copy(INGEST_DIR / name, output_dir)
         shutil.copy(RUN_PY, output_dir)
         shutil.copy(DERIVE_PY, output_dir)
@@ -98,7 +98,7 @@ def _ingest_asset_hash() -> str:
     h = hashlib.sha256()
     for p in (INGEST_DIR / "handler.py", INGEST_DIR / "measured.py", INGEST_DIR / "feedback.py",
               INGEST_DIR / "reactions.py", INGEST_DIR / "session.py", INGEST_DIR / "views.py", RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
-              IDS_PY, RELIC_DATA, RETIRED_IDS, INGEST_DIR / "benchmark.py", FIGHT_DEMAND_PY, POWER_DATA):
+              IDS_PY, RELIC_DATA, RETIRED_IDS, INGEST_DIR / "benchmark.py", INGEST_DIR / "seed.py", FIGHT_DEMAND_PY, POWER_DATA):
         if p.exists():
             h.update(p.read_bytes())
     return h.hexdigest()
