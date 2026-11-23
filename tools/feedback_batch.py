@@ -12,10 +12,13 @@
     python tools/feedback_batch.py review            # per-page checklist: where to look, how to answer
     python tools/feedback_batch.py resolve           # dry run: what approved entries would close
     python tools/feedback_batch.py resolve --apply   # write the resolutions to the feedback table
+    python tools/feedback_batch.py backlog --id FB-42 --reason "..."  # dry run: put a note in the backlog
+    python tools/feedback_batch.py backlog --id FB-42 --off --apply   # take it back out
 
 Needs AWS credentials for intake and resolution. Pull defaults to Gamma for
 existing callers. It keeps triage fields when rerun and records each note's
-source. Resolution through this tool is limited to Gamma.
+source. Resolution through this tool is limited to Gamma. Backlog works on both,
+like the inbox's Backlog button, since it ships nothing.
 
 Each entry carries triage fields to fill in:
     group      theme the note belongs to ("mobile charts", "fool missing", ...)
@@ -338,6 +341,40 @@ def resolve(apply, tags=()):
     print(f"{closed} {'closed' if apply else 'would close (rerun with --apply)'}")
 
 
+def backlog(tags, reason="", on=True, apply=False):
+    """Put open notes in the backlog (or take them out), as the inbox's Backlog button does.
+
+    Uses the Lambda's own _backlog and conditional write, on Gamma or production. The reason is
+    optional and shown publicly on the note, like the inbox's. A resolved note is left alone.
+    """
+    reason = (reason or "").strip()
+    if len(reason) > 500:
+        sys.exit("Keep the backlog reason to 500 characters.")
+    batch = _load()
+    entries = _select_entries(batch, tags)
+    db, changed = _db() if apply else None, 0
+    for e in entries:
+        if e.get("status") == "closed" or e.get("inbox_status") == "resolved":
+            print(f"{tag(e)} skipped: already resolved")
+            continue
+        if (e.get("inbox_status", "open") == "backlog") == on:
+            print(f"{tag(e)} skipped: already {'in' if on else 'out of'} the backlog")
+            continue
+        print(f"{tag(e)} [{_source(e)}] -> {'backlog' if on else 'open'}" + (f": {reason[:90]}" if on and reason else ""))
+        if apply:
+            try:
+                feedback._change(db, TABLE, _source(e), e["id"], e["author"],
+                                 lambda note: feedback._backlog(note, e["author"], on, reason))
+            except feedback.Refused as refused:
+                print(f"{tag(e)} skipped: {refused.message}")
+                continue
+            e["inbox_status"] = "backlog" if on else "open"
+        changed += 1
+    if apply:
+        _save(batch)
+    print(f"{changed} {'changed' if apply else 'would change (rerun with --apply)'}")
+
+
 def evidence():
     """One row per entry: status, commit, what is now true, and its screenshot, as markdown."""
     print("# Feedback batch evidence (tl;dr)")
@@ -431,5 +468,13 @@ if __name__ == "__main__":
         parser.add_argument("--apply", action="store_true")
         options = parser.parse_args(sys.argv[2:])
         resolve(options.apply, options.id)
+    elif cmd == "backlog":
+        parser = argparse.ArgumentParser(prog="feedback_batch.py backlog")
+        parser.add_argument("--id", action="append", required=True, help="Report ID. Repeat to select more reports.")
+        parser.add_argument("--reason", default="", help="Why later (optional, shown publicly on the note).")
+        parser.add_argument("--off", action="store_true", help="Take the notes back out of the backlog.")
+        parser.add_argument("--apply", action="store_true")
+        options = parser.parse_args(sys.argv[2:])
+        backlog(options.id, options.reason, not options.off, options.apply)
     else:
         sys.exit(__doc__)

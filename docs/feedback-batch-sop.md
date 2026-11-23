@@ -144,6 +144,10 @@ Follow the junction and branch cleanup procedure in
   the corresponding status. A Gamma duplicate link must refer to a Gamma note.
 - For a production report, the production release workflow can close the report
   with owner authorization once the fix ships to production.
+- On an owner backlog, run `backlog --id FB-n --reason "..."` (dry run), then
+  repeat with `--apply`. It works on Gamma and production notes, as the inbox's
+  Backlog button does; the reason is optional and shown publicly, so it needs the
+  owner's approval like a close note. `--off` takes a note back out.
 - On `change FB-n …`, save the reviewed SHA and requested change in
   `owner_decision`, set `status: planned`, and clear the prior candidate, review,
   integration and Gamma checkpoints (`commit`, `checks`, `agent_review`,
