@@ -1397,9 +1397,10 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     <span class="filter-summary-text"></span>
     <span class="filter-summary-caret" aria-hidden="true">▾</span>
   </button>
-  <p class="filter-lock-note">Overview has its own mode and game build filters. These saved selections are preserved for Runs, Cards, Relics and Seeds.</p>
+  <p class="filter-lock-note">Greyed-out filters apply on the other pages.</p>
 
   <div class="filter-row">
+    <span class="filter-section">Runs</span>
     <div class="filter-group">
       <span class="filter-label">Character</span>
       <div id="shared-char-selector"></div>
@@ -1410,7 +1411,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <button class="toggle-btn" id="shared-players-solo">Solo</button>
       <button class="toggle-btn" id="shared-players-multi">Multi</button>
     </div>
-    <div class="filter-group">
+    <div class="filter-group" data-overview="unlocked">
       <span class="filter-label">Modes</span>
       <div id="shared-modes-checkboxes" style="display:flex;gap:0.4rem;flex-wrap:wrap"></div>
     </div>
@@ -1422,6 +1423,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     </div>
   </div>
   <div class="filter-row">
+    <span class="filter-section">Game</span>
     <div class="filter-group">
       <span class="filter-label">Ascension</span>
       <button class="toggle-btn" id="shared-asc-granular" aria-pressed="false" title="Pick individual ascension levels, and split the tables into one column per level instead of A0–7 / A8+ / All">Show granular</button>
@@ -1429,7 +1431,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <button class="toggle-btn" id="shared-asc-all" style="display:none">All</button>
       <button class="toggle-btn" id="shared-asc-none" style="display:none">None</button>
     </div>
-    <div class="filter-group filter-dropdown-wrap">
+    <div class="filter-group filter-dropdown-wrap" data-overview="unlocked">
       <span class="filter-label">Build</span>
       <button class="toggle-btn" id="shared-build-toggle" aria-expanded="false" aria-controls="shared-build-panel" aria-haspopup="true">All builds ▾</button>
       <div class="filter-dropdown-panel" id="shared-build-panel" style="display:none">
@@ -1443,7 +1445,8 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     </div>
   </div>
   <div class="filter-row">
-    <div class="filter-group">
+    <span class="filter-section">Dates</span>
+    <div class="filter-group" data-overview="unlocked">
       <span class="filter-label">Date</span>
       <input type="date" id="shared-date-from" aria-label="Start date">
       <span style="color:var(--text-dim);font-size:0.85rem" aria-hidden="true">→</span>
@@ -1458,6 +1461,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
   </div>
   <div class="filter-row filter-preset-toolbar">
+    <span class="filter-section">Saved</span>
     <div class="filter-group filter-presets">
       <label for="shared-filter-presets">Filter set</label>
       <select id="shared-filter-presets" aria-label="Current filter set"></select>
@@ -1479,18 +1483,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <main id="main-content">
 <div id="page-overview">
 <p id="overview-history-summary"></p>
-<div class="overview-filters" aria-label="Overview filters">
-  <label for="overview-mode">Mode <select class="seeds-input" id="overview-mode">
-    <option value="standard-dread">Standard + Dread</option>
-    <option value="standard">Standard</option>
-    <option value="dread">Dread</option>
-    <option value="daily">Daily</option>
-    <option value="blitz">Blitz</option>
-  </select></label>
-  <label for="overview-build">Game build <select class="seeds-input" id="overview-build">
-    <option value="">All builds</option>
-  </select></label>
-</div>
 <div class="cards" id="summary-cards"></div>
 <div class="grid-1">
   <div class="chart-box">
@@ -1762,7 +1754,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <div class="tag-filter-chips"></div>
     </div>
     <div class="detail-act-filter">
-      <label for="detail-act-reached">Act reached</label>
+      <label class="filter-label" for="detail-act-reached">Act reached</label>
       <select class="seeds-input" id="detail-act-reached">
         <option value="0">Any act</option>
         <option value="1">Act 1</option>

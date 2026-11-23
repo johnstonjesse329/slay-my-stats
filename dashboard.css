@@ -169,9 +169,6 @@ h1 {
    leads with each character's win rate, its tiers as bars, then one short
    figure per cell; counts are on hover. */
 #personal-bests-cards { margin-bottom: 2rem; }
-.overview-filters { display: flex; flex-wrap: wrap; gap: 0.55rem 1rem; margin-bottom: 1rem; }
-.overview-filters label { display: flex; align-items: center; gap: 0.45rem; }
-.overview-filters .seeds-input { width: auto; }
 .filter-presets { flex-wrap: wrap; }
 .filter-presets select, .filter-presets input { min-width: 0; max-width: 100%; padding: 0.4rem 0.6rem; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 4px; font: inherit; font-size: var(--fs-sm); }
 .filter-actions #shared-filters-status { font-size: var(--fs-sm); color: var(--text-dim); margin-left: 0.4rem; }
@@ -823,8 +820,13 @@ h1 {
 }
 /* The shared bar sits right under the tabs, so the open tab runs into it. */
 #shared-filter-bar { border-top: 0; border-radius: 0 0 8px 8px; }
+/* On every page, so the filters stay in reach while you scroll. On a phone
+   only the one-line summary sticks; opened, the rows are taller than the screen. */
 @media (min-width: 1000px) and (min-height: 600px) {
-  body:has(#tab-cards.active) #shared-filter-bar { position: sticky; top: 0; z-index: 220; }
+  #shared-filter-bar { position: sticky; top: 0; z-index: 220; }
+}
+@media (max-width: 999px), (max-height: 599px) {
+  #shared-filter-bar:not(.expanded) { position: sticky; top: 0; z-index: 220; }
 }
 .filter-bar-2row {
   flex-direction: column;
@@ -867,12 +869,21 @@ h1 {
 .filter-bar-2row .filter-summary-caret { color: var(--text-dim); transition: transform 0.15s; }
 .filter-bar-2row:not(.expanded) .filter-row { display: none; }
 .filter-bar-2row.filters-active { border-color: var(--gold); box-shadow: inset 3px 0 var(--gold); }
-.filter-bar-2row.filters-active .filter-summary > .filter-label { color: var(--gold); font-weight: 700; }
 .filter-bar-2row.filters-active .filter-summary-text { color: var(--gold); }
 .filter-lock-note { display: none; margin: 0; font-size: var(--fs-sm); color: var(--text-dim); }
 .filters-locked.expanded .filter-lock-note { display: block; }
-.filters-locked .filter-row { opacity: 0.55; }
+.filter-group.is-locked { opacity: 0.45; }
 .filters-locked .filter-row :disabled { cursor: not-allowed; }
+.filters-locked [data-mode="custom"] { display: none; }
+.filter-bar .filter-section {
+  flex: 0 0 3.6rem;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+@media (max-width: 700px) { .filter-bar .filter-section { flex-basis: 100%; } }
 .filter-bar-2row.expanded .filter-summary {
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--hairline);
@@ -882,6 +893,7 @@ h1 {
   padding-top: 0.5rem;
   border-top: 1px solid var(--hairline);
 }
+.filter-bar-2row .filter-summary > .filter-label { color: var(--gold); font-weight: 700; }
 .filter-bar .filter-label {
   font-size: var(--fs-sm);
   color: var(--text-dim);
@@ -1361,8 +1373,14 @@ h1 {
   padding: 0.5rem 0;
 }
 
-.detail-act-filter { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.5rem; font-size: var(--fs-sm); color: var(--text-dim); }
-.detail-act-filter .seeds-input { width: auto; }
+/* Styled like the archetype and played-with boxes above it. */
+.detail-act-filter {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px;
+  padding: 0.5rem 0.75rem; font-size: var(--fs-sm);
+}
+.detail-act-filter .filter-label { font-size: var(--fs-sm); color: var(--text-dim); padding-right: 0.7rem; border-right: 1px solid var(--hairline); }
+.detail-act-filter .seeds-input { flex: 1; min-width: 0; width: auto; padding: 0; background: none; border: 0; font-weight: 600; cursor: pointer; }
 .detail-run-pagination:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.35rem; }
 .detail-run-pagination { margin-top: 0.45rem; font-size: var(--fs-sm); color: var(--text-dim); }
 #detail-run-list {

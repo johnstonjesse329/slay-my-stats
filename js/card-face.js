@@ -631,6 +631,7 @@ window.addEventListener("mousemove", () => document.body.classList.remove("suppr
   const { page, runTs, view } = parsePageHash();
   // Keep bare profile URLs intact while rendering their initial Overview.
   if (!PAGES.includes(page)) {
+    syncOverviewFilters("overview");
     PAGE_RENDERERS.overview();
     pageDirty.overview = false;
     updateFilterSummary();
@@ -666,7 +667,10 @@ if (currentPage === "overview") {
     if (cardsPrefetched) return;
     cardsPrefetched = true;
     if (currentPage === "overview" && pageDirty.cards) {
-      renderCardsPage();
+      // Cards reads the other pages' filters, not Overview's own.
+      syncOverviewFilters("cards");
+      currentPage = "cards";
+      try { renderCardsPage(); } finally { currentPage = "overview"; syncOverviewFilters("overview"); }
       pageDirty.cards = false;
     }
   };
