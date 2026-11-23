@@ -1,45 +1,153 @@
 # Feedback batch SOP
 
-How a pile of gamma feedback notes becomes verified, evidenced, closed notes.
+In a fresh Codex session rooted at this repository, ask **“Process the open
+production feedback through Gamma using the slay-feedback skill.”** To continue, ask
+**“Resume the feedback batch”** or reply with a decision such as `ok FB-42`
+or `change FB-42: keep the filter selected when I switch runs`.
 
-## Roles
+## Intake and assignment
 
-- **Orchestrator** (the main session): pulls the batch, groups notes by area and the files they
-  touch, writes one brief per group, runs the groups one at a time, checks each result against
-  its expected output, then reports. Groups run in sequence because they share one working
-  tree, `dist/` and the ignored art; parallel agents would collide.
-- **Worker** (one subagent per group): fixes only its notes, verifies in a browser, returns
-  the result in the format below.
+1. Keep one active orchestrator per checkout and retain
+   `local_data/feedback/batch.json` across sessions. Start with `queue --env prod --ids`
+   and refresh production intake once for a new pass. Save the scoped IDs under
+   `local_data/feedback/` and reuse them on resume. Honor explicit limits or
+   requests to include Gamma reports.
+2. Use one intake agent for reports missing a disposition. Record the outcome
+   for every scoped ID, including duplicates, requests for a product decision,
+   already deployed fixes and blockers. Reconcile existing worktrees and
+   handoffs before assigning new work. Group by shared code and acceptance
+   checks so one patch can cover related reports.
+3. Fetch `origin/gamma` and record its commit. Use one worktree and topic branch
+   per group under `local_data/feedback/worktrees/`. Parallelize groups with
+   independent edits. Serialize groups with overlapping edits unless they form
+   one coherent change. Share the existing `infra\.venv` by absolute path. Use
+   worktree-local build output and read-only access to shared prerequisites.
+   Give preview servers distinct ports when needed.
+4. Use GPT-6.2 Sol for orchestration and independent verification. Use Terra for
+   bounded implementation with a concrete acceptance check, and Sol where a fix
+   crosses systems or the diagnosis is still uncertain. Start at medium effort
+   and reuse agents within closely related work when they have useful context.
 
-## Steps
+## Run and verify the batch
 
-1. `python tools/feedback_batch.py pull` (entries carry the note's stable `FB-n` id and are labelled with it; backlog notes are not pulled), then group (`group`, `plan` per entry in
-   `local_data/feedback/batch.json`).
-2. Per group, hand the worker a brief with: the entries (`n`, comment, url, selector,
-   viewport), the files in scope, the rules in `CLAUDE.md`, and the expected output.
-3. The worker edits, runs `node --check js/*.js`, `python build_site.py`,
-   `python tools/check_docs.py` and the tests that touch its area, then serves a preview
-   (`tools/serve_site.py` from a folder with the Steam ID in the path) and screenshots each
-   fixed item at the note's own viewport (phone notes at about 402 wide, scale 3).
-4. The worker commits its files on the batch branch and records, per entry, in the batch
-   file: `status` = `built` (or `blocked` with the reason), `commit`, `evidence` (screenshot
-   path under `local_data/feedback/evidence/`) and `tldr` (one line: what is now true).
-5. `python tools/feedback_batch.py evidence > local_data/feedback/evidence/REPORT.md` builds the one-table
-   tl;dr list (status, commit, what is now true, screenshot) from the batch file. The orchestrator opens a few screenshots, rejects any without visible proof, and
-   re-briefs that item.
-6. `PYTHONUTF8=1 python tools/feedback_batch.py review > local_data/feedback/evidence/REVIEW.md`
-   builds the owner's checklist: per page, where to open the preview, what to look at, the
-   screenshot, and the reply for each item (`ok N` / `change N: ...`).
-7. The owner reviews locally or on gamma. For approved entries set `status: approved`
-   and a `close_note`, then `feedback_batch.py resolve` (dry run), then `--apply`.
+- The worker implements and runs focused development checks. A separate verifier
+  reviews and tests the exact candidate against recorded acceptance checks. The
+  orchestrator handles scheduling, checkpoints, integration and deployment.
+  See the [delegation briefs](../skills/slay-feedback/references/briefs.md).
+- Send agents IDs and references. Read evidence in the main thread only when a
+  decision depends on it. Save full shell output locally. Use worker completion
+  events and blocking tool waits within the available limits. Avoid short polls
+  and repeated test runs while waiting for a handoff.
+- Checkpoint each candidate before assigning verification. For a failed or
+  inconclusive result, record what was checked and the evidence path. Allow one
+  targeted retry after a specific code change or repaired prerequisite. If there
+  is no credible next step, defer immediately. After a second failed attempt,
+  preserve the candidate and worktree and give the owner the two results and the
+  exact decision or input needed. Continue independent groups. Starting a fresh
+  thread or reassigning the report does not reset the limit.
+- If validation setup stalls before a candidate exists, use the same initial
+  attempt and targeted retry. Record the attempts in a handoff and set the
+  report to `blocked` with the missing prerequisite or decision.
+- Resume a validation-blocked report after the owner supplies the missing input
+  or explicitly requests a retry. Preserve the failed attempts in the handoffs,
+  clear `blocker` and `validation_failures` for the authorized retry, and restore
+  its candidate checkpoint. Use `status: built` when a candidate exists, or
+  `status: planned` when implementation is pending.
+- Check allowance when the client exposes it at existing handoff points. Aim to
+  finish with at least a quarter of the five-hour allowance available. If the
+  forecast deteriorates, reuse checks, consolidate overlapping work and surface
+  expensive unresolved decisions early. Record allowance at start/end when
+  available, wall time and verified/blocked counts to compare completed passes.
 
-## Worker output (what comes back)
+## Batch checkpoints
 
-Per note: `n`, status, commit, `tldr`, evidence path, and anything left undone. Items
-that need the owner's call (copy wording, design alternatives) are `blocked`, not guessed.
+`queue` summarizes the saved checkpoints by group. Resume `ready to close`,
+`integration`, `candidate`, `verification pending`, `validation failed`,
+`reopened`, `assigned`, or `queued` work as appropriate. `candidate` means the
+recorded SHA passed verification. Skip `waiting for owner`, `waiting for
+production`, and `blocked` until their decision, release, or blocker is addressed.
 
-## Evidence
+The orchestrator updates the batch record after assignment, worker completion,
+review, deployment, and owner response. Keep the existing `status` values
+used by the batch CLI. Store agent review, deployment and owner decisions in
+their own fields, so a passed agent review can never set `status: approved`.
+Use `record-candidate --id FB-42 --base <sha> --commit <sha> --checks "..." --handoff <path>`
+and `record-review --id FB-42 --commit <sha> --verdict <verdict> --handoff <path>`.
+Repeat `--id` for reports with the same result. Add `--reason` for a failed or
+inconclusive verification. The command blocks those IDs on the second distinct
+failure, even if the candidate SHA changed. Re-recording the same evidence path
+does not spend another attempt.
 
-Screenshots live in `local_data/feedback/evidence/<n>-<slug>.png` (gitignored). They stay
-local until the owner decides on S3 (`feedback-evidence/` in the gamma data bucket would
-let reviewers see them from the note).
+| Field | What to record |
+|---|---|
+| `env`, `id`, `seq`, `inbox_status` | Source, stored note ID, stable public `FB-n`, and last observed inbox state |
+| `group`, `plan`, `acceptance` | Assignment, intended change, and per-report acceptance check |
+| `branch`, `worktree`, `base_commit` | Where to resume implementation |
+| `commit`, `checks`, `agent_review` | Candidate, check summary, and reviewer verdict |
+| `validation_failures`, `blocker` | Failed attempts and the immediate reason the owner needs to intervene |
+| `handoffs` | Repo-relative paths to the intake, implementation, and review handoffs, keyed by role |
+| `integration_commit`, `integration_worktree` | Exact commit and checkout saved before a Gamma push |
+| `gamma_commit`, `gamma_url` | Verified deployed commit containing the fix and the review URL |
+| `owner_decision`, `close_note` | Decision with `action` (`ok` or `change`), reviewed `gamma_commit` and optional `note`, plus public resolution text in `close_note` |
+
+Use the saved handoff paths to retrieve the detailed results on resume. When a
+revision needs a new handoff, save it to a new path and update the corresponding
+checkpoint. Keep the earlier file with its review and evidence.
+
+## Integrate and deploy
+
+Use a clean integration worktree, leaving any unrelated checkout edits alone.
+Once every scoped report has a verified fix or a recorded disposition, integrate
+the passing commits on current `origin/gamma` and run combined checks. If one
+commit mixes passing and failed behavior, split out the verified changes only
+when the verifier can confirm the resulting commit independently. Otherwise
+defer that shared commit and continue with unrelated fixes. Send
+behavioral changes made during integration to the verifier. Keep each topic
+commit reachable from the integrated commit so it can be verified before cleanup.
+
+Check that `core.hooksPath` selects the repo's `githooks` in the integration
+worktree. Push the candidate to `origin` using the explicit destination
+`HEAD:refs/heads/gamma` and the existing deploy hook. Use a normal
+fast-forward push. If the push is rejected or the smoke check fails, check
+the remote ref and the deploy result before retrying. Verify the fetched
+`origin/gamma` SHA and the smoke check for the same commit before recording
+it as deployed. Find the passed smoke SHA in `slay-my-stats-gamma-ok` in the
+directory returned by `git rev-parse --path-format=absolute --git-common-dir`.
+The hook can deploy before the ref update succeeds, so verify both on resume.
+
+- If the fetched ref and this clone's smoke marker agree and contain the
+  reviewed work, reuse that deployment when there is no evidence of a later
+  or partial deploy.
+- If the candidate passed smoke and is still a fast-forward of the fetched
+  ref, retry the normal Gamma push. If the ref diverged, integrate on the
+  current tip and review the resulting candidate.
+- If the fetched ref contains the reviewed work and deployment evidence
+  is missing or uncertain, explicitly deploy the fetched commit with
+  `tools/deploy.py --stage gamma --ref <sha>` using the repo venv. An up-to-date
+  Git push does not send the Gamma ref to the deploy hook.
+
+Leave production promotion to a separate owner-authorized
+release workflow. For enforcement when running unattended, use credentials
+scoped to Gamma deployment and push access restricted to Gamma.
+
+Give the owner one checklist covering the scope. For fixes include `FB-n`,
+source, direct Gamma URL and what to inspect. For deferred reports list the
+blocker and the input needed. Verify URLs against the trusted Gamma origin.
+Follow the junction and branch cleanup procedure in
+[AGENTS.md](../AGENTS.md) after verifying the merged topic commits.
+
+## Process owner decisions
+
+- On `ok FB-n`, record the owner decision with the reviewed Gamma commit. For a
+  Gamma report, record `status: approved` and a close note, inspect the `resolve --id FB-42` dry run,
+  then repeat with `--apply`. Owner-approved duplicate or decline dispositions can use
+  the corresponding status. A Gamma duplicate link must refer to a Gamma note.
+- For a production report, the production release workflow can close the report
+  with owner authorization once the fix ships to production.
+- On `change FB-n …`, save the reviewed SHA and requested change in
+  `owner_decision`, set `status: planned`, and clear the prior candidate, review,
+  integration and Gamma checkpoints (`commit`, `checks`, `agent_review`,
+  `integration_commit`, `integration_worktree`, `gamma_commit`, `gamma_url`)
+  and the prior validation budget (`validation_failures`, `blocker`).
+  Keep prior evidence in its handoff. Send the revision through independent
+  review and deploy it to Gamma for sign-off. Leave unanswered reports open.
