@@ -234,6 +234,7 @@ h1 {
   .pb-table tr.pb-tier th { padding-inline: 0.4rem; overflow-wrap: anywhere; }
   .pb-char-icon { margin-right: 0; }
   .pb-char-name { display: none; }
+  .pb-wide-only { display: none; }
   .pb-table thead th.pb-total { font-size: var(--fs-xs); }
   .pb-table tr:not(.pb-group) td { font-size: var(--fs-xs); }
   .pb-win-desktop { display: none; }
@@ -1370,6 +1371,8 @@ h1 {
   border-top-color: var(--gold-glow);
   border-radius: 8px;
   min-height: 0;
+  /* About 15 rows (the header row, then rows of 2.15rem) so the filters beside it stay in view. */
+  max-height: calc(1.85rem + 15 * 2.15rem);
   overflow-y: auto;
   /* Rows keep their height and the list scrolls; auto rows would shrink to
      fit the column (each row clips its overflow, so its minimum is zero). */
@@ -3335,4 +3338,4 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .detail-summary-table th:first-child { text-align: left; overflow-wrap: anywhere; }
 #detail-party-combat-rates { margin-bottom: 1rem; }
 #detail-party-combat-rates td small { display: block; color: var(--text-dim); }
-.act-maps h2 .act-maps-relic { margin-left: 8px; vertical-align: middle; }
+.act-map-head .act-maps-relic { margin: 0 0 0 -4px; display: inline-flex; vertical-align: middle; }
