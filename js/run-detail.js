@@ -993,6 +993,28 @@ function partyIncomingComparison(players, rows, average) {
 
 // One line per player with data. Desktop tooltips compare the party together.
 // Touch tooltips use the same individual breakdowns as the separate run view.
+// FB-62 proof of concept: "orig", "flip" (best on top, negative ticks) or "score" (higher = better).
+const FB62 = (() => { try { return localStorage.getItem("fb62") || "orig"; } catch { return "orig"; } })();
+const fb62Neg = v => v ? "−" + +Math.abs(v).toFixed(2) : "0";
+const fb62Ratio = (win, own) => win == null || own == null || Number.isNaN(win) || Number.isNaN(own) ? undefined : (win + 1) / (own + 1);
+function fb62Toggle() {
+  if (document.getElementById("fb62-toggle")) return;
+  const host = document.getElementById("detail-keep-tier")?.closest("dl")?.parentElement;
+  if (!host) return;
+  const bar = document.createElement("div");
+  bar.id = "fb62-toggle";
+  bar.style.cssText = "margin:6px 0;font-size:12px;color:#ccc";
+  bar.innerHTML = "View: " + [["orig", "Original"], ["flip", "Flipped"], ["score", "Score"]].map(([k, t]) =>
+    `<button type="button" data-fb62="${k}" style="margin-left:6px;padding:2px 8px;cursor:pointer;color:#eee;background:${k === FB62 ? "#4a4470" : "#2a2840"};border:1px solid #555;border-radius:4px">${t}</button>`).join("");
+  bar.onclick = e => {
+    const k = e.target.dataset?.fb62;
+    if (!k) return;
+    try { localStorage.setItem("fb62", k); } catch {}
+    location.reload();
+  };
+  host.insertBefore(bar, host.firstChild);
+}
+
 function partyChart(id, nodes, players, series, cell, reverse = false, icon = null, extra = {}) {
   const canvas = document.getElementById(id);
   let chart = null;
@@ -1018,6 +1040,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
   });
   const base = iconAxis({ min: 0 });
   const y = { ...base, stacked: false, reverse, ticks: { ...base.ticks, maxTicksLimit: 5 } };
+  if (extra.fb62 && FB62 === "flip") y.ticks.callback = fb62Neg;
   if (extra.floorAtZero) {
     const stretch = y.afterDataLimits;
     y.afterDataLimits = scale => { if (stretch) stretch(scale); scale.min = Math.max(0, scale.min); };
@@ -1131,13 +1154,14 @@ function renderPartyCharts(players) {
   // fight is the same for all of them, so its turns and the 1x line are drawn once.
   const fightIcon = (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc);
   const turnsShare = nodes.map((_, i) => {
-    for (const r of readings.values()) { const x = r && r[i]; if (x && x.winTurns !== undefined) return x.turns / x.winTurns; }
+    for (const r of readings.values()) { const x = r && r[i]; if (x && x.winTurns !== undefined) return FB62 === "score" ? x.winTurns / x.turns : x.turns / x.winTurns; }
     return null;
   });
   const times = v => v == null ? "–" : `${v.toFixed(2)}×`;
   const share = build("detail-keep-share-chart", "detail-keep-share-legend",
-    perFight(r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1)), (p, i, v) => times(v), false, fightIcon, {
-      floorAtZero: true,
+    perFight(r => r.winTotal === undefined ? undefined : FB62 === "score" ? fb62Ratio(r.winTotal, r.total) : (r.total + 1) / (r.winTotal + 1)),
+    (p, i, v) => times(v), FB62 === "flip", fightIcon, {
+      floorAtZero: true, fb62: true,
       averageGuide: true,
       fightRows: benchmarkRows,
       lines: [
@@ -1167,8 +1191,10 @@ function renderPartyCharts(players) {
   showKeepNotice("damage", partyDamage.notice, partyDamage.linkMod);
   const keep = [
     share,
-    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => r.grossRate), turn, true,
-      fightIcon, { ...historical("winGrossRate", ranges.taken, true), fightRows: benchmarkRows,
+    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => FB62 === "score" ? fb62Ratio(r.winGrossRate, r.grossRate) : r.grossRate), turn, FB62 !== "score",
+      fightIcon, { ...(FB62 === "score" ? { ranges: [], reverse: false, lines: [{ ...KEEP_AVERAGE_STYLE, spanGaps: true,
+          data: nodes.map((_, i) => benchmarkRows?.[i]?.winGrossRate == null ? null : 1) }] }
+        : historical("winGrossRate", ranges.taken, true)), fb62: true, fightRows: benchmarkRows,
         compare: (party, i) => partyIncomingComparison(party, p => readingAt(p, i), benchmarkRows?.[i]),
         detail: (p, i) => { const row = readingAt(p, i); return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
@@ -4539,7 +4565,10 @@ function renderDetailKeepCharts(run) {
     document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(keepLegendEntry).join("")}${ring}</div>`;
     // Room for a ring that sits above everything else on the chart.
     const base = iconAxis({ min: 0 });
-    const yAxis = { ...base, stacked: false, ticks: { ...base.ticks, maxTicksLimit: 5 }, reverse: !!up };
+    const fb = id === "in" || id === "share";
+    const yAxis = { ...base, stacked: false, ticks: { ...base.ticks, maxTicksLimit: 5 },
+      reverse: fb && FB62 === "flip" ? true : fb && FB62 === "score" ? false : !!up };
+    if (fb && FB62 === "flip") yAxis.ticks.callback = fb62Neg;
     const stretch = yAxis.afterDataLimits;
     yAxis.afterDataLimits = scale => {
       const v = actView(nodes);   // only the bars in view, on a phone showing one act
@@ -4584,7 +4613,10 @@ function renderDetailKeepCharts(run) {
     (fallback.partySize > 1 ? fallback.rates[i] : r?.doing)), damageCanvas, () => Chart.getChart(damageCanvas))] : [];
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
     ...damageHistory.lines, ...(fallback?.chartLines || []), ...markers], damageTip, damageHistory.ranges);
-  chart("in", [line(takenLine, r => r.grossRate, "in"), winners(r => r.winGrossRate)], inTip, ranges.taken, true);
+  chart("in", FB62 === "score"
+    ? [line(takenLine, r => r.winGrossRate === undefined ? undefined : (r.winGrossRate + 1) / (r.grossRate + 1), "in"), winners(r => r.winGrossRate === undefined ? undefined : 1)]
+    : [line(takenLine, r => r.grossRate, "in"), winners(r => r.winGrossRate)], inTip, FB62 === "score" ? null : ranges.taken, true);
+  fb62Toggle();
 
   // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:
   // turns (time) and damage taken (HP). Below 1 is ahead of the average win, so a slide is the
@@ -4598,9 +4630,9 @@ function renderDetailKeepCharts(run) {
   const average = { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) };
   chart("share", [
     average,
-    line(takenLine, r => r.winTotal === undefined ? undefined : (r.total + 1) / (r.winTotal + 1), "share"),
+    line(takenLine, r => r.winTotal === undefined ? undefined : FB62 === "score" ? (r.winTotal + 1) / (r.total + 1) : (r.total + 1) / (r.winTotal + 1), "share"),
     { ...line({ label: KEEP_TURN_STYLE.label, color: KEEP_TURN_STYLE.borderColor },
-      r => r.winTurns === undefined ? undefined : r.turns / r.winTurns), ...KEEP_TURN_STYLE },
+      r => r.winTurns === undefined ? undefined : FB62 === "score" ? r.winTurns / r.turns : r.turns / r.winTurns), ...KEEP_TURN_STYLE },
   ], shareTip, null, false, [keepAverageGuide, ...(ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : [])], true);
 
   const played = rows.some(r => r && r.play);
