@@ -107,10 +107,12 @@ function renderRelicsTable() {
       title:      fmtRelicLabel(id),
       rarity,
       offered:    hasOffers ? b.offered : null,
+      picked:     b.picked,
       pickRate:   hasOffers ? winPctNum(b.picked, b.offered) : null,
       winPicked:  winPctNum(b.wonWhenPicked, b.picked),
       winSkipped: hasOffers ? winPctNum(b.wonWhenSkipped, b.skipped) : null,
       gOffered:    g && hasOffers ? g[4] : null,
+      gPicked:     g ? g[0] : null,
       gPickRate:   g && hasOffers ? winPctNum(g[0], g[4]) : null,
       gWinPicked:  g ? winPctNum(g[1], g[0]) : null,
       gWinSkipped: g && hasOffers ? winPctNum(g[5], g[4] - g[0]) : null,
@@ -135,19 +137,21 @@ function renderRelicsTable() {
     { key: "title",      label: "Relic",         align: "left" },
     { key: "rarity",     label: "Rarity",        align: "left" },
     { key: "offered",    label: "Offered",       align: "center" },
+    { key: "picked",     label: "Picked",        align: "center" },
     { key: "pickRate",   label: "Pick rate",     align: "center" },
     { key: "winPicked",  label: "Win % picked",  align: "center" },
     { key: "winSkipped", label: "Win % skipped", align: "center" },
     ...(global ? [
       { key: "gOffered",    label: "Offered",       align: "center", all: true, groupStart: true },
+      { key: "gPicked",     label: "Picked",        align: "center", all: true },
       { key: "gPickRate",   label: "Pick rate",     align: "center", all: true },
       { key: "gWinPicked",  label: "Win % picked",  align: "center", all: true },
       { key: "gWinSkipped", label: "Win % skipped", align: "center", all: true },
     ] : []),
   ];
   const groupRow = global ? `<tr class="cards-groups">
-    <th class="cards-group-you" colspan="6">Your runs</th>
-    <th class="cards-group-all" colspan="4">All players</th>
+    <th class="cards-group-you" colspan="7">Your runs</th>
+    <th class="cards-group-all" colspan="5">All players</th>
   </tr>` : "";
   const thead = document.getElementById("relics-thead");
   thead.innerHTML = groupRow + `<tr>${cols.map(c => {
@@ -176,10 +180,12 @@ function renderRelicsTable() {
       <td><span class="fav-item relics-name" data-relic-id="${r.id}" tabindex="0">${pic}${r.title}</span></td>
       <td style="color:${RELIC_RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}</td>
       <td class="relics-num" style="color:var(--text-dim)">${r.offered ?? "—"}</td>
+      <td class="relics-num" style="color:var(--text-dim)">${r.picked}</td>
       <td class="relics-num">${pct(r.pickRate, "#ccc")}</td>
       <td class="relics-num">${pct(r.winPicked, "#ccc")}</td>
       <td class="relics-num">${pct(r.winSkipped, "#ccc")}</td>${global ? `
       <td class="relics-num cards-all cards-all-start" style="color:var(--text-dim)">${r.gOffered ?? "—"}</td>
+      <td class="relics-num cards-all" style="color:var(--text-dim)">${r.gPicked ?? "—"}</td>
       <td class="relics-num cards-all">${pct(r.gPickRate, "#aaa")}</td>
       <td class="relics-num cards-all">${pct(r.gWinPicked, "#aaa")}</td>
       <td class="relics-num cards-all">${pct(r.gWinSkipped, "#aaa")}</td>` : ""}
