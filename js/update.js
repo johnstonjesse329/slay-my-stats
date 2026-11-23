@@ -23,6 +23,7 @@ function updateAll() {
   updateAscWinChart(filteredRuns);
   renderPersonalBests();
   renderAscTracker();
+  renderOverviewSynergies(filteredRuns);
 }
 
 

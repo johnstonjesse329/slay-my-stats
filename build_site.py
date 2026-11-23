@@ -346,9 +346,10 @@ def orb_synergy(export, item, made, need):
 
 def build_synergy() -> dict | None:
     """
-    {"cards": {id: [produces, consumes]}, "relics": {...}, "cardVariants": {...}}:
+    {"cards": {id: [produces, consumes]}, "relics": {...}, "cardVariants": {...}, "cardRolls": {...}}:
     cards is the union for catalog consumers; cardVariants supplies separate base
-    and upgraded rows for the actual copies in a run. What each card or relic
+    and upgraded rows for the actual copies in a run. CardRolls separates
+    copies whose mechanics depend on recorded instance properties. What each card or relic
     makes and what it needs, from tools/extract_power_data.py's power_data.json
     (gitignored, so None when it hasn't been generated). Only the specific keys,
     plus TEXT_SYNERGY's from the card and relic text; curses and statuses are left out,
@@ -365,12 +366,44 @@ def build_synergy() -> dict | None:
     }
     junk = {k for k, c in texts["cards"].items() if c.get("type") in ("Curse", "Status")}
     from tools.synergy_precision import refine
+
+    def roles(item_id, variant, export, base_made, base_need):
+        made, need = set(base_made), set(base_need)
+        desc = variant.get("desc", "")
+        for key, (makes, uses) in TEXT_SYNERGY.items():
+            if makes and makes.search(desc):
+                made.add(key)
+            if uses and uses.search(desc):
+                need.add(key)
+        extra_synergy(item_id, variant, made, need)
+        orb_synergy(export, variant, made, need)
+        refine(item_id, variant, export, made, need)
+        return [made, need]
+
+    mad_science = "CARD.MAD_SCIENCE"
+    roll_file = run._CARD_VARIANTS_FILE
+    rolls = json.loads(roll_file.read_text(encoding="utf-8")) if roll_file.exists() else {}
+    roll_rows = {}
     out = {}
     card_variants = {}
     for section in ("cards", "relics"):
         table = {}
         for item_id in sorted(data.get(section, {}).keys() | texts[section].keys()):
             if item_id in junk:
+                continue
+            if section == "cards" and item_id == mad_science:
+                # The canonical export includes every possible rider. A run
+                # gets only the mechanics of the two integers saved on its copy.
+                for roll, variant in rolls.items():
+                    if not roll.startswith(mad_science + "."):
+                        continue
+                    roll_rows[roll] = []
+                    for desc in (variant["desc"], variant.get("descUpgraded", variant["desc"])):
+                        applied = _rx(r"\bApply N (Vulnerable|Weak)\b").findall(desc)
+                        roll_rows[roll].append(roles(item_id, {**variant, "desc": desc}, {},
+                                                     ("power:" + power for power in applied), ()))
+                table[item_id] = [set().union(*(row[side] for rows in roll_rows.values() for row in rows))
+                                  for side in (0, 1)]
                 continue
             e = data.get(section, {}).get(item_id, {})
             base_made = set(e.get("produces", [])) - BROAD_SYNERGY_KEYS
@@ -389,16 +422,7 @@ def build_synergy() -> dict | None:
             made, need = set(), set()
             rows = []
             for variant in variants:
-                vm, vn = set(base_made), set(base_need)
-                desc = variant.get("desc", "")
-                for key, (makes, uses) in TEXT_SYNERGY.items():
-                    if makes and makes.search(desc):
-                        vm.add(key)
-                    if uses and uses.search(desc):
-                        vn.add(key)
-                extra_synergy(item_id, variant, vm, vn)
-                orb_synergy(e, variant, vm, vn)
-                refine(item_id, variant, e, vm, vn)
+                vm, vn = roles(item_id, variant, e, base_made, base_need)
                 rows.append([vm, vn])
                 made |= vm
                 need |= vn
@@ -422,6 +446,8 @@ def build_synergy() -> dict | None:
                         for i, (m, n) in table.items() if (m | n) & live}
     out["cardVariants"] = {cid: [[sorted(m & live), sorted(n & live)] for m, n in rows]
                            for cid, rows in card_variants.items() if any((m | n) & live for m, n in rows)}
+    out["cardRolls"] = {mad_science: {roll: [[sorted(m & live), sorted(n & live)] for m, n in rows]
+                                     for roll, rows in roll_rows.items()}}
     return out
 
 

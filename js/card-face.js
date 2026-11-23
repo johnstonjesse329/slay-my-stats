@@ -131,6 +131,11 @@ function renderCardTile(c) {
   // level does NOT — the card face renders it the way the game does, as a
   // green "Strike+" title, so a separate +1 chip would just repeat it.
   const countLabel = c.count > 1 ? `<span class="tile-count">×${c.count}</span>` : "";
+  const floors = [...(c.addedFloors || [])].sort(([a], [b]) => a - b);
+  const floorLabel = floors.length
+    ? `<div class="tile-added-floors">Added ${floors.map(([floor, count]) =>
+        `F${floor}${count > 1 ? ` ×${count}` : ""}`).join(" · ")}</div>`
+    : "";
   // An enchantment is identity, so it gets the same treatment as the count: a chip
   // on the tile rather than a second card face. The game draws it on the card
   // itself, which the baked face cannot show.
@@ -152,8 +157,11 @@ function renderCardTile(c) {
     // (see openCardLightbox).
     const tileData = encodeURIComponent(JSON.stringify({ id: c.id, upgrade: c.upgrade, props: c.props, enchantment: c.enchantment }));
     return `<div class="card-tile card-tile-face" data-tile-card="${tileData}">
-      ${renderCardFace(c.id, c.upgrade, TILE_FACE_W, { props: c.props })}
-      ${(enchLabel || countLabel) ? `<div class="tile-badges">${enchLabel}${countLabel}</div>` : ""}
+      <div class="tile-face-art">
+        ${renderCardFace(c.id, c.upgrade, TILE_FACE_W, { props: c.props })}
+        ${(enchLabel || countLabel) ? `<div class="tile-badges">${enchLabel}${countLabel}</div>` : ""}
+      </div>
+      ${floorLabel}
       ${enchTip}
     </div>`;
   }
@@ -174,6 +182,7 @@ function renderCardTile(c) {
     <div class="tile-name">
       <div class="tile-name-text">${name}</div>
       ${badgesHtml}
+      ${floorLabel}
     </div>
     <div class="card-tooltip-wrap">${buildCardTooltip(c.id, c.upgrade, c.props, c.enchantment)}</div>
   </div>`;
@@ -190,9 +199,9 @@ function rarityRank(r) { return RARITY_RANK[r] || 0; }
 // and are carried onto the row for the face lookup. An enchantment does too: a
 // Nimble Strike is a different card from a plain Strike, and merging them would
 // drop the enchantment from the tile entirely.
-function dedupeCardCounts(deck) {
+function dedupeCardCounts(deck, added) {
   const cardMap = new Map();
-  deck.forEach(c => {
+  deck.forEach((c, index) => {
     const ench = c.enchantment ? `${c.enchantment.id}:${c.enchantment.amount || 1}` : "";
     const key = c.id + "|" + c.upgrade + "|" + (c.props ? JSON.stringify(c.props) : "") + "|" + ench;
     if (!cardMap.has(key)) {
@@ -200,7 +209,13 @@ function dedupeCardCounts(deck) {
         id: c.id, upgrade: c.upgrade, count: 0, props: c.props, enchantment: c.enchantment,
       });
     }
-    cardMap.get(key).count++;
+    const row = cardMap.get(key);
+    row.count++;
+    const floor = added?.[index];
+    if (Number.isInteger(floor) && floor >= 1) {
+      row.addedFloors ??= new Map();
+      row.addedFloors.set(floor, (row.addedFloors.get(floor) || 0) + 1);
+    }
   });
   // Rarest first within a deck group; the same rarity falls back to name order.
   return [...cardMap.values()].sort((a, b) => {
@@ -293,11 +308,11 @@ function renderDetailDeckRelics(run) {
     return;
   }
 
-  const groupsHtml = renderCardGroupsHtml(dedupeCardCounts(deck));
+  const groupsHtml = renderCardGroupsHtml(dedupeCardCounts(deck, run.deckAdded));
   const relicHtml  = renderRelicTiles(relics);
 
   document.getElementById("detail-deck-relics").innerHTML = `
-    <div class="detail-section-heading">Final deck ${tagChipsHtml(runTags(run))}</div>${renderDeckLinksHtml(deck, relics, run.char)}
+    <div class="detail-section-heading">Final deck</div>${renderDeckLinksHtml(deck, relics, run.char)}
     ${groupsHtml}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
@@ -327,8 +342,6 @@ function runTags(run) {
   return run._tags;
 }
 
-const tagChipsHtml = tags => tags.map(t => `<span class="run-tag">${escapeHtml(t)}</span>`).join("");
-
 // Cards and relics in this run that feed each other: one makes a thing (Strength,
 // Poison, Osty, Shiv...) and another needs it. Listed, not scored. DATA.synergy
 // holds only the specific keys; a key with no maker or no other user is dropped.
@@ -337,9 +350,15 @@ function deckLinks(deck, relics) {
   if (!table) return [];
   const makers = {}, users = {};
   const add = (map, key, who) => { (map[key] = map[key] || new Map()).set(who.id, who); };
+  const cardRow = c => {
+    const upgrade = c.upgrade > 0 ? 1 : 0;
+    const rolls = table.cardRolls?.[c.id];
+    if (rolls) return rolls[c.id + cardVariantSuffix(c.props)]?.[upgrade];
+    return table.cardVariants?.[c.id]?.[upgrade] || table.cards[c.id];
+  };
   const seen = [
     ...deck.map(c => ({ id: c.id, card: c, name: cardInfo(c.id)?.title || fmtCardLabel(c.id),
-      row: table.cardVariants?.[c.id]?.[c.upgrade > 0 ? 1 : 0] || table.cards[c.id] })),
+      row: cardRow(c) })),
     ...relics.map(r => ({ id: r.id, name: relicInfo(r.id)?.title || fmtRelicLabel(r.id), row: table.relics[r.id] })),
   ];
   seen.forEach(s => {
@@ -361,6 +380,50 @@ function deckLinks(deck, relics) {
 }
 
 const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const synergyLabel = key => key.replace(/^power:/, "").replace(/^./, c => c.toUpperCase());
+const SYNERGY_FAMILIES = {
+  IRONCLAD: { Strength: ["power:Strength"], Exhaust: ["exhaust", "exhaust skills", "exhaust attacks", "Skill Exhaust"], Block: ["block scaling", "card Block"], "Self-damage": ["HP loss"], Vulnerable: ["power:Vulnerable"] },
+  SILENT: { Shiv: ["shiv"], Poison: ["power:Poison"], Discard: ["discard"] },
+  DEFECT: { Lightning: ["lightning", "lightning focus", "lightning slots", "lightning evoke", "lightning passive"], Frost: ["frost", "frost focus", "frost slots", "frost evoke", "frost passive"], Dark: ["dark", "dark focus", "dark slots", "dark evoke", "dark passive"], Plasma: ["plasma slots", "plasma evoke", "plasma passive"], "Zero-cost": ["zero-cost", "zero-cost attacks"], Status: ["status"] },
+  NECROBINDER: { Doom: ["power:Doom", "Doom application"], Osty: ["Osty health", "Osty attacks", "Osty damage"], Souls: ["souls"], Ethereal: ["ethereal"] },
+  REGENT: { Stars: ["stars", "star spending", "star gain", "star-cost cards"], Forge: ["forge", "blade upgrades"], Creation: ["creation", "colorless", "minion"] },
+  FOOL: { Shots: ["aim", "shots", "arrows"], Impale: ["impale", "dislodge"], Melodies: ["melodies", "wah melody", "cho melody", "ki melody", "wah cards", "cho cards", "ki cards"], Sadness: ["sadness"], Stretch: ["stretch"] },
+};
+
+const overviewSynergies = document.getElementById("overview-synergies");
+const overviewSynergyCache = new WeakMap();
+overviewSynergies?.addEventListener("toggle", () => renderOverviewSynergies(overviewRuns()));
+
+function renderOverviewSynergies(runs) {
+  if (!overviewSynergies?.open) return;
+  const byChar = new Map();
+  for (const run of runs) {
+    if (typeof run.won !== "boolean") continue;
+    if (!overviewSynergyCache.has(run)) {
+      const families = Object.entries(SYNERGY_FAMILIES[run.char] || {});
+      const names = deckLinks(run.finalDeck || [], run.finalRelics || []).map(({ key }) =>
+        families.find(([, keys]) => keys.includes(key))?.[0] || synergyLabel(key));
+      overviewSynergyCache.set(run, new Set(names));
+    }
+    for (const name of overviewSynergyCache.get(run)) {
+      if (!byChar.has(run.char)) byChar.set(run.char, new Map());
+      const records = byChar.get(run.char);
+      if (!records.has(name)) records.set(name, [0, 0]);
+      records.get(name)[run.won ? 0 : 1]++;
+    }
+  }
+  const characters = [...byChar.keys()].sort((a, b) => fmtCharName(a).localeCompare(fmtCharName(b)));
+  overviewSynergies.querySelector(".overview-synergy-grid").innerHTML = characters.map(char => {
+    const records = [...byChar.get(char)].sort(([nameA, [winsA, lossesA]], [nameB, [winsB, lossesB]]) =>
+      winsB + lossesB - winsA - lossesA || nameA.localeCompare(nameB));
+    return `<table class="pivot overview-synergy-table">
+      <caption>${charIconHtml(char)} ${escapeHtml(fmtCharName(char))}</caption>
+      <thead><tr><th scope="col">Synergy</th><th scope="col">Wins</th><th scope="col">Losses</th></tr></thead>
+      <tbody>${records.map(([name, [wins, losses]]) =>
+        `<tr><th scope="row">${escapeHtml(name)}</th><td>${wins}</td><td>${losses}</td></tr>`).join("")}</tbody>
+    </table>`;
+  }).join("") || "<p>No detected synergies in the selected runs.</p>";
+}
 
 function renderDeckLinksHtml(deck, relics, character) {
   const links = deckLinks(deck, relics);
@@ -385,7 +448,7 @@ function renderDeckLinksHtml(deck, relics, character) {
     "creation": "Created cards trigger rewards and scale damage.",
     "block scaling": "Block feeds damage, doubling, retention, and triggered rewards.",
     "HP loss": "Losing your HP triggers rewards and scales damage.",
-    "power:Strength": "Strength boosts each hit and Strength-scaling damage.",
+    "power:Strength": "Strength boosts each hit, including hits from generated Attacks.",
     "power:Vulnerable": "Vulnerable enables these bonuses and scaling effects.",
     "power:Weak": "Weak enables these conditional bonuses.",
     "shiv": "Shivs enable damage bonuses and triggered rewards.",
@@ -417,15 +480,6 @@ function renderDeckLinksHtml(deck, relics, character) {
     "Doom application": "Applying Doom triggers these rewards, including when applied to yourself.",
     "power:Poison": "Poison enables scaling and additional Poison triggers."
 };
-  const families = {
-    IRONCLAD: { Strength: ["power:Strength"], Exhaust: ["exhaust", "exhaust skills", "exhaust attacks", "Skill Exhaust"], Block: ["block scaling", "card Block"], "Self-damage": ["HP loss"], Vulnerable: ["power:Vulnerable"] },
-    SILENT: { Shiv: ["shiv"], Poison: ["power:Poison"], Discard: ["discard"] },
-    DEFECT: { Lightning: ["lightning", "lightning focus", "lightning slots", "lightning evoke", "lightning passive"], Frost: ["frost", "frost focus", "frost slots", "frost evoke", "frost passive"], Dark: ["dark", "dark focus", "dark slots", "dark evoke", "dark passive"], Plasma: ["plasma slots", "plasma evoke", "plasma passive"], "Zero-cost": ["zero-cost", "zero-cost attacks"], Status: ["status"] },
-    NECROBINDER: { Doom: ["power:Doom", "Doom application"], Osty: ["Osty health", "Osty attacks", "Osty damage"], Souls: ["souls"], Ethereal: ["ethereal"] },
-    REGENT: { Stars: ["stars", "star spending", "star gain", "star-cost cards"], Forge: ["forge", "blade upgrades"], Creation: ["creation", "colorless", "minion"] },
-    FOOL: { Shots: ["aim", "shots", "arrows"], Impale: ["impale", "dislodge"], Melodies: ["melodies", "wah melody", "cho melody", "ki melody", "wah cards", "cho cards", "ki cards"], Sadness: ["sadness"], Stretch: ["stretch"] },
-  };
-  const label = key => key.replace(/^power:/, "").replace(/^./, c => c.toUpperCase());
   const image = item => {
     const src = item.id.startsWith("RELIC.") ? relicImgSrc(item.id) : cardImgSrc(item.id);
     return src ? `<img loading="lazy" src="${escapeHtml(src)}" alt="">` : `<span aria-hidden="true">?</span>`;
@@ -448,11 +502,11 @@ function renderDeckLinksHtml(deck, relics, character) {
     explanations[orb + " evoke"] = `These cards Evoke ${name} Orbs for their immediate effect.`;
     explanations[orb + " passive"] = `These effects trigger ${name}'s passive again.`;
   }
-  const connection = link => `<div class="synergy-connection"><div class="synergy-connection-heading"><b>${escapeHtml(label(link.key))}</b>
+  const connection = link => `<div class="synergy-connection"><div class="synergy-connection-heading"><b>${escapeHtml(synergyLabel(link.key))}</b>
     ${explanations[link.key] ? `<span class="synergy-reason">${escapeHtml(explanations[link.key])}</span>` : ""}</div>
     <div class="synergy-flow" style="--synergy-payoff-columns:${Math.min(3, link.users.length)}"><div><div class="synergy-lane-label">Sources · ${link.feeders.length}</div><div class="synergy-items">${link.feeders.map(tile).join("")}</div></div><span class="synergy-flow-arrow" aria-hidden="true">→</span><div><div class="synergy-lane-label">Payoffs · ${link.users.length}</div><div class="synergy-items">${link.users.map(tile).join("")}</div></div></div></div>`;
   const assigned = new Set();
-  const groups = Object.entries(families[character] || {}).map(([name, keys]) => {
+  const groups = Object.entries(SYNERGY_FAMILIES[character] || {}).map(([name, keys]) => {
     const matches = links.filter(l => keys.includes(l.key));
     matches.forEach(l => assigned.add(l.key));
     return [name, matches];

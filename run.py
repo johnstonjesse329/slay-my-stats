@@ -1497,6 +1497,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <h2 class="group-head">Run statistics</h2>
 <div class="chart-box" id="personal-bests-cards"></div>
 
+<details class="chart-box" id="overview-synergies">
+  <summary><h3>Synergy records by character</h3></summary>
+  <p class="chart-caption">Wins and losses when the final deck had these connections. A run can count toward several synergies.</p>
+  <div class="overview-synergy-grid"></div>
+</details>
+
 <div class="grid-1">
   <div class="chart-box">
     <h3>Time played</h3>

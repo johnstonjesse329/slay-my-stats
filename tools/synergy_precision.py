@@ -46,6 +46,13 @@ def refine(item_id, item, export, made, need):
     if has(r"choose[^.]*card in (?:your|their) (?:Draw|Discard) Pile to add"):
         creation = False
     role("creation", source=creation)
+    # Count only specifically identified Attack output. A mixed or unspecified
+    # card pool, and generators of Skills, Powers, or Statuses, are not evidence.
+    attack_output = has(r"\b(?:add|create|fill|choose)\b[^.\n]*\b(?:random Attacks?|"
+                        r"(?:Inky )?Shivs?|Sweeping Gaze|copy of the (?:first|third) Attack)\b")
+    attack_copy = item.get("type") == "Attack" and has(r"\bcopy of this card\b")
+    if (creation and (attack_output or attack_copy)) or has(r"\bcreate The Shot\b"):
+        need.add("power:Strength")
     if has(r"another player|their Hand"):
         # The creator may earn creation rewards (Largesse), but the Colorless
         # card is not available to that creator's Heirloom Hammer.
