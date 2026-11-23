@@ -885,6 +885,7 @@ function showRunCopy(run, owner, note = "", players = null) {
 
   renderDetailTimeline(run);
   renderDetailMaps(run);
+  renderRunRecords(run);
   renderDetailHpChart(run);
   renderDetailGoldChart(run);
   renderDetailDeckChart(run);
