@@ -99,9 +99,9 @@ function renderRelicsTable() {
   const rows = Object.entries(raw).map(([id, b]) => {
     const g = global && global[id];
     const rarity = relicData[id]?.rarity || "—";
-    // Run history records Ancient selections without the full list of
-    // alternatives, so these records cannot supply an offer denominator.
-    const hasOffers = rarity !== "Ancient";
+    // A run record lists an ancient's whole offer (ancient_choice), so every
+    // relic has an offer count, ancient ones included.
+    const hasOffers = true;
     return {
       id,
       title:      fmtRelicLabel(id),
@@ -130,8 +130,7 @@ function renderRelicsTable() {
 
   const scope = sharedActiveChar === "ALL" ? "all characters" : fmtCharName(sharedActiveChar);
   document.getElementById("relics-caption").textContent =
-    `${rows.length} relic${rows.length !== 1 ? "s" : ""} recorded under the current filters (${scope}).`
-    + (rows.some(r => r.rarity === "Ancient") ? " Ancient records show the selected relics. Offer, pick and skip rates need the full set of choices." : "");
+    `${rows.length} relic${rows.length !== 1 ? "s" : ""} recorded under the current filters (${scope}).`;
 
   const cols = [
     { key: "title",      label: "Relic",         align: "left" },
