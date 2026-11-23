@@ -1862,6 +1862,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       </div>
       <div class="chart-box" id="detail-relic-box" style="margin-top:16px">
         <h2>Relics by Floor</h2>
+        <div id="detail-relic-act-counts"></div>
         <p class="chart-caption">Same rarity colours as the deck chart; Shop, Event and Ancient relics get their own.</p>
         <div class="chart-wrap"><canvas id="detail-relic-chart"></canvas></div>
         <div class="floor-legend" id="detail-relic-legend"></div>

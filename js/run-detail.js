@@ -859,6 +859,7 @@ function showRunCopy(run, owner, note = "", players = null) {
   document.getElementById("detail-keep-heading").hidden = document.getElementById("detail-keep-box").style.display === "none";
   renderPartyCombatRates(run, owner, players);
   renderDeckActCounts(run, players);
+  renderRelicActCounts(run, players);
   renderDetailDeckRelics(run);
   for (const button of detailSectionNav.querySelectorAll("[data-section]")) {
     button.hidden = !document.getElementById(button.dataset.section).firstElementChild;
@@ -3426,32 +3427,42 @@ function renderDetailDeckChart(run, panel = null) {
   return chart;
 }
 
-function renderDeckActCounts(run, players) {
-  const box = document.getElementById("detail-deck-act-counts");
+// Each act's label with the count beside it, at that act's last recorded floor. A multiplayer run
+// lists every player's count after the label: no table, no row of its own.
+function renderActCounts(boxId, players, run, noun, held) {
+  const box = document.getElementById(boxId);
   const rows = (players || [{ label: fmtCharName(run.char), run }]).map(player => {
-    const { timeline = [], finalDeck = [], deckAdded, cardsLost = [] } = player.run;
+    const { timeline = [] } = player.run;
     const floors = new Map();
     for (const node of timeline) floors.set(node.act, node.floor + 1);
-    const items = Array.isArray(deckAdded) && deckAdded.length === finalDeck.length
-      ? heldItems(finalDeck, deckAdded, cardsLost) : null;
-    return { label: player.label, floors, items };
+    return { label: player.label, floors, items: held(player.run) };
   });
   const acts = Array.from(new Set(rows.flatMap(row => [...row.floors.keys()]))).sort((a, b) => a - b);
   if (!acts.length || !rows.some(row => row.items)) {
     box.innerHTML = "";
     return;
   }
-  box.innerHTML = `<table class="detail-summary-table">
-    <caption>Cards at the last recorded floor of each act</caption>
-    <thead><tr><th scope="col">Player</th>${acts.map(act => `<th scope="col">${ACT_LABELS[act] || `Act ${act}`}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map(({ label, floors, items }) => `<tr><th scope="row">${escapeHtml(label)}</th>
-      ${acts.map(act => {
-        const floor = floors.get(act);
-        if (!floor || !items) return '<td aria-label="Unavailable">—</td>';
-        const count = items.filter(item => item.added <= floor && item.removed > floor).length;
-        return `<td title="Floor ${floor}">${count}</td>`;
-      }).join("")}</tr>`).join("")}</tbody>
-  </table>`;
+  box.innerHTML = `<div class="act-counts">${acts.map(act => {
+    const counts = rows.map(({ label, floors, items }) => {
+      const floor = floors.get(act);
+      if (!floor || !items) return `<span class="act-count" aria-label="Unavailable">${rows.length > 1 ? `${escapeHtml(label)} ` : ""}—</span>`;
+      const n = items.filter(item => item.added <= floor && item.removed > floor).length;
+      return `<span class="act-count" title="Floor ${floor}">${rows.length > 1 ? `${escapeHtml(label)} ` : ""}<b>${n}</b>${rows.length > 1 ? "" : ` ${noun}`}</span>`;
+    }).join("");
+    return `<span class="act-counts-act"><span class="act-counts-label">${ACT_LABELS[act] || `Act ${act}`}</span>${counts}</span>`;
+  }).join("")}</div>`;
+}
+
+function renderDeckActCounts(run, players) {
+  renderActCounts("detail-deck-act-counts", players, run, "cards", r => {
+    const { finalDeck = [], deckAdded, cardsLost = [] } = r;
+    return Array.isArray(deckAdded) && deckAdded.length === finalDeck.length ? heldItems(finalDeck, deckAdded, cardsLost) : null;
+  });
+}
+
+function renderRelicActCounts(run, players) {
+  renderActCounts("detail-relic-act-counts", players, run, "relics", r =>
+    r.relicsAdded ? heldItems(r.finalRelics || [], r.relicsAdded, r.relicsLost || []) : null);
 }
 
 function renderDetailRelicChart(run, panel = null) {
