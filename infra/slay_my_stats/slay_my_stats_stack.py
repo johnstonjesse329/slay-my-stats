@@ -717,6 +717,33 @@ class SlayMyStatsStack(Stack):
                 description="Refresh the fight benchmark from production uploads",
             )
 
+        if gamma:
+            # Nightly copy of prod's run data into this bucket (seed.py): gamma
+            # shows real players' data without anyone running tools/seed_gamma.py.
+            seed_fn = lambda_.Function(
+                self, "SeedFunction",
+                runtime=lambda_.Runtime.PYTHON_3_12,
+                handler="seed.copy_prod",
+                code=ingest_code,
+                timeout=Duration.minutes(15),
+                memory_size=512,
+                environment={"DATA_BUCKET": data_bucket.bucket_name},
+            )
+            data_bucket.grant_read_write(seed_fn)
+            prod_bucket_arn = "arn:aws:s3:::slay-my-stats-data"
+            seed_fn.add_to_role_policy(iam.PolicyStatement(
+                actions=["s3:ListBucket"], resources=[prod_bucket_arn]))
+            seed_fn.add_to_role_policy(iam.PolicyStatement(
+                actions=["s3:GetObject"],
+                resources=[f"{prod_bucket_arn}/{p}/*" for p in ("users", "ids", "coop", "raw", "telemetry")]))
+            scheduler.Schedule(
+                self, "SeedSchedule",
+                schedule=scheduler.ScheduleExpression.cron(
+                    minute="0", hour="3", time_zone=TimeZone.AMERICA_CHICAGO),
+                target=scheduler_targets.LambdaInvoke(seed_fn),
+                description="Copy production's run data into gamma",
+            )
+
         # No API Gateway: the handler checks the session itself, so a bare
         # public Function URL is enough and one less moving part. Pages reach
         # it through CloudFront's auth/ behaviors below, on the site's own
