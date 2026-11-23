@@ -496,10 +496,10 @@ function favItemHtml(kind, item, winPct, detail, { cohort = "", comparison = nul
     <span class="fav-icon">${pic}</span>
     <span class="fav-text">
       <span class="fav-name">${escapeHtml(label)}</span>
-      ${figures.map(f => `<span class="fav-figures">
+      <span class="fav-figs">${figures.map(f => `<span class="fav-figures">
         <span class="fav-detail">${f.cohort ? `<span class="fav-cohort${f.cohort === "All players" ? " fav-cohort-all" : ""}">${f.cohort}</span> ` : ""}<span class="fav-rate${f.winPct >= 50 ? " fav-hi" : ""}">${rateText(f.winPct)}</span><span class="fav-won"> won</span></span>
         <span class="fav-count">${f.detail}</span>
-      </span>`).join("")}
+      </span>`).join("")}</span>
     </span>
   </span>`;
 }
