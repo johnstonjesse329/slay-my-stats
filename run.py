@@ -687,7 +687,9 @@ def parse_run(path: Path) -> dict:
 # when each card and relic entered and left, for Run Detail's deck-by-floor charts.
 # v6: timeline nodes name the `fight` behind an event, and `turns` is that fight's,
 # so a fight an event started reads against the winners of the same fight.
-PARSER_VERSION = 7
+# v8: an ancient's whole offer (ancient_choice) is tallied, not just the pick, so the
+# turned-down relics count as offered and skipped (Relics page: Win % skipped).
+PARSER_VERSION = 8
 
 
 def _card_props(card: dict) -> dict:
