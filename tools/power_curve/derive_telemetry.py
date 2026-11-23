@@ -116,6 +116,9 @@ def _new_fight(fight, first):
         # What the killing blow carried past 0 HP. It is part of `taken`, because the
         # damage that killed you is the damage you took, not the 6 HP you had left.
         "overkill": 0,
+        # The other direction, for a fun number only: what our hits carried past an enemy's
+        # last HP (`ovk`), summed, and the most on one hit. Never part of any damage figure.
+        "ovk_dealt": 0, "ovk_best": 0,
     }
 
 
@@ -419,6 +422,9 @@ def derive(log, moves=None):
             # `unb` is the HP the hit really took, overkill already left out: it equals
             # the HP delta beside it on every hit of both logged runs.
             fight["dmg_hit"] += a.get("unb") or 0
+            over_dealt = a.get("ovk") or 0
+            fight["ovk_dealt"] += over_dealt
+            fight["ovk_best"] = max(fight["ovk_best"], over_dealt)
             target = a.get("t") or ""
             if target and target not in turn["targets"]:
                 turn["targets"].append(target)

@@ -121,6 +121,41 @@ class PartyDamage(unittest.TestCase):
         self.assertEqual([r.get("damageBySlot") for r in rows], [[11, 7, 0], None, None])
 
 
+class Overkill(unittest.TestCase):
+    """Overkill is a fun number: carried on the floor row, never added to any damage figure."""
+
+    def _rows(self, hits, closed=True):
+        events = [("fight0", {"enc": "ENCOUNTER.TOAD"}), ("turn0", {}),
+                  ("hp", {"c": "toad", "enemy": True, "d": -20}), *hits]
+        if closed:
+            events.append(("fight1", {}))
+        log = {"v": 3, "log": [{"k": k, "a": a, "t": 1} for k, a in events]}
+        nodes = [{"floor": 3, "turns": 1, "enc": "ENCOUNTER.TOAD"}]
+        return measured.measured(handler.clean_event_log(log), nodes)
+
+    def test_the_floor_carries_overkill_dealt_and_the_most_on_one_hit(self):
+        rows = self._rows([
+            ("hit", {"by": "P", "t": "toad", "enemy": True, "total": 12, "unb": 12, "ovk": 9}),
+            ("hit", {"by": "P", "t": "toad", "enemy": True, "total": 3, "unb": 3, "ovk": 3}),
+            ("hit", {"by": "P", "t": "toad", "enemy": True, "total": 5, "unb": 5, "ovk": 0}),
+        ])
+        self.assertEqual((rows[0]["overkillDealt"], rows[0]["overkillBest"]), (12, 9))
+
+    def test_overkill_never_changes_a_damage_figure(self):
+        hits = [("hit", {"by": "P", "t": "toad", "enemy": True, "total": 12, "unb": 12, "ovk": 9})]
+        plain = [("hit", {"by": "P", "t": "toad", "enemy": True, "total": 12, "unb": 12})]
+        with_ovk, without = self._rows(hits)[0], self._rows(plain)[0]
+        self.assertNotIn("overkillDealt", without)
+        self.assertEqual({k: v for k, v in with_ovk.items() if not k.startswith("overkill")}, without)
+
+    def test_overkill_on_a_pet_or_on_the_player_is_not_ours(self):
+        rows = self._rows([
+            ("hit", {"by": "P", "t": "Osty", "enemy": False, "total": 3, "unb": 3, "ovk": 7}),
+            ("hit", {"by": "toad", "t": "P", "total": 5, "unb": 5, "ovk": 6}),
+        ])
+        self.assertNotIn("overkillDealt", rows[0])
+
+
 @unittest.skipUnless(LOCAL, "no local event logs with their runs")
 class ParityWithTheLocalExport(unittest.TestCase):
     def test_card_table_matches_the_report(self):
