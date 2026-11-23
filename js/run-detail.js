@@ -1771,7 +1771,8 @@ function actMapSvg(m, act, bossKeys, floors, seed, coatedPath = new Set()) {
     }
     body += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(gauss() * 8).toFixed(1)})">${img(art[key], -46, -46, 92, 92, lit ? "" : ' opacity="0.5"')}<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></g>`;
     if (coatedPath.has(m.path.findIndex(c => c[0] === n[0] && c[1] === n[1]))) {
-      rings += `<g transform="translate(${(x + 40).toFixed(1)} ${(y - 40).toFixed(1)})"><circle r="30" fill="#c0392b" stroke="#fff" stroke-width="6"/><text y="14" text-anchor="middle" font-size="42" font-weight="700" fill="#fff">FC</text><title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
+      // The game's own red X (its quest marker) across the fight's icon.
+      rings += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">${img(art.marked_x, -45, -40, 90, 80)}<title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
     }
     if (lit) {
       const size = 200 * (0.85 + rnd() * 0.05);
@@ -4187,7 +4188,7 @@ function renderKeepActs(run, nodes, measured) {
     `<p class="kr-desc">Damage taken and fight turns from every act added up, against the average win on the same fights. OP means a Hype rating in both Acts ${KEEP_OP_ACTS.join(" and ")} which signals a consistently strong deck through mid and late game.</p>` +
     `<div class="kr-meters">${wholeMeters.damage}${wholeMeters.turns}</div></div>` : "";
   const unratedCards = acts.unrated.map(u => `<div class="keep-act"><h3><span class="ka-title">Act ${u.act}</span></h3>` +
-    `<p class="chart-caption">Fur Coat: ${u.n} marked ${u.n === 1 ? "fight" : "fights"} left out (enemies started at 1 HP each), too few other fights to rate this act.</p></div>`).join("");
+    `<p class="keep-note">Fur Coat: ${u.n} marked ${u.n === 1 ? "fight" : "fights"} left out (enemies started at 1 HP each), too few other fights to rate this act.</p></div>`).join("");
   box.innerHTML = wholeCard + acts.map(a => {
     const log = a.log;
     const perTurn = v => (v / log.turns).toFixed(1);
@@ -4209,7 +4210,7 @@ function renderKeepActs(run, nodes, measured) {
         perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, "") +
         perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") + `</div>` : "") +
       `</div>` +
-      (a.furCoatOmitted ? `<p class="chart-caption">Fur Coat: ${a.furCoatOmitted} marked ${a.furCoatOmitted === 1 ? "fight" : "fights"} (enemies started at 1 HP each) left out of this act's averages and rating; the other ${a.fights} still count.</p>` : "") +
+      (a.furCoatOmitted ? `<p class="keep-note">Fur Coat: ${a.furCoatOmitted} marked ${a.furCoatOmitted === 1 ? "fight" : "fights"} (enemies started at 1 HP each) left out of this act's averages and rating; the other ${a.fights} still count.</p>` : "") +
       `</div>`;
   }).join("") + unratedCards;
 }

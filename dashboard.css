@@ -666,6 +666,7 @@ h1 {
 .chart-box h2:has(+ .chart-caption), .chart-box > h3:has(+ .chart-caption) { margin-bottom: 0.25rem; }
 /* Overview's groups of panels: a quiet name, no box of their own. */
 .group-head { font-size: var(--fs-lg); color: var(--gold); margin: 3rem 0 0.75rem; }
+.keep-note { font-size: var(--fs-sm); color: var(--text-dim); margin: 0.6rem 0 0; padding: 0.45rem 0.7rem; border: 1px solid var(--panel-border); border-radius: 6px; }
 .chart-caption { font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 0.9rem; }
 .keep-data-notice {
   margin: 0 0 0.75rem;

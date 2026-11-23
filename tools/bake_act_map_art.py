@@ -22,7 +22,7 @@ What the game does, and so what this bakes:
     its output. The site applies boss_map_point.gdshader's colouring.
 
 Output: ui_icons/map/ (scroll_<act>.webp, dot_<act>_{todo,walked}.png,
-node_<act>_<type>.png incl. node_<act>_unknown_<room>.png, circle.png,
+node_<act>_<type>.png incl. node_<act>_unknown_<room>.png, circle.png, marked_x.png (Fur Coat's red X),
 ancient_<name>[_outline].png, boss_<id>[_outline].png, boss_<id>_spine.png).
 
 Run after a full PCK extraction (see README "Refreshing game data"):
@@ -60,6 +60,7 @@ UNKNOWN_ICONS = {"unknown_monster": ("map_unknown_monster", "map_monster"),
                  "unknown_elite": ("map_unknown_elite", "map_elite"),
                  "unknown_shop": ("map_unknown_shop", "map_shop"),
                  "unknown_treasure": ("map_unknown_chest", "map_chest")}
+MARKER_X_BOX = (0, 0, 170, 150)  # the X's corner of the 256 px marker; the trail is below it
 SCROLL_W = 640       # the whole scroll, torn edges and all, as NMapBg shows it
 ANCIENT_W = 160      # drawn 208 wide on a 1527 wide scroll
 BOSS_W = 240         # drawn 374 wide
@@ -119,6 +120,9 @@ def main():
     icons, outlines = sprites / "ui_atlas.sprites" / "map" / "icons", sprites / "compressed.sprites" / "map"
 
     tint(atlas(pck, outlines / "map_circle_4.tres"), rgb(CIRCLE_TINT)).save(OUT / "circle.png")
+    # The red X the game draws on a quest-marked node (normal_map_point.tscn QuestIcon, shown for
+    # Fur Coat's marked fights too): the X of map_spoils_map_marker.png, without its dotted trail.
+    Image.open(pck / "images" / "packed" / "map" / "icons" / "map_spoils_map_marker.png").convert("RGBA").crop(MARKER_X_BOX).save(OUT / "marked_x.png")
     dot = atlas(pck, outlines / "map_dot.tres")
     for act, c in ACTS.items():
         scroll = Image.new("RGBA", (2036, 1440 * 3))
