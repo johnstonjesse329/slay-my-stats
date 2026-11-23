@@ -64,11 +64,12 @@ function aggregateRelics() {
   const byRelic = {};
   filterRuns().forEach(run => {
     Object.entries(run.relicsOffered || {}).forEach(([id, locs]) => {
-      const b = byRelic[id] || (byRelic[id] = { offered: 0, picked: 0, wonWhenPicked: 0, skipped: 0, wonWhenSkipped: 0 });
+      const b = byRelic[id] || (byRelic[id] = { offered: 0, picked: 0, wonWhenPicked: 0, skipped: 0, wonWhenSkipped: 0, granted: 0 });
       locs.forEach(loc => {
-        b.offered++;
         if (loc.picked) { b.picked++; if (run.won) b.wonWhenPicked++; }
-        else            { b.skipped++; if (run.won) b.wonWhenSkipped++; }
+        if (loc.granted) { b.granted++; return; }   // handed over: no offer, no skip
+        b.offered++;
+        if (!loc.picked) { b.skipped++; if (run.won) b.wonWhenSkipped++; }
       });
     });
   });
@@ -76,7 +77,7 @@ function aggregateRelics() {
 }
 
 // Everybody's tally of each relic under the same filters (see
-// globalCardTallies()): { id: [picks, wins, buys, buyWins, offers, skipWins] },
+// globalCardTallies()): { id: [picks, wins, buys, buyWins, offers, skipWins, handedOver] },
 // or null when the site totals have none for them.
 function globalRelicTallies() {
   const all = favTalliesAll();
@@ -84,7 +85,7 @@ function globalRelicTallies() {
   const byId = {};
   const chars = sharedActiveChar === "ALL" ? Object.keys(all.picks) : [sharedActiveChar];
   chars.forEach(char => Object.entries(all.picks[char]?.relics || {}).forEach(([id, q]) => {
-    const b = byId[id] || (byId[id] = [0, 0, 0, 0, 0, 0]);
+    const b = byId[id] || (byId[id] = [0, 0, 0, 0, 0, 0, 0]);
     q.forEach((n, i) => { b[i] += n; });
   }));
   return byId;
@@ -108,14 +109,14 @@ function renderRelicsTable() {
       rarity,
       offered:    hasOffers ? b.offered : null,
       picked:     b.picked,
-      pickRate:   hasOffers ? winPctNum(b.picked, b.offered) : null,
+      pickRate:   b.offered ? winPctNum(b.picked - b.granted, b.offered) : null,
       winPicked:  winPctNum(b.wonWhenPicked, b.picked),
-      winSkipped: hasOffers ? winPctNum(b.wonWhenSkipped, b.skipped) : null,
+      winSkipped: b.offered ? winPctNum(b.wonWhenSkipped, b.skipped) : null,
       gOffered:    g && hasOffers ? g[4] : null,
       gPicked:     g ? g[0] : null,
-      gPickRate:   g && hasOffers ? winPctNum(g[0], g[4]) : null,
+      gPickRate:   g && g[4] ? winPctNum(g[0] - g[6], g[4]) : null,
       gWinPicked:  g ? winPctNum(g[1], g[0]) : null,
-      gWinSkipped: g && hasOffers ? winPctNum(g[5], g[4] - g[0]) : null,
+      gWinSkipped: g && g[4] ? winPctNum(g[5], g[4] - (g[0] - g[6])) : null,
     };
   }).filter(r => !relicsNameFilter || r.title.toLowerCase().includes(relicsNameFilter));
 

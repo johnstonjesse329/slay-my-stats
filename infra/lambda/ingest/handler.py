@@ -1103,12 +1103,12 @@ def _update_index(store, slug: str, name: str, runs: int, now: float) -> None:
 MODES = ("solo", "multi")
 PAIR_KEYS = ("chars", "cards", "relics")
 # picks[char][kind][id] = [picks, wins when picked, buys, wins when bought,
-# offers, wins when skipped]: every time the character took that card or relic,
+# offers, wins when skipped, picks that were handed over rather than offered]: every time the character took that card or relic,
 # the share of those that were shop buys, how often it was offered at all and
 # the wins of the runs that turned it down, for the Cards page's "all players"
 # favourites and offer/pick-rate columns. Totals recounted before the last two
 # were added carry four numbers; the page reads the missing two as unknown.
-PICK_SLOTS = 6
+PICK_SLOTS = 7
 ASC_PICK_VERSION = 1
 PICK_KINDS = (("cards", "cardsOffered"), ("relics", "relicsOffered"))
 
@@ -1125,7 +1125,11 @@ def _tally_picks(picks: dict, r: dict, won: bool) -> None:
         for item_id, locs in (r.get(field) or {}).items():
             for loc in locs:
                 q = by_id.setdefault(item_id, [0] * PICK_SLOTS)
-                q[4] += 1
+                if loc.get("granted"):
+                    # handed over, never offered: a pick, but no offer or skip
+                    q[6] += 1
+                else:
+                    q[4] += 1
                 if not loc.get("picked"):
                     q[5] += won
                     continue

@@ -689,7 +689,9 @@ def parse_run(path: Path) -> dict:
 # so a fight an event started reads against the winners of the same fight.
 # v8: an ancient's whole offer (ancient_choice) is tallied, not just the pick, so the
 # turned-down relics count as offered and skipped (Relics page: Win % skipped).
-PARSER_VERSION = 8
+# v9: relics a node only handed over (rewards, event relics, an ancient's starter
+# upgrade) carry "granted" and no longer count as offered.
+PARSER_VERSION = 9
 
 
 def _card_props(card: dict) -> dict:
@@ -945,11 +947,28 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
                 for _ in range(count):
                     cards_offered.setdefault(cid, []).append({**loc, "picked": True})
             seen_relics = set()
-            for rc in ps.get("relic_choices", []):
-                rid = rc.get("choice", "")
-                if rid:
-                    seen_relics.add(rid)
-                    relics_offered.setdefault(rid, []).append({**loc, "picked": bool(rc.get("was_picked"))})
+            relic_rows = [rc for rc in ps.get("relic_choices", []) if rc.get("choice")]
+            # A node offers a real choice when it lists a turned-down relic or is
+            # a shop shelf. Otherwise relic_choices only records what the node
+            # handed over (an elite or chest reward, an event's relic, the starter
+            # relic an ancient's pick upgrades, e.g. Touch of Orobas -> Black
+            # Blood): taken, never offered, so it carries "granted" and is left
+            # out of the offer and skip counts.
+            has_choice = ntype == "shop" or any(not rc.get("was_picked") for rc in relic_rows)
+            ancient_keys = set()
+            for ac in ps.get("ancient_choice", []):
+                key = ac.get("TextKey", "")
+                if key:
+                    ancient_keys.add(key if key.startswith("RELIC.") else f"RELIC.{key}")
+            for rc in relic_rows:
+                rid = rc["choice"]
+                if rid in ancient_keys:
+                    continue                     # counted from the ancient's list below
+                seen_relics.add(rid)
+                entry = {**loc, "picked": bool(rc.get("was_picked"))}
+                if not has_choice or ancient_keys:
+                    entry["granted"] = True
+                relics_offered.setdefault(rid, []).append(entry)
             # An ancient (Neow and the others) lists the whole offer in
             # ancient_choice with was_chosen on the pick, while relic_choices
             # keeps only the pick. The turned-down ones are tallied as skipped,
