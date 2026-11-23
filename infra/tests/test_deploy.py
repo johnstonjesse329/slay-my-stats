@@ -271,11 +271,28 @@ class ArtDeploy(unittest.TestCase):
                 mock.patch.object(deploy, "upload_art_object", calls.upload), \
                 mock.patch.object(deploy, "invalidate", calls.invalidate):
             self.s3.attach_mock(calls, "deploy")
-            deploy.deploy_site("gamma")
+            deploy.deploy_site("prod")
         self.assertEqual([entry[0] for entry in self.s3.mock_calls],
                          ["get_object", "deploy.upload", "deploy.invalidate", "put_object"])
         calls.invalidate.assert_called_once_with(["/" + self.key])
         self.assertEqual(self.s3.put_object.call_args.kwargs["IfMatch"], '"old"')
+
+    def _deploy_site(self, stage, dist):
+        self.s3.get_object.return_value = {"Body": io.BytesIO(b'{}'), "ETag": '"old"'}
+        self.s3.put_object.return_value = {"ETag": '"new"'}
+        invalidate = mock.Mock()
+        with mock.patch("boto3.client", return_value=self.s3), mock.patch.object(deploy, "run"),                 mock.patch.object(deploy, "art_digests", return_value=self.art),                 mock.patch.object(deploy, "upload_changed_dist", return_value=dist),                 mock.patch.object(deploy, "upload_art_object"),                 mock.patch.object(deploy, "invalidate", invalidate):
+            deploy.deploy_site(stage)
+        return invalidate
+
+    def test_gamma_never_invalidates_but_records_art(self):
+        invalidate = self._deploy_site("gamma", ["index.html"])
+        invalidate.assert_not_called()
+        self.assertEqual(self.s3.put_object.call_args.kwargs["IfMatch"], '"old"')
+
+    def test_hashed_files_are_not_invalidated(self):
+        invalidate = self._deploy_site("prod", ["app.3fa91c20ab.js", "dashboard.0123456789.css", "index.html"])
+        invalidate.assert_called_once_with(["/" + self.key, "/index.html"])
 
 
 if __name__ == "__main__":
