@@ -411,7 +411,10 @@ function favTalliesAll() {
       || [...sharedActiveModes].some(mode => !["standard", "dread"].includes(mode))
       || sharedActiveBuilds.size !== DATA.builds.length || sharedActiveMods !== "all"
       || sharedTsFrom !== 0 || sharedTsTo !== TS_NO_UPPER_BOUND) return null;
-  const allAscs = sharedActiveAscs.size === DATA.ascensions.length;
+  // With granular view on, the ticked levels are the population even when every
+  // box is ticked: the public cohorts include levels this profile has no checkbox
+  // for, and "all ticked" must not switch to counting those.
+  const allAscs = !sharedAscGranular && sharedActiveAscs.size === DATA.ascensions.length;
   const exact = siteStatsForFavs.ascPickVersion === 1;
   if (!exact && (!allAscs || sharedActiveModes.size !== 2)) return null;
   const parties = sharedActivePlayers === "all" ? ["solo", "multi"] : [sharedActivePlayers];

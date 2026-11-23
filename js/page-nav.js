@@ -70,32 +70,34 @@ function updateFilterSummary() {
             : [...sharedActiveAscs].sort((a, b) => a - b).map(ascLabel).join(", ");
   const date = sharedTsFrom === 0 && sharedTsTo === TS_NO_UPPER_BOUND ? "All time"
              : `${sharedTsFrom > 0 ? tsToDateStr(sharedTsFrom) : "…"} → ${sharedTsTo !== TS_NO_UPPER_BOUND ? tsToDateStr(sharedTsTo - 86400) : "…"}`;
-  const parts = [
+  const modesText = modes.length ? modes.join(", ") : "No modes";
+  const buildText = sharedActiveBuilds.size === 1 ? [...sharedActiveBuilds][0] : sharedBuildSummary();
+  // Overview unlocks only mode, build and date; the rest sit at their defaults there.
+  const locked = currentPage === "overview";
+  const parts = locked ? [modesText, buildText, date] : [
     sharedActiveChar === "ALL" ? "All characters" : fmtCharName(sharedActiveChar),
     playersLabels[sharedActivePlayers],
-    modes.length ? modes.join(", ") : "No modes",
+    modesText,
     ...(sharedActiveMods !== "all" ? [sharedActiveMods === "modded" ? "Modded" : "Unmodded"] : []),
     asc,
-    sharedActiveBuilds.size === 1 ? [...sharedActiveBuilds][0] : sharedBuildSummary(),
+    buildText,
     date,
   ];
-  const locked = currentPage === "overview";
   const visible = DATA.runsData.filter(run => runPassesFilters(run)).length;
-  const isDefault = sharedFilterStateEquals(currentSharedFilterState(), SHARED_FILTER_HARDCODED_DEFAULTS);
-  const active = !locked && !isDefault;
+  const isDefault = sharedFilterStateEquals(liveSharedFilterState(), SHARED_FILTER_HARDCODED_DEFAULTS);
+  const active = !isDefault;
   const bar = document.getElementById("shared-filter-bar");
   if (sharedFiltersLoaded) syncFilterPresetSelection();
   bar.classList.toggle("filters-locked", locked);
   bar.classList.toggle("filters-active", active);
+  bar.querySelectorAll(".filter-group").forEach(group => {
+    group.classList.toggle("is-locked", locked && group.dataset.overview !== "unlocked");
+  });
   bar.querySelectorAll(".filter-row button, .filter-row input, .filter-row select").forEach(control => {
-    control.disabled = locked || (control.id === "shared-filter-preset-delete"
+    control.disabled = (locked && !control.closest("[data-overview='unlocked']")) || (control.id === "shared-filter-preset-delete"
       && !document.getElementById("shared-filter-presets").value.startsWith("preset:"));
   });
-  document.querySelector("#shared-filter-summary .filter-label").textContent =
-    locked ? "Filters locked" : active ? "Filters applied" : "Default filters applied";
-  const summary = locked
-    ? `Overview · ${overviewMode.selectedOptions[0].text} · ${overviewBuild.selectedOptions[0].text}`
-    : `${visible} of ${DATA.runsData.length} runs · ${parts.join(" · ")}`;
+  const summary = `${visible} of ${DATA.runsData.length} runs · ${parts.join(" · ")}`;
   const summaryText = document.querySelector("#shared-filter-summary .filter-summary-text");
   summaryText.textContent = summary;
   summaryText.title = summary;
@@ -107,9 +109,34 @@ document.getElementById("shared-filter-summary").addEventListener("click", e => 
   e.currentTarget.setAttribute("aria-expanded", String(open));
 });
 
+// Overview keeps its own mode, build and date selections (defaults on first
+// visit); every other filter shows its default there and can't be changed.
+// The shared variables hold whichever set is showing, so rendering, the bar
+// and the summary all read one state. `pageFilterStash` is the other pages'
+// selections while Overview shows, and what Save, presets and links see.
+let pageFilterStash = null;
+let overviewFilterState = null;
+
+function syncOverviewFilters(page) {
+  if (page === "overview" && !pageFilterStash) {
+    pageFilterStash = liveSharedFilterState();
+    const own = overviewFilterState || SHARED_FILTER_HARDCODED_DEFAULTS;
+    applySharedFilterState({ ...SHARED_FILTER_HARDCODED_DEFAULTS, modes: own.modes, builds: own.builds,
+      allBuilds: own.allBuilds, tsFrom: own.tsFrom, tsTo: own.tsTo }, "overview");
+    lastUnlockedChar = pageFilterStash.char;
+  } else if (page !== "overview" && pageFilterStash) {
+    const { modes, builds, allBuilds, tsFrom, tsTo } = liveSharedFilterState();
+    overviewFilterState = { modes, builds, allBuilds, tsFrom, tsTo };
+    const stash = pageFilterStash;
+    pageFilterStash = null;
+    applySharedFilterState(stash, page);
+  }
+}
+
 function showPage(page) {
   if (!PAGES.includes(page)) page = "overview";
   currentPage = page;
+  syncOverviewFilters(page);
   PAGES.forEach(p => {
     document.getElementById("page-" + p).style.display = p === page ? "" : "none";
     document.getElementById("tab-"  + p).classList.toggle("active", p === page);
@@ -165,6 +192,7 @@ function jumpToRun(ts) {
 // viewer's other filters stay as they were. A ts this profile has no run
 // for lands on Run Detail's usual first run. `view` is the party tab to open on.
 function openRunLink(ts, view = "") {
+  syncOverviewFilters("detail");
   const run = DATA.runsData.find(r => r.ts === ts);
   const changed = [];
   if (run) {
@@ -403,11 +431,18 @@ const sharedModesBox = document.getElementById("shared-modes-checkboxes");
 // Blitz, Dread and Custom only get a checkbox once the player has a run in them.
 ALL_MODES.forEach(mode => {
   const label = document.createElement("label");
+  label.dataset.mode = mode;
   label.innerHTML = `<input type="checkbox" value="${mode}"> ${MODE_LABELS[mode]}`;
   if (["blitz", "dread", "custom"].includes(mode) && !DATA.runsData.some(r => r.mode === mode)) label.style.display = "none";
   label.querySelector("input").addEventListener("change", e => {
     const next = new Set(sharedActiveModes);
     if (e.target.checked) next.add(mode); else next.delete(mode);
+    if (currentPage === "overview") {
+      // Standard and Dread read together; Daily, Blitz and Custom each stand alone there.
+      const together = ["standard", "dread"];
+      if (e.target.checked) next.forEach(m => { if (m !== mode && !(together.includes(m) && together.includes(mode))) next.delete(m); });
+      if (!next.size) next.add(mode);
+    }
     setSharedModes(next);
     rerenderCurrentPage();
   });
@@ -514,6 +549,10 @@ document.getElementById("shared-date-alltime").addEventListener("click", () => {
 // and clears the saved snapshot so the reset survives reloads and profile changes.
 
 function currentSharedFilterState() {
+  return pageFilterStash ? { ...pageFilterStash } : liveSharedFilterState();
+}
+
+function liveSharedFilterState() {
   return {
     // lastUnlockedChar, not sharedActiveChar — the latter can currently be
     // a page-forced value (see charIsLocked()) that doesn't reflect what

@@ -59,13 +59,11 @@ feedback notes says how many players asked for it, with "You asked for this" for
 What's new with a dot until that browser has opened it since the newest post. Posts are files in `site/whats-new/`
 (see [its README](site/whats-new/README.md)).
 
-Overview always shows the full history, ignoring saved filters and filter links. Its
-statistics and charts cover Standard and Dread runs across all characters, builds, dates,
-mods and party sizes; a mode breakdown separately counts Daily, Custom and Blitz runs.
-The filter bar stays visible and locked on Overview. Filters can be changed on Runs,
-Cards, Relics and Seeds, and survive a visit to Overview. The normal bar says Default filters
-applied. Selections that differ from the built-in defaults highlight the bar and say
-Filters applied, with the matching run count and selections.
+The filter bar is sticky on every page. Overview uses the same bar with only Modes, Build and Date
+unlocked, so Daily and Blitz can be viewed apart from Standard and Dread; the other filters are greyed out
+at their defaults and apply on the other pages. Overview keeps its own modes, builds and dates, and the
+filters set on Runs, Cards, Relics and Seeds are restored when you leave it. The summary line shows the
+matching run count and selections, and selections that differ from the built-in defaults highlight the bar.
 Reset filters also clears the saved default in
 that browser. Saving All builds includes future patches; a saved build selection with
 no builds in common with another profile falls back to all of that profile's builds.

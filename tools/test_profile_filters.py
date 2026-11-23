@@ -72,7 +72,7 @@ def main():
         total_runs = page.evaluate("DATA.runsData.length")
         standard_runs = page.evaluate("overviewRuns().length")
         tab("detail")
-        assert "Default filters applied" in page.locator("#shared-filter-summary").inner_text()
+        assert " of " in page.locator("#shared-filter-summary").inner_text()
         assert not page.locator("#shared-filter-bar").evaluate("e => e.classList.contains('filters-active')")
         assert page.locator("#shared-filter-presets").input_value() == "default"
         tab("overview")
