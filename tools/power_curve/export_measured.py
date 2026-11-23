@@ -51,6 +51,9 @@ def floor_numbers(fight, costs):
            if fight.get("closed") and fight.get("damageBySlot") is not None else {}),
         **({"incomingBySlot": fight["incomingBySlot"]}
            if fight.get("incomingBySlot") is not None else {}),
+        # A fun number: what hits carried past an enemy's last HP. Not damage, in no rate.
+        **({"overkillDealt": fight["ovk_dealt"], "overkillBest": fight["ovk_best"]}
+           if fight.get("ovk_dealt") else {}),
         "played": plays["played"] if plays else 0.0,
         "listPrice": plays["equiv"] if plays else 0.0,
         "spent": plays["spent"] if plays else 0.0,

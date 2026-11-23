@@ -46,6 +46,7 @@ def records(log, slot):
     # What this log can say. `action0` and `damageCalc` arrived with the card-attributed hits,
     # `energy+` events and sourceSlot; a log without them cannot name the card or count gained energy.
     new_mod = "action0" in kinds
+    has_ovk = any(e["k"] == "hit" and "ovk" in e["a"] for e in ev)
     has_card_hits = any(e["k"] == "hit" and "card" in e["a"] for e in ev)
     encounters = {}
     for e in ev:
@@ -58,6 +59,8 @@ def records(log, slot):
     start = {}                    # (fight, turn) -> energy the turn opened with
     cards = defaultdict(int)      # (fight, turn) -> energy gained by cards and relics
     best_hit = None
+    best_over = None              # the most overkill one hit carried past an enemy's last HP
+    over_total = 0
     blk_total = 0
     for e in ev:
         a, k = e["a"], e["k"]
@@ -67,11 +70,17 @@ def records(log, slot):
         elif k == "hit" and a.get("by") == "P" and a.get("t") != "P" and a.get("enemy", True) \
                 and _slot(a) == slot and a.get("t") not in ("Osty", "Byrdpip"):
             n = a.get("total") or 0
-            dmg[key] += n
-            # A card's hit only: what a power, orb or Osty hits for is not a card.
-            if a.get("card") and (best_hit is None or n > best_hit["n"]):
-                best_hit = {"n": n, "card": a.get("card") or None, "enemy": a.get("t"), "fight": e["f"],
-                            "turn": e["t"], "enc": encounters.get(e["f"])}
+            over = a.get("ovk") or 0
+            dmg[key] += n          # damage dealt: overkill is never in it
+            # A card's hit only: what a power, orb or Osty hits for is not a card. The hit is
+            # what the card swung for, overkill included; `dealt` is what it actually took off.
+            if a.get("card") and (best_hit is None or n + over > best_hit["n"]):
+                best_hit = {"n": n + over, "dealt": n, "overkill": over, "card": a.get("card") or None,
+                            "enemy": a.get("t"), "fight": e["f"], "turn": e["t"], "enc": encounters.get(e["f"])}
+            over_total += over     # every hit of ours counts toward the run total, card or not
+            if a.get("card") and over > (best_over["n"] if best_over else 0):
+                best_over = {"n": over, "dealt": n, "card": a.get("card") or None, "enemy": a.get("t"),
+                             "fight": e["f"], "turn": e["t"], "enc": encounters.get(e["f"])}
         elif k == "blk" and a.get("c") == "P" and _slot(a) == slot:
             blk[key] += a.get("n") or 0
             blk_total += a.get("n") or 0
@@ -104,6 +113,9 @@ def records(log, slot):
         "blockInTurn": top(blk),
         "blockTotal": blk_total if blk else None,
         "largestHit": best_hit if has_card_hits else None,
+        # Only logs from a mod that records `ovk` can say; an older one has no overkill to show.
+        "mostOverkill": best_over,
+        "overkillTotal": over_total if has_ovk else None,
         "energyInTurn": energy,
         "events": len(ev), "truncated": bool(log.get("truncated")),
         "attributed": bool(new_mod and has_card_hits),

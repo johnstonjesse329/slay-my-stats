@@ -58,11 +58,16 @@ function recordsPanelHtml(entry, art) {
   } else {
     const hit = r.largestHit;
     const en = r.energyInTurn;
+    const over = r.mostOverkill;
     table = `<table class="run-records-table"><tbody>
       ${row("Most cards played in a turn", r.cardsInTurn ? `<b>${r.cardsInTurn.n}</b>` : recordsNone(), recordsPlace(r.cardsInTurn))}
       ${row("Most damage in a single turn", r.damageInTurn ? `<b>${r.damageInTurn.n}</b>` : recordsNone(), recordsPlace(r.damageInTurn))}
-      ${row("Largest single card hit", hit ? `<b>${hit.n}</b> ${escapeHtml(fmtCardLabel(hit.card))}` : recordsNone(),
-            hit ? `on ${escapeHtml(hit.enemy)}, ${recordsPlace(hit)}` : "")}
+      ${row("Largest single card hit, overkill included", hit ? `<b>${hit.n}</b> ${escapeHtml(fmtCardLabel(hit.card))}` : recordsNone(),
+            hit ? `${hit.overkill ? `${hit.dealt} dealt + ${hit.overkill} overkill, ` : ""}on ${escapeHtml(hit.enemy)}, ${recordsPlace(hit)}` : "")}
+      ${row("Most overkill on a single hit", over ? `<b>${over.n}</b> ${escapeHtml(fmtCardLabel(over.card))}`
+              : r.overkillTotal != null ? `<b>0</b>` : recordsNone(),
+            over ? `on ${escapeHtml(over.enemy)}, ${recordsPlace(over)}` : "")}
+      ${row("Overkill, whole run", r.overkillTotal != null ? `<b>${r.overkillTotal}</b>` : recordsNone())}
       ${row("Most Block gained in a turn", r.blockInTurn ? `<b>${r.blockInTurn.n}</b>` : recordsNone(), recordsPlace(r.blockInTurn))}
       ${row("Block gained, whole run", r.blockTotal != null ? `<b>${r.blockTotal}</b>` : recordsNone())}
       ${row("Highest energy in a single turn", en ? `<b>${en.n}</b>` : recordsNone(),
