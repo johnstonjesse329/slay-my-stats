@@ -996,8 +996,21 @@ function partyIncomingComparison(players, rows, average) {
 // FB-62 proof of concept: "orig", "flip" (best on top, negative ticks) or "score" (higher = better).
 const FB62 = (() => { try { return localStorage.getItem("fb62") || "orig"; } catch { return "orig"; } })();
 const fb62Neg = v => v ? "−" + +Math.abs(v).toFixed(2) : "0";
-const fb62Ratio = (win, own) => win == null || own == null || Number.isNaN(win) || Number.isNaN(own) ? undefined : (win + 1) / (own + 1);
+// Score guard: both sides get +1 (so a near-zero denominator can't blow up), and the score stops at 4.
+const FB62_CAP = 4;
+const fb62Ratio = (win, own) => win == null || own == null || Number.isNaN(win) || Number.isNaN(own) ? undefined : Math.min(FB62_CAP, (win + 1) / (own + 1));
+const fb62Cap = v => v == null ? v : Math.min(FB62_CAP, v);
+const FB62_NAME = { flip: "Flipped", score: "Score" };
+const FB62_CAPTION = { orig: "Lower is better.", flip: "Higher is better (0 is best).", score: "Higher is better." };
+// A plotted value as the mode shows it.
+const fb62Show = (v, unit) => FB62 === "score" ? (v >= FB62_CAP ? `≥${FB62_CAP}×` : `${v.toFixed(2)}×`)
+  : `${FB62 === "flip" ? "−" : ""}${unit === "×" ? v.toFixed(2) : v.toFixed(1)}${unit === "×" ? "×" : " / turn"}`;
+// Tooltip line: the mode's value, with the original beside it in Flipped.
+const fb62Cell = (label, v, orig, unit) => v == null ? "" :
+  `<div class="ft-cap">${label} ${FB62_NAME[FB62]} <b>${fb62Show(v, unit)}</b>${FB62 === "flip" ? ` · original ${fb62Show(orig ?? v, unit).replace("−", "")}` : ""}</div>`;
 function fb62Toggle() {
+  const cap = [...document.querySelectorAll("#detail-keep-box .chart-caption")].find(c => c.firstChild?.textContent.includes("compared with an average win"))?.firstChild;
+  if (cap?.nodeType === 3) cap.textContent = cap.textContent.replace(/(Lower|Higher) is better[^.]*\.|Closer[^.]*\./, FB62_CAPTION[FB62]);
   if (document.getElementById("fb62-toggle")) return;
   const host = document.getElementById("detail-keep-tier")?.closest("dl")?.parentElement;
   if (!host) return;
@@ -1023,7 +1036,9 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
     if (!nodes[i]) return "";
     const n = nodes[i];
     const head = floorTipHead(extra.fightRows ? { ...n, enc: n.fight || n.enc } : n) +
-      (extra.fightRows ? fightKind(n, extra.fightRows[i]) : "") + (extra.overview?.(i) || "");
+      (extra.fightRows ? fightKind(n, extra.fightRows[i]) : "") + (extra.overview?.(i) || "") +
+      (extra.fb62 && FB62 !== "orig" ? players.map((p, j) => series[j] && series[j][i] != null
+        ? fb62Cell(`${partyChartSwatch(p)}`, series[j][i], series[j][i], FB62 === "score" ? "×" : extra.fb62unit) : "").join("") : "");
     if (extra.compare && (extra.summaryOnly || (!floorTipTouch && matchMedia("(min-width: 761px)").matches))) {
       const pickups = players.map((p, j) => {
         const chips = changes[j](i);
@@ -1154,14 +1169,15 @@ function renderPartyCharts(players) {
   // fight is the same for all of them, so its turns and the 1x line are drawn once.
   const fightIcon = (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc);
   const turnsShare = nodes.map((_, i) => {
-    for (const r of readings.values()) { const x = r && r[i]; if (x && x.winTurns !== undefined) return FB62 === "score" ? x.winTurns / x.turns : x.turns / x.winTurns; }
+    for (const r of readings.values()) { const x = r && r[i]; if (x && x.winTurns !== undefined) return FB62 === "score" ? fb62Cap(x.winTurns / x.turns) : x.turns / x.winTurns; }
     return null;
   });
-  const times = v => v == null ? "–" : `${v.toFixed(2)}×`;
+  const asMode = r => FB62 === "score" ? fb62Cap(1 / r) : r;
+  const times = v => v == null ? "–" : FB62 === "score" ? fb62Show(v, "×") : `${FB62 === "flip" ? "−" : ""}${v.toFixed(2)}×`;
   const share = build("detail-keep-share-chart", "detail-keep-share-legend",
     perFight(r => r.winTotal === undefined ? undefined : FB62 === "score" ? fb62Ratio(r.winTotal, r.total) : (r.total + 1) / (r.winTotal + 1)),
     (p, i, v) => times(v), FB62 === "flip", fightIcon, {
-      floorAtZero: true, fb62: true,
+      floorAtZero: true, fb62: true, fb62unit: "×",
       averageGuide: true,
       fightRows: benchmarkRows,
       lines: [
@@ -1171,11 +1187,11 @@ function renderPartyCharts(players) {
       compare: (party, i) => {
         const r = benchmarkRows?.[i];
         const turns = r?.winTurns === undefined ? "" :
-          `<div class="ft-cap">Fight turns <b>${r.turns}</b> · ${times(turnsShare[i])} avg win · Avg win ${+r.winTurns.toFixed(1)}</div>`;
-        return turns + partyFloorTable(party, ["Damage taken", "× avg win"], p => {
+          `<div class="ft-cap">Fight turns <b>${r.turns}</b> · ${times(fb62Cap(turnsShare[i]))} avg win · Avg win ${+r.winTurns.toFixed(1)}</div>`;
+        return turns + partyFloorTable(party, ["Damage taken", FB62 === "orig" ? "× avg win" : FB62_NAME[FB62]], p => {
           const row = readingAt(p, i);
-          return [row?.total, row?.winTotal === undefined ? null : times((row.total + 1) / (row.winTotal + 1))];
-        }, r?.winTotal === undefined ? null : [Math.round(r.winTotal), "1.00×"]);
+          return [row?.total, row?.winTotal === undefined ? null : times(asMode((row.total + 1) / (row.winTotal + 1)))];
+        }, r?.winTotal === undefined ? null : [Math.round(r.winTotal), times(1)]);
       },
       detail: (p, i) => { const row = readingAt(p, i); return row && keepShareTip(row, p.color); },
     });
@@ -1194,7 +1210,7 @@ function renderPartyCharts(players) {
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => FB62 === "score" ? fb62Ratio(r.winGrossRate, r.grossRate) : r.grossRate), turn, FB62 !== "score",
       fightIcon, { ...(FB62 === "score" ? { ranges: [], reverse: false, lines: [{ ...KEEP_AVERAGE_STYLE, spanGaps: true,
           data: nodes.map((_, i) => benchmarkRows?.[i]?.winGrossRate == null ? null : 1) }] }
-        : historical("winGrossRate", ranges.taken, true)), fb62: true, fightRows: benchmarkRows,
+        : historical("winGrossRate", ranges.taken, true)), fb62: true, fb62unit: " / turn", fightRows: benchmarkRows,
         compare: (party, i) => partyIncomingComparison(party, p => readingAt(p, i), benchmarkRows?.[i]),
         detail: (p, i) => { const row = readingAt(p, i); return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
@@ -4461,8 +4477,8 @@ function keepIncomingTip(r, mp = false) {
 
 function keepShareTip(r, color = KEEP_LINES.taken.color) {
   if (r.winTurns === undefined) return "";
-  const mult = v => `${v.toFixed(2)}×`;
-  return `<table><tr><th></th><th>This run</th><th>× avg win</th><th class="ft-win">Avg win</th></tr>` +
+  const mult = v => FB62 === "score" ? fb62Show(fb62Cap(1 / v), "×") : `${FB62 === "flip" ? "−" : ""}${v.toFixed(2)}×`;
+  return `<table><tr><th></th><th>This run</th><th>${FB62 === "orig" ? "× avg win" : FB62_NAME[FB62]}</th><th class="ft-win">Avg win</th></tr>` +
     `<tr><td>${swatch(color)}Damage taken</td><td><b>${Math.round(r.total)}</b></td>` +
     `<td>${mult((r.total + 1) / (r.winTotal + 1))}</td><td class="ft-win">${Math.round(r.winTotal)}</td></tr>` +
     `<tr><td>${swatch(KEEP_TURN_STYLE.borderColor)}Fight turns</td><td><b>${r.turns}</b></td>` +
@@ -4528,7 +4544,10 @@ function renderDetailKeepCharts(run) {
   const damageTip = tip(r => fallback?.partySize > 1 ? partyDamageBenchmarkTip(r, fallback.partySize)
     : keepDamageTip(r, run.mp, damageLine.color), fallback?.tip);
 
-  const inTip = tip(r => keepIncomingTip(r, run.mp));
+  const inTip = tip(r => keepIncomingTip(r, run.mp), FB62 === "orig" ? null : i => {
+    const r = rows[i];
+    return r && r.grossRate != null && r.winGrossRate != null ? fb62Cell("", FB62 === "score" ? fb62Ratio(r.winGrossRate, r.grossRate) : r.grossRate, r.grossRate, FB62 === "score" ? "×" : "/turn") : "";
+  });
   const playTip = tip(simple(r => r.play ? [
     row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
     row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),
@@ -4614,7 +4633,7 @@ function renderDetailKeepCharts(run) {
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
     ...damageHistory.lines, ...(fallback?.chartLines || []), ...markers], damageTip, damageHistory.ranges);
   chart("in", FB62 === "score"
-    ? [line(takenLine, r => r.winGrossRate === undefined ? undefined : (r.winGrossRate + 1) / (r.grossRate + 1), "in"), winners(r => r.winGrossRate === undefined ? undefined : 1)]
+    ? [line(takenLine, r => r.winGrossRate === undefined ? undefined : fb62Ratio(r.winGrossRate, r.grossRate), "in"), winners(r => r.winGrossRate === undefined ? undefined : 1)]
     : [line(takenLine, r => r.grossRate, "in"), winners(r => r.winGrossRate)], inTip, FB62 === "score" ? null : ranges.taken, true);
   fb62Toggle();
 
@@ -4626,13 +4645,18 @@ function renderDetailKeepCharts(run) {
   // next fights without those fights being read as the choice's doing.
   const ticks = changes ? changes.map((s, i) => i ? choiceTick(s) : null) : null;
   document.getElementById("detail-keep-share-picks").style.display = ticks && ticks.some(Boolean) ? "" : "none";
-  const shareTip = tip(r => keepShareTip(r, takenLine.color));
+  const shareTip = tip(r => keepShareTip(r, takenLine.color), FB62 === "orig" ? null : i => {
+    const r = rows[i];
+    if (!r || r.winTotal === undefined) return "";
+    const d = (r.total + 1) / (r.winTotal + 1), t = r.turns / r.winTurns;
+    return fb62Cell("Damage taken", FB62 === "score" ? fb62Cap(1 / d) : d, d, "×") + fb62Cell("Fight turns", FB62 === "score" ? fb62Cap(1 / t) : t, t, "×");
+  });
   const average = { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) };
   chart("share", [
     average,
-    line(takenLine, r => r.winTotal === undefined ? undefined : FB62 === "score" ? (r.winTotal + 1) / (r.total + 1) : (r.total + 1) / (r.winTotal + 1), "share"),
+    line(takenLine, r => r.winTotal === undefined ? undefined : FB62 === "score" ? fb62Ratio(r.winTotal, r.total) : (r.total + 1) / (r.winTotal + 1), "share"),
     { ...line({ label: KEEP_TURN_STYLE.label, color: KEEP_TURN_STYLE.borderColor },
-      r => r.winTurns === undefined ? undefined : FB62 === "score" ? r.winTurns / r.turns : r.turns / r.winTurns), ...KEEP_TURN_STYLE },
+      r => r.winTurns === undefined ? undefined : FB62 === "score" ? fb62Cap(r.winTurns / r.turns) : r.turns / r.winTurns), ...KEEP_TURN_STYLE },
   ], shareTip, null, false, [keepAverageGuide, ...(ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : [])], true);
 
   const played = rows.some(r => r && r.play);
