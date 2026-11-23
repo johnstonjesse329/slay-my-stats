@@ -1822,7 +1822,7 @@ function mapAsWalked(m, floors) {
 // against a route all the way to the boss.
 function actRouteComparison(map) {
   const types = [["Elite", "Elites"], ["Shop", "Shops"], ["RestSite", "Rest sites"],
-    ["Unknown", "Unknown rooms"], ["Fork", "Forks"]];
+    ["Unknown", "Unknown rooms"]];
   const taken = map.path.filter(([row]) => row > 0 && row < map.h);
   if (!taken.length) return null;
   const depth = taken.at(-1)[0];
@@ -1834,7 +1834,7 @@ function actRouteComparison(map) {
     const children = exits.filter(([next]) => next > row)
       .map(coords => reachable.get(key(coords))).filter(Boolean);
     if (row === depth ? toBoss && !exits.some(coords => key(coords) === key(map.boss)) : !children.length) continue;
-    const counts = types.map(([name]) => Number(name === type || (name === "Fork" && children.length > 1)));
+    const counts = types.map(([name]) => Number(name === type));
     const min = counts.map((count, i) => count + (children.length ? Math.min(...children.map(c => c.min[i])) : 0));
     const max = counts.map((count, i) => count + (children.length ? Math.max(...children.map(c => c.max[i])) : 0));
     reachable.set(key([row, col]), { row, children, counts, min, max });
@@ -1848,8 +1848,6 @@ function actRouteComparison(map) {
   const styles = [["Restful", at("RestSite") >= 4], ["Ambitious", at("Elite") >= 3],
     ["Fortuitous", at("Shop") >= 2], ["Curious", at("Unknown") >= 4]].filter(([, on]) => on).map(([name]) => name);
   return { styles: styles.length ? `<small class="act-map-styles">Path style: ${styles.join(" · ")}</small>` : "", table: `<div class="act-map-route"><table class="detail-summary-table">
-    <caption>Route through row ${depth}</caption>
-    <thead><tr><th scope="col">Map stop</th><th scope="col">Taken</th></tr></thead>
     <tbody>${types.map(([, label], i) => `<tr><th scope="row">${label}</th><td>${taken_[i]}</td></tr>`).join("")}</tbody>
   </table></div>` };
 }
