@@ -1084,6 +1084,8 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
   const base = iconAxis({ min: 0 });
   const y = { ...base, stacked: false, reverse, ticks: { ...base.ticks, maxTicksLimit: 5 } };
   if (extra.fb62 && FB62 === "flip") y.ticks.callback = fb62Tick(extra.fb62unit);
+  // Score is a multiple of the average win too: whole steps, so 1× (the average line) is labelled.
+  if (extra.fb62 && FB62 === "score") { y.ticks.callback = fb62Tick("×"); y.ticks.stepSize = 1; }
   if (extra.floorAtZero) {
     const stretch = y.afterDataLimits;
     y.afterDataLimits = scale => { if (stretch) stretch(scale); scale.min = Math.max(0, scale.min); };
@@ -4617,6 +4619,8 @@ function renderDetailKeepCharts(run) {
     const yAxis = { ...base, stacked: false, ticks: { ...base.ticks, maxTicksLimit: 5 },
       reverse: fb && FB62 === "flip" ? true : fb && FB62 === "score" ? false : !!up };
     if (fb && FB62 === "flip") yAxis.ticks.callback = fb62Tick(id === "share" ? "×" : "");
+    // Score is a multiple of the average win too: whole steps so 1× (the average line) is labelled.
+    if (fb && FB62 === "score") { yAxis.ticks.callback = fb62Tick("×"); yAxis.ticks.stepSize = 1; }
     const stretch = yAxis.afterDataLimits;
     yAxis.afterDataLimits = scale => {
       const v = actView(nodes);   // only the bars in view, on a phone showing one act
