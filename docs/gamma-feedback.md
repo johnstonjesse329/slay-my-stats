@@ -13,7 +13,7 @@ panel's X or Escape.
 - Choose **Whole page** for a general comment, enter it, and send it.
   The composer shows the exact page URL that goes with the note, including its
   hash and query, so a report can be reopened without guessing the host.
-- The Feedback button is a slim tab docked on the right edge. Drag it up or down the edge (or use
+- The Feedback button is a small pill docked on the right edge. Drag it up or down the edge (or use
   the Up and Down arrow keys on it) to move it out of the way; the spot is kept in the browser.
 - Sending closes the panel and the Feedback button reads **Sent** for a moment; reopening
   lands on the Inbox, where the new note is.
