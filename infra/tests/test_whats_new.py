@@ -86,7 +86,9 @@ class PostsTest(unittest.TestCase):
 
     def test_site_bar_dot_names_the_newest_post(self):
         self.write('2026-11-01-older.html', '<!-- title: a -->')
-        self.write('2026-11-18-newer.html', '<!-- title: b -->')
+        self.write('2026-11-18-z-morning.html', '<!-- title: b -->')
+        self.write('2026-11-18-newer.html', '<!--\ntitle: c\ntime: 17:45\n-->')
+        self.assertEqual([post['id'] for post in build_site.posts()], ['newer', 'z-morning', 'older'])
         label = build_site.site_link_label('whats-new', "What's new")
         self.assertIn('data-latest="2026-11-18-newer"', label)
         self.assertEqual(build_site.site_link_label('about', 'About'), 'About')

@@ -23,6 +23,9 @@ fixes: FB-12, FB-31
 how many players asked for it (their +1s on those notes), and players who filed or +1'd one see
 "You asked for this" on it.
 
+Use an optional `time: HH:MM` to put a post ahead of earlier posts from the same date. The page
+still displays the date alone.
+
 The page's own heading and intro are `site/pages/whats-new.html`; the posts go where it says
 `<!-- posts -->`. `python build_site.py` stops with a message if a file name or header is wrong.
 Preview with `python tools/serve_site.py` and open `http://localhost:8000/whats-new`. Reactions

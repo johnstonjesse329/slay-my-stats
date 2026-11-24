@@ -146,10 +146,14 @@ def posts() -> list[dict]:
         fixes = fields.get("fixes", "")
         if fixes and not _POST_FIXES.match(fixes):
             raise PageError(f"{where}: fixes is a list of feedback numbers, like FB-12, FB-31")
+        clock = fields.get("time", "")
+        if clock and not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", clock):
+            raise PageError(f"{where}: time uses 24-hour HH:MM, like 17:45")
         out.append({"id": post_id, "date": date, "title": fields["title"],
+                    "time": clock,
                     "fixes": [int(n) for n in re.findall(r"\d+", fixes)],
                     "body": (text[head.end():] if head else text).strip()})
-    return out
+    return sorted(out, key=lambda post: (post["date"], post["time"], post["id"]), reverse=True)
 
 
 def render_post(post: dict) -> str:
