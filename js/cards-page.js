@@ -263,29 +263,27 @@ function renderCardsPage() {
     // showFloatingHtmlTooltip rather than the usual .card-tooltip-wrap
     // markup, since this table lives inside a scrolling .pivot-wrap
     // (overflow-y:auto) that would clip an absolutely-positioned popup.
+    // The portrait at the relic table's icon height, so a row is the same
+    // height as a relic row; the full card shows on hover, or in the pane
+    // beside the table on wide screens.
     const src = cardImgSrc(r.id);
-    // Prefer the baked card face at thumbnail size: the portrait alone was too
-    // small to tell two similar cards apart, and the face carries the name,
-    // type and cost. A checkout without the bake falls back to the portrait.
-    const art = (cardFaceAvailable()
-      ? renderCardFace(r.id, 0, "var(--cards-thumb-w)", { thumb: true })
-      : "") || (src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="cards-thumb">` : "");
+    const art = src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="cards-thumb">` : "";
     // The thumbnail and the name are one trigger, so hovering, tapping or
     // tabbing to either opens the card.
     const icon = art ? `<span class="cards-thumb-wrap">${art}</span>` : "";
     return `<tr>
-    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="fav-item" data-card-id="${r.id}" tabindex="0" style="cursor:pointer">${icon}${r.title}</span></td>
-    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:var(--text-dim)">${r.pool === "colorless" ? `${charIconHtml(r.pool)}${r.owner}` : charLabelHtml(r.pool)}</td>
-    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
-    <td style="padding:0.45rem 0.6rem;font-size:var(--fs-sm);color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}${isCoopCard(r.id) ? `<span class="cards-coop-tag">Multi</span>` : ""}</td>
-    <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.offered}</td>
-    <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.pickRate, "#ccc")}</td>
-    <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.winPicked,  "#ccc")}</td>
-    <td style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.winSkipped, "#ccc")}</td>${global ? `
-    <td class="cards-all cards-all-start" style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md);color:var(--text-dim)">${r.gOffered ?? "—"}</td>
-    <td class="cards-all" style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.gPickRate, "#aaa")}</td>
-    <td class="cards-all" style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.gWinPicked, "#aaa")}</td>
-    <td class="cards-all" style="padding:0.45rem 0.6rem;text-align:center;font-size:var(--fs-md)">${pct(r.gWinSkipped, "#aaa")}</td>` : ""}
+    <td class="cards-name-cell"><span class="fav-item relics-name" data-card-id="${r.id}" tabindex="0">${icon}${r.title}</span></td>
+    <td style="color:var(--text-dim)">${r.pool === "colorless" ? `${charIconHtml(r.pool)}${r.owner}` : charLabelHtml(r.pool)}</td>
+    <td style="color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
+    <td style="color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}${isCoopCard(r.id) ? `<span class="cards-coop-tag">Multi</span>` : ""}</td>
+    <td class="relics-num" style="color:var(--text-dim)">${r.offered}</td>
+    <td class="relics-num">${pct(r.pickRate, "#ccc")}</td>
+    <td class="relics-num">${pct(r.winPicked,  "#ccc")}</td>
+    <td class="relics-num">${pct(r.winSkipped, "#ccc")}</td>${global ? `
+    <td class="relics-num cards-all cards-all-start" style="color:var(--text-dim)">${r.gOffered ?? "—"}</td>
+    <td class="relics-num cards-all">${pct(r.gPickRate, "#aaa")}</td>
+    <td class="relics-num cards-all">${pct(r.gWinPicked, "#aaa")}</td>
+    <td class="relics-num cards-all">${pct(r.gWinSkipped, "#aaa")}</td>` : ""}
   </tr>`;
   }).join("");
 
