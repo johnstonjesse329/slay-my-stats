@@ -279,7 +279,8 @@
 .recent-uploads li a:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 .recent-uploads .recent-meta { color: var(--text-dim); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 
-/* Showcase (boot.js showShowcase): tabs over a short list of runs, each row a link. Reuses the
+/* Showcase (boot.js showShowcase): tabs over a short list of runs, each row a link (character head, name,
+   character in its colour, the tab's figure, deck synergies, when). Reuses the
    recent-uploads row. Tabs wrap on a phone and keep a tap-sized height. */
 .showcase { margin-top: 1.5rem; }
 .showcase-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.6rem; }
@@ -295,6 +296,9 @@
 }
 .showcase-runs li a:hover, .showcase-runs li a:focus-visible { background: rgba(224,196,104,0.08); color: var(--gold); }
 .showcase-runs li a:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.showcase-char-icon { flex: none; width: 1.4rem; height: 1.4rem; margin-right: -0.35rem; }
+.showcase-char { font-weight: 600; white-space: nowrap; }
+.showcase-syn { color: var(--text-dim); font-size: 0.85rem; }
 .showcase-figure { color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .showcase-runs .recent-meta { color: var(--text-dim); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 

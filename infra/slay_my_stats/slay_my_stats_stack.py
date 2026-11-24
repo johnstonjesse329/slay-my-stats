@@ -30,6 +30,7 @@ from aws_cdk import (
 )
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import jsii
@@ -56,6 +57,10 @@ CARD_DATA = Path(__file__).resolve().parents[2] / "card_data.json"
 IDS_PY = Path(__file__).resolve().parents[2] / "tools" / "build_known_ids.py"
 RELIC_DATA = Path(__file__).resolve().parents[2] / "relic_data.json"
 RETIRED_IDS = Path(__file__).resolve().parents[2] / "tools" / "retired_ids.json"
+# The deck-synergy table the home page showcase names a run's synergies with: build_site.py's
+# build_synergy(), written into the bundle (and so hashed through the files it is built from).
+SYNERGY_SOURCES = [Path(__file__).resolve().parents[2] / name
+                   for name in ("build_site.py", "tools/synergy_precision.py")]
 # Hand-written site pages: site/pages/<name>.html is served at /<name>.
 # tools/deploy.py checks the names (build_site.site_pages()) before cdk
 # runs; each page gets its own CloudFront behavior below.
@@ -91,6 +96,11 @@ class _CopyIngestSources:
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
             mod.write(Path(output_dir) / "known_ids.json")
+        # The same for the showcase's synergies: without power_data.json the rows have none.
+        if POWER_DATA.exists() and CARD_DATA.exists():
+            sys.path.insert(0, str(SYNERGY_SOURCES[0].parent))
+            import build_site
+            build_site.write_showcase_synergy(Path(output_dir) / "showcase_synergy.json")
         return True
 
 
@@ -98,7 +108,7 @@ def _ingest_asset_hash() -> str:
     import hashlib
     h = hashlib.sha256()
     for p in (*sorted(INGEST_DIR.glob("*.py")), RUN_PY, DERIVE_PY, CARDS_PY, CARD_DATA,
-              IDS_PY, RELIC_DATA, RETIRED_IDS, FIGHT_DEMAND_PY, POWER_DATA):
+              IDS_PY, RELIC_DATA, RETIRED_IDS, FIGHT_DEMAND_PY, POWER_DATA, *SYNERGY_SOURCES):
         if p.exists():
             h.update(p.read_bytes())
     return h.hexdigest()

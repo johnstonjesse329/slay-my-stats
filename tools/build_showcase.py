@@ -22,6 +22,8 @@ Usage:
         there, so tools/serve_site.py shows the home page showcase. Turn data comes from
         local_data/telemetry/ and, where that has none, from the telemetry kept with
         the act-validation work (local_data/act_validation/confirmation/telemetry/).
+        Each row's deck synergies need the table build_site.py writes
+        (infra/lambda/ingest/showcase_synergy.json, gitignored), made here first.
         The tabs only fill from runs in the last 30 days with turn data, so on a
         local copy a tab can be short or absent.
 
@@ -87,6 +89,9 @@ def main() -> None:
     import benchmark
     import handler
     if args.local:
+        # The synergy table the Lambda bundle would carry (gitignored next to showcase.py).
+        import build_site
+        build_site.write_showcase_synergy(_REPO_ROOT / "infra" / "lambda" / "ingest" / "showcase_synergy.json")
         local = _REPO_ROOT / "local_data"
         handler._store = _LocalTelemetry(handler.DirStore(local),
                                          local / "act_validation" / "confirmation" / "telemetry")

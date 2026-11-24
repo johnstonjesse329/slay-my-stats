@@ -425,7 +425,9 @@
   //
   // /users/_showcase.json.gz is built daily (infra/lambda/ingest/showcase.py): a handful of
   // winning runs from the last 30 days per tab, none ranked. A tab with no runs is left
-  // out, and with no tabs at all so is the section.
+  // out, and with no tabs at all so is the section. A row leads with its character's head and
+  // colour (from /catalog.json, as the stats below use) and ends with the deck's synergy names
+  // (r.syn; a row from an older file has none).
   const SHOWCASE_TABS = [
     ["op", "OP runs", null],
     ["blocked", "Most blocked in a turn", n => `${n} Block`],
@@ -443,19 +445,35 @@
     } catch (e) {
       return;  // extra, like the stats
     }
+    let catalog = {};
+    try {
+      const c = await fetch("/catalog.json");
+      if (c.ok) catalog = await c.json();
+    } catch (e) {
+      // the rows still draw, without a head or colour
+    }
     const tabs = SHOWCASE_TABS.filter(([key]) => (data[key] || []).length);
     if (!tabs.length) return;
     const tablist = el("div", { className: "showcase-tabs", role: "tablist" });
     const panel = el("ul", { className: "showcase-runs", role: "tabpanel" });
+    const charRow = (r, label) => {
+      const id = stripPrefix(r.char || "", "CHARACTER.");
+      const icon = ((catalog.charIcons || {})[id.toUpperCase()] || {}).icon;
+      return [
+        ...(icon ? [el("img", { className: "showcase-char-icon", src: icon, alt: "" })] : []),
+        el("span", { className: "site-row-name", textContent: r.name }),
+        el("span", { className: "showcase-char", style: `color:${(catalog.charColorMap || {})[id] || CHAR_FALLBACK_COLOR}`,
+          textContent: `${titleCaseId(id)} A${r.asc}` }),
+        ...(label && r.n != null ? [el("span", { className: "showcase-figure", textContent: label(r.n) })] : []),
+        ...(r.syn && r.syn.length ? [el("span", { className: "showcase-syn", textContent: r.syn.join(" · ") })] : []),
+        el("span", { className: "recent-meta", textContent: whenLabel(r.ts, true) }),
+      ];
+    };
     const select = key => {
       const [, , label] = tabs.find(t => t[0] === key);
       tablist.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
       panel.replaceChildren(...data[key].map(r => el("li", {}, [
-        el("a", { href: `/u/${r.slug}#detail/${r.ts}` }, [
-          el("span", { className: "site-row-name", textContent: `${r.name} · ${titleCaseId(stripPrefix(r.char || "", "CHARACTER."))} A${r.asc}` }),
-          ...(label && r.n != null ? [el("span", { className: "showcase-figure", textContent: label(r.n) })] : []),
-          el("span", { className: "recent-meta", textContent: whenLabel(r.ts, true) }),
-        ]),
+        el("a", { href: `/u/${r.slug}#detail/${r.ts}` }, charRow(r, label)),
       ])));
     };
     for (const [key, title] of tabs) {

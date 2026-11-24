@@ -60,6 +60,60 @@ class Build(unittest.TestCase):
         self.assertEqual(len(out["deck"]), 3)
         self.assertEqual(out["deck"][0]["n"], 20)
 
+    def test_synergy_names_ride_along_and_old_rows_do_not_need_them(self):
+        out = showcase.build([run(NOW - 5, op=True, syn=["Shiv", "Poison"]), run(NOW - 6, op=True)], NOW)
+        self.assertEqual(out["op"][0]["syn"], ["Shiv", "Poison"])
+        self.assertNotIn("syn", out["op"][1])
+
+
+TABLE = {
+    "synergy": {
+        "cards": {"CARD.A": [["power:Strength"], []], "CARD.B": [[], ["power:Strength"]],
+                  "CARD.S1": [["shiv"], []], "CARD.S2": [[], ["shiv"]], "CARD.SOLO": [["lone"], ["lone"]]},
+        "relics": {"RELIC.R": [["shiv"], []]},
+        "cardVariants": {"CARD.A": [[["power:Strength"], []], [["power:Strength"], ["lone"]]]},
+        "cardRolls": {},
+    },
+    "basic": ["CARD.S1", "CARD.S2"],
+}
+
+
+def cards(*ids, up=0):
+    return [{"id": i, "current_upgrade_level": up} for i in ids]
+
+
+class DeckSynergies(unittest.TestCase):
+    def names(self, deck, relics=(), char="CHARACTER.IRONCLAD"):
+        return showcase.deck_synergies(char, deck, [{"id": r} for r in relics], TABLE)
+
+    def test_a_maker_and_a_different_user(self):
+        self.assertEqual(self.names(cards("CARD.A", "CARD.B")), ["Strength"])
+        self.assertEqual(self.names(cards("CARD.A")), [])            # nothing to pay it off
+        self.assertEqual(self.names(cards("CARD.SOLO")), [])         # a card never links to itself
+
+    def test_starters_alone_say_nothing_but_a_relic_counts(self):
+        self.assertEqual(self.names(cards("CARD.S1", "CARD.S2")), [])
+        self.assertEqual(self.names(cards("CARD.S2"), ["RELIC.R"], "CHARACTER.SILENT"), ["Shiv"])
+
+    def test_upgraded_copy_reads_its_own_row(self):
+        deck = cards("CARD.A", "CARD.B") + cards("CARD.SOLO", up=1)
+        self.assertEqual(self.names(deck), ["Strength"])
+        self.assertEqual(showcase.deck_synergies("CHARACTER.IRONCLAD", cards("CARD.A", up=1) + cards("CARD.SOLO"), [], TABLE), ["Lone"])
+
+    def test_unknown_key_is_named_from_the_key_and_no_table_means_none(self):
+        self.assertEqual(showcase.synergy_label("power:Poison"), "Poison")
+        self.assertEqual(showcase.deck_synergies("CHARACTER.SILENT", cards("CARD.A"), [], {}), [])
+
+    def test_families_match_the_page(self):
+        import json, re, shutil, subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("no node")
+        src = (Path(__file__).resolve().parents[2] / "js" / "card-face.js").read_text(encoding="utf-8")
+        block = re.search(r"const SYNERGY_FAMILIES = (\{.*?^\});", src, re.S | re.M)[1]
+        page = json.loads(subprocess.check_output([node, "-e", f"console.log(JSON.stringify({block}))"]))
+        self.assertEqual(page, showcase.SYNERGY_FAMILIES)
+
 
 if __name__ == "__main__":
     unittest.main()
