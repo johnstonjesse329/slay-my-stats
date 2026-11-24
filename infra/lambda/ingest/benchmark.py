@@ -9,7 +9,7 @@ import time
 from handler import (RAW_KEY_RE, IngestError, _get_store, _pack, _unpack, blob_key, id_key,
                      iter_upload_lines, telemetry_key)
 import showcase
-from tools.power_curve.fight_demand import cuts_of, run_fights, table
+from tools.power_curve.fight_demand import cuts_of, rating_mix, run_fights, table
 
 
 BENCHMARK_KEY = "users/_fight-demand.json.gz"
@@ -86,7 +86,8 @@ def refresh(event, context):
                 by_run.update(fights)
     runs = [fights for fights in by_run.values() if fights]
     encounters = table(runs)
-    benchmark = {"encounters": encounters, "cuts": cuts_of(runs, encounters)}
+    cuts = cuts_of(runs, encounters)
+    benchmark = {"encounters": encounters, "cuts": cuts, "ratings": rating_mix(runs, encounters, cuts)}
     store.put(BENCHMARK_KEY, _pack(benchmark), {}, previous[2] if previous else None)
     publish_showcase(store, by_run, facts, benchmark, time.time())
     print(json.dumps({"benchmark_runs": len(runs), "encounters": len(encounters),

@@ -907,7 +907,8 @@ Each refresh keeps a copy of the card, relic and potion data in `local_data/game
 Production's Keeping Up charts refresh their benchmark daily at 4:30 a.m. Central.
 EventBridge Scheduler invokes the benchmark Lambda in the production stack. It reads the
 production raw uploads for runs currently published on the site and writes aggregate results
-to `users/_fight-demand.json.gz`.
+to `users/_fight-demand.json.gz`, including how many solo runs of each character got each run rating, by tier,
+for the Overview's "Run readings by character" chart.
 Profile pages use those results when available.
 Gamma can preview the same aggregate at that path in its own data bucket. Its benchmark
 stays at the last preview until it is refreshed manually.
