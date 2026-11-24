@@ -12,6 +12,9 @@
     python tools/feedback_batch.py review            # per-page checklist: where to look, how to answer
     python tools/feedback_batch.py resolve           # dry run: what approved entries would close
     python tools/feedback_batch.py resolve --apply   # write the resolutions to the feedback table
+    python tools/feedback_batch.py link              # dry run: the mainline commit each approved note shipped in
+    python tools/feedback_batch.py link --apply      # record those commits (resolve then files them as resolved_in)
+    python tools/feedback_batch.py link --set FB-42=abc1234 --apply  # name the commit yourself
     python tools/feedback_batch.py backlog --id FB-42 --reason "..."  # dry run: put a note in the backlog
     python tools/feedback_batch.py backlog --id FB-42 --off --apply   # take it back out
 
@@ -341,6 +344,53 @@ def resolve(apply, tags=()):
     print(f"{closed} {'closed' if apply else 'would close (rerun with --apply)'}")
 
 
+def _on_ref(sha, ref):
+    return subprocess.run(["git", "merge-base", "--is-ancestor", sha, ref], cwd=ROOT,
+                          capture_output=True).returncode == 0
+
+
+def _mentions(entry_tag, ref):
+    """(sha, subject) of the non-merge commits on ref whose message names the note, oldest first."""
+    out = subprocess.run(["git", "log", ref, "--no-merges", "--reverse", "-i", "-E",
+                          f"--grep=(^|[^A-Za-z0-9]){entry_tag}([^0-9]|$)", "--format=%H	%s"],
+                         cwd=ROOT, capture_output=True, text=True, encoding="utf-8")
+    return [tuple(line.split("	", 1)) for line in out.stdout.splitlines() if "	" in line]
+
+
+def link(tags, sets, ref, apply):
+    """Fill each built or approved note's `commit` with the commit on `ref` (the mainline) that shipped it.
+
+    A commit message naming the note (FB-n) is the evidence; the oldest such commit is taken, as
+    the one that landed the fix, and later ones are shown as follow-ups. --set FB-n=sha names one
+    by hand, and must be on `ref` too. A note with neither is listed, never guessed."""
+    manual = dict(item.split("=", 1) for item in sets)
+    batch, changed = _load(), 0
+    print(f"Commits on {ref}:")
+    for e in batch["entries"]:
+        t = tag(e)
+        if tags and t not in tags and t not in manual:
+            continue
+        if e["status"] not in (*STATUS_OUTCOME, "built") and t not in manual:
+            continue
+        if t in manual:
+            sha = _commit_sha(manual[t])
+            found, why = ([(sha, "set by hand")], "") if _on_ref(sha, ref) else ([], f"{sha[:9]} is not on {ref}")
+        else:
+            found, why = _mentions(t, ref), "no commit message names it"
+        if not found:
+            print(f"- {t}: {why}; name one with --set {t}=<sha>")
+            continue
+        sha, subject = found[0]
+        extra = f" (+{len(found) - 1} follow-up: {', '.join(c[:9] for c, _ in found[1:])})" if len(found) > 1 else ""
+        print(f"- {t}: {sha[:9]} {subject[:80]}{extra}")
+        if apply:
+            e["commit"] = sha
+            changed += 1
+    if apply:
+        _save(batch)
+    print(f"{changed} recorded" if apply else "dry run: rerun with --apply to record these")
+
+
 def backlog(tags, reason="", on=True, apply=False):
     """Put open notes in the backlog (or take them out), as the inbox's Backlog button does.
 
@@ -468,6 +518,14 @@ if __name__ == "__main__":
         parser.add_argument("--apply", action="store_true")
         options = parser.parse_args(sys.argv[2:])
         resolve(options.apply, options.id)
+    elif cmd == "link":
+        parser = argparse.ArgumentParser(prog="feedback_batch.py link")
+        parser.add_argument("--id", action="append", default=[], help="Limit to this FB-n. Repeat as needed.")
+        parser.add_argument("--set", action="append", default=[], metavar="FB-n=SHA", help="Name the commit by hand.")
+        parser.add_argument("--ref", default="origin/main", help="The mainline the commit must be on.")
+        parser.add_argument("--apply", action="store_true")
+        options = parser.parse_args(sys.argv[2:])
+        link(options.id, options.set, options.ref, options.apply)
     elif cmd == "backlog":
         parser = argparse.ArgumentParser(prog="feedback_batch.py backlog")
         parser.add_argument("--id", action="append", required=True, help="Report ID. Repeat to select more reports.")

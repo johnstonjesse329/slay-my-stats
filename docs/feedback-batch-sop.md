@@ -144,6 +144,10 @@ Follow the junction and branch cleanup procedure in
   the corresponding status. A Gamma duplicate link must refer to a Gamma note.
 - For a production report, the production release workflow can close the report
   with owner authorization once the fix ships to production.
+- Once the changes are on `main`, run `link` (dry run) to find, for each built or approved note, the
+  oldest non-merge commit on `origin/main` whose message names it (later ones show as follow-ups). A note
+  no message names is listed, never guessed: name its commit with `--set FB-n=<sha>`. Review the table,
+  repeat with `--apply`, then `resolve` files that commit as `resolved_in`. Put `FB-n` in commit messages.
 - On an owner backlog, run `backlog --id FB-n --reason "..."` (dry run), then
   repeat with `--apply`. It works on Gamma and production notes, as the inbox's
   Backlog button does; the reason is optional and shown publicly, so it needs the
