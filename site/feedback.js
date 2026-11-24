@@ -7,14 +7,16 @@
   document.body.append(host);
   const root = host.attachShadow({mode: 'open'});
   root.innerHTML = `<style>
-    :host{font:14px/1.45 system-ui;color:#f4f0e7;position:fixed;bottom:16px;right:16px;z-index:2147483646;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+    :host{font:14px/1.45 system-ui;color:#f4f0e7;position:fixed;bottom:16px;right:48px;z-index:2147483646;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
     *{box-sizing:border-box}button,textarea,a{font:inherit;touch-action:manipulation}
     button{background:#302d27;color:#fff;border:1px solid #82735b;border-radius:6px;padding:9px 12px;cursor:pointer}
     button:hover{background:#514635}button:disabled{opacity:.5}a{color:#edc782}
-    #launcher{display:flex;align-items:center;gap:8px;padding:12px 20px;border:1px solid #f6e3b0;border-radius:999px;background:linear-gradient(#f4dda6,#e0c468);color:#191c20;font-size:15px;font-weight:700;box-shadow:0 6px 20px #000a;order:2}
+    #launcher{position:fixed;right:0;top:var(--dock-top,50%);transform:translateY(var(--dock-shift,-50%));display:flex;flex-direction:column;align-items:center;gap:6px;width:36px;padding:10px 0;border:1px solid #f6e3b0;border-right:0;border-radius:10px 0 0 10px;background:linear-gradient(#f4dda6,#e0c468);color:#191c20;font-size:14px;font-weight:700;box-shadow:-3px 4px 14px #0009;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+    #launcher.dragging{cursor:grabbing;box-shadow:-3px 4px 20px #000c}
+    #launcher-label{writing-mode:vertical-rl;letter-spacing:.04em}
     #launcher:hover{background:linear-gradient(#f9e7ba,#e8cf7c)}
     #launcher.sent{background:linear-gradient(#cfe8b5,#9fcb7a);border-color:#cfe8b5}
-    #launcher-count{min-width:20px;padding:1px 6px;border-radius:999px;background:#191c20;color:#f4dda6;font-size:12px;font-weight:700;text-align:center}
+    #launcher-count{min-width:20px;padding:1px 4px;border-radius:999px;background:#191c20;color:#f4dda6;font-size:12px;font-weight:700;text-align:center}
     #launcher:focus-visible,button:focus-visible{outline:3px solid #f6c66d;outline-offset:2px}
     #panel{order:1;background:#191c20;border:1px solid #82735b;border-radius:12px;padding:16px;width:420px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 100px);min-width:300px;min-height:180px;display:flex;flex-direction:column;overflow:hidden;resize:both;box-shadow:0 8px 40px #0009}
     #panel > header,#panel > #tabs{flex-shrink:0}
@@ -115,7 +117,7 @@
     [hidden]{display:none!important}
     #hint{display:grid;justify-items:start;gap:8px;background:#191c20;padding:12px;max-width:min(320px,calc(100vw - 24px));border:1px solid #edc782;border-radius:8px;order:0}
     #cancel{min-height:40px;justify-self:end}
-    @media(max-height:520px){:host{bottom:8px;right:8px}#panel{max-height:calc(100dvh - 78px);width:460px}textarea{min-height:64px}#launcher{padding:9px 14px;font-size:14px}}
+    @media(max-height:520px){:host{bottom:8px;right:44px}#panel{max-height:calc(100dvh - 16px);width:460px}textarea{min-height:64px}}
     @media(max-width:600px){
       :host{left:0;right:0;bottom:0;padding:0 12px calc(12px + env(safe-area-inset-bottom));align-items:flex-end}
       #panel,#panel.placed{position:fixed!important;left:0!important;right:0!important;top:auto!important;bottom:0!important;width:auto!important;min-width:0;max-width:none;min-height:0;max-height:85dvh!important;resize:none;border-radius:14px 14px 0 0;padding:12px 14px calc(14px + env(safe-area-inset-bottom));overscroll-behavior:contain}
@@ -129,7 +131,8 @@
       textarea{min-height:72px}
       #save{min-height:46px}
       #prior ul{max-height:80px}
-      #launcher{padding:10px 16px}
+      #launcher{width:30px;padding:8px 0;font-size:12px}
+      #panel:not([hidden]) ~ #launcher{display:none}
     }
   </style>
   <div id="hint" hidden><span id="pick-instructions">Click or tap to select an element, or drag to select an area. Press Escape to cancel.</span><button id="cancel" type="button" aria-describedby="pick-instructions">Cancel</button></div>
@@ -711,7 +714,52 @@
       if(mine===loadId) $('load-more').disabled=false;
     }
   }
-  $('launcher').onclick=()=>signedOut?signIn():openPanel();
+  // The launcher is a slim tab docked on the right edge. Drag it up or down the edge (touch-action
+  // is off on the tab alone, so scrolling the page is untouched); the spot is kept per browser.
+  const DOCK_KEY = 'smst-feedback-dock', launcher = $('launcher');
+  let dockAt = null;
+  try { const v = parseFloat(localStorage.getItem(DOCK_KEY)); if (v >= 0 && v <= 1) dockAt = v; } catch {}
+  function dockRange() {
+    const h = launcher.offsetHeight || 100, low = 12, high = Math.max(low, innerHeight - h - 12);
+    return {low, high};
+  }
+  function dockTo(ratio, save) {
+    const {low, high} = dockRange();
+    ratio = Math.max(0, Math.min(1, ratio));
+    launcher.style.setProperty('--dock-top', Math.round(low + (high - low) * ratio) + 'px');
+    launcher.style.setProperty('--dock-shift', '0');
+    dockAt = ratio;
+    if (save) { try { localStorage.setItem(DOCK_KEY, String(ratio)); } catch {} }
+  }
+  const dockPx = () => launcher.getBoundingClientRect().top;
+  const dockRatio = px => { const {low, high} = dockRange(); return high > low ? (px - low) / (high - low) : 0; };
+  if (dockAt !== null) dockTo(dockAt, false);
+  addEventListener('resize', () => { if (dockAt !== null) dockTo(dockAt, false); });
+  let dockMoved = false;
+  launcher.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    const startY = e.clientY, startTop = dockPx();
+    dockMoved = false;
+    launcher.setPointerCapture(e.pointerId);
+    const move = ev => {
+      if (!dockMoved && Math.abs(ev.clientY - startY) < 6) return;
+      if (!dockMoved) launcher.classList.add('dragging');
+      dockMoved = true;
+      dockTo(dockRatio(startTop + ev.clientY - startY), false);
+    };
+    const done = ev => {
+      launcher.removeEventListener('pointermove', move); launcher.removeEventListener('pointerup', done); launcher.removeEventListener('pointercancel', done);
+      launcher.classList.remove('dragging');
+      if (dockMoved) { dockTo(dockAt, true); setTimeout(() => { dockMoved = false; }, 0); }
+    };
+    launcher.addEventListener('pointermove', move); launcher.addEventListener('pointerup', done); launcher.addEventListener('pointercancel', done);
+  });
+  launcher.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    dockTo(dockRatio(dockPx() + (e.key === 'ArrowUp' ? -24 : 24)), true);
+  });
+  launcher.onclick=()=>{if(dockMoved)return;signedOut?signIn():openPanel();};
   $('close').onclick=closePanel;$('cancel').onclick=stop;
   $('tab-compose').onclick=()=>showView('compose');
   $('tab-inbox').onclick=()=>showView('inbox');
