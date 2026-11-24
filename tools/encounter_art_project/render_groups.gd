@@ -8,6 +8,7 @@ const CANVAS := Vector2i(2600, 1600)
 const PAD := 12
 const IDLE_PREFERENCE := ["idle_loop", "idle", "idle_a", "Idle"]
 const IDLE_OVERLAYS := {
+	"aeonglass.skel": "_track1/rings_normal",
 	"soulnexus.skel": "tracks/writhe",
 	"vantom.skel": "_tracks/charged_1",
 }
