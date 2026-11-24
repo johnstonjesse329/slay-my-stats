@@ -524,7 +524,7 @@ The check is a lookup of each ID in the run against that list, so it adds next t
 
 The upload's result counts the held runs and names the top IDs; the page tells the player, and they're
 reported for trends. `tools/find_unknown_ids.py --bucket slay-my-stats-data` lists every one in `raw/`, with
-the players and builds. After a patch, refresh the game data and deploy. If the parser version or accepted ID
+the players and builds. After a patch, refresh the game data and deploy. If the parser version, the stats layout (`PICK_SLOTS` and its siblings in the ingest handler) or the accepted ID
 list changed, the deploy runs `tools/rebuild_profiles.py --all` and `tools/rebuild_stats.py`. Each stage records
 its own last successful rebuild in its private data bucket. The first deploy without a record rebuilds once.
 A failed rebuild leaves the previous record in place so the next deploy can retry. Runs that the updated list

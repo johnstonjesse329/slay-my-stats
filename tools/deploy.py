@@ -496,18 +496,26 @@ def deploy_infra() -> None:
 
 
 def profile_rebuild_inputs() -> dict:
-    """Read the parser version and generate the same known-ID list CDK packages."""
+    """Read the parser version and the stats layout, and generate the same known-ID list CDK packages."""
     src = (SRC / "run.py").read_text(encoding="utf-8")
     version = re.search(r"^PARSER_VERSION = (\d+)\s*$", src, re.MULTILINE)
     if version is None:
         raise DeployError("Could not read PARSER_VERSION from run.py")
+    # The site-wide stats are only complete when counted from empty, and the pages hide
+    # the "All players" columns of a total counted with an older layout (pickSlots, ...),
+    # so changing the layout alone must trigger a recount too.
+    handler_src = (SRC / "infra" / "lambda" / "ingest" / "handler.py").read_text(encoding="utf-8")
+    layout = [re.search(rf"^{name} = (\d+)\s*$", handler_src, re.MULTILINE)
+              for name in ("PICK_SLOTS", "ASC_PICK_VERSION", "EVENTS_VERSION")]
+    if not all(layout):
+        raise DeployError("Could not read the stats layout (PICK_SLOTS, ASC_PICK_VERSION, EVENTS_VERSION) from handler.py")
     known = None
     if all((SRC / name).is_file() for name in ("card_data.json", "relic_data.json")):
         spec = importlib.util.spec_from_file_location("deploy_known_ids", SRC / "tools" / "build_known_ids.py")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         known = hashlib.sha256(json.dumps(mod.load(), separators=(",", ":")).encode()).hexdigest()
-    return {"parser_version": int(version[1]), "known_ids_sha256": known}
+    return {"parser_version": int(version[1]), "stats_layout": ".".join(m[1] for m in layout), "known_ids_sha256": known}
 
 
 def rebuild_held_runs(stage: str) -> None:
@@ -535,7 +543,7 @@ def rebuild_held_runs(stage: str) -> None:
         if previous == inputs:
             print(f"Runs: {stage} parser version and known IDs match the last successful rebuild. Skipping.")
             return
-        labels = {"parser_version": "parser version", "known_ids_sha256": "known IDs"}
+        labels = {"parser_version": "parser version", "stats_layout": "stats layout", "known_ids_sha256": "known IDs"}
         changed = ", ".join(labels[key] for key in inputs
                             if not isinstance(previous, dict) or previous.get(key) != inputs[key])
         print(f"Runs: rebuilding {stage} profiles and stats ({changed})...", flush=True)

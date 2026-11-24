@@ -432,7 +432,7 @@ function favTalliesAll() {
     Object.entries(m.picks || {}).forEach(([char, kinds]) => {
       const into = picks[char] || (picks[char] = { cards: {}, relics: {}, events: {} });
       ["cards", "relics"].forEach(kind => Object.entries(kinds[kind] || {}).forEach(([id, q]) => {
-        const have = into[kind][id] || (into[kind][id] = [0, 0, 0, 0, 0, 0]);
+        const have = into[kind][id] || (into[kind][id] = [0, 0, 0, 0, 0, 0, 0]);
         q.forEach((n, i) => { have[i] += n; });
       }));
       // Event choices are objects, not slot lists (see events-page.js).
