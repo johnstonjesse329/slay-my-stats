@@ -455,26 +455,32 @@
     const tabs = SHOWCASE_TABS.filter(([key]) => (data[key] || []).length);
     if (!tabs.length) return;
     const tablist = el("div", { className: "showcase-tabs", role: "tablist" });
-    const panel = el("ul", { className: "showcase-runs", role: "tabpanel" });
-    const charRow = (r, label) => {
+    const head = el("tr", {});
+    const body = el("tbody", {});
+    const panel = el("table", { className: "showcase-runs", role: "tabpanel" }, [el("thead", {}, [head]), body]);
+    const cell = (cls, kids) => el("td", { className: cls }, kids);
+    const runRow = (r, label) => {
       const id = stripPrefix(r.char || "", "CHARACTER.");
       const icon = ((catalog.charIcons || {})[id.toUpperCase()] || {}).icon;
-      return [
-        ...(icon ? [el("img", { className: "showcase-char-icon", src: icon, alt: "" })] : []),
-        el("span", { className: "site-row-name", textContent: r.name }),
-        el("span", { className: "showcase-char", style: `color:${(catalog.charColorMap || {})[id] || CHAR_FALLBACK_COLOR}`,
-          textContent: `${titleCaseId(id)} A${r.asc}` }),
-        ...(label && r.n != null ? [el("span", { className: "showcase-figure", textContent: label(r.n) })] : []),
-        ...(r.syn && r.syn.length ? [el("span", { className: "showcase-syn", textContent: r.syn.join(" · ") })] : []),
-        el("span", { className: "recent-meta", textContent: whenLabel(r.ts, true) }),
-      ];
+      const tr = el("tr", {}, [
+        cell("showcase-player", [
+          ...(icon ? [el("img", { className: "showcase-char-icon", src: icon, alt: "" })] : []),
+          el("a", { href: `/u/${r.slug}#detail/${r.ts}`, className: "site-row-name", textContent: r.name }),
+        ]),
+        cell("showcase-char", [el("span", { style: `color:${(catalog.charColorMap || {})[id] || CHAR_FALLBACK_COLOR}`,
+          textContent: `${titleCaseId(id)} A${r.asc}` })]),
+      ]);
+      if (label) tr.append(cell("showcase-figure", r.n != null ? [label(r.n)] : []));
+      tr.append(cell("showcase-syn", [(r.syn || []).join(" · ")]));
+      tr.append(cell("recent-meta", [whenLabel(r.ts, true)]));
+      return tr;
     };
     const select = key => {
       const [, , label] = tabs.find(t => t[0] === key);
       tablist.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
-      panel.replaceChildren(...data[key].map(r => el("li", {}, [
-        el("a", { href: `/u/${r.slug}#detail/${r.ts}` }, charRow(r, label)),
-      ])));
+      head.replaceChildren(...["Player", "Character", ...(label ? ["Figure"] : []), "Deck synergies", "When"]
+        .map(t => el("th", { scope: "col", textContent: t, className: t === "Deck synergies" ? "showcase-syn" : "" })));
+      body.replaceChildren(...data[key].map(r => runRow(r, label)));
     };
     for (const [key, title] of tabs) {
       const button = el("button", { type: "button", role: "tab", textContent: title });
