@@ -674,10 +674,11 @@
     ]); };
     // A card's or relic's win rate in each mode. The list is ranked on the two
     // modes together -- one order, with each row showing the two apart.
+    // One colour: the character ramp's cutoffs (tierColor) mean nothing for a single card or relic.
     const modeRows = (pairs, name, icon, tip, maps) => pairs.map(([id]) =>
       [icon ? icon(id) : "", name(id), modes.map(([label, m, cls]) => {
         const [n, w] = (m === solo ? maps.solo : maps.multi)[id] || [0, 0];
-        return [label, winLane(n, w, null, 100, cls)];
+        return [label, winLane(n, w, "var(--win)", 100, cls)];
       }), tip ? () => tip(id) : null]);
     // The face the dashboard's hover preview shows (buildCardTooltip in
     // js/card-face.js); these are unupgraded cards, so always the base face.
