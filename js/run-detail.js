@@ -1020,7 +1020,9 @@ function partyIncomingComparison(players, rows, average) {
 // One line per player with data. Desktop tooltips compare the party together.
 // Touch tooltips use the same individual breakdowns as the separate run view.
 // FB-62 proof of concept: "orig", "flip" (best on top, negative ticks) or "score" (higher = better).
-const FB62 = (() => { try { return localStorage.getItem("fb62") || "orig"; } catch { return "orig"; } })();
+// "flip" (0x on top, labels rising downward) read as lower-is-better, so it is gone: a saved "flip"
+// loads as "score", and Score is the default.
+const FB62 = (() => { try { const v = localStorage.getItem("fb62"); return v === "orig" ? "orig" : "score"; } catch { return "score"; } })();
 // Flipped keeps the figures as they are and only turns the axis over (0 on top), so a tick reads as
 // the same number the average line and the hover box show: 1× is the average win, never -1.
 const fb62Tick = unit => v => `${+v.toFixed(2)}${unit === "×" ? "×" : ""}`;
@@ -1045,7 +1047,7 @@ function fb62Toggle() {
   const bar = document.createElement("div");
   bar.id = "fb62-toggle";
   bar.style.cssText = "margin:6px 0;font-size:12px;color:#ccc";
-  bar.innerHTML = "View: " + [["orig", "Original"], ["flip", "Flipped"], ["score", "Score"]].map(([k, t]) =>
+  bar.innerHTML = "View: " + [["orig", "Original"], ["score", "Score"]].map(([k, t]) =>
     `<button type="button" data-fb62="${k}" style="margin-left:6px;padding:2px 8px;cursor:pointer;color:#eee;background:${k === FB62 ? "#4a4470" : "#2a2840"};border:1px solid #555;border-radius:4px">${t}</button>`).join("");
   bar.onclick = e => {
     const k = e.target.dataset?.fb62;
