@@ -733,6 +733,8 @@ class SlayMyStatsStack(Stack):
             data_bucket.grant_read(benchmark_fn, "ids/*")
             data_bucket.grant_read(benchmark_fn, "users/*")
             data_bucket.grant_read_write(benchmark_fn, "users/_fight-demand.json.gz")
+            data_bucket.grant_read(benchmark_fn, "telemetry/*")  # the showcase's turn tabs
+            data_bucket.grant_read_write(benchmark_fn, "users/_showcase.json.gz")
             scheduler.Schedule(
                 self, "BenchmarkSchedule",
                 schedule=scheduler.ScheduleExpression.cron(

@@ -363,6 +363,7 @@
     // A sign-in that arrived on /#upload has taken #main-content in the meantime.
     if (window.uploadPanelActive) return;
     if (players && players.length) {
+      await showShowcase(main);
       await showSiteStats(main);
       showRecentUploads(main, players);
     }
@@ -418,6 +419,56 @@
         ]),
       ]))),
     ]));
+  }
+
+  // ---- Showcase (the root page, under the hero) -------------------------------
+  //
+  // /users/_showcase.json.gz is built daily (infra/lambda/ingest/showcase.py): a handful of
+  // winning runs from the last 30 days per tab, none ranked. A tab with no runs is left
+  // out, and with no tabs at all so is the section.
+  const SHOWCASE_TABS = [
+    ["op", "OP runs", null],
+    ["blocked", "Most blocked in a turn", n => `${n} Block`],
+    ["overkill", "Most overkill in a turn", n => `${n} overkill`],
+    ["deck", "Most cards in a deck", n => `${n} cards`],
+  ];
+
+  async function showShowcase(main) {
+    let data;
+    try {
+      const resp = await fetch("/users/_showcase.json.gz", { cache: "no-cache" });
+      if (!resp.ok) return;
+      data = await resp.json();
+    } catch (e) {
+      return;  // extra, like the stats
+    }
+    const tabs = SHOWCASE_TABS.filter(([key]) => (data[key] || []).length);
+    if (!tabs.length) return;
+    const tablist = el("div", { className: "showcase-tabs", role: "tablist" });
+    const panel = el("ul", { className: "showcase-runs", role: "tabpanel" });
+    const select = key => {
+      const [, , label] = tabs.find(t => t[0] === key);
+      tablist.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
+      panel.replaceChildren(...data[key].map(r => el("li", {}, [
+        el("a", { href: `/u/${r.slug}#detail/${r.ts}` }, [
+          el("span", { className: "site-row-name", textContent: `${r.name} · ${titleCaseId(stripPrefix(r.char || "", "CHARACTER."))} A${r.asc}` }),
+          ...(label && r.n != null ? [el("span", { className: "showcase-figure", textContent: label(r.n) })] : []),
+          el("span", { className: "recent-meta", textContent: whenLabel(r.ts, true) }),
+        ]),
+      ])));
+    };
+    for (const [key, title] of tabs) {
+      const button = el("button", { type: "button", role: "tab", textContent: title });
+      button.dataset.tab = key;
+      button.addEventListener("click", () => select(key));
+      tablist.append(button);
+    }
+    main.append(el("section", { className: "site-list showcase" }, [
+      el("h3", { textContent: "Runs worth a look" }),
+      el("p", { className: "site-note", textContent: "Wins from the last 30 days." }),
+      tablist, panel,
+    ]));
+    select(tabs[0][0]);
   }
 
   // ---- Site-wide stats (the root page, below the finder) --------------------
