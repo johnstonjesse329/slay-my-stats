@@ -2014,7 +2014,7 @@ function renderDetailMaps(run) {
 function openActMap(card) {
   const ov = document.createElement("div");
   ov.className = "act-map-overlay";
-  ov.innerHTML = `<div class="act-map-large"><div class="act-map-large-head">${card.querySelector(".act-map-head").innerHTML.replace(/<svg class="act-map-zoom".*<\/svg>/, "")}<button type="button" aria-label="Close">×</button></div>${card.querySelector(".act-map-body").innerHTML}</div>`;
+  ov.innerHTML = `<div class="act-map-large"><div class="act-map-large-head">${card.querySelector(".act-map-head").innerHTML.replace(/<svg class="act-map-zoom".*<\/svg>/, "")}<button type="button" aria-label="Close">×</button></div>${card.querySelector(".act-map-styles")?.outerHTML || ""}${card.querySelector(".act-map-body").innerHTML}</div>`;
   const close = () => { ov.remove(); document.removeEventListener("keydown", onKey); };
   const onKey = e => { if (e.key === "Escape") close(); };
   ov.addEventListener("click", e => { if (!e.target.closest("svg")) close(); });

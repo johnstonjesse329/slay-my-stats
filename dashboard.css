@@ -3270,6 +3270,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .act-map-overlay { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; background: rgba(8, 6, 20, 0.82); }
 .act-map-large { background: var(--panel-2, #211e36); border: 1px solid var(--border, #3a3560); border-radius: 10px; padding-bottom: 12px; max-width: 96vw; }
 .act-map-large-head { align-items: center; }
+.act-map-large .act-map-styles { margin-top: 0; }
 .act-map-large-head button { margin-left: auto; font-size: 1.4rem; line-height: 1; color: inherit; background: none; border: 0; cursor: pointer; }
 .act-map-large svg { display: block; margin: 0 auto; border-radius: 8px; height: calc(100vh - 6rem); width: auto; max-width: 92vw; }
 /* An ancient boon's name beside its icon, so the icons read without hovering. */
