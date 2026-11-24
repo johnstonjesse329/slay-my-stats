@@ -51,9 +51,14 @@ class Build(unittest.TestCase):
         out = showcase.build([old, run(NOW - 86400, op=True), run(NOW - 2 * 86400, deck=40, blocked=30, held=55)], NOW)
         self.assertEqual([e["ts"] for e in out["op"]], [NOW - 86400])
         self.assertEqual([e["n"] for e in out["deck"]], [40, 20])
-        self.assertEqual([e["n"] for e in out["blocked"]], [30])
+        self.assertNotIn("blocked", out)
         self.assertEqual([e["n"] for e in out["held"]], [55])
         self.assertEqual(out["hit"], [])
+
+    def test_every_op_run_is_kept_and_the_rest_are_capped(self):
+        out = showcase.build([run(NOW - i, deck=i, op=True) for i in range(1, 50)], NOW)
+        self.assertEqual(len(out["op"]), 49)
+        self.assertEqual(len(out["deck"]), 30)
 
     def test_handful(self):
         out = showcase.build([run(NOW - i, deck=i + 1) for i in range(1, 20)], NOW, per_tab=3)
