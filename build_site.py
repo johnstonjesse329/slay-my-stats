@@ -537,6 +537,11 @@ def build_catalog() -> dict:
     )
     enchantment_data = run.resolve_image_paths(enchantment_data, url_for=repo_url)
 
+    event_catalog = (
+        json.loads(run._EVENT_CATALOG_FILE.read_text(encoding="utf-8"))
+        if run._EVENT_CATALOG_FILE.exists() else {}
+    )
+
     return {
         "charColorMap":       run.CHAR_COLORS,
         "encGroups":          run.ENCOUNTER_GROUPS,
@@ -571,6 +576,8 @@ def build_catalog() -> dict:
         "archetypes":         build_archetypes(),
         "potionData":         potion_data,
         "enchantmentData":    enchantment_data,
+        # Every event's options, for the Events page (tools/build_event_catalog.py).
+        "eventCatalog":       event_catalog,
         "nodeIcons":          run.build_node_icons(url_for=repo_url),
         "cardFinal":          run.build_card_final_images(url_for=repo_url),
         "energyIcons":        run.build_energy_icons(url_for=repo_url),

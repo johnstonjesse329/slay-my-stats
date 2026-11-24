@@ -1108,8 +1108,12 @@ PAIR_KEYS = ("chars", "cards", "relics")
 # the wins of the runs that turned it down, for the Cards page's "all players"
 # favourites and offer/pick-rate columns. Totals recounted before the last two
 # were added carry four numbers; the page reads the missing two as unknown.
+# picks[char]["events"][event id] = {"v": visits, "o": {option: [taken, wins, {grant: n}]}}:
+# each mystery event visit (the run's "events"), the option taken, the wins of those runs
+# and what the node recorded the option handing over, for the Events page's "all players".
 PICK_SLOTS = 7
 ASC_PICK_VERSION = 1
+EVENTS_VERSION = 1
 PICK_KINDS = (("cards", "cardsOffered"), ("relics", "relicsOffered"))
 
 
@@ -1138,12 +1142,21 @@ def _tally_picks(picks: dict, r: dict, won: bool) -> None:
                 if loc.get("type") == "shop":
                     q[2] += 1
                     q[3] += won
+    for event_id, opt, grants in r.get("events") or []:
+        ev = by_kind.setdefault("events", {}).setdefault(event_id, {"v": 0, "o": {}})
+        ev["v"] += 1
+        o = ev["o"].setdefault(opt, [0, 0, {}])
+        o[0] += 1
+        o[1] += won
+        for g in grants:
+            o[2][g] = o[2].get(g, 0) + 1
 
 
 def empty_stats() -> dict:
     # pickSlots says the picks carry offers too: only a total counted from empty
     # has it, so one recounted before offers were kept never reads as complete.
-    return {"v": 1, "pickSlots": PICK_SLOTS, "ascPickVersion": ASC_PICK_VERSION,
+    # eventsVersion likewise: events are only complete in a total counted from empty.
+    return {"v": 1, "pickSlots": PICK_SLOTS, "ascPickVersion": ASC_PICK_VERSION, "eventsVersion": EVENTS_VERSION,
             "allRuns": 0, **{m: _empty_mode() for m in MODES}}
 
 
@@ -1202,6 +1215,17 @@ def _merge_picks(total: dict, delta: dict) -> None:
     for char, kinds in delta.items():
         for kind, by_id in kinds.items():
             into = total.setdefault(char, {}).setdefault(kind, {})
+            if kind == "events":
+                for event_id, ev in by_id.items():
+                    have = into.setdefault(event_id, {"v": 0, "o": {}})
+                    have["v"] += ev["v"]
+                    for opt, (n, w, grants) in ev["o"].items():
+                        o = have["o"].setdefault(opt, [0, 0, {}])
+                        o[0] += n
+                        o[1] += w
+                        for g, c in grants.items():
+                            o[2][g] = o[2].get(g, 0) + c
+                continue
             for item_id, q in by_id.items():
                 have = into.setdefault(item_id, [0] * PICK_SLOTS)
                 have.extend([0] * (PICK_SLOTS - len(have)))  # a total from before offers were kept

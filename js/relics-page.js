@@ -81,7 +81,7 @@ function aggregateRelics() {
 // or null when the site totals have none for them.
 function globalRelicTallies() {
   const all = favTalliesAll();
-  if (!all || siteStatsForFavs.pickSlots !== 6) return null;
+  if (!all || siteStatsForFavs.pickSlots !== 7) return null;
   const byId = {};
   const chars = sharedActiveChar === "ALL" ? Object.keys(all.picks) : [sharedActiveChar];
   chars.forEach(char => Object.entries(all.picks[char]?.relics || {}).forEach(([id, q]) => {

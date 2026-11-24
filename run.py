@@ -695,7 +695,11 @@ def parse_run(path: Path) -> dict:
 # option hands over (Sword of Stone, the Byrdonis egg that hatches into Byrdpip) is
 # offered on every visit and picked when that option was taken, and the Sea Glass
 # variants read as Sea Glass rather than as a relic named for a character.
-PARSER_VERSION = 10
+# v11: each event visit the player chose in is kept as "events" (the option taken and
+# what the node recorded it handing over). The Byrdonis Nest no longer offers Byrdpip:
+# its options are the egg card and +7 max HP, and the relic only exists once the egg
+# hatches at a rest site, so it is counted there, as a pick.
+PARSER_VERSION = 11
 
 # What the ancient's pick upgrades the starter relic into (Touch of Orobas).
 TOUCH_UPGRADES = {
@@ -719,10 +723,47 @@ EVENT_RELIC_OPTIONS = {
     "EVENT.HUNGRY_FOR_MUSHROOMS": {"BIG_MUSHROOM": "RELIC.BIG_MUSHROOM",
                                    "FRAGRANT_MUSHROOM": "RELIC.FRAGRANT_MUSHROOM"},
     "EVENT.TEA_MASTER": {"TEA_OF_DISCOURTESY": "RELIC.TEA_OF_DISCOURTESY"},
-    # TAKE hands over the Byrdonis Egg card; hatching it at a rest site gives Byrdpip.
-    # EAT (+7 max HP) is the other option.
-    "EVENT.BYRDONIS_NEST": {"TAKE": "RELIC.BYRDPIP"},
+    # Not the Byrdonis Nest: TAKE hands over the Byrdonis Egg card and EAT +7 max HP.
+    # Byrdpip only exists after the egg hatches at a rest site, so it is not an offer here.
 }
+
+
+def event_visit(ps: dict):
+    """
+    One visit to a mystery event, from the local player's node stats, as
+    [option taken, [what the node recorded it handing over]], or None when
+    there is no usable choice (an ancient, whose offer ancient_choice holds
+    and the relic tables already count; the Fake Merchant, which records none).
+
+    event_choices holds only the option taken, one entry per page: the first is
+    the choice made, later ones are the path through a multi-step event, not
+    further visits. The key reads "<EVENT>.pages.<PAGE>.options.<OPTION>.title";
+    the option is bare on the first page ("TAKE") and "<PAGE>.<OPTION>" on later ones.
+    Grants are tokens: card-/relic-/potion- ids (a "-" because stored strings allow no ":"), maxhp-7, and the kinds gold_up,
+    gold_down, hurt, upgrade, remove, transform, enchant (their amounts are noisy).
+    """
+    if ps.get("ancient_choice"):
+        return None
+    choices = ps.get("event_choices") or []
+    key = (choices[0].get("title") or {}).get("key", "") if choices else ""
+    m = re.match(r"^[A-Z0-9_]+\.pages\.([A-Z0-9_]+)\.options\.([A-Z0-9_]+)\.title$", key)
+    if not m:
+        return None
+    page, opt = m.groups()
+    tokens = {f"card-{c['id']}" for c in ps.get("cards_gained", []) if c.get("id")}
+    tokens |= {f"relic-{r['choice']}" for r in ps.get("relic_choices", []) if r.get("was_picked") and r.get("choice")}
+    tokens |= {f"relic-{r}" for r in ps.get("bought_relics", []) if r}
+    tokens |= {f"potion-{r['choice']}" for r in ps.get("potion_choices", []) if r.get("was_picked") and r.get("choice")}
+    maxhp = (ps.get("max_hp_gained") or 0) - (ps.get("max_hp_lost") or 0)
+    if maxhp:
+        tokens.add(f"maxhp-{maxhp}")
+    for flag, name in ((ps.get("gold_gained"), "gold_up"), (ps.get("gold_lost") or ps.get("gold_spent"), "gold_down"),
+                       (ps.get("damage_taken"), "hurt"), (ps.get("upgraded_cards"), "upgrade"),
+                       (ps.get("cards_removed"), "remove"), (ps.get("cards_transformed"), "transform"),
+                       (ps.get("cards_enchanted"), "enchant")):
+        if flag:
+            tokens.add(name)
+    return [opt if page == "INITIAL" else f"{page}.{opt}", sorted(tokens)]
 
 
 def _ancient_relic_id(choice: dict) -> str:
@@ -951,7 +992,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     # restChoices: { act (1-indexed): { choice: count } }
     rest_choices: dict[int, dict[str, int]] = {}
     floor_idx = 0
-    egg_pending = False      # a Byrdonis Egg taken at the nest, not yet hatched into Byrdpip
+    events: list = []        # [event id, option taken, grant tokens] for each mystery event visit
     for act_idx, act in enumerate(map_history):
         if not isinstance(act, list):
             continue
@@ -1033,16 +1074,15 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
                     for opt, rid in opts.items():
                         handled.add(rid)
                         tally(rid, opt == taken)
-                        if opt == taken and rid == "RELIC.BYRDPIP":
-                            egg_pending = True
+            if event_id:
+                visit = event_visit(ps)
+                if visit:
+                    events.append([event_id, *visit])
             for rc in relic_rows:
                 rid = rc["choice"]
                 if rid in handled:
                     continue
                 picked = bool(rc.get("was_picked"))
-                if rid == "RELIC.BYRDPIP" and egg_pending and ntype == "rest_site":
-                    egg_pending = False          # the egg hatching: already the event's pick
-                    continue
                 tally(rid, picked, granted=picked and (not has_choice or bool(ps.get("ancient_choice"))))
             if ntype == "rest_site":
                 act_choices = rest_choices.setdefault(act_num, {})
@@ -1104,6 +1144,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         "cardsOffered":  cards_offered,
         "relicsOffered": relics_offered,
         "restChoices":   rest_choices,
+        **({"events": events} if events else {}),
         "finalDeck":     final_deck,
         "finalRelics":   final_relics,
         "fights":        extract_fights(data, char, asc, run_won, local_idx),
@@ -1145,6 +1186,7 @@ _JS_MODULES = [
     "sticky-offsets.js",
     "cards-page.js",
     "relics-page.js",
+    "events-page.js",
     "seeds.js",
     "run-detail.js",
     "run-records.js",
@@ -1331,6 +1373,7 @@ _CARD_DATA_FILE   = _HERE / "card_data.json"
 _RELIC_DATA_FILE  = _HERE / "relic_data.json"
 _POTION_DATA_FILE = _HERE / "potion_data.json"
 _ENCHANT_DATA_FILE = _HERE / "enchantments_data.json"
+_EVENT_CATALOG_FILE = _HERE / "event_catalog.json"   # tools/build_event_catalog.py
 
 
 def build_card_char(card_data: dict) -> dict[str, str]:
@@ -1488,6 +1531,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <button class="page-tab" id="tab-detail" onclick="showPage('detail')">Runs</button>
   <button class="page-tab" id="tab-cards" onclick="showPage('cards')">Cards</button>
   <button class="page-tab" id="tab-relics" onclick="showPage('relics')">Relics</button>
+  <button class="page-tab" id="tab-events" onclick="showPage('events')">Events</button>
   <button class="page-tab" id="tab-seeds" onclick="showPage('seeds')">Seeds</button>
 </nav>
 
@@ -1773,6 +1817,16 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 </div>
 
 </div><!-- end #page-relics -->
+
+<div id="page-events" style="display:none">
+
+<div class="chart-box">
+  <h2>Event choices</h2>
+  <p class="chart-caption" id="events-caption">Every option taken at an event under the current filters.</p>
+  <div id="events-list"></div>
+</div>
+
+</div><!-- end #page-events -->
 
 <!-- ================================================================
      Seeds page
@@ -2071,6 +2125,7 @@ def build_html(runs: list[dict]) -> str:
         "cardCoop":           build_card_coop(card_data),
         "cardVariants":       card_variants,
     "enchantmentData":    enchantment_data,
+    "eventCatalog":       json.loads(_EVENT_CATALOG_FILE.read_text(encoding="utf-8")) if _EVENT_CATALOG_FILE.exists() else {},
         "measuredRuns":       measured_runs,
         "fightDemand":        fight_demand,
         "relicData":          relic_data,

@@ -2002,12 +2002,12 @@ class RelicChoiceParsingTests(unittest.TestCase):
                           self.event("EVENT.SUNKEN_STATUE", "DIVE_INTO_WATER")])
         self.assertEqual(self.flags(got, "SWORD_OF_STONE"), [(True, False), (False, False)])
 
-    def test_byrdonis_egg_is_the_byrdpip_pick_and_hatching_is_not_counted_again(self):
+    def test_byrdpip_is_only_a_hatch_pick_with_no_offer_from_the_nest(self):
         hatch = {"map_point_type": "rest_site", "rooms": [{"room_type": "rest_site"}],
                  "player_stats": [{"relic_choices": [{"choice": "RELIC.BYRDPIP", "was_picked": True}]}]}
         got = self.parse([self.event("EVENT.BYRDONIS_NEST", "TAKE"), hatch,
                           self.event("EVENT.BYRDONIS_NEST", "EAT")])
-        self.assertEqual(self.flags(got, "BYRDPIP"), [(True, False), (False, False)])
+        self.assertEqual(self.flags(got, "BYRDPIP"), [(True, True)])
 
     def test_rewards_and_random_event_relics_have_no_alternative(self):
         elite = {"map_point_type": "elite", "rooms": [{"room_type": "elite"}],
@@ -2021,6 +2021,65 @@ class RelicChoiceParsingTests(unittest.TestCase):
             {"choice": "RELIC.ANCHOR", "was_picked": True}, {"choice": "RELIC.LANTERN", "was_picked": False}]}]}
         got = self.parse([shop])
         self.assertEqual((self.flags(got, "ANCHOR"), self.flags(got, "LANTERN")), ([(True, False)], [(False, False)]))
+
+
+class EventChoiceTests(unittest.TestCase):
+    """FB-75: run.event_visit and the all-players events tally."""
+
+    @staticmethod
+    def node(event, option, page="INITIAL", **stats):
+        name = event[len("EVENT."):]
+        return {"map_point_type": "unknown", "rooms": [{"model_id": event, "room_type": "event"}],
+                "player_stats": [{"event_choices": [{"title": {"key": f"{name}.pages.{page}.options.{option}.title"}}],
+                                  **stats}]}
+
+    @staticmethod
+    def parse(nodes):
+        raw = minimal_run(1700000000, map_point_history=[nodes],
+                          players=[{"character": "CHARACTER.IRONCLAD", "deck": [], "relics": []}])
+        return run.parse_run_data(raw)
+
+    def test_byrdonis_nest_take_and_eat_are_both_plain_options(self):
+        got = self.parse([
+            self.node("EVENT.BYRDONIS_NEST", "TAKE", cards_gained=[{"id": "CARD.BYRDONIS_EGG"}]),
+            self.node("EVENT.BYRDONIS_NEST", "EAT", max_hp_gained=7)])
+        self.assertEqual(got["events"], [["EVENT.BYRDONIS_NEST", "TAKE", ["card-CARD.BYRDONIS_EGG"]],
+                                         ["EVENT.BYRDONIS_NEST", "EAT", ["maxhp-7"]]])
+
+    def test_later_pages_are_a_path_not_extra_visits(self):
+        node = self.node("EVENT.X", "GO", gold_gained=50)
+        node["player_stats"][0]["event_choices"].append({"title": {"key": "X.pages.NEXT.options.ON.title"}})
+        self.assertEqual(run.event_visit(node["player_stats"][0]), ["GO", ["gold_up"]])
+        later = self.node("EVENT.X", "ON", page="NEXT")["player_stats"][0]
+        self.assertEqual(run.event_visit(later), ["NEXT.ON", []])
+
+    def test_ancients_and_choiceless_nodes_are_not_event_visits(self):
+        ps = {"ancient_choice": [{"TextKey": "A"}],
+              "event_choices": [{"title": {"key": "NEOW.pages.INITIAL.options.A.title"}}]}
+        self.assertIsNone(run.event_visit(ps))
+        self.assertIsNone(run.event_visit({"event_choices": []}))
+        self.assertIsNone(run.event_visit({"event_choices": [{"title": {"key": "weird"}}]}))
+
+    def test_stats_tally_visits_options_wins_and_grants_and_merge_adds_them(self):
+        r = {"char": "IRONCLAD", "won": True, "mins": 30, "floors": 49, "events": [
+            ["EVENT.BYRDONIS_NEST", "TAKE", ["card-CARD.BYRDONIS_EGG"]]]}
+        lost = dict(r, won=False, events=[["EVENT.BYRDONIS_NEST", "EAT", ["maxhp-7"]]])
+        total = handler.merge_stats(handler.tally([r], "a"), handler.tally([lost, r], "b"))
+        nest = total["solo"]["picks"]["IRONCLAD"]["events"]["EVENT.BYRDONIS_NEST"]
+        self.assertEqual(nest["v"], 3)
+        self.assertEqual(nest["o"]["TAKE"], [2, 2, {"card-CARD.BYRDONIS_EGG": 2}])
+        self.assertEqual(nest["o"]["EAT"], [1, 0, {"maxhp-7": 1}])
+
+    def test_only_a_total_counted_from_empty_is_marked_as_having_events(self):
+        self.assertEqual(handler.empty_stats()["eventsVersion"], handler.EVENTS_VERSION)
+
+    def test_catalog_is_checked_in_and_names_byrdonis_nest_options(self):
+        cat = json.loads(run._EVENT_CATALOG_FILE.read_text(encoding="utf-8"))
+        nest = cat["EVENT.BYRDONIS_NEST"]
+        self.assertEqual(sorted(nest["initial"]), ["EAT", "TAKE"])
+        self.assertFalse(nest["conditional"] or nest["random_offer"] or nest["random_outcome"])
+        self.assertTrue(cat["EVENT.RELIC_TRADER"]["random_offer"])
+
 
 if __name__ == "__main__":
     unittest.main()

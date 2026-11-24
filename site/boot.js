@@ -197,6 +197,7 @@
       relicData: catalog.relicData,
       potionData: catalog.potionData,
       enchantmentData: catalog.enchantmentData,
+      eventCatalog: catalog.eventCatalog || {},
       nodeIcons: catalog.nodeIcons,
       cardFinal: catalog.cardFinal,
       energyIcons: catalog.energyIcons,
