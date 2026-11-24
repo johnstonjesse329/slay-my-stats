@@ -1584,39 +1584,9 @@ window.addEventListener("resize", () => {
 });
 
 // The tooltip's cards are small so a floor's whole list fits, which leaves
-// their text too small to read. Hovering (or tapping) one pops it at the
-// deck's full size beside it. One popup on <body> rather than one per card:
-// the tooltip scrolls and clips, so a popup inside it would be cut off, and
-// pointer-events:none keeps the pointer "on" the node so the tooltip stays open.
-let _ntZoom = null;
-function ntZoomHide() {
-  if (_ntZoom) _ntZoom.classList.remove("open");
-}
-function ntZoomShow(face) {
-  if (!_ntZoom) {
-    _ntZoom = document.createElement("div");
-    _ntZoom.className = "nt-card-zoom";
-    document.body.appendChild(_ntZoom);
-  }
-  _ntZoom.innerHTML = renderCardFace(face.dataset.card, 0, cardFaceWidth(150, 210));
-  _ntZoom.style.visibility = "hidden";
-  _ntZoom.classList.add("open");
-  const r = face.getBoundingClientRect();
-  const w = _ntZoom.offsetWidth, h = _ntZoom.offsetHeight, gap = 8;
-  // Nothing to gain when the tooltip's card is already about this size.
-  if (r.width >= w * 0.9) { ntZoomHide(); return; }
-  const { vw, vh } = viewportSize();
-  const left = clampAxis(r.right + gap + w > vw - gap ? r.left - gap - w : r.right + gap, w, vw, gap);
-  const top = clampAxis(r.top + r.height / 2 - h / 2, h, vh, gap);
-  _ntZoom.style.left = `${left}px`;
-  _ntZoom.style.top = `${top}px`;
-  _ntZoom.style.visibility = "";
-}
-document.addEventListener("mouseover", e => {
-  const face = e.target.closest?.(".node-tooltip .nt-cardface");
-  if (face && face.dataset.card) ntZoomShow(face);
-  else ntZoomHide();
-});
+// their text too small to read. Hovering (or tapping) one pops it at full size
+// beside it through the shared card pop (cardPopAttrs on .nt-cardface, see
+// js/item-tips.js): it ignores the pointer, so the tooltip stays open.
 
 // A relic or potion in a floor tooltip: the full tooltip (portrait, rarity,
 // description) as it shows elsewhere, in the shared floating box on <body> so
@@ -1648,7 +1618,7 @@ function buildNodeTooltip(node) {
   // Card faces size from --nt-card-w, which fitNodeTooltip sets as the
   // tooltip opens.
   const nodeCardHtml = (id, dim = false, bought = false) => cardFaceAvailable()
-    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}${bought ? " nt-cardface-bought" : ""}" data-card="${id}">${renderCardFace(id, 0, "var(--nt-card-w)")}</div>`
+    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}${bought ? " nt-cardface-bought" : ""}" data-card="${id}" ${cardPopAttrs(id)}>${renderCardFace(id, 0, "var(--nt-card-w)")}</div>`
     : `<div class="${dim ? "nt-skipped" : "nt-reward-card"}">${fmtCardLabel(id)}${bought ? ` <span class="nt-bought-tag">bought</span>` : ""}</div>`;
   // Wraps a group of cards in one grid so they lay out side by side, as many
   // a row as fitNodeTooltip picks, instead of stacking one per line. `bought`

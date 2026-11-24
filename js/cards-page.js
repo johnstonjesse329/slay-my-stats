@@ -257,12 +257,9 @@ function renderCardsPage() {
   };
 
   document.getElementById("cards-tbody").innerHTML = rows.map(r => {
-    // Same real-card thumbnail + hover tooltip as every other card reference
-    // in the app (Personal Bests, deck tiles, node rewards) -- a bare name
-    // was the odd one out here. The tooltip itself is wired up below via
-    // showFloatingHtmlTooltip rather than the usual .card-tooltip-wrap
-    // markup, since this table lives inside a scrolling .pivot-wrap
-    // (overflow-y:auto) that would clip an absolutely-positioned popup.
+    // Same real-card thumbnail + hover popup as every other small card image
+    // in the app: the shared card pop (cardPopAttrs, js/item-tips.js), which sits
+    // on <body> so this table's scrolling .pivot-wrap cannot clip it.
     // The baked card face (name, type and cost tell similar cards apart), from
     // the larger thumbnail so it stays sharp at 112px; rows are taller than
     // relic rows for it. A checkout without the bake falls back to the portrait.
@@ -274,7 +271,7 @@ function renderCardsPage() {
     // tabbing to either opens the card.
     const icon = art ? `<span class="cards-thumb-wrap">${art}</span>` : "";
     return `<tr>
-    <td class="cards-name-cell"><span class="fav-item relics-name" data-card-id="${r.id}" tabindex="0">${icon}${r.title}</span></td>
+    <td class="cards-name-cell"><span class="fav-item relics-name" data-card-id="${r.id}" ${cardPopAttrs(r.id)} tabindex="0">${icon}${r.title}</span></td>
     <td style="color:var(--text-dim)">${r.pool === "colorless" ? `${charIconHtml(r.pool)}${r.owner}` : charLabelHtml(r.pool)}</td>
     <td style="color:${TYPE_COLOR[r.type] || "var(--text-dim)"}">${r.type}</td>
     <td style="color:${RARITY_COLOR[r.rarity] || "var(--text-dim)"}">${r.rarity}${isCoopCard(r.id) ? `<span class="cards-coop-tag">Multi</span>` : ""}</td>
@@ -288,18 +285,6 @@ function renderCardsPage() {
     <td class="relics-num cards-all">${pct(r.gWinSkipped, "#aaa")}</td>` : ""}
   </tr>`;
   }).join("");
-
-  document.getElementById("cards-tbody").querySelectorAll(".fav-item[data-card-id]").forEach(el => {
-    // Wide screens show the card in the pane beside the table instead.
-    const show = () => {
-      if (!previewCard(el.closest("tr"))) showFloatingHtmlTooltip(el, buildCardTooltip(el.dataset.cardId, 0));
-    };
-    el.addEventListener("mouseenter", show);
-    el.addEventListener("mouseleave", hideFloatingHtmlTooltip);
-    // Tap or keyboard: focus shows it; the next tap anywhere blurs it (tooltip.js).
-    el.addEventListener("focus", show);
-    el.addEventListener("blur", hideFloatingHtmlTooltip);
-  });
 
   // The pane follows the pointer over the whole row, and starts on the top card.
   const tbody = document.getElementById("cards-tbody");
@@ -496,7 +481,7 @@ function favItemHtml(kind, item, winPct, detail, { cohort = "", comparison = nul
   const face = isCard && cardFaceAvailable()
     ? renderCardFace(item.id, 0, "var(--fav-face-w)") : "";
   const pic = face
-    ? `<span class="fav-item-face">${face}</span>`
+    ? `<span class="fav-item-face" ${cardPopAttrs(item.id)}>${face}</span>`
     : src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="fav-pic">` : "";
   const figures = [{ cohort, winPct, detail }];
   if (comparison) figures.push(comparison);
@@ -621,6 +606,9 @@ function renderCardFavorites() {
     if (caption) caption.textContent = `Your most-picked, best win rate and most-bought card of each rarity${favCoopNote()}${all ? ", beside the same for all players" : ""}. Every card shows its win rate, with the count behind it underneath.`;
   }
   box.querySelectorAll(".fav-item[data-fav-id]").forEach(el => {
+    // A card with a baked face opens the shared card pop from its art (the
+    // markup carries it); a relic, or a card without the bake, opens the tooltip.
+    if (el.querySelector(CARD_POP_SEL)) return;
     const show = () => showFloatingHtmlTooltip(el, el.dataset.favKind === "cards"
       ? buildCardTooltip(el.dataset.favId, 0) : buildRelicTooltip(el.dataset.favId));
     // Hover opens it from the card art only, not from the name or figures beside it.

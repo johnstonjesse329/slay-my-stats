@@ -100,7 +100,7 @@ slay-my-stats/
 │   ├── card-face.js         card rendering
 │   ├── render-helpers.js    shared markup builders
 │   ├── tooltip.js           floating tooltips (can be moused into; Esc or a tap outside closes them)
-│   ├── item-tips.js         card faces and relic tooltips (also on the site's front page)
+│   ├── item-tips.js         card faces, the shared enlarged-card hover (card pop) and relic tooltips (also on the site's front page)
 │   ├── update.js            re-render on filter change
 │   └── map-bg.js            background map panning
 ├── vendor/chart.umd.js      Chart.js 4.4.0 (MIT), served from the site as /chart.js so a slow CDN can't blank the page
