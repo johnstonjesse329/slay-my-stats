@@ -430,7 +430,7 @@
     ["op", "OP runs", null],
     ["blocked", "Most blocked in a turn", n => `${n} Block`],
     ["held", "Most block gained", n => `${n} Block`],
-    ["overkill", "Most overkill in a turn", n => `${n} overkill`],
+    ["hit", "Biggest hit in a turn", n => `${n} damage`],
     ["deck", "Most cards in a deck", n => `${n} cards`],
   ];
 

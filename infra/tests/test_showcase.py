@@ -15,16 +15,16 @@ def run(ts, **kw):
 
 
 class TurnPeaks(unittest.TestCase):
-    def test_block_and_overkill_by_turn(self):
+    def test_block_and_hit_by_turn(self):
         log = {"log": [
             {"k": "blk", "f": 1, "t": 1, "a": {"c": "P", "n": 7}},
             {"k": "blk", "f": 1, "t": 1, "a": {"c": "P", "n": 5}},
             {"k": "blk", "f": 1, "t": 2, "a": {"c": "E", "n": 99}},
-            {"k": "hit", "f": 1, "t": 2, "a": {"by": "P", "t": "Louse", "ovk": 4}},
-            {"k": "hit", "f": 1, "t": 2, "a": {"by": "P", "t": "Louse", "ovk": 6}},
+            {"k": "hit", "f": 1, "t": 2, "a": {"by": "P", "t": "Louse", "unb": 10, "ovk": 4}},
+            {"k": "hit", "f": 1, "t": 2, "a": {"by": "P", "t": "Louse", "unb": 8, "ovk": 6}},
             {"k": "hit", "f": 1, "t": 3, "a": {"by": "P", "t": "P", "ovk": 50}},
         ]}
-        self.assertEqual(showcase.turn_peaks(log), {"blocked": 12, "overkill": 10})
+        self.assertEqual(showcase.turn_peaks(log), {"blocked": 12, "hit": 28})
 
     def test_block_held_counts_carry_over(self):
         def snap(f, t, why, blk, enemy=300):
@@ -53,7 +53,7 @@ class Build(unittest.TestCase):
         self.assertEqual([e["n"] for e in out["deck"]], [40, 20])
         self.assertEqual([e["n"] for e in out["blocked"]], [30])
         self.assertEqual([e["n"] for e in out["held"]], [55])
-        self.assertEqual(out["overkill"], [])
+        self.assertEqual(out["hit"], [])
 
     def test_handful(self):
         out = showcase.build([run(NOW - i, deck=i + 1) for i in range(1, 20)], NOW, per_tab=3)
