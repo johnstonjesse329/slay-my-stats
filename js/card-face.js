@@ -426,18 +426,45 @@ const SYNERGY_FAMILIES = {
 const overviewSynergies = document.getElementById("overview-synergies");
 const overviewSynergyCache = new WeakMap();
 
+// The synergy names a run's final deck has, as the overview table counts them.
+function runSynergies(run) {
+  if (!overviewSynergyCache.has(run)) {
+    const families = Object.entries(SYNERGY_FAMILIES[run.char] || {});
+    const names = deckLinks(run.finalDeck || [], run.finalRelics || []).map(({ key }) =>
+      families.find(([, keys]) => keys.includes(key))?.[0] || synergyLabel(key));
+    overviewSynergyCache.set(run, new Set(names));
+  }
+  return overviewSynergyCache.get(run);
+}
+
+// A synergy row opens Run Detail on the runs it counts: Overview's filters, that
+// character, and the synergy as a picked tag (see runHasTag in run-detail.js).
+function openSynergyRuns(char, name) {
+  const state = { ...liveSharedFilterState(), char };
+  detailTags.clear();
+  detailTags.add(synergyTag(char, name));
+  detailPartners.clear();
+  detailActs.clear();
+  pageFilterStash = state;
+  lastUnlockedChar = char;
+  detailSelectedTs = null;
+  PAGES.forEach(p => { pageDirty[p] = true; });
+  showPage("detail");
+  updateUnsavedIndicator();
+  document.getElementById("detail-jump-notice").hidden = true;
+}
+
+overviewSynergies?.addEventListener("click", e => {
+  const b = e.target.closest("[data-synergy-name]");
+  if (b) openSynergyRuns(b.dataset.synergyChar, b.dataset.synergyName);
+});
+
 function renderOverviewSynergies(runs) {
   if (!overviewSynergies) return;
   const byChar = new Map();
   for (const run of runs) {
     if (typeof run.won !== "boolean") continue;
-    if (!overviewSynergyCache.has(run)) {
-      const families = Object.entries(SYNERGY_FAMILIES[run.char] || {});
-      const names = deckLinks(run.finalDeck || [], run.finalRelics || []).map(({ key }) =>
-        families.find(([, keys]) => keys.includes(key))?.[0] || synergyLabel(key));
-      overviewSynergyCache.set(run, new Set(names));
-    }
-    for (const name of overviewSynergyCache.get(run)) {
+    for (const name of runSynergies(run)) {
       if (!byChar.has(run.char)) byChar.set(run.char, new Map());
       const records = byChar.get(run.char);
       if (!records.has(name)) records.set(name, [0, 0]);
@@ -453,7 +480,7 @@ function renderOverviewSynergies(runs) {
       <thead><tr><th scope="col">Synergy</th><th scope="col">W–L</th><th scope="col">Win %</th></tr></thead>
       <tbody>${records.map(([name, [wins, losses]]) => {
         const pct = Math.round(wins / (wins + losses) * 100);
-        return `<tr><th scope="row">${escapeHtml(name)}</th><td class="osyn-record"><b class="osyn-w">${wins}</b>–<b class="osyn-l">${losses}</b></td>` +
+        return `<tr><th scope="row"><button type="button" class="osyn-link" data-synergy-char="${escapeHtml(char)}" data-synergy-name="${escapeHtml(name)}" data-tip="Show these runs">${escapeHtml(name)}</button></th><td class="osyn-record"><b class="osyn-w">${wins}</b>–<b class="osyn-l">${losses}</b></td>` +
           `<td class="osyn-pct"><span class="osyn-bar" role="img" aria-label="${pct}% won"><i style="width:${pct}%"></i></span>${pct}%</td></tr>`;
       }).join("")}</tbody>
     </table>`;

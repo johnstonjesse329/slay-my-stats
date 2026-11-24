@@ -2354,6 +2354,11 @@ h1 {
 .overview-synergy-table .osyn-pct { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .osyn-bar { display: inline-block; width: 2.2rem; height: 6px; margin-right: 0.4rem; border-radius: 3px; background: var(--loss); vertical-align: middle; overflow: hidden; }
 .osyn-bar i { display: block; height: 100%; background: var(--win); }
+
+/* Synergy rows link to Run Detail filtered to their runs (openSynergyRuns). */
+.osyn-link { all: unset; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.osyn-link:hover, .osyn-link:focus-visible { color: var(--warn); text-decoration-style: solid; }
+
 .deck-tile-row {
   display: flex;
   flex-wrap: wrap;
