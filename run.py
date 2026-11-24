@@ -1826,6 +1826,10 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="chart-box">
   <h2>Event choices</h2>
   <p class="chart-caption" id="events-caption">Every option taken at an event under the current filters.</p>
+  <div class="events-filter" id="events-filter">
+    <input type="search" id="events-search" placeholder="Find an event or option" aria-label="Find an event or option" autocomplete="off">
+    <div class="events-act-chips" id="events-act-chips"></div>
+  </div>
   <div id="events-list"></div>
 </div>
 
