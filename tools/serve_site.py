@@ -110,14 +110,13 @@ def _safe_join(root: Path, parts: list[str]) -> Path | None:
         if part in ("", ".", ".."):
             continue
         candidate = candidate / part
-    try:
-        resolved_root = root.resolve()
-        resolved_candidate = candidate.resolve()
-    except OSError:
+    # Compare lexically, not through resolve(): a worktree links the ignored art folders in
+    # as junctions, and resolving them would put every art file outside the root (404).
+    norm_root = os.path.normpath(os.path.abspath(root))
+    norm_candidate = os.path.normpath(os.path.abspath(candidate))
+    if norm_candidate != norm_root and not norm_candidate.startswith(norm_root + os.sep):
         return None
-    if resolved_candidate != resolved_root and resolved_root not in resolved_candidate.parents:
-        return None
-    return resolved_candidate
+    return Path(norm_candidate)
 
 
 def _presign(key, max_bytes, expires):
