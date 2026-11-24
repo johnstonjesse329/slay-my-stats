@@ -305,24 +305,41 @@ document.addEventListener("pointerdown", e => dismissTipsOutside(e.target), { ca
 // tooltip put under the finger, so a link or button in it fired at once with no second tap.
 // A click inside a tooltip is kept only when its press began inside one too.
 const TIP_BOXES = ".chart-tooltip, .card-tooltip-wrap, .relic-tooltip-wrap, .node-tooltip, .floor-tip";
-let pressStartedInTip = false, pressWasTouch = false;
+let pressStartedInTip = false, pressWasTouch = false, touchTipStart = null;
 document.addEventListener("pointerdown", e => {
   pressStartedInTip = !!e.target.closest(TIP_BOXES);
   pressWasTouch = e.pointerType === "touch" || e.pointerType === "pen";
+  touchTipStart = pressStartedInTip && e.pointerType === "touch" ? [e.clientX, e.clientY] : null;
 }, { capture: true, passive: true });
+
+function dismissTipSurface(box, target) {
+  const control = target.closest("a, button, input, select, textarea, summary, [data-pick], [data-card-pop]");
+  if (control && box.contains(control)) return false;
+  if (box.classList.contains("floor-tip")) closeFloorTip();
+  dismissTips();
+  return true;
+}
+
+// Mobile Safari can omit click on tooltip text and images. Handle the tap
+// there directly, while leaving swipes and presses on controls alone.
+document.addEventListener("touchend", e => {
+  const box = e.target.closest(TIP_BOXES);
+  const touch = e.changedTouches[0];
+  if (!box || !touch || !touchTipStart) return;
+  const [x, y] = touchTipStart;
+  touchTipStart = null;
+  if (Math.hypot(touch.clientX - x, touch.clientY - y) > 10 || !dismissTipSurface(box, e.target)) return;
+  e.preventDefault();
+  e.stopPropagation();
+}, { capture: true, passive: false });
+
 document.addEventListener("click", e => {
   const box = e.target.closest(TIP_BOXES);
   if (!box) return;
-  if (pressWasTouch && !pressStartedInTip) {
+  if ((pressWasTouch && !pressStartedInTip) || dismissTipSurface(box, e.target)) {
     e.preventDefault();
     e.stopPropagation();
-    return;
   }
-  const control = e.target.closest("a, button, input, select, textarea, summary, [data-pick], [data-card-pop]");
-  if (control && box.contains(control)) return;
-  e.stopPropagation();
-  if (box.classList.contains("floor-tip")) closeFloorTip();
-  dismissTips();
 }, true);
 
 // Close shared and inline tooltips on Escape or a click on their surface.
