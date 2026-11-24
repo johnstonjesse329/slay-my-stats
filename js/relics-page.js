@@ -33,27 +33,26 @@ document.getElementById("relics-name-filter").addEventListener("input", (e) => {
 function relicFavoritesHtml(you, all) {
   const chars = (sharedActiveChar === "ALL" ? DATA.characters : [sharedActiveChar])
     .filter(c => you.runs[c] || (all && all.runs[c]));
-  const cell = (picks, metric, cls) => {
-    const it = picks && picks[metric];
-    if (!it) return `<td class="fav-cell fav-empty${cls}">—</td>`;
-    const [rate, detail] = favMetricFigures(metric, it);
-    return `<td class="fav-cell${cls}">${favItemHtml("relics", it, rate, detail)}</td>`;
+  // One row per population (You, then All players), as on the Cards page, so
+  // every cell holds one relic with the same figures.
+  const cohortRow = (char, who, tallies, first, n) => {
+    const picks = favPicksFor(tallies, RELIC_SLOT, [char]);
+    const cells = FAV_METRICS.map(m => {
+      const it = picks[m.key];
+      if (!it) return `<td class="fav-cell fav-empty"></td>`;
+      const [rate, detail] = favMetricFigures(m.key, it);
+      return `<td class="fav-cell">${favItemHtml("relics", it, rate, detail)}</td>`;
+    }).join("");
+    const head = `<th scope="row" class="fav-char">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>`;
+    const label = all ? `<th scope="row" class="fav-who-label fav-who-${who}">${who === "you" ? "You" : "All players"}</th>` : "";
+    return `<tr class="fav-row-${who}${first ? " fav-row-first" : ""}">${head}${label}${cells}</tr>`;
   };
-  const block = (picks, who) => FAV_METRICS.map((m, i) =>
-    cell(picks, m.key, ` fav-${who}${who === "all" && i === 0 ? " fav-all-start" : ""}`)).join("");
   const rows = chars.map(char => {
     const n = you.runs[char] || 0;
-    const mine = favPicksFor(you, RELIC_SLOT, [char]);
-    const theirs = all && favPicksFor(all, RELIC_SLOT, [char]);
-    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${block(mine, "you")}${all ? block(theirs, "all") : ""}</tr>`;
+    return cohortRow(char, "you", you, true, n) + (all ? cohortRow(char, "all", all, false, n) : "");
   }).join("");
-  const heads = who => FAV_METRICS.map((m, i) =>
-    `<th class="fav-${who}${who === "all" && i === 0 ? " fav-all-start" : ""}">${m.label}</th>`).join("");
-  const groups = all ? `<tr class="fav-groups"><th></th>
-    <th class="fav-group-you" colspan="${FAV_METRICS.length}">Your runs</th>
-    <th class="fav-group-all fav-all-start" colspan="${FAV_METRICS.length}">All players</th></tr>` : "";
-  return `<div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-blocks-table relics-fav-table${relicsShowAll && all ? " show-all" : ""}">
-    <thead>${groups}<tr><th></th>${heads("you")}${all ? heads("all") : ""}</tr></thead>
+  return `<div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-card-table relics-fav-table${relicsShowAll && all ? " show-all" : ""}">
+    <thead><tr><th></th>${all ? "<th></th>" : ""}${FAV_METRICS.map(m => `<th scope="col">${m.label}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
 }
@@ -196,11 +195,13 @@ function renderRelicsTable() {
 
 // The relic opens on hover, tap or focus as a floating tooltip, as on the
 // Cards page (a popup inside the scrolling table would be clipped).
-function bindRelicTips(root, selector, idOf) {
+function bindRelicTips(root, selector, idOf, picOnly = false) {
   root.querySelectorAll(selector).forEach(el => {
     const show = () => showFloatingHtmlTooltip(el, buildRelicTooltip(idOf(el)));
-    el.addEventListener("mouseenter", show);
-    el.addEventListener("mouseleave", hideFloatingHtmlTooltip);
+    // Favorites open it from the relic art only, not the name and figures beside it.
+    const target = (picOnly && el.querySelector(".fav-pic")) || el;
+    target.addEventListener("mouseenter", show);
+    target.addEventListener("mouseleave", hideFloatingHtmlTooltip);
     el.addEventListener("focus", show);
     el.addEventListener("blur", hideFloatingHtmlTooltip);
   });
@@ -211,7 +212,7 @@ function renderRelicsPage() {
   const all = favTalliesAll();
   const box = document.getElementById("relics-favorites");
   box.innerHTML = relicFavoritesHtml(favTalliesYou(), all);
-  bindRelicTips(box, ".fav-item[data-fav-id]", el => el.dataset.favId);
+  bindRelicTips(box, ".fav-item[data-fav-id]", el => el.dataset.favId, true);
   // The switch only exists when there is something to switch to.
   document.getElementById("relics-who").hidden = !all;
   document.getElementById("relics-fav-caption").textContent =

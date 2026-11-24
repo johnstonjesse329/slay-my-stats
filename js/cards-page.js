@@ -494,7 +494,7 @@ function favItemHtml(kind, item, winPct, detail, { cohort = "", comparison = nul
   const label = isCard ? fmtCardLabel(item.id) : fmtRelicLabel(item.id);
   const src = isCard ? cardImgSrc(item.id) : relicImgSrc(item.id);
   const face = isCard && cardFaceAvailable()
-    ? renderCardFace(item.id, 0, "var(--fav-face-w)", { thumb: true }) : "";
+    ? renderCardFace(item.id, 0, "var(--fav-face-w)") : "";
   const pic = face
     ? `<span class="fav-item-face">${face}</span>`
     : src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="fav-pic">` : "";
@@ -559,30 +559,21 @@ function favByCharHtml(you, all) {
   // Characters with runs in either set, in the site's roster order.
   const chars = DATA.characters.filter(c => you.runs[c] || (all && all.runs[c]));
   const slots = favSlots();
-  const cell = (slot, char) => {
-    const mine = favPicksFor(you, slot, [char])[favByCharMetric];
-    const theirs = all && favPicksFor(all, slot, [char])[favByCharMetric];
-    if (!mine && !theirs) return `<td class="fav-cell fav-empty">—</td>`;
-    const myFigures = favMetricFigures(favByCharMetric, mine);
-    if (!all) return favCellHtml(slot.kind, mine, ...myFigures);
-    const allFigures = favMetricFigures(favByCharMetric, theirs);
-    if (mine && theirs && mine.id === theirs.id) {
-      const [winPct, detail] = allFigures;
-      return `<td class="fav-cell fav-card-shared">${favItemHtml(slot.kind, mine, ...myFigures, {
-        cohort: "You", comparison: { cohort: "All players", winPct, detail },
-      })}</td>`;
-    }
-    const entry = (item, figures, cohort) => item
-      ? favItemHtml(slot.kind, item, ...figures, { cohort })
-      : `<span class="fav-empty" aria-label="${cohort}: no favorite">${cohort} —</span>`;
-    return `<td class="fav-cell"><div class="fav-card-pair">
-      <div class="fav-card-you">${entry(mine, myFigures, "You")}</div>
-      <div class="fav-card-all">${entry(theirs, allFigures, "All players")}</div>
-    </div></td>`;
+  // One row per population, You then All players, so every cell holds one card
+  // and the same figures; a rarity nobody has a favorite for stays blank.
+  const cohortRow = (char, who, tallies, first, n) => {
+    const cells = slots.map(slot => {
+      const it = favPicksFor(tallies, slot, [char])[favByCharMetric];
+      const figs = favMetricFigures(favByCharMetric, it);
+      return it ? favCellHtml(slot.kind, it, ...figs) : `<td class="fav-cell fav-empty"></td>`;
+    }).join("");
+    const head = `<th scope="row" class="fav-char">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>`;
+    const label = all ? `<th scope="row" class="fav-who-label fav-who-${who}">${who === "you" ? "You" : "All players"}</th>` : "";
+    return `<tr class="fav-row-${who}${first ? " fav-row-first" : ""}">${head}${label}${cells}</tr>`;
   };
   const rows = chars.map(char => {
     const n = you.runs[char] || 0;
-    return `<tr><th scope="row">${charLabelHtml(char)}<span class="fav-runs">${n} run${n !== 1 ? "s" : ""}</span></th>${slots.map(slot => cell(slot, char)).join("")}</tr>`;
+    return cohortRow(char, "you", you, true, n) + (all ? cohortRow(char, "all", all, false, n) : "");
   }).join("");
   const switcher = `<div class="filter-group fav-metric">${FAV_METRICS.map(m =>
     `<button class="toggle-btn${m.key === favByCharMetric ? " active" : ""}" data-fav-metric="${m.key}">${m.label}</button>`).join("")}</div>`;
@@ -593,7 +584,7 @@ function favByCharHtml(you, all) {
   return `<div class="fav-bychar">
     <div class="fav-bychar-bar">${switcher}${who}</div>
     <div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-card-table${favByCharShowAll && all ? " show-all" : ""}">
-      <thead><tr><th></th>${slots.map(slot => `<th scope="col">${slot.label}</th>`).join("")}</tr></thead><tbody>${rows}</tbody>
+      <thead><tr><th></th>${all ? "<th></th>" : ""}${slots.map(slot => `<th scope="col">${slot.label}</th>`).join("")}</tr></thead><tbody>${rows}</tbody>
     </table></div>
   </div>`;
 }
@@ -632,8 +623,10 @@ function renderCardFavorites() {
   box.querySelectorAll(".fav-item[data-fav-id]").forEach(el => {
     const show = () => showFloatingHtmlTooltip(el, el.dataset.favKind === "cards"
       ? buildCardTooltip(el.dataset.favId, 0) : buildRelicTooltip(el.dataset.favId));
-    el.addEventListener("mouseenter", show);
-    el.addEventListener("mouseleave", hideFloatingHtmlTooltip);
+    // Hover opens it from the card art only, not from the name or figures beside it.
+    const target = el.querySelector(".fav-item-face, .fav-pic") || el;
+    target.addEventListener("mouseenter", show);
+    target.addEventListener("mouseleave", hideFloatingHtmlTooltip);
     el.addEventListener("focus", show);
     el.addEventListener("blur", hideFloatingHtmlTooltip);
   });

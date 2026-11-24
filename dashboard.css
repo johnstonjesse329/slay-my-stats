@@ -320,8 +320,6 @@ h1 {
 .fav-item:hover {
   z-index: 100;
 }
-.fav-item:hover .card-tooltip-wrap,
-.fav-item:hover .relic-tooltip-wrap,
 .fav-item:focus-within .card-tooltip-wrap,
 .fav-item:focus-within .relic-tooltip-wrap {
   visibility: visible;
@@ -356,16 +354,24 @@ h1 {
 #relics-who, .fav-bychar-bar .fav-who { display: none; margin-bottom: 0.6rem; }
 .fav-bychar-bar .fav-who { margin: 0; }
 .pivot.fav-card-table { min-width: 0; }
-.fav-card-table .fav-item { --fav-face-w: 74px; align-items: start; padding-left: 0; border-left: 0; }
+/* The slot headers follow the table down the page: the wrap must not clip or
+   scroll, or the sticky cells would stick to it instead of the viewport. */
+.pivot-wrap.fav-bychar-wrap { overflow: visible; contain: none; }
+.fav-card-table thead th { position: sticky; top: var(--filter-bar-h, 0px); z-index: 3; background: var(--panel); box-shadow: inset 0 -2px 0 var(--hairline); }
+.fav-card-table .fav-item { --fav-face-w: 84px; align-items: start; padding-left: 0; border-left: 0; }
 .fav-card-table .fav-pic { width: var(--fav-face-w); height: auto; }
+.relics-fav-table .fav-item { --fav-face-w: 56px; align-items: center; }
 .fav-card-table .fav-cell { vertical-align: middle; }
 .fav-card-table .fav-icon { align-self: center; }
-/* Every favorite is drawn the same size. Two different favorites sit side by side, You then All players; one both
-   share is drawn once, its two sets of figures side by side under the name. */
-.fav-card-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 0.6rem; }
-.fav-card-pair > div { min-width: 0; color: var(--text-dim); }
+/* Every favorite is drawn the same size, one per cell. Each character has a You row and an All players row. */
+.fav-card-table .fav-char { vertical-align: middle; }
+.fav-card-table tr.fav-row-all .fav-char > * { visibility: hidden; }
+.fav-card-table .fav-who-label { font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; vertical-align: middle; color: var(--gold); }
+.fav-card-table .fav-who-label.fav-who-all { color: #9db8f0; }
+.fav-card-table tr.fav-row-all td, .fav-card-table tr.fav-row-all .fav-who-label { background: rgba(157, 184, 240, 0.06); }
+.fav-card-table tr.fav-row-first th, .fav-card-table tr.fav-row-first td { border-top: 1px solid rgba(255, 255, 255, 0.12); }
 .fav-card-table .fav-text { gap: 0.2rem; }
-.fav-card-table .fav-figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.3rem 0.8rem; }
+.fav-card-table .fav-figs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
 .fav-card-table .fav-figures { display: flex; flex-direction: column; min-width: 0; }
 .fav-card-table .fav-detail { white-space: normal; }
 .fav-card-table .fav-cohort { display: block; color: var(--gold); font-weight: 600; }
@@ -374,8 +380,9 @@ h1 {
 .fav-card-table .fav-empty { text-align: left; padding-left: 0.5rem; }
 @media (max-width: 1620px) {
   .fav-bychar-bar .fav-who { display: flex; }
-  .fav-card-pair { display: block; }
-  .fav-card-table:not(.show-all) .fav-card-all, .fav-card-table.show-all .fav-card-you { display: none; }
+  .fav-card-table:not(.show-all) .fav-row-all, .fav-card-table.show-all .fav-row-you { display: none; }
+  .fav-card-table .fav-who-label { display: none; }
+  .fav-card-table tr.fav-row-all .fav-char > * { visibility: visible; }
 }
 @media (max-width: 1120px) {
   #relics-who:not([hidden]) { display: flex; }
