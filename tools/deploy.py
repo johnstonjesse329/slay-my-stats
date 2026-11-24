@@ -140,9 +140,10 @@ EXPORT_DIR = Path("local_data") / "deploy-build"
 # data JSONs) is linked or copied in, so a new data file needs no change here.
 NOT_INPUTS = {"dist", "local_data", "output", "__pycache__", ".playwright-mcp", "cdk.out"}
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
-ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images",
-            "event_images", "enchantment_images", "ui_icons", "thumbs", "encounter_art"]
-COMMITTED_ART_DIRS = {"encounter_art"}
+BAKED_ART_DIRS = ("card_final", "card_portraits", "node_icons", "relic_images", "potion_images",
+                  "event_images", "enchantment_images", "ui_icons", "thumbs")
+COMMITTED_ART_DIRS = ("encounter_art",)
+ART_DIRS = (*BAKED_ART_DIRS, *COMMITTED_ART_DIRS)
 ZERO_SHA = "0" * 40
 
 # Art is the bulk of what the site serves -- one Run Detail session pulls a few
@@ -445,7 +446,10 @@ def export_commit(commit: str) -> Path:
 
     listed = git("ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", cwd=LOCAL)
     borrowed = []
-    for entry in filter(None, listed.split("\0")):
+    # An older main checkout may lack the commit's ignore rule for a new art folder.
+    for entry in (*listed.split("\0"), *BAKED_ART_DIRS):
+        if not entry:
+            continue
         name = entry.rstrip("/")
         if ("/" in name and name != "infra/cdk.context.json") or name in NOT_INPUTS:
             continue

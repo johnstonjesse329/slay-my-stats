@@ -41,6 +41,8 @@ class DeployTest(unittest.TestCase):
         (root / "build_site.py").write_text("v2, uncommitted\n")  # the checkout is dirty and ahead
         (root / "card_final").mkdir()
         (root / "card_final" / "a.png").write_bytes(b"art")
+        (root / "event_images").mkdir()
+        (root / "event_images" / "a.webp").write_bytes(b"event art")
         (root / "card_data.json").write_text("{}")
         (root / "dist").mkdir()
         (root / "infra" / "cdk.context.json").write_text('{"secret": "x"}')
@@ -99,6 +101,8 @@ class DeployTest(unittest.TestCase):
         self.assertEqual((out / "build_site.py").read_text(), "v1\n", "built the checkout, not the commit")
         self.assertEqual((out / "card_final" / "a.png").read_bytes(), b"art")
         self.assertTrue(deploy._is_link(out / "card_final"))
+        self.assertEqual((out / "event_images" / "a.webp").read_bytes(), b"event art")
+        self.assertTrue(deploy._is_link(out / "event_images"))
         self.assertEqual((out / "card_data.json").read_text(), "{}")
         self.assertEqual((out / "infra" / "cdk.context.json").read_text(), '{"secret": "x"}')
         self.assertFalse((out / "dist").exists(), "dist/ is an output, not an input")
@@ -108,6 +112,7 @@ class DeployTest(unittest.TestCase):
             deploy.finish_export(out)
         self.assertFalse(out.exists())
         self.assertTrue((self.root / "card_final" / "a.png").exists(), "deleted through the link")
+        self.assertTrue((self.root / "event_images" / "a.webp").exists(), "deleted through the link")
         self.assertIn("lookup", (self.root / "infra" / "cdk.context.json").read_text())
 
     def test_pre_push_deploys_the_pushed_commit_from_a_dirty_checkout(self):
