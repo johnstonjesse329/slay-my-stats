@@ -25,6 +25,8 @@ OUT = ROOT / "ui_icons" / "char"
 
 
 def main() -> int:
+    import art_manifest
+    art_manifest.require_up_to_date()
     pck = find_pck_root()
     icons = pck / "images" / "ui" / "top_panel"
     selects = pck / "images" / "packed" / "character_select"
@@ -45,6 +47,7 @@ def main() -> int:
         print(f"no character portraits found under {pck}", file=sys.stderr)
         return 1
     print(f"{len(chars)} characters -> {OUT}: {', '.join(chars)}")
+    art_manifest.update(["ui_icons/char"])
     return 0
 
 

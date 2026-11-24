@@ -584,6 +584,20 @@ def upload_changed_dist() -> list[str]:
     return uploaded
 
 
+def check_art() -> None:
+    """Stop unless the art on disk (LOCAL) is exactly what the deployed commit's
+    tools/art_manifest.json lists, so a stale or partial bake can't become the catalog."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("art_manifest", Path(__file__).with_name("art_manifest.py"))
+    art_manifest = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(art_manifest)
+    try:
+        art_manifest.require_match(LOCAL, SRC / "tools" / "art_manifest.json", "the deploy")
+    except SystemExit as e:
+        raise DeployError(str(e))
+    print("Site: art matches tools/art_manifest.json.", flush=True)
+
+
 def art_digests() -> dict[str, str]:
     digests = {}
     for folder in ART_DIRS:
@@ -810,6 +824,7 @@ def require_feedback_table(commit: str | None) -> None:
 def deploy_site(stage: str) -> None:
     import boto3
 
+    check_art()
     print("Site: building dist/...", flush=True)
     run([sys.executable, str(SRC / "build_site.py")])
     s3 = boto3.client("s3")

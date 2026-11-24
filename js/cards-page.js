@@ -268,7 +268,7 @@ function renderCardsPage() {
     // small to tell two similar cards apart, and the face carries the name,
     // type and cost. A checkout without the bake falls back to the portrait.
     const art = (cardFaceAvailable()
-      ? renderCardFace(r.id, 0, "var(--cards-thumb-w)", { thumb: true })
+      ? renderCardFace(r.id, 0, "var(--cards-thumb-w)", { thumb: "lg" })
       : "") || (src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="cards-thumb">` : "");
     // The thumbnail and the name are one trigger, so hovering, tapping or
     // tabbing to either opens the card.

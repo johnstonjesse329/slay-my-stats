@@ -438,6 +438,11 @@ def _bind(port: int, retry_seconds: float):
 def main():
     args = sys.argv[1:]
     port = int(args[args.index("--port") + 1]) if "--port" in args else 8000
+    # The preview shows what a deploy of this checkout would: refuse art that isn't the
+    # set tools/art_manifest.json pins (a stale or partial bake, or no art copied in).
+    sys.path.insert(0, str(_REPO_ROOT / "tools"))
+    import art_manifest
+    art_manifest.require_match(_REPO_ROOT, what="the preview")
 
     killed = _take_port_over(port)
     try:

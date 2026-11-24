@@ -208,6 +208,9 @@ def main():
     ap.add_argument("--width", type=int, default=300,
                     help="output width of a full card frame in px (default 300)")
     args = ap.parse_args()
+    # card_chrome/ is a bake input, not served art, so it isn't in tools/art_manifest.json.
+    import art_manifest
+    art_manifest.require_up_to_date()
 
     if not SPRITE_DIR.exists():
         raise SystemExit(f"Source not found: {SPRITE_DIR}\n"
