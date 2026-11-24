@@ -26,11 +26,13 @@ Usage:
 
     --dry-run            Report what would change without writing.
     --strict             Fail if a profile could not be rebuilt.
+    --workers <n>        Players rebuilt at once (default 8).
     --bucket <name>      The live data bucket (needs AWS credentials);
                          otherwise local_data/ (the dev server's store).
 """
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -40,6 +42,7 @@ import handler
 import run
 
 _DATA_DIR = _REPO_ROOT / "local_data"
+DEFAULT_WORKERS = 8
 
 
 def _players(store) -> dict[str, str]:
@@ -95,32 +98,46 @@ def main():
     else:
         sys.exit(__doc__)
 
-    rebuilt = failed = 0
-    for steam_id in targets:
+    workers = max(1, int(arg("--workers") or DEFAULT_WORKERS))
+
+    def rebuild(steam_id):
+        """(steam_id, summary | None, error | None); a worker never raises IngestError."""
         slug = players.get(steam_id)
         if "--stale" in args:
             got = store.get(handler.blob_key(slug)) if slug else None
             version = handler._unpack(got[0]).get("parser", 0) if got else None
             if version is None or version >= run.PARSER_VERSION:
-                continue
+                return steam_id, None, None
         try:
-            s = handler.rebuild_profile(store, steam_id, dry_run=dry_run, strict=strict)
+            return steam_id, handler.rebuild_profile(store, steam_id, dry_run=dry_run, strict=strict), None
         except handler.IngestError as e:
-            print(f"  {slug or steam_id}: {e.message}")
-            if e.code != "no_profile":
-                failed += 1
-            continue
-        rebuilt += 1
-        line = f"  {s['slug']}: {s['runs']} runs ({s['fromRaw']} re-parsed, {s['noRaw']} without a raw copy)"
-        if s["dropped"]:
-            line += f", {s['dropped']} dropped (no longer parse, or now held)"
-        if s.get("new"):
-            line += ", a new profile"
-        if s["held"]:
-            line += f", {s['held']} still held (content the game data doesn't have)"
-        if s["unreadableUploads"]:
-            line += f", {s['unreadableUploads']} unreadable uploads"
-        print(line)
+            return steam_id, None, e
+
+    rebuilt = failed = 0
+    print(f"{len(targets)} candidate(s), {workers} at a time.", flush=True)
+    # Players are independent and the work is mostly waiting on S3, so a few at once;
+    # map keeps the report in order.
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for done, (steam_id, s, err) in enumerate(pool.map(rebuild, targets), 1):
+            slug = players.get(steam_id)
+            if err:
+                print(f"  [{done}/{len(targets)}] {slug or steam_id}: {err.message}", flush=True)
+                if err.code != "no_profile":
+                    failed += 1
+                continue
+            if s is None:
+                continue
+            rebuilt += 1
+            line = f"  [{done}/{len(targets)}] {s['slug']}: {s['runs']} runs ({s['fromRaw']} re-parsed, {s['noRaw']} without a raw copy)"
+            if s["dropped"]:
+                line += f", {s['dropped']} dropped (no longer parse, or now held)"
+            if s.get("new"):
+                line += ", a new profile"
+            if s["held"]:
+                line += f", {s['held']} still held (content the game data doesn't have)"
+            if s["unreadableUploads"]:
+                line += f", {s['unreadableUploads']} unreadable uploads"
+            print(line, flush=True)
 
     print(f"{rebuilt} profile(s) {'would be ' if dry_run else ''}rebuilt with parser v{run.PARSER_VERSION}.")
     if rebuilt and not dry_run:

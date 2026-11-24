@@ -16,9 +16,12 @@ Usage:
 
     python tools/rebuild_stats.py --bucket slay-my-stats-data
         Recount the live data bucket (needs AWS credentials).
+
+    --workers <n>        Players read at once (default 8); the totals are the same.
 """
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -27,6 +30,7 @@ sys.path.insert(0, str(_REPO_ROOT / "infra" / "lambda" / "ingest"))
 import handler
 
 _DATA_DIR = _REPO_ROOT / "local_data"
+DEFAULT_WORKERS = 8
 
 
 def main():
@@ -37,19 +41,32 @@ def main():
     current = store.get(handler.STATS_KEY)
     players, _ = handler._read_index(store)
     total = handler.empty_stats()
-    for p in players:
+    workers = max(1, int(args[args.index("--workers") + 1]) if "--workers" in args else DEFAULT_WORKERS)
+
+    def read(p):
+        """Everything one player adds to the total, read and tallied off the main thread
+        and merged in player order below, so the result matches a one-at-a-time recount."""
         got = store.get(handler.blob_key(p["slug"]))
         if got is None:
-            print(f"  {p['slug']}: listed but missing, skipped")
-            continue
-        count, seeded = 0, []
+            return None
+        tallies, seeded, count = [], [], 0
         for _, runs in handler.stored_months(store, p["slug"], handler._unpack(got[0])):
-            handler.merge_stats(total, handler.tally(runs, p["slug"]))
+            tallies.append(handler.tally(runs, p["slug"]))
             seeded += handler.seed_entries(runs)
             count += len(runs)
         old = store.get(handler.seeds_key(p["slug"]))
         store.put(handler.seeds_key(p["slug"]), handler._pack({"v": 1, "runs": seeded}), {}, old[2] if old else None)
-        print(f"  {p['slug']}: {count} runs, {len(seeded)} seeded")
+        return tallies, count, len(seeded)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for done, (p, result) in enumerate(zip(players, pool.map(read, players)), 1):
+            if result is None:
+                print(f"  [{done}/{len(players)}] {p['slug']}: listed but missing, skipped", flush=True)
+                continue
+            tallies, count, seeded = result
+            for t in tallies:
+                handler.merge_stats(total, t)
+            print(f"  [{done}/{len(players)}] {p['slug']}: {count} runs, {seeded} seeded", flush=True)
 
     # Overwrites whatever is there. An upload landing mid-recount makes this
     # write fail rather than lose its tally; run it again.
