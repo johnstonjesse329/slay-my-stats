@@ -263,11 +263,13 @@ function renderCardsPage() {
     // showFloatingHtmlTooltip rather than the usual .card-tooltip-wrap
     // markup, since this table lives inside a scrolling .pivot-wrap
     // (overflow-y:auto) that would clip an absolutely-positioned popup.
-    // The portrait at the relic table's icon height, so a row is the same
-    // height as a relic row; the full card shows on hover, or in the pane
-    // beside the table on wide screens.
+    // The baked card face (name, type and cost tell similar cards apart), from
+    // the larger thumbnail so it stays sharp at 112px; rows are taller than
+    // relic rows for it. A checkout without the bake falls back to the portrait.
     const src = cardImgSrc(r.id);
-    const art = src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="cards-thumb">` : "";
+    const art = (cardFaceAvailable()
+      ? renderCardFace(r.id, 0, "var(--cards-thumb-w)", { thumb: "lg" })
+      : "") || (src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="cards-thumb">` : "");
     // The thumbnail and the name are one trigger, so hovering, tapping or
     // tabbing to either opens the card.
     const icon = art ? `<span class="cards-thumb-wrap">${art}</span>` : "";
