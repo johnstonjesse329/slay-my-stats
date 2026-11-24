@@ -52,7 +52,7 @@ function relicFavoritesHtml(you, all) {
     return cohortRow(char, "you", you, true, n) + (all ? cohortRow(char, "all", all, false, n) : "");
   }).join("");
   return `<div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-card-table relics-fav-table${relicsShowAll && all ? " show-all" : ""}">
-    <thead><tr><th></th>${all ? "<th></th>" : ""}${FAV_METRICS.map(m => `<th scope="col">${m.label}</th>`).join("")}</tr></thead>
+    <thead><tr><th class="fav-char-head"></th>${all ? `<th class="fav-who-head"></th>` : ""}${FAV_METRICS.map(m => `<th scope="col">${m.label}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
 }

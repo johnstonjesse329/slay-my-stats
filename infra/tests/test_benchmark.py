@@ -55,6 +55,7 @@ class Refresh(unittest.TestCase):
                 mock.patch.object(benchmark, "upload_fights", side_effect=[None, {("a", 1): ["f"]}]), \
                 mock.patch.object(benchmark, "table", return_value={}), \
                 mock.patch.object(benchmark, "cuts_of", return_value={}), \
+                mock.patch.object(benchmark, "rating_mix", return_value={}), \
                 contextlib.redirect_stdout(out):
             store = gs.return_value
             store.get.return_value = None
@@ -63,6 +64,24 @@ class Refresh(unittest.TestCase):
                 "raw/76561198000000001/20261102T000000Z-bbbbbbbbbbbbbbbb.ndjson.gz"]
             benchmark.refresh({}, None)
         self.assertEqual(json.loads(out.getvalue().splitlines()[-1])["skipped_uploads"], 1)
+
+    def test_the_rating_mix_is_published_with_the_benchmark(self):
+        mix = {"CHARACTER.A": {"0": [1, 2, 3, 4]}}
+        with mock.patch.object(benchmark, "_get_store") as gs, \
+                mock.patch.object(benchmark, "published_starts", return_value={1}), \
+                mock.patch.object(benchmark, "upload_fights", return_value={("a", 1): ["f"]}), \
+                mock.patch.object(benchmark, "table", return_value={}), \
+                mock.patch.object(benchmark, "cuts_of", return_value={"run": 1}), \
+                mock.patch.object(benchmark, "rating_mix", return_value=mix), \
+                mock.patch.object(benchmark, "publish_showcase"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            store = gs.return_value
+            store.get.return_value = None
+            store.list.return_value = ["raw/76561198000000001/20261101T000000Z-aaaaaaaaaaaaaaaa.ndjson.gz"]
+            benchmark.refresh({}, None)
+        key, body = store.put.call_args_list[0].args[:2]
+        self.assertEqual(key, benchmark.BENCHMARK_KEY)
+        self.assertEqual(benchmark._unpack(body)["ratings"], mix)
 
 
 if __name__ == "__main__":

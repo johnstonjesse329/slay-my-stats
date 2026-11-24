@@ -358,7 +358,7 @@ h1 {
    scroll, or the sticky cells would stick to it instead of the viewport. */
 .pivot-wrap.fav-bychar-wrap { overflow: visible; contain: none; }
 .fav-card-table thead th { position: sticky; top: var(--filter-bar-h, 0px); z-index: 3; background: var(--panel); box-shadow: inset 0 -2px 0 var(--hairline); }
-.fav-card-table .fav-item { --fav-face-w: 84px; align-items: start; padding-left: 0; border-left: 0; }
+.fav-card-table .fav-item { --fav-face-w: 112px; align-items: start; padding-left: 0; border-left: 0; }
 .fav-card-table .fav-pic { width: var(--fav-face-w); height: auto; }
 .relics-fav-table .fav-item { --fav-face-w: 56px; align-items: center; }
 .fav-card-table .fav-cell { vertical-align: middle; }
@@ -394,7 +394,7 @@ h1 {
 @media (max-width: 700px), (max-width: 950px) and (max-height: 500px) and (orientation: landscape) {
   .fav-card-table th, .fav-card-table td { padding-inline: 0.2rem; }
   .fav-card-table thead th:not(:first-child) { text-align: center; }
-  .fav-card-table .fav-item { --fav-face-w: 44px; grid-template-columns: minmax(0, 1fr); justify-items: center; row-gap: 0.25rem; }
+  .fav-card-table .fav-item { --fav-face-w: 58px; grid-template-columns: minmax(0, 1fr); justify-items: center; row-gap: 0.25rem; }
   .fav-card-table .fav-icon:empty { display: none; }
   .fav-card-table .fav-icon:empty + .fav-text .fav-name { display: -webkit-box; }
   .fav-card-table .fav-text { align-items: center; text-align: center; }
@@ -411,9 +411,9 @@ h1 {
 .cards-coop-tag { display: inline-block; margin-left: 0.4rem; padding: 0 0.35rem; border: 1px solid rgba(157, 184, 240, 0.45); border-radius: 4px; color: #9db8f0; font-size: var(--fs-xs); line-height: 1.4; vertical-align: 1px; }
 /* You / All players: phones only (the desktop table shows both). */
 #cards-who { display: none; margin-bottom: 0.6rem; }
-.cards-list { flex: 0 1 1500px; min-width: 0; max-height: min(70vh, 720px); overflow-y: auto; }
+.cards-list { flex: 0 1 1330px; min-width: 0; max-height: min(70vh, 720px); overflow-y: auto; }
 .cards-preview { display: none; flex: 1 1 0; min-width: 0; align-items: center; justify-content: flex-start; padding-left: 1.5rem; }
-.cards-preview .cardface, .cards-preview .card-tooltip { width: min(360px, 100%) !important; max-height: min(70vh, 720px); object-fit: contain; }
+.cards-preview .cardface, .cards-preview .card-tooltip { width: min(480px, 100%) !important; max-height: min(90vh, 960px); object-fit: contain; }
 #cards-tbody tr.cards-current td { background: rgba(255,255,255,.06); }
 @media (min-width: 1420px) { .cards-preview { display: flex; } }
 /* Seed Data, same idea: a snug list, and the picked seed's deck and relics
@@ -439,7 +439,7 @@ h1 {
   #cards-table-main thead, #relics-table thead { top: var(--filter-bar-h, 0px); }
 }
 #cards-table-main thead th, #seeds-table thead th, #relics-table thead th { background: var(--panel-2); border-bottom: 0; box-shadow: inset 0 -2px 0 var(--hairline); }
-.cards-thumb-wrap { --cards-thumb-w: 62px; display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
+.cards-thumb-wrap { --cards-thumb-w: 112px; display: inline-block; vertical-align: middle; margin-right: 10px; line-height: 0; }
 .cards-thumb-wrap .cardface { width: var(--cards-thumb-w); display: block; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.45); }
 .cards-hi { font-size: var(--fs-md); }
 .cards-thumb { width: var(--cards-thumb-w); height: calc(var(--cards-thumb-w) * 0.75); object-fit: contain; border-radius: 4px; vertical-align: middle; }
@@ -563,6 +563,10 @@ h1 {
 .asc-readings-chart-rows { display: grid; gap: 0.6rem; }
 .asc-readings-row { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) 5rem; gap: 0.75rem; align-items: center; font-size: var(--fs-sm); }
 .asc-readings-char { overflow-wrap: anywhere; }
+.asc-readings-group { display: grid; gap: 0.25rem; }
+.asc-readings-pool { color: var(--text-dim); }
+.asc-readings-pool .asc-readings-bar { height: 0.8rem; opacity: 0.8; }
+.asc-readings-who { overflow-wrap: anywhere; }
 .asc-readings-bar { display: flex; height: 1.2rem; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.06); }
 .asc-readings-bar > span { min-width: 2px; }
 .asc-reading-bar-rough { background: #c45d68; } .asc-reading-bar-mid { background: #c79c4b; }
@@ -3189,7 +3193,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
   #cards-table-main td { padding: 0.18rem 0.15rem !important; font-size: var(--fs-xs) !important; }
   /* The You / All players switch already says which set is showing. */
   #cards-thead .cards-groups { display: none; }
-  .cards-thumb-wrap { --cards-thumb-w: 34px; margin-right: 6px; }
+  .cards-thumb-wrap { --cards-thumb-w: 45px; margin-right: 6px; }
   .cards-thumb { width: var(--cards-thumb-w); height: calc(var(--cards-thumb-w) * 0.75); }
   .cards-hi { font-size: var(--fs-sm); }
   #cards-table-main td:first-child { white-space: normal !important; }
@@ -3384,19 +3388,41 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .ka-party tbody th { text-align: left; font-weight: 600; white-space: nowrap; }
 
 /* Events page: one card per event, yours beside all players' (stacks on a phone). */
-.event-card { border-top: 1px solid var(--hairline); padding: 0.9rem 0; }
-.event-card:first-child { border-top: 0; }
-.event-card h3 { font-size: var(--fs-md); color: var(--gold-bright); margin-bottom: 0.5rem; }
-.event-cols { display: flex; flex-wrap: wrap; gap: 0.6rem 2rem; }
-.event-col { flex: 1 1 22rem; min-width: 0; }
-.event-col h4 { font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; margin-bottom: 0.3rem; }
+.event-card { background: var(--panel-2); border: 1px solid var(--hairline); border-radius: 10px; padding: 0.9rem 1.1rem 1rem; margin-bottom: 0.9rem; }
+.event-card h3 { font-size: var(--fs-md); color: var(--gold-bright); margin-bottom: 0.6rem; }
+.event-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 0.8rem 2.2rem; }
+.event-col { min-width: 0; }
+.event-col h4 { font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--hairline); }
 .event-visits { color: var(--text-faint); font-weight: 400; margin-left: 0.4rem; }
-.event-opt { display: grid; grid-template-columns: minmax(6rem, 10rem) 2.5rem 5rem minmax(0, 1fr); gap: 0.5rem; align-items: center; padding: 0.2rem 0; font-size: var(--fs-sm); }
-.event-opt-n { text-align: right; font-variant-numeric: tabular-nums; }
-.event-opt-bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
-.event-opt-bar i { display: block; height: 100%; background: var(--gold); }
-.event-opt-grant { color: var(--text-dim); overflow-wrap: anywhere; }
+.event-body { display: flex; align-items: flex-start; gap: 1rem; }
+.event-pie { flex: 0 0 auto; width: 5.5rem; height: 5.5rem; transform: rotate(-90deg); }
+.event-pie-slice { transition: opacity 0.12s; }
+.event-pie:hover .event-pie-slice:not(:hover) { opacity: 0.5; }
+.event-opts { flex: 1 1 auto; min-width: 0; }
+.event-opt { display: grid; grid-template-columns: minmax(6rem, 1fr) 2rem 3rem 5.5rem; gap: 0.1rem 0.6rem; align-items: baseline; padding: 0.25rem 0; font-size: var(--fs-sm); }
+.event-opt + .event-opt { border-top: 1px solid var(--hairline); }
+.event-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.45rem; }
+.event-dot-none { background: var(--text-faint); opacity: 0.5; }
+.event-opt-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.event-opt-win { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--loss); }
+.event-opt-win.event-opt-hi { color: var(--win); }
+.event-opt-wl { color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.event-opt-grant { grid-column: 1 / -1; color: var(--text-dim); overflow-wrap: anywhere; padding-left: 1.05rem; }
+.event-opt-grant:empty { display: none; }
 .event-opt-none { color: var(--text-faint); }
 .event-opt-never { opacity: 0.6; }
 .event-note, .event-none { color: var(--text-faint); font-size: var(--fs-sm); margin-top: 0.3rem; }
-@media (max-width: 700px) { .event-opt { grid-template-columns: minmax(0, 1fr) 2rem 3.5rem; } .event-opt-grant { grid-column: 1 / -1; } }
+@media (max-width: 700px) { .event-card { padding: 0.8rem 0.8rem 0.9rem; } .event-col { position: relative; } .event-pie { position: absolute; top: 0; right: 0; width: 1.9rem; height: 1.9rem; } .event-body { display: block; } .event-opt { grid-template-columns: minmax(0, 1fr) 1.6rem 2.6rem 5.4rem; gap: 0.1rem 0.35rem; font-size: 0.82rem; } }
+/* Cards favorites: the character and You / All players columns keep to their text,
+   so the card columns take the rest instead of the table spreading its slack around. */
+.fav-card-table .fav-char-head { width: 8.5rem; }
+.fav-card-table .fav-who-head { width: 5.5rem; }
+.fav-card-table td, .fav-card-table th { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+@media (max-width: 1620px) { .fav-card-table .fav-who-head { display: none; } }
+@media (max-width: 700px), (max-width: 950px) and (max-height: 500px) and (orientation: landscape) { .fav-card-table .fav-char-head { width: 4.6rem; } }
+/* Relics: three figures per character need no more than this; a wider table only spreads them apart. */
+.relics-fav-table { max-width: 1180px; }
+.relics-list { max-width: 1400px; }
+#relics-table td { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+
+@media (max-width: 700px) { table.fav-card-table thead th[scope="col"] { font-size: 0.7rem; padding-left: 0.15rem; padding-right: 0.15rem; } }

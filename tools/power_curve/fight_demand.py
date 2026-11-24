@@ -180,6 +180,7 @@ def run_fights(runs):
                             "gross_taken": statistics.mean(s.get("damage_taken") or 0 for s in stats),
                             "each": [net_taken(s) for s in stats],
                             "asc": raw.get("ascension") or 0,
+                            "char": (raw["players"][0] or {}).get("character"),
                             "build": build,
                             "kind": kind,
                             "act": act,
@@ -419,6 +420,27 @@ def run_reading(acts, cuts):
     return {**whole, "verdict": verdict(whole["pace"], whole["guard"], cuts["run"]), "op": OP_ACTS <= ahead}
 
 
+RATINGS = ("behind", "meeting", "ahead", "op")
+
+
+def rating_mix(runs, demand, cuts):
+    """{character: {tier: [Rough, Mid, Hype, OP]}}, the character without its CHARACTER. prefix
+    as the page names it: how many solo runs of each character
+    got each run rating, by the tier its monsters were tuned in. The page puts a player's
+    share of each rating beside it. A party's rating is the local player's, which a run
+    file can't say, so only solo runs are counted. A run with nothing to read is left
+    out."""
+    out = {}
+    for fights in runs:
+        if fights[0]["coop"] or not fights[0].get("char"):
+            continue
+        reading = run_reading(act_readings(fights, demand, cuts), cuts)
+        if reading:
+            row = out.setdefault(fights[0]["char"].removeprefix("CHARACTER."), {}).setdefault(str(tier(fights[0]["asc"])), [0] * len(RATINGS))
+            row[RATINGS.index("op" if reading["op"] else reading["verdict"])] += 1
+    return out
+
+
 def players(runs, demand, read):
     """(solo or coop, tier, won the run, read(fights, demand, taken)) for every player of
     every run. The page reads the local player of a party, and any of them could be."""
@@ -574,7 +596,7 @@ def main():
         check(runs, demand)
         return
     cuts = cuts_of(runs, demand)
-    OUT.write_text(json.dumps({"encounters": demand, "cuts": cuts}, separators=(",", ":")), encoding="utf-8")
+    OUT.write_text(json.dumps({"encounters": demand, "cuts": cuts, "ratings": rating_mix(runs, demand, cuts)}, separators=(",", ":")), encoding="utf-8")
     print(f"quarters of winning acts, guard then pace: "
           f"{[(c['guard'], c['pace']) for c in cuts['acts']]}; runs {cuts['run']['guard']}, {cuts['run']['pace']}")
     seen = {m for fights in runs for f in fights for m in f["ids"]}
