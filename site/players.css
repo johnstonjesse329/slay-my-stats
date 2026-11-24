@@ -60,6 +60,7 @@
 
 .site-page {
   max-width: 44rem;
+  margin-inline: auto;
   background: linear-gradient(165deg, var(--panel-2-glass) 0%, var(--panel-glass) 100%);
   border: 1px solid var(--panel-border);
   border-top-color: var(--gold-glow);
