@@ -212,7 +212,7 @@ def main():
             assert baseline["color"] == "rgba(255, 255, 255, 0.86)", baseline
             assert baseline["width"] < turns_line["width"] < player["width"], got
             assert baseline["order"] > turns_line["order"] > player["order"], got
-            assert baseline["dash"] == [] and turns_line["dash"] and "keepAverageGuide" in got["plugins"], got
+            assert baseline["dash"] == [] and turns_line["dash"] and "keepAverageGuide" not in got["plugins"], got
             assert "Damage taken" in got["legend"] and "Fight turns" in got["legend"], got["legend"]
             assert got["caption"] == "", "the tick caption should show when the run changed cards"
 
