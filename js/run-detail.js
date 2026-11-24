@@ -1879,7 +1879,7 @@ function actMapSvg(m, act, bossKeys, floors, seed, coatedPath = new Set()) {
     body += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(gauss() * 8).toFixed(1)})">${img(art[key], -46, -46, 92, 92, lit ? "" : ' opacity="0.5"')}<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></g>`;
     if (coatedPath.has(m.path.findIndex(c => c[0] === n[0] && c[1] === n[1]))) {
       // The game's own red X (its quest marker) across the fight's icon.
-      rings += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">${img(art.marked_x, -18, -16, 36, 32)}<title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
+      rings += `<g transform="translate(${(x + 30).toFixed(1)} ${(y + 30).toFixed(1)})">${img(art.marked_x, -26, -23, 52, 46)}<title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
     }
     if (lit) {
       const size = 200 * (0.85 + rnd() * 0.05);
