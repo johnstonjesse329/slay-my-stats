@@ -256,7 +256,11 @@ function renderCardsPage() {
     return `<span style="color:${color};font-weight:${v >= 50 ? "800" : "400"};"${v >= 50 ? ` class="cards-hi"` : ""}>${v}%</span>`;
   };
 
-  document.getElementById("cards-tbody").innerHTML = rows.map(r => {
+  // Several hundred card rows, each with a baked card face: built a chunk at a
+  // time (fillTableProgressively) so opening or re-sorting the page lays out
+  // only what is on screen. The preview pane follows the pointer over the whole
+  // row, so each chunk binds its own rows, and starts on the top card.
+  const cardRowHtml = r => {
     // Same real-card thumbnail + hover popup as every other small card image
     // in the app: the shared card pop (cardPopAttrs, js/item-tips.js), which sits
     // on <body> so this table's scrolling .pivot-wrap cannot clip it.
@@ -284,12 +288,11 @@ function renderCardsPage() {
     <td class="relics-num cards-all">${pct(r.gWinPicked, "#aaa")}</td>
     <td class="relics-num cards-all">${pct(r.gWinSkipped, "#aaa")}</td>` : ""}
   </tr>`;
-  }).join("");
-
-  // The pane follows the pointer over the whole row, and starts on the top card.
+  };
   const tbody = document.getElementById("cards-tbody");
-  tbody.querySelectorAll("tr").forEach(tr => tr.addEventListener("mouseenter", () => previewCard(tr)));
   document.getElementById("cards-preview").innerHTML = "";
+  fillTableProgressively(tbody, rows, cardRowHtml, (scope, trs) =>
+    trs.forEach(tr => tr.addEventListener("mouseenter", () => previewCard(tr))));
   previewCard(tbody.querySelector("tr"));
 }
 

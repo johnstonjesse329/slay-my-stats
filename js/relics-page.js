@@ -179,8 +179,8 @@ function renderRelicsTable() {
   const pct = (v, color, none = "—") => v == null
     ? `<span style="color:var(--text-dim)">${none}</span>`
     : `<span style="color:${color};font-weight:${v >= 50 ? "800" : "400"}"${v >= 50 ? ` class="cards-hi"` : ""}>${v}%</span>`;
-  const tbody = document.getElementById("relics-tbody");
-  tbody.innerHTML = rows.map(r => {
+  // A few hundred relics, built a chunk at a time (fillTableProgressively).
+  const relicRowHtml = r => {
     const src = relicImgSrc(r.id);
     const pic = src ? `<img loading="lazy" src="${thumbSrc(src)}" alt="" class="fav-pic">` : "";
     return `<tr>
@@ -197,8 +197,9 @@ function renderRelicsTable() {
       <td class="relics-num cards-all">${pct(r.gWinPicked, "#aaa")}</td>
       <td class="relics-num cards-all">${pct(r.gWinSkipped, "#aaa", r.gOffered ? "never" : "—")}</td>` : ""}
     </tr>`;
-  }).join("");
-  bindRelicTips(tbody, "[data-relic-id]", el => el.dataset.relicId);
+  };
+  fillTableProgressively(document.getElementById("relics-tbody"), rows, relicRowHtml,
+    scope => bindRelicTips(scope, "[data-relic-id]", el => el.dataset.relicId));
 }
 
 // The relic opens on hover, tap or focus as a floating tooltip, as on the

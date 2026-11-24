@@ -3409,9 +3409,29 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .ka-party thead th { color: var(--text-dim); font-weight: 400; }
 .ka-party tbody th { text-align: left; font-weight: 600; white-space: nowrap; }
 
+/* Progressive table bodies (fillTableProgressively): the row that loads the next
+   chunk, and doubles as a button for anyone who would rather click. */
+.table-more td { padding: 0.6rem 0.6rem 0.3rem; text-align: center; border-bottom: none; }
+.table-more-btn { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--hairline); border-radius: 6px; padding: 0.4rem 1.1rem; font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.table-more-btn:hover { color: var(--text); border-color: var(--gold-dim, var(--hairline)); }
+.table-more-left { color: var(--text-dim); opacity: 0.75; margin-left: 0.5rem; font-size: 0.9em; }
+
 /* Events page: one card per event, yours beside all players' (stacks on a phone). */
+.events-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin: 0.4rem 0 0.9rem; }
+.events-filter input[type=search] { flex: 0 1 18rem; min-width: 0; padding: 0.35rem 0.6rem; background: var(--panel-2); color: var(--text); border: 1px solid var(--hairline); border-radius: 6px; font: inherit; }
+.events-act-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.events-act-chips .run-tag-btn { margin: 0; }
+.events-act-head { font-size: var(--fs-lg, 1.15rem); color: var(--text); border-bottom: 1px solid var(--hairline); padding-bottom: 0.25rem; margin: 1.2rem 0 0.7rem; }
+.events-act-head:first-child { margin-top: 0.2rem; }
 .event-card { background: var(--panel-2); border: 1px solid var(--hairline); border-radius: 10px; padding: 0.9rem 1.1rem 1rem; margin-bottom: 0.9rem; }
 .event-card h3 { font-size: var(--fs-md); color: var(--gold-bright); margin-bottom: 0.6rem; }
+/* The event's illustration down the left of the card: a tall crop of a wide
+   banner, so hover or keyboard focus opens the whole thing over the figures. */
+.event-card-art { display: flex; align-items: stretch; gap: 1rem; }
+.event-art { flex: 0 0 8rem; min-height: 7rem; position: relative; }
+.event-art img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; border: 1px solid var(--hairline); border-radius: 8px; transition: width 0.14s ease, height 0.14s ease, box-shadow 0.14s; }
+.event-art img:hover, .event-art img:focus-visible { position: absolute; width: 18rem; height: auto; object-fit: contain; z-index: 30; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6); outline: none; border-color: var(--gold-bright); }
+.event-main { flex: 1 1 auto; min-width: 0; }
 .event-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 0.8rem 2.2rem; }
 .event-col { min-width: 0; }
 .event-col h4 { font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--hairline); }
@@ -3434,7 +3454,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .event-opt-none { color: var(--text-dim); font-style: italic; }
 .event-opt-never { color: var(--text-dim); }
 .event-note, .event-none { color: var(--text-dim); font-size: var(--fs-sm); margin-top: 0.3rem; }
-@media (max-width: 700px) { .event-card { padding: 0.8rem 0.8rem 0.9rem; } .event-col { position: relative; } .event-pie { position: absolute; top: 0; right: 0; width: 1.9rem; height: 1.9rem; } .event-body { display: block; } .event-opt { grid-template-columns: minmax(0, 1fr) 1.6rem 2.6rem 5.4rem; gap: 0.1rem 0.35rem; font-size: 0.82rem; } }
+@media (max-width: 700px) { .event-card { padding: 0.8rem 0.8rem 0.9rem; } .event-card-art { display: block; } .event-art { min-height: 0; margin-bottom: 0.6rem; } .event-art img { height: 5.5rem; } .event-col { position: relative; } .event-pie { position: absolute; top: 0; right: 0; width: 1.9rem; height: 1.9rem; } .event-body { display: block; } .event-opt { grid-template-columns: minmax(0, 1fr) 1.6rem 2.6rem 5.4rem; gap: 0.1rem 0.35rem; font-size: 0.82rem; } }
 /* Cards favorites: the character and You / All players columns keep to their text,
    so the card columns take the rest instead of the table spreading its slack around. */
 .fav-card-table .fav-char-head { width: 8.5rem; }

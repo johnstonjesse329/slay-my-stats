@@ -94,11 +94,12 @@ slay-my-stats/
 │   ├── run-detail.js        Runs page
 │   ├── cards-page.js        Cards page (and the favorites tallies the Relics page shares)
 │   ├── relics-page.js       Relics page
-│   ├── events-page.js       Events page: each option taken at an event, how often, what it handed over
+│   ├── events-page.js       Events page: each option taken at an event, how often, what it handed over;
+│                             sectioned by act, with a search box and the event's own illustration
 │   ├── seeds.js             Seeds page
 │   ├── charts.js            Chart.js setup
 │   ├── card-face.js         card rendering
-│   ├── render-helpers.js    shared markup builders
+│   ├── render-helpers.js    shared markup builders, and fillTableProgressively (long tables build a chunk at a time)
 │   ├── tooltip.js           floating tooltips (can be moused into; Esc or a tap outside closes them)
 │   ├── item-tips.js         card faces, the shared enlarged-card hover (card pop) and relic tooltips (also on the site's front page)
 │   ├── update.js            re-render on filter change
@@ -136,7 +137,7 @@ slay-my-stats/
 │   ├── smoke_site.py        loads the deployed site as a visitor would; deploy.py runs it last
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
-│   ├── build_event_catalog.py  event_catalog.json (event options, from the game's events.json)
+│   ├── build_event_catalog.py  event_catalog.json (event options, which acts each event belongs to, and its illustration)
 │   ├── rebuild_stats.py     recount users/_stats.json.gz and each player's _seeds.json.gz
 │   ├── backfill_measured.py give runs uploaded before `measured` their per-floor numbers, from their stored logs
 │   ├── build_measured_cards.py  card costs for the ingest Lambda, cut from card_data.json at bundle time
@@ -184,6 +185,7 @@ paths:
 ├── relic_images/            (served)
 ├── potion_images/           (served)
 ├── node_icons/              map node icons (served)
+├── event_images/            event illustrations, shown beside each event on the Events page (served)
 ├── ui_icons/                energy icons, character portraits, map_scroll.webp background (served)
 ├── encounter_art/           one picture of each fight's monsters, for the fight tooltips (served, committed)
 └── card_chrome/             card frames and banners (input to the superseded bake_finished_cards.py; not served)
@@ -888,7 +890,7 @@ flowchart TB
     rec --> extract["extract_card_data.py<br/>(pythonnet)"]
     dll --> extract
     portraits --> cp["card_portraits/"]
-    art --> ra["relic_images/<br/>potion_images/<br/>node_icons/"]
+    art --> ra["relic_images/<br/>potion_images/<br/>node_icons/<br/>event_images/"]
     chrome --> cc["card_chrome/"]
     extract --> json["card_data.json<br/>relic_data.json<br/>potion_data.json<br/>(structure + imagePath)"]
     game2["Godot 4.5 .NET<br/>+ pck_recover_full/"] --> export["export_game_data.py"]

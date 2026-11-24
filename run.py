@@ -1826,6 +1826,10 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 <div class="chart-box">
   <h2>Event choices</h2>
   <p class="chart-caption" id="events-caption">Every option taken at an event under the current filters.</p>
+  <div class="events-filter" id="events-filter">
+    <input type="search" id="events-search" placeholder="Find an event or option" aria-label="Find an event or option" autocomplete="off">
+    <div class="events-act-chips" id="events-act-chips"></div>
+  </div>
   <div id="events-list"></div>
 </div>
 
@@ -2128,7 +2132,7 @@ def build_html(runs: list[dict]) -> str:
         "cardCoop":           build_card_coop(card_data),
         "cardVariants":       card_variants,
     "enchantmentData":    enchantment_data,
-    "eventCatalog":       json.loads(_EVENT_CATALOG_FILE.read_text(encoding="utf-8")) if _EVENT_CATALOG_FILE.exists() else {},
+    "eventCatalog":       resolve_image_paths(json.loads(_EVENT_CATALOG_FILE.read_text(encoding="utf-8"))) if _EVENT_CATALOG_FILE.exists() else {},
         "measuredRuns":       measured_runs,
         "fightDemand":        fight_demand,
         "relicData":          relic_data,

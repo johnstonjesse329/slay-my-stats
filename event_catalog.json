@@ -13,7 +13,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/abyssal_baths.webp"
  },
  "EVENT.AMALGAMATOR": {
   "title": "Amalgamator",
@@ -27,7 +31,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Hive"
+  ],
+  "imagePath": "event_images/amalgamator.webp"
  },
  "EVENT.AROMA_OF_CHAOS": {
   "title": "Aroma of Chaos",
@@ -41,7 +49,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/aroma_of_chaos.webp"
  },
  "EVENT.BATTLEWORN_DUMMY": {
   "title": "Battleworn Dummy",
@@ -57,7 +69,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Glory"
+  ],
+  "imagePath": "event_images/battleworn_dummy.webp"
  },
  "EVENT.BRAIN_LEECH": {
   "title": "Brain Leech",
@@ -71,7 +87,9 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [],
+  "imagePath": "event_images/brain_leech.webp"
  },
  "EVENT.BUGSLAYER": {
   "title": "Bugslayer",
@@ -85,7 +103,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Hive"
+  ],
+  "imagePath": "event_images/bugslayer.webp"
  },
  "EVENT.BYRDONIS_NEST": {
   "title": "Byrdonis Nest",
@@ -99,7 +121,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/byrdonis_nest.webp"
  },
  "EVENT.COLORFUL_PHILOSOPHERS": {
   "title": "Colorful Philosophers",
@@ -123,7 +149,11 @@
   },
   "conditional": false,
   "random_offer": true,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Hive"
+  ],
+  "imagePath": "event_images/colorful_philosophers.webp"
  },
  "EVENT.COLOSSAL_FLOWER": {
   "title": "Colossal Flower",
@@ -141,7 +171,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Hive"
+  ],
+  "imagePath": "event_images/colossal_flower.webp"
  },
  "EVENT.CRYSTAL_SPHERE": {
   "title": "Crystal Sphere",
@@ -155,7 +189,9 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/crystal_sphere.webp"
  },
  "EVENT.DENSE_VEGETATION": {
   "title": "Dense Vegetation",
@@ -170,7 +206,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/dense_vegetation.webp"
  },
  "EVENT.DOLL_ROOM": {
   "title": "Doll Room",
@@ -186,7 +226,9 @@
   },
   "conditional": false,
   "random_offer": true,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/doll_room.webp"
  },
  "EVENT.DOORS_OF_LIGHT_AND_DARK": {
   "title": "Doors of Light and Dark",
@@ -200,7 +242,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/doors_of_light_and_dark.webp"
  },
  "EVENT.DROWNING_BEACON": {
   "title": "Drowning Beacon",
@@ -214,7 +260,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/drowning_beacon.webp"
  },
  "EVENT.ENDLESS_CONVEYOR": {
   "title": "Endless Conveyor",
@@ -236,7 +286,11 @@
   },
   "conditional": false,
   "random_offer": true,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/endless_conveyor.webp"
  },
  "EVENT.FIELD_OF_MAN_SIZED_HOLES": {
   "title": "Field of Man-Sized Holes",
@@ -250,7 +304,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Hive"
+  ],
+  "imagePath": "event_images/field_of_man_sized_holes.webp"
  },
  "EVENT.GRAVE_OF_THE_FORGOTTEN": {
   "title": "Grave of the Forgotten",
@@ -263,7 +321,11 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Glory"
+  ],
+  "imagePath": "event_images/grave_of_the_forgotten.webp"
  },
  "EVENT.HUNGRY_FOR_MUSHROOMS": {
   "title": "Hungry for Mushrooms",
@@ -277,7 +339,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Glory"
+  ],
+  "imagePath": "event_images/hungry_for_mushrooms.webp"
  },
  "EVENT.INFESTED_AUTOMATON": {
   "title": "Infested Automaton",
@@ -291,7 +357,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Hive"
+  ],
+  "imagePath": "event_images/infested_automaton.webp"
  },
  "EVENT.JUNGLE_MAZE_ADVENTURE": {
   "title": "Jungle Maze Adventure",
@@ -305,7 +375,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/jungle_maze_adventure.webp"
  },
  "EVENT.LOST_WISP": {
   "title": "The Lost Wisp",
@@ -319,7 +393,11 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Hive"
+  ],
+  "imagePath": "event_images/lost_wisp.webp"
  },
  "EVENT.LUMINOUS_CHOIR": {
   "title": "Luminous Choir",
@@ -333,7 +411,11 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/luminous_choir.webp"
  },
  "EVENT.MOCK_EVENT_MODEL": {
   "title": "Mock Event",
@@ -345,7 +427,8 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": []
  },
  "EVENT.MORPHIC_GROVE": {
   "title": "Morphic Grove",
@@ -359,7 +442,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/morphic_grove.webp"
  },
  "EVENT.MUSEUM_OF_TORTURE": {
   "title": "Museum of Torture",
@@ -374,7 +461,9 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [],
+  "imagePath": "event_images/museum_of_torture.webp"
  },
  "EVENT.POTION_COURIER": {
   "title": "Potion Courier",
@@ -388,7 +477,9 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/potion_courier.webp"
  },
  "EVENT.PUNCH_OFF": {
   "title": "Punch Off",
@@ -403,7 +494,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/punch_off.webp"
  },
  "EVENT.RANWID_THE_ELDER": {
   "title": "Ranwid the Elder",
@@ -415,7 +510,9 @@
   "labels": {},
   "conditional": true,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/ranwid_the_elder.webp"
  },
  "EVENT.REFLECTIONS": {
   "title": "Reflections snoitcelfeR",
@@ -429,7 +526,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Glory"
+  ],
+  "imagePath": "event_images/reflections.webp"
  },
  "EVENT.RELIC_TRADER": {
   "title": "Relic Trader",
@@ -445,7 +546,9 @@
   },
   "conditional": false,
   "random_offer": true,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/relic_trader.webp"
  },
  "EVENT.ROOM_FULL_OF_CHEESE": {
   "title": "Room Full of Cheese",
@@ -459,7 +562,9 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [],
+  "imagePath": "event_images/room_full_of_cheese.webp"
  },
  "EVENT.ROUND_TEA_PARTY": {
   "title": "The Round Tea Party",
@@ -474,7 +579,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Glory"
+  ],
+  "imagePath": "event_images/round_tea_party.webp"
  },
  "EVENT.SAPPHIRE_SEED": {
   "title": "Sapphire Seed",
@@ -488,7 +597,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/sapphire_seed.webp"
  },
  "EVENT.SELF_HELP_BOOK": {
   "title": "Self-Help Book",
@@ -504,7 +617,9 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [],
+  "imagePath": "event_images/self_help_book.webp"
  },
  "EVENT.SHRINE_OF_THE_WARLORD": {
   "title": "Shrine of the Warlord",
@@ -520,7 +635,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Glory"
+  ],
+  "imagePath": "event_images/shrine_of_the_warlord.webp"
  },
  "EVENT.SLIPPERY_BRIDGE": {
   "title": "Slippery Bridge",
@@ -542,7 +661,9 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/slippery_bridge.webp"
  },
  "EVENT.SPIRALING_WHIRLPOOL": {
   "title": "Spiraling Whirlpool",
@@ -558,7 +679,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/spiraling_whirlpool.webp"
  },
  "EVENT.SPIRIT_GRAFTER": {
   "title": "Spirit Grafter",
@@ -572,7 +697,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Hive"
+  ],
+  "imagePath": "event_images/spirit_grafter.webp"
  },
  "EVENT.STONE_OF_ALL_TIME": {
   "title": "Stone of All Time",
@@ -586,7 +715,9 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/stone_of_all_time.webp"
  },
  "EVENT.SUNKEN_STATUE": {
   "title": "The Sunken Statue",
@@ -600,7 +731,12 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth",
+   "Underdocks"
+  ],
+  "imagePath": "event_images/sunken_statue.webp"
  },
  "EVENT.SUNKEN_TREASURY": {
   "title": "Sunken Treasury",
@@ -614,7 +750,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/sunken_treasury.webp"
  },
  "EVENT.SYMBIOTE": {
   "title": "Symbiote",
@@ -628,7 +768,9 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/symbiote.webp"
  },
  "EVENT.TABLET_OF_TRUTH": {
   "title": "Tablet of Truth",
@@ -647,7 +789,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/tablet_of_truth.webp"
  },
  "EVENT.TEA_MASTER": {
   "title": "Tea Master",
@@ -663,7 +809,9 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [],
+  "imagePath": "event_images/tea_master.webp"
  },
  "EVENT.THERMAE_NONUPEIPE": {
   "title": "Thermae Nonupeipe",
@@ -679,7 +827,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Glory"
+  ],
+  "imagePath": "event_images/thermae_nonupeipe.webp"
  },
  "EVENT.THE_FUTURE_OF_POTIONS": {
   "title": "The Future of Potions?",
@@ -689,7 +841,9 @@
   "labels": {},
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [],
+  "imagePath": "event_images/the_future_of_potions.webp"
  },
  "EVENT.THE_LANTERN_KEY": {
   "title": "The Lantern Key",
@@ -704,7 +858,10 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Hive"
+  ]
  },
  "EVENT.THE_LEGENDS_WERE_TRUE": {
   "title": "The Legends Were True",
@@ -718,7 +875,9 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/the_legends_were_true.webp"
  },
  "EVENT.THIS_OR_THAT": {
   "title": "This or That?",
@@ -732,7 +891,9 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/this_or_that.webp"
  },
  "EVENT.TINKER_TIME": {
   "title": "Tinker Time",
@@ -756,7 +917,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Glory"
+  ],
+  "imagePath": "event_images/tinker_time.webp"
  },
  "EVENT.TRASH_HEAP": {
   "title": "Trash Heap",
@@ -770,7 +935,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/trash_heap.webp"
  },
  "EVENT.TRIAL": {
   "title": "The Trial",
@@ -792,7 +961,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Glory"
+  ],
+  "imagePath": "event_images/trial.webp"
  },
  "EVENT.UNREST_SITE": {
   "title": "Unrest Site",
@@ -806,7 +979,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/unrest_site.webp"
  },
  "EVENT.WAR_HISTORIAN_REPY": {
   "title": "War Historian, Repy",
@@ -820,7 +997,9 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [],
+  "imagePath": "event_images/war_historian_repy.webp"
  },
  "EVENT.WATERFALL_OF_OBVIOUS_SECRETS": {
   "title": "Waterfall of Obvious Secrets",
@@ -835,7 +1014,11 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/waterfall_of_obvious_secrets.webp"
  },
  "EVENT.WATERLOGGED_SCRIPTORIUM": {
   "title": "Waterlogged Scriptorium",
@@ -851,7 +1034,11 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/waterlogged_scriptorium.webp"
  },
  "EVENT.WELCOME_TO_WONGOS": {
   "title": "Welcome to Wongo's",
@@ -869,7 +1056,9 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [],
+  "imagePath": "event_images/welcome_to_wongos.webp"
  },
  "EVENT.WELLSPRING": {
   "title": "Wellspring",
@@ -883,7 +1072,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/wellspring.webp"
  },
  "EVENT.WHISPERING_HOLLOW": {
   "title": "Whispering Hollow",
@@ -897,7 +1090,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": true
+  "random_outcome": true,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/whispering_hollow.webp"
  },
  "EVENT.WOOD_CARVINGS": {
   "title": "Wood Carvings",
@@ -913,7 +1110,11 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Overgrowth"
+  ],
+  "imagePath": "event_images/wood_carvings.webp"
  },
  "EVENT.WUPPY_IN_TROUBLE": {
   "title": "Wuppy in Trouble",
@@ -929,7 +1130,11 @@
   },
   "conditional": false,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Underdocks"
+  ],
+  "imagePath": "event_images/wuppy_in_trouble.webp"
  },
  "EVENT.ZEN_WEAVER": {
   "title": "Zen Weaver",
@@ -945,6 +1150,10 @@
   },
   "conditional": true,
   "random_offer": false,
-  "random_outcome": false
+  "random_outcome": false,
+  "acts": [
+   "Hive"
+  ],
+  "imagePath": "event_images/zen_weaver.webp"
  }
 }

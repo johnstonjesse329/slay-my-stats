@@ -84,7 +84,8 @@ _issued_lock = threading.Lock()
 
 # Committed game-art folders, served straight from the repo root — these
 # mirror the root-absolute paths the real site bucket serves them at.
-_ART_DIRS = {"card_final", "card_portraits", "node_icons", "relic_images", "potion_images", "ui_icons", "thumbs", "encounter_art"}
+_ART_DIRS = {"card_final", "card_portraits", "node_icons", "relic_images", "potion_images",
+             "event_images", "ui_icons", "thumbs", "encounter_art"}
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
