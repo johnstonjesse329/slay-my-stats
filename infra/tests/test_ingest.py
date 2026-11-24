@@ -2073,6 +2073,15 @@ class EventChoiceTests(unittest.TestCase):
     def test_only_a_total_counted_from_empty_is_marked_as_having_events(self):
         self.assertEqual(handler.empty_stats()["eventsVersion"], handler.EVENTS_VERSION)
 
+    def test_an_ancient_recorded_as_only_the_relic_taken_is_not_an_offer(self):
+        loc = lambda picked: [{"floor": 17, "type": "ancient", "enc": "EVENT.PAEL", "picked": picked}]
+        old = {"char": "IRONCLAD", "won": True, "relicsOffered": {"RELIC.PAELS_GROWTH": loc(True)}}
+        whole = {"char": "IRONCLAD", "won": True, "relicsOffered": {
+            "RELIC.PAELS_GROWTH": loc(False), "RELIC.PAELS_EYE": loc(True), "RELIC.PAELS_HORN": loc(False)}}
+        relics = handler.tally([old, whole], "a")["solo"]["picks"]["IRONCLAD"]["relics"]
+        self.assertEqual(relics["RELIC.PAELS_GROWTH"], [0, 0, 0, 0, 1, 1, 0])  # only the whole offer counts
+        self.assertEqual(relics["RELIC.PAELS_EYE"], [1, 1, 0, 0, 1, 0, 0])
+
     def test_catalog_is_checked_in_and_names_byrdonis_nest_options(self):
         cat = json.loads(run._EVENT_CATALOG_FILE.read_text(encoding="utf-8"))
         nest = cat["EVENT.BYRDONIS_NEST"]

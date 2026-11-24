@@ -126,7 +126,7 @@ class RebuildInputsTest(unittest.TestCase):
     def test_stats_layout_is_part_of_what_triggers_a_rebuild(self):
         # A new PICK_SLOTS etc. makes the pages hide "All players" until the stats are recounted.
         inputs = deploy.profile_rebuild_inputs()
-        self.assertRegex(inputs["stats_layout"], r"^\d+\.\d+\.\d+$")
+        self.assertRegex(inputs["stats_layout"], r"^\d+\.\d+\.\d+\.\d+$")
         self.assertIn("parser_version", inputs)
 
 

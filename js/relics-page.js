@@ -62,7 +62,15 @@ function relicFavoritesHtml(you, all) {
 function aggregateRelics() {
   const byRelic = {};
   filterRuns().forEach(run => {
-    Object.entries(run.relicsOffered || {}).forEach(([id, locs]) => {
+    // An Ancient always offers three or more; a node listing only the relic taken comes from a profile
+    // built before the parser kept every option. Counted, it would read as picked every time, never skipped.
+    const seen = {};
+    Object.values(run.relicsOffered || {}).forEach(locs => locs.forEach(loc => {
+      if (loc.type === "ancient" && !loc.granted) { const k = loc.floor + "|" + loc.enc; seen[k] = (seen[k] || 0) + 1; }
+    }));
+    Object.entries(run.relicsOffered || {}).forEach(([id, allLocs]) => {
+      const locs = allLocs.filter(loc => !(loc.type === "ancient" && !loc.granted && seen[loc.floor + "|" + loc.enc] === 1));
+      if (!locs.length) return;
       const b = byRelic[id] || (byRelic[id] = { offered: 0, picked: 0, wonWhenPicked: 0, skipped: 0, wonWhenSkipped: 0, granted: 0 });
       locs.forEach(loc => {
         if (loc.picked) { b.picked++; if (run.won) b.wonWhenPicked++; }
