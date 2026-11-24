@@ -7,6 +7,9 @@ extends Node2D
 const CANVAS := Vector2i(2600, 1600)
 const PAD := 12
 const IDLE_PREFERENCE := ["idle_loop", "idle", "idle_a", "Idle"]
+const COMBAT_SKINS := {
+	"skulking_colony.skel": "normal",
+}
 const IDLE_OVERLAYS := {
 	"aeonglass.skel": "_track1/rings_normal",
 	"soulnexus.skel": "tracks/writhe",
@@ -59,7 +62,8 @@ func _sprite_for(m: Dictionary) -> Node:
 	sprite.set("skeleton_data_res", data)
 	# The scene's preview_skin is what the game shows; without it a skinned
 	# skeleton (the scrolls, the kin) draws nothing but its shadow.
-	var skin := String(m.get("skin", ""))
+	var skeleton_file := String(m["skel"]).get_file()
+	var skin := String(COMBAT_SKINS.get(skeleton_file, m.get("skin", "")))
 	if skin != "" and skin.to_lower() != "default":
 		var skeleton: Object = sprite.call("get_skeleton")
 		if skeleton != null:
@@ -74,7 +78,7 @@ func _sprite_for(m: Dictionary) -> Node:
 	if pick != "":
 		state.call("set_animation", pick, true, 0)
 	# These creatures use a second animation track to draw their combat pose.
-	var overlay := String(IDLE_OVERLAYS.get(String(m["skel"]).get_file(), ""))
+	var overlay := String(IDLE_OVERLAYS.get(skeleton_file, ""))
 	if overlay in anims:
 		state.call("set_animation", overlay, true, 1)
 	return sprite
