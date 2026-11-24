@@ -1230,6 +1230,24 @@ class HoldTests(Uploads, unittest.TestCase):
             players.append({"character": teammate, "deck": [], "relics": []})
         return minimal_run(ts, players=players)
 
+    def test_records_and_badges_ride_on_the_run(self):
+        # A v3 event log: one fight, one turn, Block 12, a 30-damage card hit with 5 overkill.
+        ev = [{"k": "fight0", "f": 1, "t": 0, "q": 0, "a": {"enc": "ENCOUNTER.JAW_WORM"}},
+              {"k": "play1", "f": 1, "t": 1, "q": 1, "a": {"auto": False, "instance": 7}},
+              {"k": "hit", "f": 1, "t": 1, "q": 2, "a": {"by": "P", "t": "JawWorm", "total": 30, "ovk": 5, "card": "CARD.BASH"}},
+              {"k": "blk", "f": 1, "t": 1, "q": 3, "a": {"c": "P", "n": 12}}]
+        r = self.run_with(1700000001, cards=["CARD.STRIKE_IRONCLAD"])
+        r["players"][0]["badges"] = [{"id": "ELITE", "rarity": "silver", "extra": "x"}]
+        r["telemetry"] = {"v": 3, "log": ev}
+        plain = self.run_with(1700000002, cards=["CARD.STRIKE_IRONCLAD"])
+        self.ingest(body_of(r, plain))
+        got = {x["ts"]: x for x in self.store.runs()}
+        rec = got[1700000001]["records"]
+        self.assertEqual((rec["damageInTurn"]["n"], rec["blockInTurn"]["n"], rec["largestHit"]["n"]), (30, 12, 35))
+        self.assertEqual(got[1700000001]["badges"], [{"id": "ELITE", "rarity": "silver"}])
+        self.assertNotIn("records", got[1700000002])
+        self.assertNotIn("badges", got[1700000002])
+
     def test_a_modded_character_card_or_relic_is_held(self):
         res = self.ingest(body_of(
             self.run_with(1700000001, cards=["CARD.STRIKE_IRONCLAD"], relics=["RELIC.BURNING_BLOOD"]),

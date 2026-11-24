@@ -101,6 +101,7 @@ from pathlib import Path
 # on the dev server the repo root is on sys.path instead.
 import digest_html
 import measured
+import records as run_records
 import views
 import run
 
@@ -517,6 +518,27 @@ def _measured_rows(cleaned: dict, parsed: dict) -> list[dict]:
         return []
 
 
+def _run_records(cleaned: dict, data: dict, steam_id: str) -> dict | None:
+    """The uploader's largest-of-the-run numbers, or none: a summary-shaped log has no events
+    to read, and one this can't read costs the run its records panel, not the run."""
+    try:
+        if not isinstance(cleaned.get("log"), list):
+            return None
+        return run_records.records(cleaned, run.local_player_index(data, steam_id))
+    except Exception:  # noqa: BLE001 -- derived from game-process input; never fail an upload over it
+        return None
+
+
+def _run_badges(data: dict, steam_id: str) -> list | None:
+    """The badges the game gave the uploader (id and rarity), None when the file has no list."""
+    try:
+        players = data.get("players") or []
+        i = run.local_player_index(data, steam_id)
+        return run_records.badges(players[i] if 0 <= i < len(players) else {})
+    except Exception:  # noqa: BLE001
+        return None
+
+
 _KNOWN_IDS = Path(__file__).with_name("known_ids.json")
 MAX_HELD_IDS = 200  # distinct IDs an upload's held runs are tallied by
 _known = None
@@ -616,6 +638,14 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool,
                 rows = _measured_rows(cleaned, parsed)
                 if rows:
                     parsed["measured"] = rows
+                # The run's largest numbers, read from the same log (the Run records panel).
+                found = _run_records(cleaned, data, steam_id)
+                if found:
+                    parsed["records"] = found
+            # The game's win badges come from the .run file itself, log or no log.
+            earned = _run_badges(data, steam_id)
+            if earned is not None:
+                parsed["badges"] = earned
             spool.add(parsed)
             if parsed.get("mp"):
                 shared = parsed.get("multiplayerIdsShared") is not False

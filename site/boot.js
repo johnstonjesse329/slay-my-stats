@@ -191,6 +191,7 @@
       cardVariants: catalog.cardVariants,
       measuredRuns: catalog.measuredRuns,
       runRecords: catalog.runRecords,
+      badgeCatalog: catalog.badgeCatalog || {},
       fightDemand: catalog.fightDemand,
       synergy: catalog.synergy,
       archetypes: catalog.archetypes,
