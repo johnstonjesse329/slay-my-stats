@@ -56,8 +56,6 @@ NOT_DRAWN = {  # plumbing inside a drawn box, or an output
     "ProfileUrlRewriteFunction": "the URL rewrite is noted inside the CloudFront box",
     "SteamGateFunction": "gamma-only Steam session check; the diagram shows production",
     "GammaAuthFunction": "gamma-only Steam login; the diagram shows production",
-    "SeedFunction": "gamma-only nightly copy of prod's data; the diagram shows production",
-    "SeedSchedule": "gamma-only nightly copy of prod's data; the diagram shows production",
     "DigestSchedule": "the 8 AM schedule is noted inside the Digest box",
     "DigestRecipientIdentity": "the sandbox recipient is part of the SES box",
     "BenchmarkSchedule": "the daily timing is noted in the benchmark box",

@@ -73,15 +73,18 @@ function cardFaceWidth(minPx, maxPx) {
 // Icon-size art (22-26px) uses tools/bake_thumbs.py's small WebP copies
 // instead of the full-size file, which can be 20x the bytes. Maps a full-size
 // art URL onto its thumbnail; anything without one (no bake, or a folder
-// that isn't thumbnailed) comes back unchanged.
-function thumbSrc(src) {
+// that isn't thumbnailed) comes back unchanged. size "lg" picks the larger
+// copy (thumbs/lg/, the Cards table's faces) where that folder has one.
+function thumbSrc(src, size) {
   const t = DATA.thumbRoots;
   if (!src || !t || !t.dirs) return src;
   const prefix = t.art + "/";
   if (!src.startsWith(prefix)) return src;
   const rel = src.slice(prefix.length);
-  if (!t.dirs.includes(rel.split("/")[0])) return src;
-  return `${t.thumbs}/${rel.replace(/\.(png|webp)$/i, ".webp")}`;
+  const top = rel.split("/")[0];
+  if (!t.dirs.includes(top)) return src;
+  const sub = size === "lg" && (t.large || []).includes(top) ? "lg/" : "";
+  return `${t.thumbs}/${sub}${rel.replace(/\.(png|webp)$/i, ".webp")}`;
 }
 
 // Hover tooltips are built into the page up front, hidden with
@@ -115,12 +118,12 @@ function loadTooltipArtNear(target) {
 document.addEventListener("pointerover", e => loadTooltipArtNear(e.target), { passive: true });
 document.addEventListener("focusin", e => loadTooltipArtNear(e.target));
 
-// opts.thumb: icon-size, use the thumbnail. opts.deferred: tooltip art, see
-// imgSrcAttr().
+// opts.thumb: icon-size, use the thumbnail ("lg": the larger one). opts.deferred:
+// tooltip art, see imgSrcAttr().
 function renderCardFace(id, upgrade = 0, width = 200, opts = {}) {
   let src = DATA.cardFinal && DATA.cardFinal[cardFaceKey(id, upgrade, opts.props)];
   if (!src) return "";
-  if (opts.thumb) src = thumbSrc(src);
+  if (opts.thumb) src = thumbSrc(src, opts.thumb === "lg" ? "lg" : undefined);
   const w = typeof width === "number" ? `${width}px` : width;
   const name = (cardInfo(id) || {}).title || fmtCardLabel(id);
   return `<img loading="lazy" class="cardface" style="width:${w}" ${imgSrcAttr(src, opts.deferred)} alt="${name}">`;

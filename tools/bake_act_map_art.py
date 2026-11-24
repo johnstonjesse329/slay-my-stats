@@ -112,6 +112,8 @@ def main():
     ap.add_argument("--pck", type=Path, help="pck_recover_full root (default: auto-detect)")
     ap.add_argument("--spine", type=Path, help="folder of boss_<id>_spine.png from tools/render_spine_bosses.html")
     args = ap.parse_args()
+    import art_manifest
+    art_manifest.require_up_to_date()  # a stale copy of this script dropped marked_x.png on 2026-11-23
     pck = args.pck or next((p for p in PCK_CANDIDATES if p.exists()), None)
     if pck is None:
         raise SystemExit("pck_recover_full not found; pass --pck")
@@ -152,7 +154,10 @@ def main():
     if args.spine:
         for f in sorted(args.spine.glob("boss_*_spine.png")):
             shrink(f, SPINE_W, f.name)
+    if not (OUT / "marked_x.png").is_file():  # js/run-detail.js draws it on Fur Coat fights
+        raise SystemExit(f"{OUT / 'marked_x.png'} was not written; the manifest was left as it was.")
     print(f"baked {len(list(OUT.iterdir()))} files into {OUT}")
+    art_manifest.update(["ui_icons/map"])
 
 
 if __name__ == "__main__":

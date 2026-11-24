@@ -62,6 +62,8 @@ FONT_BOLD    = PCK_ROOT / "fonts" / "kreon_bold.ttf"
 FONT_REGULAR = PCK_ROOT / "fonts" / "kreon_regular.ttf"
 LOC_CARDS    = PCK_ROOT / "localization" / "eng" / "cards.json"
 OUT          = ROOT / "card_final"
+# The canonical card_final size: ExportCards.cs's FaceWidth x FaceHeight (prod's set).
+FACE_SIZE    = (332, 454)
 
 # Kreon has no glyphs for the ⚡/✦ tokens the game's own description text uses
 # (:energy / :stars runs below) — Pillow has no font-fallback chain like a
@@ -850,6 +852,14 @@ def main():
 
     scale = args.width / 300  # 300 = the frame's own logical width (layout.json's frameWidth)
     canvas_size = (round(logical_w * scale), round(logical_h * scale))
+    # card_final/ has one canonical size, the game export's 332x454 (prod's set): each
+    # face is centred on a transparent canvas that size, so a fallback bake can't
+    # change the size the site was checked with.
+    if canvas_size[0] > FACE_SIZE[0] or canvas_size[1] > FACE_SIZE[1]:
+        raise SystemExit(f"--width {args.width} gives a {canvas_size[0]}x{canvas_size[1]} canvas, "
+                         f"larger than card_final's {FACE_SIZE[0]}x{FACE_SIZE[1]}. Use --width 300.")
+    import art_manifest
+    art_manifest.require_up_to_date()
 
     font_scale = scale
     desc_size = round(layout["fontSizes"]["description"] * font_scale)
@@ -907,6 +917,9 @@ def main():
             img = bake_one(card_id, upgraded, info, chrome, portrait, layout,
                            bounds, scale, fonts, canvas_size,
                            raw_descs, line_pitch, single_line_height)
+            face = Image.new("RGBA", FACE_SIZE, (0, 0, 0, 0))
+            face.alpha_composite(img, ((FACE_SIZE[0] - img.width) // 2, (FACE_SIZE[1] - img.height) // 2))
+            img = face
             path = OUT / f"{card_id}{suffix}.webp"
             # method=6 (max compression effort) measured ~50x slower than
             # method=4 for only ~5% smaller files here — a few cents/month of
@@ -916,7 +929,9 @@ def main():
 
     total = sum(sz for _, sz in manifest)
     print(f"Baked {len(manifest)} images ({len(cards)} cards x 2) -> {OUT}")
-    print(f"Total: {total/1024/1024:.2f} MB  (canvas {canvas_size[0]}x{canvas_size[1]}px)")
+    print(f"Total: {total/1024/1024:.2f} MB  (canvas {canvas_size[0]}x{canvas_size[1]}px "
+          f"on a {FACE_SIZE[0]}x{FACE_SIZE[1]} face)")
+    art_manifest.update(["card_final"])
 
 
 if __name__ == "__main__":

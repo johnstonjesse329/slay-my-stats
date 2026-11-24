@@ -26,6 +26,9 @@ if not SRC.exists():
     print('Run the full PCK extraction first (see README "Refreshing game data").')
     raise SystemExit(1)
 
+import art_manifest
+art_manifest.require_up_to_date()
+
 shutil.rmtree(DST, ignore_errors=True)
 DST.mkdir()
 
@@ -41,3 +44,4 @@ for src in portraits:
     img.resize((TARGET_W, new_h), Image.LANCZOS).save(dst, optimize=True, compress_level=9)
 
 print(f"Done → {DST}")
+art_manifest.update(["card_portraits"])

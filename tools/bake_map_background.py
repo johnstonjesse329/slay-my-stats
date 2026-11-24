@@ -75,6 +75,8 @@ def main():
     ap.add_argument("--pck", type=Path, help="pck_recover_full root (default: auto-detect)")
     ap.add_argument("--act", default="overgrowth", help="map_bgs subfolder (glory, hive, overgrowth, underdocks)")
     args = ap.parse_args()
+    import art_manifest
+    art_manifest.require_up_to_date()
 
     pck = args.pck or next((p for p in PCK_CANDIDATES if p.exists()), None)
     if pck is None:
@@ -94,6 +96,7 @@ def main():
     OUT.parent.mkdir(exist_ok=True)
     out.save(OUT, "WEBP", quality=80, method=6)
     print(f"wrote {OUT.relative_to(ROOT)} {out.size[0]}x{out.size[1]} {OUT.stat().st_size // 1024} KB")
+    art_manifest.update(["ui_icons/map_scroll.webp"])
 
 
 if __name__ == "__main__":

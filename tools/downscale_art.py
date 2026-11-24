@@ -135,6 +135,8 @@ def main():
     if not RELIC_SRC.exists():
         raise SystemExit(f"Source not found: {RELIC_SRC}\n"
                          "Run the GDRE recovery first (see README \"Refreshing game data\").")
+    import art_manifest
+    art_manifest.require_up_to_date()
     n, size = downscale_relics()
     print(f"Relics : {n} images -> {RELIC_DST}  ({size/1024/1024:.2f} MB at {RELIC_W}px)")
     pn, psize = downscale_potions()
@@ -146,6 +148,7 @@ def main():
         # an asset; run.py falls back to an emoji for any node type (or
         # boss encounter) whose icon didn't make it into node_icons/.
         print(f"  ! missing: {', '.join(missing)}")
+    art_manifest.update(["relic_images", "potion_images", "node_icons"])
 
 
 if __name__ == "__main__":

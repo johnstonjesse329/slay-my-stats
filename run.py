@@ -1279,16 +1279,19 @@ def build_thumb_roots(url_for=Path.as_uri) -> dict:
     Where tools/bake_thumbs.py's small copies of the art live, for
     js/item-tips.js's thumbSrc(): "art" is the URL prefix every art folder
     sits under, "thumbs" the thumbs/ folder's URL, and "dirs" the art folders
-    that have thumbnails. Empty if the bake hasn't been run, in which case
-    icon-size art falls back to the full-size files.
+    that have thumbnails, "large" those that also have the larger copy under
+    thumbs/lg/ (the Cards table's faces). Empty if the bake hasn't been run, in
+    which case icon-size art falls back to the full-size files.
     """
     if not _THUMBS_DIR.exists():
         return {}
     probe = url_for(_HERE / "x")
+    large = _THUMBS_DIR / "lg"
     return {
         "art": probe[:-len("/x")],
         "thumbs": url_for(_THUMBS_DIR),
-        "dirs": sorted(p.name for p in _THUMBS_DIR.iterdir() if p.is_dir()),
+        "dirs": sorted(p.name for p in _THUMBS_DIR.iterdir() if p.is_dir() and p.name != "lg"),
+        "large": sorted(p.name for p in large.iterdir() if p.is_dir()) if large.is_dir() else [],
     }
 
 

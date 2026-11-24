@@ -234,6 +234,20 @@ class ArtDeploy(unittest.TestCase):
         self.bucket = deploy.DATA_BUCKETS["gamma"]
         self.key = "card_final/example.webp"
         self.art = {self.key: "abc"}
+        self.real_check_art = deploy.check_art
+        patcher = mock.patch.object(deploy, "check_art")  # tested on its own below
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_art_differing_from_the_manifest_stops_the_deploy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tools").mkdir()
+            (root / "tools" / "art_manifest.json").write_text(
+                json.dumps({"files": {"ui_icons/map/marked_x.png": "0" * 64}}))
+            with mock.patch.object(deploy, "LOCAL", root), mock.patch.object(deploy, "SRC", root):
+                with self.assertRaisesRegex(deploy.DeployError, "missing: ui_icons/map/marked_x.png"):
+                    self.real_check_art()
 
     def test_first_deploy_seeds_from_existing_s3_objects(self):
         self.s3.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")

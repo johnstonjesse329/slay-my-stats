@@ -73,6 +73,8 @@ def find_godot(explicit: str | None = None) -> Path | None:
 
 
 EXPORTER_SRC = ROOT / "tools" / "ExportCards.cs"
+# ExportCards.cs's FaceWidth x FaceHeight: the canonical card_final size.
+CARD_FACE_SIZE = (332, 454)
 AUTOLOAD_LINE = 'ExportCards="*res://tools/ExportCards.cs"'
 
 
@@ -115,6 +117,8 @@ def main() -> int:
                         help="export the JSON and skip rendering card faces")
     args = parser.parse_args()
 
+    import art_manifest
+    art_manifest.require_up_to_date()
     recovery = Path(args.recovery) if args.recovery else RECOVERY
     if not (recovery / "project.godot").exists():
         raise SystemExit(
@@ -186,6 +190,13 @@ def main() -> int:
         if not fresh:
             print(log[-4000:], file=sys.stderr)
             raise SystemExit("No faces were rendered by this run. Nothing was copied to card_final/.")
+        # Every face is the game's card scene at ExportCards.cs's FaceWidth x FaceHeight,
+        # the canonical card_final size (prod's). Anything else is a different bake.
+        from PIL import Image
+        wrong = [f.name for f in fresh if Image.open(f).size != CARD_FACE_SIZE]
+        if wrong:
+            raise SystemExit(f"{len(wrong)} faces are not {CARD_FACE_SIZE[0]}x{CARD_FACE_SIZE[1]} "
+                             f"(e.g. {wrong[0]}). Nothing was copied to card_final/.")
         out = ROOT / "card_final"
         out.mkdir(exist_ok=True)
         # Replace the set rather than add to it, so a card the game dropped doesn't linger.
@@ -194,6 +205,7 @@ def main() -> int:
         for face in fresh:
             shutil.copy2(face, out / face.name)
         print(f"--- rendered {len(fresh)} card faces into card_final/")
+        art_manifest.update(["card_final"])
     print("Next: python tools/import_game_data.py", flush=True)
     return 0
 

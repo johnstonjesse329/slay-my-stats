@@ -176,10 +176,10 @@ paths:
 ├── fight_demand.json        each encounter's HP and what winning runs did on it (averages, and the best tenth), per ascension tier, and the quarters of winning acts, for the Runs page's Keeping Up section
 ├── measured_runs.json       what the owner's local logs did, for the same charts (uploaded runs carry theirs as `measured`)
 ├── data_provenance.json     which game build produced the data and art
-├── card_final/              finished card images, base and upgraded (served)
+├── card_final/              finished card images, base and upgraded, 332x454 (served)
 ├── card_portraits/          card art thumbnails (served)
 ├── enchantment_images/      enchantment icons (served)
-├── thumbs/                  icon-size copies of the art (served)
+├── thumbs/                  icon-size copies of the art, and thumbs/lg/ for the Cards table's faces (served)
 ├── relic_images/            (served)
 ├── potion_images/           (served)
 ├── node_icons/              map node icons (served)
@@ -593,7 +593,6 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
   month files, kept raw uploads and telemetry, so a rebuild can't bring them back. `--dry-run` lists first. Delete the
   `.run` file from the game's history folder too, or the next upload sends it again.
 - `tools/rebuild_stats.py` recounts the site-wide stats and rewrites every player's seed file. Run it after any of the above.
-- Gamma's `SeedFunction` runs the same copy nightly at 3 AM Central (changed objects only, no rebuild).
 - `tools/seed_gamma.py` copies prod's run data into gamma's bucket as prod built it (adds only, never deletes). The
   process Lambda fires on uploads only, so the copied raw uploads aren't processed again. `--rebuild` then rebuilds
   gamma's profiles and stats with the checkout's own code, so a change can be checked on gamma against real data;
@@ -899,6 +898,12 @@ separately by `tools/bake_map_background.py`. The run page's Map by Act art (eac
 node icons, visited circle, Ancients and bosses, in `ui_icons/map/`) is baked by `tools/bake_act_map_art.py`.
 Three bosses are animated skeletons on the map; `tools/render_spine_bosses.html` renders them to still frames first
 and passes them in with `--spine` (steps in its header).
+
+The art is ignored, but `tools/art_manifest.json` (tracked) lists every served art file and its sha256. Each bake
+script records what it wrote there, so a re-bake shows up in `git diff`; commit it with the change. The bake scripts
+refuse to run from a checkout behind `origin/gamma`, and `tools/deploy.py` and `tools/serve_site.py` refuse to run
+when the art on disk differs from the manifest (`python tools/art_manifest.py` lists the differences). Card faces
+are 332x454, the size the game's exporter renders.
 
 Each refresh keeps a copy of the card, relic and potion data in `local_data/game_data/<version>/`, and
 `tools/diff_game_data.py` writes what changed since the previous version to
