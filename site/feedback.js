@@ -11,9 +11,9 @@
     *{box-sizing:border-box}button,textarea,a{font:inherit;touch-action:manipulation}
     button{background:#302d27;color:#fff;border:1px solid #82735b;border-radius:6px;padding:9px 12px;cursor:pointer}
     button:hover{background:#514635}button:disabled{opacity:.5}a{color:#edc782}
-    #launcher{position:fixed;right:0;top:var(--dock-top,50%);transform:translateY(var(--dock-shift,-50%));display:flex;flex-direction:column;align-items:center;gap:6px;width:36px;padding:10px 0;border:1px solid #f6e3b0;border-right:0;border-radius:10px 0 0 10px;background:linear-gradient(#f4dda6,#e0c468);color:#191c20;font-size:14px;font-weight:700;box-shadow:-3px 4px 14px #0009;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+    #launcher{position:fixed;right:0;top:calc(12px + var(--dock-r,.5) * (100% - 24px));transform:translateY(calc(var(--dock-r,.5) * -100%));display:flex;align-items:center;gap:6px;padding:8px 10px 8px 12px;border:1px solid #f6e3b0;border-right:0;border-radius:10px 0 0 10px;background:linear-gradient(#f4dda6,#e0c468);color:#191c20;font-size:13px;font-weight:700;white-space:nowrap;box-shadow:-3px 4px 14px #0009;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+    #panel:not([hidden]) ~ #launcher{display:none}
     #launcher.dragging{cursor:grabbing;box-shadow:-3px 4px 20px #000c}
-    #launcher-label{writing-mode:vertical-rl;letter-spacing:.04em}
     #launcher:hover{background:linear-gradient(#f9e7ba,#e8cf7c)}
     #launcher.sent{background:linear-gradient(#cfe8b5,#9fcb7a);border-color:#cfe8b5}
     #launcher-count{min-width:20px;padding:1px 4px;border-radius:999px;background:#191c20;color:#f4dda6;font-size:12px;font-weight:700;text-align:center}
@@ -131,8 +131,7 @@
       textarea{min-height:72px}
       #save{min-height:46px}
       #prior ul{max-height:80px}
-      #launcher{width:30px;padding:8px 0;font-size:12px}
-      #panel:not([hidden]) ~ #launcher{display:none}
+      #launcher{padding:6px 8px 6px 10px;font-size:12px}
     }
   </style>
   <div id="hint" hidden><span id="pick-instructions">Click or tap to select an element, or drag to select an area. Press Escape to cancel.</span><button id="cancel" type="button" aria-describedby="pick-instructions">Cancel</button></div>
@@ -714,7 +713,7 @@
       if(mine===loadId) $('load-more').disabled=false;
     }
   }
-  // The launcher is a slim tab docked on the right edge. Drag it up or down the edge (touch-action
+  // The launcher is a small pill docked on the right edge. Drag it up or down the edge (touch-action
   // is off on the tab alone, so scrolling the page is untouched); the spot is kept per browser.
   const DOCK_KEY = 'smst-feedback-dock', launcher = $('launcher');
   let dockAt = null;
@@ -724,17 +723,14 @@
     return {low, high};
   }
   function dockTo(ratio, save) {
-    const {low, high} = dockRange();
     ratio = Math.max(0, Math.min(1, ratio));
-    launcher.style.setProperty('--dock-top', Math.round(low + (high - low) * ratio) + 'px');
-    launcher.style.setProperty('--dock-shift', '0');
+    launcher.style.setProperty('--dock-r', ratio);  // CSS places it, so the window size can change under it
     dockAt = ratio;
     if (save) { try { localStorage.setItem(DOCK_KEY, String(ratio)); } catch {} }
   }
   const dockPx = () => launcher.getBoundingClientRect().top;
   const dockRatio = px => { const {low, high} = dockRange(); return high > low ? (px - low) / (high - low) : 0; };
   if (dockAt !== null) dockTo(dockAt, false);
-  addEventListener('resize', () => { if (dockAt !== null) dockTo(dockAt, false); });
   let dockMoved = false;
   launcher.addEventListener('pointerdown', e => {
     if (e.button) return;
