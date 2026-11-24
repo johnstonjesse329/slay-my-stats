@@ -119,7 +119,7 @@ def main():
         raise SystemExit("pck_recover_full not found; pass --pck")
     OUT.mkdir(parents=True, exist_ok=True)
     sprites = pck / "images" / "atlases"
-    icons, outlines = sprites / "ui_atlas.sprites" / "map" / "icons", sprites / "compressed.sprites" / "map"
+    icons, outlines = sprites / "ui_atlas.sprites" / "map" / "icons", (sprites / "compressed.sprites" / "map" if (sprites / "compressed.sprites").exists() else sprites / "compressed_atlas.sprites")
 
     tint(atlas(pck, outlines / "map_circle_4.tres"), rgb(CIRCLE_TINT)).save(OUT / "circle.png")
     # The red X the game draws on a quest-marked node (normal_map_point.tscn QuestIcon, shown for
