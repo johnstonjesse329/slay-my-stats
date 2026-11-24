@@ -81,7 +81,7 @@ function eventChoices(tally) {
     const cat = catalog[id] || {};
     const label = key => (cat.labels || {})[key] || titleCaseId(key.split(".").pop());
     const options = Object.entries(ev.o).sort((a, b) => b[1][0] - a[1][0] || a[0].localeCompare(b[0]))
-      .map(([key, o]) => ({ key, label: label(key), taken: o[0], grant: eventGrantText(o) }));
+      .map(([key, o]) => ({ key, label: label(key), taken: o[0], wins: o[1], grant: eventGrantText(o) }));
     const fixed = !!cat.initial && !cat.conditional && !cat.random_offer;
     out[id] = {
       visits: ev.v,
@@ -98,19 +98,42 @@ function eventName(id) {
   return (DATA.eventCatalog?.[id]?.title) || titleCaseId(id.replace(/^EVENT\./, ""));
 }
 
+// One colour per option, shared by its slice of the pie and its row, in the order of the rows.
+const EVENT_SLICE_COLORS = ["#e0c468", "#6fd6c6", "#9db8f0", "#d97a3a", "#c58be0", "#8fd16b", "#e0788c", "#8fa0b8"];
+
+// Each option's share of the visits, as a ring: a slice per option taken.
+function eventPieHtml(ch) {
+  const total = ch.options.reduce((n, o) => n + o.taken, 0) || 1;
+  let at = 0;
+  const slices = ch.options.map((o, i) => {
+    const share = o.taken / total * 100;
+    const out = `<circle class="event-pie-slice" r="15.9155" cx="21" cy="21" fill="none" stroke="${EVENT_SLICE_COLORS[i % EVENT_SLICE_COLORS.length]}" stroke-width="9"
+      stroke-dasharray="${share} ${100 - share}" stroke-dashoffset="${25 - at}"><title>${escapeHtml(o.label)}: ${o.taken} of ${total}</title></circle>`;
+    at += share;
+    return out;
+  }).join("");
+  return `<svg class="event-pie" viewBox="0 0 42 42" role="img" aria-label="Share of visits by option">${slices}</svg>`;
+}
+
 function eventColumnHtml(who, ch) {
   const head = who === "you" ? "Your runs" : "All players";
   if (!ch) return `<div class="event-col event-col-${who}"><h4>${head}</h4><p class="event-none">—</p></div>`;
-  const rows = ch.options.map(o => `<div class="event-opt">
-      <span class="event-opt-name">${o.label}</span>
+  const color = i => EVENT_SLICE_COLORS[i % EVENT_SLICE_COLORS.length];
+  const rows = ch.options.map((o, i) => {
+    const win = Math.round(o.wins / o.taken * 100);
+    return `<div class="event-opt">
+      <span class="event-opt-name"><i class="event-dot" style="background:${color(i)}"></i>${o.label}</span>
       <span class="event-opt-n">${o.taken}</span>
-      <span class="event-opt-bar"><i style="width:${Math.round(o.taken / ch.visits * 100)}%"></i></span>
+      <span class="event-opt-win${win >= 50 ? " event-opt-hi" : ""}">${win}%</span>
+      <span class="event-opt-wl">${o.wins}W / ${o.taken - o.wins}L</span>
       <span class="event-opt-grant${o.grant === "not recorded" ? " event-opt-none" : ""}">${o.grant}</span>
-    </div>`).join("")
-    + ch.not_taken.map(l => `<div class="event-opt event-opt-never"><span class="event-opt-name">${l}</span><span class="event-opt-n">0</span><span class="event-opt-bar"></span><span class="event-opt-grant"></span></div>`).join("");
+    </div>`;
+  }).join("")
+    + ch.not_taken.map(l => `<div class="event-opt event-opt-never"><span class="event-opt-name"><i class="event-dot event-dot-none"></i>${l}</span><span class="event-opt-n">0</span><span class="event-opt-win"></span><span class="event-opt-wl"></span><span class="event-opt-grant"></span></div>`).join("");
   const notes = [ch.flags.conditional && "Some options are only offered at times", ch.flags.random_offer && "The options on offer vary"]
     .filter(Boolean).join(". ");
-  return `<div class="event-col event-col-${who}"><h4>${head} <span class="event-visits">${ch.visits} visit${ch.visits !== 1 ? "s" : ""}</span></h4>${rows}${notes ? `<p class="event-note">${notes}</p>` : ""}</div>`;
+  return `<div class="event-col event-col-${who}"><h4>${head} <span class="event-visits">${ch.visits} visit${ch.visits !== 1 ? "s" : ""}</span></h4>
+    <div class="event-body">${eventPieHtml(ch)}<div class="event-opts">${rows}</div></div>${notes ? `<p class="event-note">${notes}</p>` : ""}</div>`;
 }
 
 function renderEventsPage() {

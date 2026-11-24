@@ -186,7 +186,7 @@ function renderCardsPage() {
 
   // Header
   const cols = [
-    { key: "title",      label: "Card",            align: "left",   width: "205px" },
+    { key: "title",      label: "Card",            align: "left",   width: "300px" },
     { key: "owner",      label: "Pool",            align: "left",   width: "95px"  },
     { key: "type",       label: "Type",            align: "left",   width: "72px"  },
     { key: "rarity",     label: "Rarity",          align: "left",   width: "86px"  },
@@ -584,7 +584,7 @@ function favByCharHtml(you, all) {
   return `<div class="fav-bychar">
     <div class="fav-bychar-bar">${switcher}${who}</div>
     <div class="pivot-wrap fav-bychar-wrap"><table class="pivot fav-table fav-bychar-table fav-card-table${favByCharShowAll && all ? " show-all" : ""}">
-      <thead><tr><th></th>${all ? "<th></th>" : ""}${slots.map(slot => `<th scope="col">${slot.label}</th>`).join("")}</tr></thead><tbody>${rows}</tbody>
+      <thead><tr><th class="fav-char-head"></th>${all ? `<th class="fav-who-head"></th>` : ""}${slots.map(slot => `<th scope="col">${slot.label}</th>`).join("")}</tr></thead><tbody>${rows}</tbody>
     </table></div>
   </div>`;
 }
