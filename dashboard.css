@@ -1968,6 +1968,7 @@ h1 {
 }
 /* On a mouse, a box with nothing to hover in it never catches the pointer. */
 .floor-tip.passive:not(.docked) { pointer-events: none; }
+.floor-tip.passive:has(.encounter-art) { pointer-events: auto; }
 /* On touch: a sheet on the screen edge away from the chart (docked-top when the chart is in
    the lower half), so it never covers the chart being scrubbed. Placed by js/run-detail.js. */
 .floor-tip.docked {

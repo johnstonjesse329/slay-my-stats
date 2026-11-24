@@ -201,6 +201,11 @@ def repo_url(p: Path) -> str:
     return "/" + p.relative_to(run._HERE).as_posix()
 
 
+def versioned_art_url(path: Path) -> str:
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()[:10]
+    return f"{repo_url(path)}?v={digest}"
+
+
 # power_data.json keys that nearly every card has one of (block, draw, exhaust...).
 # A link through one of these says nothing about a deck, so only the specific ones
 # (Strength, Poison, Osty, Shiv, Stars...) go to the site. Winning didn't track
@@ -601,7 +606,7 @@ def build_catalog() -> dict:
         # Every event's options, for the Events page (tools/build_event_catalog.py).
         "eventCatalog":       event_catalog,
         "nodeIcons":          run.build_node_icons(url_for=repo_url),
-        "encounterArt":       run.build_encounter_art(url_for=repo_url),
+        "encounterArt":       run.build_encounter_art(url_for=versioned_art_url),
         "cardFinal":          run.build_card_final_images(url_for=repo_url),
         "energyIcons":        run.build_energy_icons(url_for=repo_url),
         "charIcons":          run.build_char_icons(url_for=repo_url),

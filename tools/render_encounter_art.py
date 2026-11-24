@@ -38,14 +38,16 @@ GODOT = ROOT / "tools" / "godot" / "Godot_v4.5.2-stable_mono_win64_console.exe"
 WORK = ROOT / "local_data" / "encounter-art"
 ART = ROOT / "encounter_art"
 
-# The tooltip draws these at half their pixel width (see .nt-enc-art in
-# dashboard.css), so 560 is a 280px picture that stays sharp on a 2x display.
-# Height follows the art: a row of slimes is short and wide, a boss is tall,
-# and a fixed box would pad most fights with empty space. The cap keeps the
-# tallest bosses from pushing a tooltip off the bottom of the screen.
+# Keep the source sharp at the tooltip's maximum 280 CSS pixels wide.
 TIP_WIDTH = 560
 TIP_MAX_HEIGHT = 400
 WEBP_QUALITY = 82
+# Fractional bounds on the trimmed render. At tooltip size, detached wisps
+# and the prism's distant ground shadow otherwise shrink the monsters.
+TOOLTIP_FRAMES = {
+    "encounter_soul_nexus_elite": (0.23, 0.36, 0.76, 0.90),
+    "encounter_infested_prisms_elite": (0.0, 0.0, 1.0, 0.63),
+}
 
 
 def copy_spine_extension(pck: Path) -> None:
@@ -90,6 +92,9 @@ def to_webp(png_dir: Path) -> None:
         box = im.getbbox()          # the renderer trims already; belt and braces
         if box:
             im = im.crop(box)
+        frame = TOOLTIP_FRAMES.get(png.stem)
+        if frame:
+            im = im.crop(tuple(round(edge * size) for edge, size in zip(frame, im.size * 2)))
         im.thumbnail((TIP_WIDTH, TIP_MAX_HEIGHT), Image.LANCZOS)
         im.save(ART / f"{png.stem}.webp", "WEBP", quality=WEBP_QUALITY, method=6)
         written += 1

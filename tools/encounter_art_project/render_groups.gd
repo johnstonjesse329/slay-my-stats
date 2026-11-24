@@ -7,6 +7,10 @@ extends Node2D
 const CANVAS := Vector2i(2600, 1600)
 const PAD := 12
 const IDLE_PREFERENCE := ["idle_loop", "idle", "idle_a", "Idle"]
+const IDLE_OVERLAYS := {
+	"soulnexus.skel": "tracks/writhe",
+	"vantom.skel": "_tracks/charged_1",
+}
 # NCombatRoom.PositionEnemies: monsters sit on this baseline, spaced by their
 # own footprint width plus this gap, every other one raised when it gets tight.
 const BASELINE := 200.0
@@ -65,8 +69,13 @@ func _sprite_for(m: Dictionary) -> Node:
 	for a in data.call("get_animations"):
 		anims.append(String(a.call("get_name")))
 	var pick := _pick_idle(anims)
+	var state: Object = sprite.call("get_animation_state")
 	if pick != "":
-		sprite.call("get_animation_state").call("set_animation", pick, true, 0)
+		state.call("set_animation", pick, true, 0)
+	# These creatures use a second animation track to draw their combat pose.
+	var overlay := String(IDLE_OVERLAYS.get(String(m["skel"]).get_file(), ""))
+	if overlay in anims:
+		state.call("set_animation", overlay, true, 1)
 	return sprite
 
 # Mirrors NCombatRoom.PositionEnemies for encounters with no scene of their own.

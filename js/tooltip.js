@@ -311,21 +311,29 @@ document.addEventListener("pointerdown", e => {
   pressWasTouch = e.pointerType === "touch" || e.pointerType === "pen";
 }, { capture: true, passive: true });
 document.addEventListener("click", e => {
-  if (pressWasTouch && !pressStartedInTip && e.target.closest(TIP_BOXES)) {
+  const box = e.target.closest(TIP_BOXES);
+  if (!box) return;
+  if (pressWasTouch && !pressStartedInTip) {
     e.preventDefault();
     e.stopPropagation();
+    return;
   }
+  const control = e.target.closest("a, button, input, select, textarea, summary, [data-pick], [data-card-pop]");
+  if (control && box.contains(control)) return;
+  e.stopPropagation();
+  if (box.classList.contains("floor-tip")) closeFloorTip();
+  dismissTips();
 }, true);
 
-// Esc closes whatever tooltip is showing: the shared box, a focus-opened one
-// (blur) and a hover-opened CSS one (the same class a scroll uses, lifted
-// when the pointer next moves).
-document.addEventListener("keydown", e => {
-  if (e.key !== "Escape") return;
+// Close shared and inline tooltips on Escape or a click on their surface.
+function dismissTips() {
   hideSharedTooltip();
   const active = document.activeElement;
   if (active && active.matches(TIP_FOCUS_TRIGGERS)) active.blur();
   document.body.classList.add("suppress-hover-tooltips");
+}
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") dismissTips();
 });
 
 // "IRONCLAD" -> "Ironclad", for legends, labels, and tooltips
