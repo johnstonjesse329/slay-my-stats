@@ -122,6 +122,7 @@ slay-my-stats/
 │   ├── slay_my_stats/slay_my_stats_stack.py   every AWS resource (see "AWS resources")
 │   ├── lambda/ingest/handler.py               the upload Lambdas (ingest, process, failure), the gamma Steam login and the feedback router
 │   ├── lambda/ingest/measured.py              per-floor energy and card numbers, read from a run's event log at upload
+│   ├── lambda/ingest/records.py               the run page's Run records (largest turn, hit, Block) and win badges, read at upload
 │   ├── lambda/ingest/feedback.py              the gamma feedback inbox (session check, notes, resolve)
 │   ├── lambda/ingest/reactions.py             What's new reactions and who asked for a post, kept in the feedback table
 │   ├── lambda/ingest/views.py                 page views, counted from CloudFront's access logs for the morning digest
@@ -590,6 +591,10 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
 - `tools/backfill_measured.py` writes `measured` (per-floor energy and cards, for the Keeping Up chart) onto runs
   uploaded before the Lambda worked it out, from their stored event logs. Runs that already have it are left alone;
   `--redo` re-reads them after the reading changes.
+- Run records (`run.records`, peaks from the mod's event log) and win badges (`run.badges`, from the .run file) are
+  worked out at upload by `infra/lambda/ingest/records.py` for every player whose mod sends its log. Runs from before
+  that get them on the next `tools/rebuild_profiles.py --all` (the kept upload has both). The badge art and text are
+  baked by `tools/bake_badge_art.py` (`ui_icons/badges/`, `badge_catalog.json`).
 - `tools/remove_profile.py --slug <slug>` takes a profile off the site. The player's next upload starts a fresh
   one. Add `--raw` to delete their kept uploads too.
 - `tools/remove_runs.py --slug <slug> --ts <ts> [--ts ...]` takes single runs off a profile (mod test runs, say):

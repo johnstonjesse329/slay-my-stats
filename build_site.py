@@ -53,6 +53,7 @@ SHARED_JS = ("map-bg.js", "tooltip.js", "item-tips.js")
 # same folder to route those URLs, and tools/serve_site.py reads it live.
 PAGES_DIR = _HERE / "site" / "pages"
 _RUN_RECORDS = _HERE / "local_data" / "run_records.json"
+_BADGE_CATALOG = _HERE / "badge_catalog.json"
 HOME_INTRO = _HERE / "site" / "home-intro.html"
 # Binary files published as they are, under their own names at the site root
 # (dashboard.css asks for the fonts there; site/home-intro.html and the link
@@ -580,8 +581,11 @@ def build_catalog() -> dict:
             json.loads(run._FIGHT_DEMAND_FILE.read_text(encoding="utf-8"))
             if run._FIGHT_DEMAND_FILE.exists() else None
         ),
-        # PREVIEW, owner only: largest-of-run records and the game's win badges
-        # (tools/export_run_records.py); null on every build without that file.
+        # The game's win badges: id -> rarity -> title and text (tools/bake_badge_art.py).
+        "badgeCatalog":       (json.loads(_BADGE_CATALOG.read_text(encoding="utf-8"))
+                               if _BADGE_CATALOG.exists() else {}),
+        # Local preview only: records for runs on this machine whose profile has none yet
+        # (tools/export_run_records.py). Uploaded runs carry their own (run.records).
         "runRecords":         (
             json.loads(_RUN_RECORDS.read_text(encoding="utf-8")) if _RUN_RECORDS.exists() else None
         ),

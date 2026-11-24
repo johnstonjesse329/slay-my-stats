@@ -1,6 +1,8 @@
-// PREVIEW: the owner's own runs only (FB-44, FB-51, FB-64). Reads DATA.runRecords, which
-// tools/export_run_records.py builds on the owner's machine from the mod's event log and the
-// game's .run file; the live site has none, so there the section never draws.
+// Run records (FB-44, FB-51, FB-64): the largest numbers of a run and the win badges the game
+// posted. Both come with the run: the upload reads the mod's event log and the .run file once
+// (infra/lambda/ingest/records.py) and stores run.records and run.badges. Badge names and art
+// are the game's, in DATA.badgeCatalog and /ui_icons/badges/. Only runs from a mod that sent
+// its event log have records; a run without them says so.
 //
 // Nothing here is worked out from other stats: a number the log cannot give, or a badge list the
 // run file does not carry, says "Not recorded".
@@ -9,7 +11,6 @@ const RECORDS_STYLE = `
 .run-records { margin: 1.25rem 0; }
 .run-records-head { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
 .run-records-head h2 { margin: 0; }
-.run-records-preview { font-size: var(--fs-sm); color: var(--gold); border: 1px solid var(--gold); border-radius: 999px; padding: 0.05rem 0.6rem; }
 .run-records-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
 .run-records-peaks { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem; }
 .run-records-peak { background: var(--panel-2); border: 1px solid var(--hairline); border-radius: 8px; padding: 0.7rem 0.9rem; }
@@ -41,7 +42,8 @@ function recordsBadgeText(text) {
   return escapeHtml(text || "").replace(/\[(?:blue|gold|red|green)\](.*?)\[\/(?:blue|gold|red|green)\]/g, "<b>$1</b>");
 }
 
-function recordsPanelHtml(entry, art) {
+function recordsPanelHtml(entry) {
+  const catalog = DATA.badgeCatalog || {};
   const r = entry.records;
   const peaks = !r ? "" : `
     <div class="run-records-peaks">
@@ -77,13 +79,17 @@ function recordsPanelHtml(entry, art) {
   let badges;
   if (entry.badges == null) badges = `<p>${recordsNone()}</p>`;
   else if (!entry.badges.length) badges = `<p>${recordsNone("No badges earned this run")}</p>`;
-  else badges = `<div class="run-records-badges">${entry.badges.map(b => `
-      <div class="run-records-badge" title="${escapeHtml(b.desc || "")}">
-        ${art[b.art] ? `<img src="${art[b.art]}" alt="" width="44" height="44">` : ""}
-        <div><strong>${escapeHtml(b.title || b.id)}</strong><small>${recordsBadgeText(b.desc)}</small></div>
-      </div>`).join("")}</div>`;
-  return `<section class="run-records chart-box" aria-label="Run records (preview)">
-    <div class="run-records-head"><h2>Run records</h2><span class="run-records-preview">Preview, your runs only</span></div>
+  else badges = `<div class="run-records-badges">${entry.badges.map(b => {
+    const info = catalog[b.id]?.[b.rarity];
+    if (!info) return "";
+    return `
+      <div class="run-records-badge" title="${escapeHtml(info.desc || "")}">
+        <img src="/ui_icons/badges/${escapeHtml(b.id.toLowerCase())}_${escapeHtml(b.rarity)}.png" alt="" width="44" height="44">
+        <div><strong>${escapeHtml(info.title || b.id)}</strong><small>${recordsBadgeText(info.desc)}</small></div>
+      </div>`;
+  }).join("")}</div>`;
+  return `<section class="run-records chart-box" aria-label="Run records">
+    <div class="run-records-head"><h2>Run records</h2></div>
     <div class="run-records-grid">
       <div>${peaks}<h3>Largest of the run</h3>${table}</div>
       <div><h3>Win badges, as the game awarded them</h3>${badges}</div>
@@ -93,7 +99,9 @@ function recordsPanelHtml(entry, art) {
 function renderRunRecords(run) {
   const host = document.getElementById("detail-records");
   if (!host) return;
-  const entry = DATA.runRecords?.runs?.[run.ts];
+  // The run's own, or (local preview) one exported from this machine's files.
+  const entry = (run.records || run.badges != null) ? { records: run.records || null, badges: run.badges ?? null }
+    : DATA.runRecords?.runs?.[run.ts];
   if (!entry) { host.innerHTML = ""; return; }
   if (!document.getElementById("run-records-style")) {
     const style = document.createElement("style");
@@ -101,5 +109,5 @@ function renderRunRecords(run) {
     style.textContent = RECORDS_STYLE;
     document.head.appendChild(style);
   }
-  host.innerHTML = recordsPanelHtml(entry, DATA.runRecords.badgeArt || {});
+  host.innerHTML = recordsPanelHtml(entry);
 }

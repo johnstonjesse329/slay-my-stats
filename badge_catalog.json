@@ -1,0 +1,352 @@
+{
+ "BIG_DECK": {
+  "bronze": {
+   "desc": "Won with a deck of [blue]40[/blue] or more cards.",
+   "title": "Big Deck"
+  },
+  "gold": {
+   "desc": "Won with a deck of [blue]100[/blue] or more cards.",
+   "title": "Monster Deck"
+  },
+  "silver": {
+   "desc": "Won with a deck of [blue]60[/blue] or more cards.",
+   "title": "Huge Deck"
+  }
+ },
+ "CCCCOMBO": {
+  "bronze": {
+   "desc": "Played [blue]20[/blue] cards in a single turn.",
+   "title": "C-c-c-Combo"
+  },
+  "gold": {
+   "desc": "Played [blue]20[/blue] cards in a single turn.",
+   "title": "C-c-c-Combo"
+  },
+  "silver": {
+   "desc": "Played [blue]20[/blue] cards in a single turn.",
+   "title": "C-c-c-Combo"
+  }
+ },
+ "CURSES": {
+  "bronze": {
+   "desc": "Won with [blue]5[/blue] or more [red]Curses[/red].",
+   "title": "Curses!"
+  },
+  "gold": {
+   "desc": "Won with [blue]5[/blue] or more [red]Curses[/red].",
+   "title": "Curses!"
+  },
+  "silver": {
+   "desc": "Won with [blue]5[/blue] or more [red]Curses[/red].",
+   "title": "Curses!"
+  }
+ },
+ "DAMAGE_LEADER": {
+  "bronze": {
+   "desc": "Dealt the most damage to enemies in multiplayer.",
+   "title": "Damage Leader"
+  },
+  "gold": {
+   "desc": "Dealt the most damage to enemies in multiplayer.",
+   "title": "Damage Leader"
+  },
+  "silver": {
+   "desc": "Dealt the most damage to enemies in multiplayer.",
+   "title": "Damage Leader"
+  }
+ },
+ "DEBUFFER": {
+  "bronze": {
+   "desc": "Applied the most Debuffs in multiplayer.",
+   "title": "Debuffer"
+  },
+  "gold": {
+   "desc": "Applied the most Debuffs in multiplayer.",
+   "title": "Debuffer"
+  },
+  "silver": {
+   "desc": "Applied the most Debuffs in multiplayer.",
+   "title": "Debuffer"
+  }
+ },
+ "DOUBLE_SNECKO": {
+  "bronze": {
+   "desc": "Obtained both fake and real Snecko eyes.",
+   "title": "Double Snecko"
+  },
+  "gold": {
+   "desc": "Obtained both fake and real Snecko eyes.",
+   "title": "Double Snecko"
+  },
+  "silver": {
+   "desc": "Obtained both fake and real Snecko eyes.",
+   "title": "Double Snecko"
+  }
+ },
+ "ELITE": {
+  "bronze": {
+   "desc": "Killed [blue]3[/blue] or more Elites.",
+   "title": "Elite Hunter"
+  },
+  "gold": {
+   "desc": "Killed [blue]9[/blue] or more Elites.",
+   "title": "Elite Slayer"
+  },
+  "silver": {
+   "desc": "Killed [blue]6[/blue] or more Elites.",
+   "title": "Elite Killer"
+  }
+ },
+ "FAMISHED": {
+  "bronze": {
+   "desc": "Won with Max HP reduced to less than half of your starting HP.",
+   "title": "Famished"
+  },
+  "gold": {
+   "desc": "Won with Max HP reduced to less than half of your starting HP.",
+   "title": "Famished"
+  },
+  "silver": {
+   "desc": "Won with Max HP reduced to less than half of your starting HP.",
+   "title": "Famished"
+  }
+ },
+ "FAVORITE_CARD": {
+  "bronze": {
+   "desc": "Won a run and played a single card more than [blue]100[/blue] times.",
+   "title": "Favorite Card"
+  },
+  "gold": {
+   "desc": "Won a run and played a single card more than [blue]100[/blue] times.",
+   "title": "Favorite Card"
+  },
+  "silver": {
+   "desc": "Won a run and played a single card more than [blue]100[/blue] times.",
+   "title": "Favorite Card"
+  }
+ },
+ "GLUTTON": {
+  "bronze": {
+   "desc": "Won a run with your Max HP increased by [blue]15[/blue] or more.",
+   "title": "Well Fed"
+  },
+  "gold": {
+   "desc": "Won a run with absurdly high Max HP (increased by [blue]50[/blue] or more).",
+   "title": "Glutton"
+  },
+  "silver": {
+   "desc": "Won a run with your Max HP increased by [blue]30[/blue] or more.",
+   "title": "Stuffed"
+  }
+ },
+ "HEALER": {
+  "bronze": {
+   "desc": "Mended an ally once.",
+   "title": "Mender"
+  },
+  "gold": {
+   "desc": "Mended allies over and over again (at least [blue]3[/blue] times).",
+   "title": "Doctor"
+  },
+  "silver": {
+   "desc": "Mended an ally twice.",
+   "title": "Healer"
+  }
+ },
+ "HIGHLANDER": {
+  "bronze": {
+   "desc": "Won with a deck where no two cards are the same (excludes Starters).",
+   "title": "Highlander"
+  },
+  "gold": {
+   "desc": "Won with a deck where no two cards are the same (excludes Starters).",
+   "title": "Highlander"
+  },
+  "silver": {
+   "desc": "Won with a deck where no two cards are the same (excludes Starters).",
+   "title": "Highlander"
+  }
+ },
+ "HONED": {
+  "bronze": {
+   "desc": "Won with a deck with [blue]5[/blue] or more of the same card (excludes Starters).",
+   "title": "Honed"
+  },
+  "gold": {
+   "desc": "Won with a deck with [blue]5[/blue] or more of the same card (excludes Starters).",
+   "title": "Honed"
+  },
+  "silver": {
+   "desc": "Won with a deck with [blue]5[/blue] or more of the same card (excludes Starters).",
+   "title": "Honed"
+  }
+ },
+ "ILIKESHINY": {
+  "bronze": {
+   "desc": "Amassed [blue]25[/blue] or more relics.",
+   "title": "I Like Shiny"
+  },
+  "gold": {
+   "desc": "Amassed [blue]25[/blue] or more relics.",
+   "title": "I Like Shiny"
+  },
+  "silver": {
+   "desc": "Amassed [blue]25[/blue] or more relics.",
+   "title": "I Like Shiny"
+  }
+ },
+ "KACHING": {
+  "bronze": {
+   "desc": "Spent more than [blue]1,000[/blue] [gold]Gold[/gold] at the Merchant.",
+   "title": "Ka-Ching!"
+  },
+  "gold": {
+   "desc": "Spent more than [blue]1,000[/blue] [gold]Gold[/gold] at the Merchant.",
+   "title": "Ka-Ching!"
+  },
+  "silver": {
+   "desc": "Spent more than [blue]1,000[/blue] [gold]Gold[/gold] at the Merchant.",
+   "title": "Ka-Ching!"
+  }
+ },
+ "MONEY_MONEY": {
+  "bronze": {
+   "desc": "Won with [blue]200[/blue] or more [gold]Gold[/gold].",
+   "title": "Money Money"
+  },
+  "gold": {
+   "desc": "Won with [blue]600[/blue] or more [gold]Gold[/gold].",
+   "title": "I Like Gold"
+  },
+  "silver": {
+   "desc": "Won with [blue]400[/blue] or more [gold]Gold[/gold].",
+   "title": "Rainin' Money"
+  }
+ },
+ "MYSTERY_MACHINE": {
+  "bronze": {
+   "desc": "Traveled to [blue]15[/blue] or more ? rooms.",
+   "title": "Mystery Machine"
+  },
+  "gold": {
+   "desc": "Traveled to [blue]15[/blue] or more ? rooms.",
+   "title": "Mystery Machine"
+  },
+  "silver": {
+   "desc": "Traveled to [blue]15[/blue] or more ? rooms.",
+   "title": "Mystery Machine"
+  }
+ },
+ "PERFECT": {
+  "bronze": {
+   "desc": "Defeated a boss without losing HP.",
+   "title": "Flawless"
+  },
+  "gold": {
+   "desc": "Defeated [blue]3[/blue] bosses without losing HP.",
+   "title": "Perfect"
+  },
+  "silver": {
+   "desc": "Defeated [blue]2[/blue] bosses without losing HP.",
+   "title": "Supreme"
+  }
+ },
+ "RESTFUL": {
+  "bronze": {
+   "desc": "Won a run while resting at each Rest Site.",
+   "title": "Restful"
+  },
+  "gold": {
+   "desc": "Won a run while resting at each Rest Site.",
+   "title": "Restful"
+  },
+  "silver": {
+   "desc": "Won a run while resting at each Rest Site.",
+   "title": "Restful"
+  }
+ },
+ "RESTLESS": {
+  "bronze": {
+   "desc": "Won a run without ever resting.",
+   "title": "Restless"
+  },
+  "gold": {
+   "desc": "Won a run without ever resting.",
+   "title": "Restless"
+  },
+  "silver": {
+   "desc": "Won a run without ever resting.",
+   "title": "Restless"
+  }
+ },
+ "SPEEDY": {
+  "bronze": {
+   "desc": "Won a run in under [blue]50[/blue] minutes.",
+   "title": "Speedy"
+  },
+  "gold": {
+   "desc": "Won a run in under [blue]30[/blue] minutes.",
+   "title": "Speediest"
+  },
+  "silver": {
+   "desc": "Won a run in under [blue]40[/blue] minutes.",
+   "title": "Speedier"
+  }
+ },
+ "TABLET": {
+  "bronze": {
+   "desc": "Won with only [blue]1[/blue] Max HP.",
+   "title": "Tablet of Truth"
+  },
+  "gold": {
+   "desc": "Won with only [blue]1[/blue] Max HP.",
+   "title": "Tablet of Truth"
+  },
+  "silver": {
+   "desc": "Won with only [blue]1[/blue] Max HP.",
+   "title": "Tablet of Truth"
+  }
+ },
+ "TEAM_PLAYER": {
+  "bronze": {
+   "desc": "Deck contained [blue]3[/blue] or more multiplayer-only cards.",
+   "title": "Team Player"
+  },
+  "gold": {
+   "desc": "Deck contained [blue]3[/blue] or more multiplayer-only cards.",
+   "title": "Team Player"
+  },
+  "silver": {
+   "desc": "Deck contained [blue]3[/blue] or more multiplayer-only cards.",
+   "title": "Team Player"
+  }
+ },
+ "TINY_DECK": {
+  "bronze": {
+   "desc": "Won with a deck of [blue]20[/blue] or fewer cards.",
+   "title": "Small Deck"
+  },
+  "gold": {
+   "desc": "Won with a deck of [blue]5[/blue] or fewer cards.",
+   "title": "Miniscule"
+  },
+  "silver": {
+   "desc": "Won with a deck of [blue]10[/blue] or fewer cards.",
+   "title": "Tiny Deck"
+  }
+ },
+ "WHOMPER": {
+  "bronze": {
+   "desc": "Dealt more than [blue]100[/blue] damage with a single attack.",
+   "title": "Whomper"
+  },
+  "gold": {
+   "desc": "Dealt more than [blue]100[/blue] damage with a single attack.",
+   "title": "Whomper"
+  },
+  "silver": {
+   "desc": "Dealt more than [blue]100[/blue] damage with a single attack.",
+   "title": "Whomper"
+  }
+ }
+}
