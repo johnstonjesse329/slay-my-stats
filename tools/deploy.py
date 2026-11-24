@@ -506,9 +506,9 @@ def profile_rebuild_inputs() -> dict:
     # so changing the layout alone must trigger a recount too.
     handler_src = (SRC / "infra" / "lambda" / "ingest" / "handler.py").read_text(encoding="utf-8")
     layout = [re.search(rf"^{name} = (\d+)\s*$", handler_src, re.MULTILINE)
-              for name in ("PICK_SLOTS", "ASC_PICK_VERSION", "EVENTS_VERSION")]
+              for name in ("PICK_SLOTS", "ASC_PICK_VERSION", "EVENTS_VERSION", "OFFERS_VERSION")]
     if not all(layout):
-        raise DeployError("Could not read the stats layout (PICK_SLOTS, ASC_PICK_VERSION, EVENTS_VERSION) from handler.py")
+        raise DeployError("Could not read the stats layout (PICK_SLOTS, ASC_PICK_VERSION, EVENTS_VERSION, OFFERS_VERSION) from handler.py")
     known = None
     if all((SRC / name).is_file() for name in ("card_data.json", "relic_data.json")):
         spec = importlib.util.spec_from_file_location("deploy_known_ids", SRC / "tools" / "build_known_ids.py")

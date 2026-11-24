@@ -1114,6 +1114,8 @@ PAIR_KEYS = ("chars", "cards", "relics")
 PICK_SLOTS = 7
 ASC_PICK_VERSION = 1
 EVENTS_VERSION = 1
+# Bumped when which runs the pick tallies skip changes, so a recount is due (see _ancient_offers_whole).
+OFFERS_VERSION = 1
 PICK_KINDS = (("cards", "cardsOffered"), ("relics", "relicsOffered"))
 
 
@@ -1122,12 +1124,28 @@ def _empty_mode() -> dict:
             "killers": {}, "records": {}, "picks": {}}
 
 
+def _partial_ancient_offers(offered: dict) -> set:
+    """The (floor, encounter) of every Ancient node whose offer was recorded as only the relic taken.
+    An Ancient always offers at least three, and profiles from before the parser kept every option
+    (before v8) list just the one picked: counted as an offer they would read as a pick every time
+    and as a skip never, so these nodes are left out of the offer, pick and skip tallies."""
+    seen: dict = {}
+    for locs in offered.values():
+        for loc in locs:
+            if loc.get("type") == "ancient" and not loc.get("granted"):
+                seen[(loc.get("floor"), loc.get("enc"))] = seen.get((loc.get("floor"), loc.get("enc")), 0) + 1
+    return {key for key, n in seen.items() if n == 1}
+
+
 def _tally_picks(picks: dict, r: dict, won: bool) -> None:
     by_kind = picks.setdefault(r.get("char") or "UNKNOWN", {})
     for kind, field in PICK_KINDS:
         by_id = by_kind.setdefault(kind, {})
+        partial = _partial_ancient_offers(r.get(field) or {}) if kind == "relics" else ()
         for item_id, locs in (r.get(field) or {}).items():
             for loc in locs:
+                if loc.get("type") == "ancient" and (loc.get("floor"), loc.get("enc")) in partial:
+                    continue
                 q = by_id.setdefault(item_id, [0] * PICK_SLOTS)
                 if loc.get("granted"):
                     # handed over, never offered: a pick, but no offer or skip

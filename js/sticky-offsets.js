@@ -18,7 +18,12 @@ function syncFilterBarOffset() {
 (function watchFilterBarOffset() {
   const bar = document.getElementById("shared-filter-bar");
   if (!bar) return;
-  if (typeof ResizeObserver === "function") new ResizeObserver(syncFilterBarOffset).observe(bar);
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(syncFilterBarOffset);
+    ro.observe(bar);
+    const tabs = document.querySelector(".page-tabs");
+    if (tabs) ro.observe(tabs);
+  }
   window.addEventListener("resize", syncFilterBarOffset);
   syncFilterBarOffset();
 })();

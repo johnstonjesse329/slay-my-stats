@@ -550,6 +550,9 @@ offer went on to win, for the "All" columns of the card and relic pick rate tabl
 it has; a file counted before offers were kept has none, and the page then leaves those columns out until
 `tools/rebuild_stats.py` recounts it). The same file holds each event's visits and options taken (`picks[char].events`, with
 `eventsVersion`), for the Events page's All players column, hidden until a recount.
+An Ancient node a profile lists as only the relic taken (profiles from before parser v8, whose runs have no raw copy) is
+left out of those offer, pick and skip counts, on the site and in the player's own table: counted, it would read as a pick every time
+and a skip never. Changing that rule bumps `OFFERS_VERSION`, which makes the next deploy recount.
 
 The Seeds page's All players toggle searches every player's seeds. Each player's `_seeds.json.gz` (about 480 bytes
 a run) is added to by their uploads and fetched only when the toggle is switched on; opening another player's
