@@ -31,8 +31,9 @@ def turn_peaks(log) -> dict:
             # The player's Block as the turn opens and as it ends (what the enemies attack into),
             # carry-over included: gains alone miss Block kept from earlier turns.
             held = max([held] + [c.get("blk") or 0 for c in a.get("creatures") or [] if c.get("c") == "P"])
-        elif e.get("k") == "hit" and a.get("by") == "P" and a.get("t") != "P" and a.get("ovk"):
-            over[key] = over.get(key, 0) + a["ovk"]
+        elif e.get("k") == "hit" and a.get("by") == "P" and a.get("t") != "P" and "ovk" in a:
+            # Damage that got past Block plus the overshoot on a kill: the whole hit.
+            hit[key] = hit.get(key, 0) + (a.get("unb") or 0) + (a.get("ovk") or 0)
     out = {name: max(table.values()) for name, table in (("blocked", block), ("hit", hit)) if table}
     if held:
         out["held"] = held
