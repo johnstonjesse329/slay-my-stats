@@ -3375,3 +3375,21 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .ka-party th, .ka-party td { padding: 0.2rem 0.5rem; text-align: right; font-size: var(--fs-sm); }
 .ka-party thead th { color: var(--text-dim); font-weight: 400; }
 .ka-party tbody th { text-align: left; font-weight: 600; white-space: nowrap; }
+
+/* Events page: one card per event, yours beside all players' (stacks on a phone). */
+.event-card { border-top: 1px solid var(--hairline); padding: 0.9rem 0; }
+.event-card:first-child { border-top: 0; }
+.event-card h3 { font-size: var(--fs-md); color: var(--gold-bright); margin-bottom: 0.5rem; }
+.event-cols { display: flex; flex-wrap: wrap; gap: 0.6rem 2rem; }
+.event-col { flex: 1 1 22rem; min-width: 0; }
+.event-col h4 { font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; margin-bottom: 0.3rem; }
+.event-visits { color: var(--text-faint); font-weight: 400; margin-left: 0.4rem; }
+.event-opt { display: grid; grid-template-columns: minmax(6rem, 10rem) 2.5rem 5rem minmax(0, 1fr); gap: 0.5rem; align-items: center; padding: 0.2rem 0; font-size: var(--fs-sm); }
+.event-opt-n { text-align: right; font-variant-numeric: tabular-nums; }
+.event-opt-bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+.event-opt-bar i { display: block; height: 100%; background: var(--gold); }
+.event-opt-grant { color: var(--text-dim); overflow-wrap: anywhere; }
+.event-opt-none { color: var(--text-faint); }
+.event-opt-never { opacity: 0.6; }
+.event-note, .event-none { color: var(--text-faint); font-size: var(--fs-sm); margin-top: 0.3rem; }
+@media (max-width: 700px) { .event-opt { grid-template-columns: minmax(0, 1fr) 2rem 3.5rem; } .event-opt-grant { grid-column: 1 / -1; } }

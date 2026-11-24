@@ -1,0 +1,950 @@
+{
+ "EVENT.ABYSSAL_BATHS": {
+  "title": "Abyssal Baths",
+  "initial": [
+   "ABSTAIN",
+   "IMMERSE"
+  ],
+  "labels": {
+   "ABSTAIN": "Abstain",
+   "ALL.EXIT_BATHS": "Exit Baths",
+   "ALL.LINGER": "Linger",
+   "IMMERSE": "Immerse"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.AMALGAMATOR": {
+  "title": "Amalgamator",
+  "initial": [
+   "COMBINE_DEFENDS",
+   "COMBINE_STRIKES"
+  ],
+  "labels": {
+   "COMBINE_DEFENDS": "Combine Defends",
+   "COMBINE_STRIKES": "Combine Strikes"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.AROMA_OF_CHAOS": {
+  "title": "Aroma of Chaos",
+  "initial": [
+   "LET_GO",
+   "MAINTAIN_CONTROL"
+  ],
+  "labels": {
+   "LET_GO": "Let Go",
+   "MAINTAIN_CONTROL": "Maintain Control"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.BATTLEWORN_DUMMY": {
+  "title": "Battleworn Dummy",
+  "initial": [
+   "SETTING_1",
+   "SETTING_2",
+   "SETTING_3"
+  ],
+  "labels": {
+   "SETTING_1": "Setting 1",
+   "SETTING_2": "Setting 2",
+   "SETTING_3": "Setting 3"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.BRAIN_LEECH": {
+  "title": "Brain Leech",
+  "initial": [
+   "RIP",
+   "SHARE_KNOWLEDGE"
+  ],
+  "labels": {
+   "RIP": "Rip the Leech Off",
+   "SHARE_KNOWLEDGE": "Share Knowledge"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.BUGSLAYER": {
+  "title": "Bugslayer",
+  "initial": [
+   "EXTERMINATION",
+   "SQUASH"
+  ],
+  "labels": {
+   "EXTERMINATION": "Learn Extermination Technique",
+   "SQUASH": "Learn Squash Technique"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.BYRDONIS_NEST": {
+  "title": "Byrdonis Nest",
+  "initial": [
+   "EAT",
+   "TAKE"
+  ],
+  "labels": {
+   "EAT": "Eat the Egg",
+   "TAKE": "Take the Egg"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.COLORFUL_PHILOSOPHERS": {
+  "title": "Colorful Philosophers",
+  "initial": [
+   "DEFECT",
+   "EQUALITY",
+   "FOOL",
+   "IRONCLAD",
+   "NECROBINDER",
+   "REGENT",
+   "SILENT"
+  ],
+  "labels": {
+   "DEFECT": "Blue",
+   "EQUALITY": "Equality",
+   "FOOL": "Yellow",
+   "IRONCLAD": "Red",
+   "NECROBINDER": "Pink",
+   "REGENT": "Orange",
+   "SILENT": "Green"
+  },
+  "conditional": false,
+  "random_offer": true,
+  "random_outcome": true
+ },
+ "EVENT.COLOSSAL_FLOWER": {
+  "title": "Colossal Flower",
+  "initial": [
+   "EXTRACT_CURRENT_PRIZE_1",
+   "REACH_DEEPER_1"
+  ],
+  "labels": {
+   "EXTRACT_CURRENT_PRIZE_1": "Extract Nectar",
+   "REACH_DEEPER_1": "Reach Deeper",
+   "REACH_DEEPER_1.EXTRACT_CURRENT_PRIZE_2": "Extract Nectar",
+   "REACH_DEEPER_1.REACH_DEEPER_2": "Reach Deeper",
+   "REACH_DEEPER_2.EXTRACT_INSTEAD": "Extract Nectar",
+   "REACH_DEEPER_2.POLLINOUS_CORE": "Enter the Center"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.CRYSTAL_SPHERE": {
+  "title": "Crystal Sphere",
+  "initial": [
+   "PAYMENT_PLAN",
+   "UNCOVER_FUTURE"
+  ],
+  "labels": {
+   "PAYMENT_PLAN": "Payment Plan",
+   "UNCOVER_FUTURE": "Uncover Future"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.DENSE_VEGETATION": {
+  "title": "Dense Vegetation",
+  "initial": [
+   "REST",
+   "TRUDGE_ON"
+  ],
+  "labels": {
+   "REST": "Rest",
+   "REST.FIGHT": "Fight!",
+   "TRUDGE_ON": "Trudge On"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.DOLL_ROOM": {
+  "title": "Doll Room",
+  "initial": [
+   "EXAMINE",
+   "RANDOM",
+   "TAKE_SOME_TIME"
+  ],
+  "labels": {
+   "EXAMINE": "Examine Each and Make the Best Choice",
+   "RANDOM": "Pick at Random",
+   "TAKE_SOME_TIME": "Take Some Time"
+  },
+  "conditional": false,
+  "random_offer": true,
+  "random_outcome": true
+ },
+ "EVENT.DOORS_OF_LIGHT_AND_DARK": {
+  "title": "Doors of Light and Dark",
+  "initial": [
+   "DARK",
+   "LIGHT"
+  ],
+  "labels": {
+   "DARK": "Dark Door",
+   "LIGHT": "Light Door"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.DROWNING_BEACON": {
+  "title": "Drowning Beacon",
+  "initial": [
+   "BOTTLE",
+   "CLIMB"
+  ],
+  "labels": {
+   "BOTTLE": "Bottle",
+   "CLIMB": "Climb"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.ENDLESS_CONVEYOR": {
+  "title": "Endless Conveyor",
+  "initial": [
+   "OBSERVE_CHEF"
+  ],
+  "labels": {
+   "ALL.CAVIAR": "Grab Caviar off the Belt",
+   "ALL.CLAM_ROLL": "Grab Clam Roll off the Belt",
+   "ALL.FRIED_EEL": "Grab Fried Eel off the Belt",
+   "ALL.GOLDEN_FYSH": "Grab Golden Fysh off the Belt",
+   "ALL.JELLY_LIVER": "Grab Jelly Liver off the Belt",
+   "ALL.LOCKED": "Broke",
+   "ALL.SEAPUNK_SALAD": "Grab Seapunk Salad off the Belt",
+   "ALL.SPICY_SNAPPY": "Grab Spicy Snappy off the Belt",
+   "ALL.SUSPICIOUS_CONDIMENT": "Grab Suspicious Condiment off the Belt",
+   "GRAB_SOMETHING_OFF_THE_BELT.LEAVE": "Leave",
+   "OBSERVE_CHEF": "Observe the Chef"
+  },
+  "conditional": false,
+  "random_offer": true,
+  "random_outcome": true
+ },
+ "EVENT.FIELD_OF_MAN_SIZED_HOLES": {
+  "title": "Field of Man-Sized Holes",
+  "initial": [
+   "ENTER_YOUR_HOLE",
+   "RESIST"
+  ],
+  "labels": {
+   "ENTER_YOUR_HOLE": "Enter Your Hole",
+   "RESIST": "Resist"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.GRAVE_OF_THE_FORGOTTEN": {
+  "title": "Grave of the Forgotten",
+  "initial": [
+   "ACCEPT",
+   "CONFRONT"
+  ],
+  "labels": {
+   "CONFRONT": "Confront with Truth"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.HUNGRY_FOR_MUSHROOMS": {
+  "title": "Hungry for Mushrooms",
+  "initial": [
+   "BIG_MUSHROOM",
+   "FRAGRANT_MUSHROOM"
+  ],
+  "labels": {
+   "BIG_MUSHROOM": "Big Mushroom",
+   "FRAGRANT_MUSHROOM": "Fragrant Mushroom"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.INFESTED_AUTOMATON": {
+  "title": "Infested Automaton",
+  "initial": [
+   "STUDY",
+   "TOUCH_CORE"
+  ],
+  "labels": {
+   "STUDY": "Study",
+   "TOUCH_CORE": "Touch the Core"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.JUNGLE_MAZE_ADVENTURE": {
+  "title": "Jungle Maze Adventure",
+  "initial": [
+   "JOIN_FORCES",
+   "SOLO_QUEST"
+  ],
+  "labels": {
+   "JOIN_FORCES": "Join Forces",
+   "SOLO_QUEST": "Solo Quest"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.LOST_WISP": {
+  "title": "The Lost Wisp",
+  "initial": [
+   "CLAIM",
+   "SEARCH"
+  ],
+  "labels": {
+   "CLAIM": "Capture the Wisp",
+   "SEARCH": "Search the Nearby Area"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.LUMINOUS_CHOIR": {
+  "title": "Luminous Choir",
+  "initial": [
+   "OFFER_TRIBUTE",
+   "REACH_INTO_THE_FLESH"
+  ],
+  "labels": {
+   "OFFER_TRIBUTE": "Offer Tribute",
+   "REACH_INTO_THE_FLESH": "Reach into the Flesh"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.MOCK_EVENT_MODEL": {
+  "title": "Mock Event",
+  "initial": [
+   "TEST"
+  ],
+  "labels": {
+   "TEST": "Mock Option"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.MORPHIC_GROVE": {
+  "title": "Morphic Grove",
+  "initial": [
+   "GROUP",
+   "LONER"
+  ],
+  "labels": {
+   "GROUP": "Group",
+   "LONER": "Loner"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.MUSEUM_OF_TORTURE": {
+  "title": "Museum of Torture",
+  "initial": [
+   "CONTINUE"
+  ],
+  "labels": {
+   "CONTINUE": "Continue",
+   "DISPLAY.BREAK_OUT": "Break Out",
+   "DISPLAY.TAKE": "Take It",
+   "LOCKED.CONTINUE": "Continue"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.POTION_COURIER": {
+  "title": "Potion Courier",
+  "initial": [
+   "GRAB_POTIONS",
+   "RANSACK"
+  ],
+  "labels": {
+   "GRAB_POTIONS": "Grab Potions",
+   "RANSACK": "Ransack"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.PUNCH_OFF": {
+  "title": "Punch Off",
+  "initial": [
+   "I_CAN_TAKE_THEM",
+   "NAB"
+  ],
+  "labels": {
+   "I_CAN_TAKE_THEM": "I Can Take Them",
+   "I_CAN_TAKE_THEM.FIGHT": "Fight",
+   "NAB": "Nab"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.RANWID_THE_ELDER": {
+  "title": "Ranwid the Elder",
+  "initial": [
+   "GOLD",
+   "POTION",
+   "RELIC"
+  ],
+  "labels": {},
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.REFLECTIONS": {
+  "title": "Reflections snoitcelfeR",
+  "initial": [
+   "SHATTER",
+   "TOUCH_A_MIRROR"
+  ],
+  "labels": {
+   "SHATTER": "Shatter",
+   "TOUCH_A_MIRROR": "Touch a Mirror"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.RELIC_TRADER": {
+  "title": "Relic Trader",
+  "initial": [
+   "BOTTOM",
+   "MIDDLE",
+   "TOP"
+  ],
+  "labels": {
+   "BOTTOM": "Take the Bottom One",
+   "MIDDLE": "Take the Middle One",
+   "TOP": "Take the Top One"
+  },
+  "conditional": false,
+  "random_offer": true,
+  "random_outcome": true
+ },
+ "EVENT.ROOM_FULL_OF_CHEESE": {
+  "title": "Room Full of Cheese",
+  "initial": [
+   "GORGE",
+   "SEARCH"
+  ],
+  "labels": {
+   "GORGE": "Gorge",
+   "SEARCH": "Search"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.ROUND_TEA_PARTY": {
+  "title": "The Round Tea Party",
+  "initial": [
+   "ENJOY_TEA",
+   "PICK_FIGHT"
+  ],
+  "labels": {
+   "ENJOY_TEA": "Enjoy Your Tea",
+   "PICK_FIGHT": "Pick a Fight",
+   "PICK_FIGHT.CONTINUE_FIGHT": "Continue"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.SAPPHIRE_SEED": {
+  "title": "Sapphire Seed",
+  "initial": [
+   "EAT",
+   "PLANT"
+  ],
+  "labels": {
+   "EAT": "Consume",
+   "PLANT": "Plant and Nourish"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.SELF_HELP_BOOK": {
+  "title": "Self-Help Book",
+  "initial": [
+   "READ_ENTIRE_BOOK",
+   "READ_PASSAGE",
+   "READ_THE_BACK"
+  ],
+  "labels": {
+   "READ_ENTIRE_BOOK": "Read the Entire Book",
+   "READ_PASSAGE": "Read a Random Passage",
+   "READ_THE_BACK": "Read the Back"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.SHRINE_OF_THE_WARLORD": {
+  "title": "Shrine of the Warlord",
+  "initial": [
+   "TAKE_SHIELD",
+   "TAKE_WEAPON",
+   "TAKE_WINGS"
+  ],
+  "labels": {
+   "TAKE_SHIELD": "Take the Shield",
+   "TAKE_WEAPON": "Take the Weapon",
+   "TAKE_WINGS": "Take the Wings"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.SLIPPERY_BRIDGE": {
+  "title": "Slippery Bridge",
+  "initial": [
+   "HOLD_ON_0",
+   "OVERCOME"
+  ],
+  "labels": {
+   "HOLD_ON_0": "Hold On",
+   "HOLD_ON_0.HOLD_ON_1": "Hold On",
+   "HOLD_ON_1.HOLD_ON_2": "Hold On",
+   "HOLD_ON_2.HOLD_ON_3": "Hold On",
+   "HOLD_ON_3.HOLD_ON_4": "Hold On",
+   "HOLD_ON_4.HOLD_ON_5": "Hold On",
+   "HOLD_ON_5.HOLD_ON_6": "Hold On",
+   "HOLD_ON_6.HOLD_ON_LOOP": "Hold On",
+   "HOLD_ON_LOOP.HOLD_ON_LOOP": "Hold On",
+   "OVERCOME": "Overcome"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.SPIRALING_WHIRLPOOL": {
+  "title": "Spiraling Whirlpool",
+  "initial": [
+   "DRINK",
+   "OBSERVE",
+   "REACH_IN"
+  ],
+  "labels": {
+   "DRINK": "Drink",
+   "OBSERVE": "Observe",
+   "REACH_IN": "Reach In"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.SPIRIT_GRAFTER": {
+  "title": "Spirit Grafter",
+  "initial": [
+   "LET_IT_IN",
+   "REJECTION"
+  ],
+  "labels": {
+   "LET_IT_IN": "Let It In",
+   "REJECTION": "Rejection"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.STONE_OF_ALL_TIME": {
+  "title": "Stone of All Time",
+  "initial": [
+   "LIFT",
+   "PUSH"
+  ],
+  "labels": {
+   "LIFT": "Drink and Lift",
+   "PUSH": "Push"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.SUNKEN_STATUE": {
+  "title": "The Sunken Statue",
+  "initial": [
+   "DIVE_INTO_WATER",
+   "GRAB_SWORD"
+  ],
+  "labels": {
+   "DIVE_INTO_WATER": "Dive into the Water",
+   "GRAB_SWORD": "Grab the Sword"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.SUNKEN_TREASURY": {
+  "title": "Sunken Treasury",
+  "initial": [
+   "FIRST_CHEST",
+   "SECOND_CHEST"
+  ],
+  "labels": {
+   "FIRST_CHEST": "First Chest",
+   "SECOND_CHEST": "Second Chest"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.SYMBIOTE": {
+  "title": "Symbiote",
+  "initial": [
+   "APPROACH",
+   "KILL_WITH_FIRE"
+  ],
+  "labels": {
+   "APPROACH": "Approach",
+   "KILL_WITH_FIRE": "Kill with Fire"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.TABLET_OF_TRUTH": {
+  "title": "Tablet of Truth",
+  "initial": [
+   "DECIPHER_1",
+   "SMASH"
+  ],
+  "labels": {
+   "DECIPHER.GIVE_UP": "Give Up",
+   "DECIPHER_1": "Decipher",
+   "DECIPHER_1.DECIPHER": "Continue Deciphering",
+   "DECIPHER_2.DECIPHER": "Keep Deciphering",
+   "DECIPHER_3.DECIPHER": "KEEP DECIPHERING",
+   "DECIPHER_4.DECIPHER": "Lose Everything",
+   "SMASH": "Smash"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.TEA_MASTER": {
+  "title": "Tea Master",
+  "initial": [
+   "BONE_TEA",
+   "EMBER_TEA",
+   "TEA_OF_DISCOURTESY"
+  ],
+  "labels": {
+   "BONE_TEA": "Bone Tea",
+   "EMBER_TEA": "Ember Tea",
+   "TEA_OF_DISCOURTESY": "Tea of Discourtesy"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.THERMAE_NONUPEIPE": {
+  "title": "Thermae Nonupeipe",
+  "initial": [
+   "DRINK_WATERS",
+   "PRIVATE_OASIS",
+   "THERMAL_BATHS"
+  ],
+  "labels": {
+   "DRINK_WATERS": "Drink Bath Water",
+   "PRIVATE_OASIS": "Private Oasis",
+   "THERMAL_BATHS": "Thermal Baths"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.THE_FUTURE_OF_POTIONS": {
+  "title": "The Future of Potions?",
+  "initial": [
+   "POTION"
+  ],
+  "labels": {},
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.THE_LANTERN_KEY": {
+  "title": "The Lantern Key",
+  "initial": [
+   "KEEP_THE_KEY",
+   "RETURN_THE_KEY"
+  ],
+  "labels": {
+   "KEEP_THE_KEY": "Keep the Key",
+   "KEEP_THE_KEY.FIGHT": "Fight",
+   "RETURN_THE_KEY": "Return the Key"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.THE_LEGENDS_WERE_TRUE": {
+  "title": "The Legends Were True",
+  "initial": [
+   "NAB_THE_MAP",
+   "SLOWLY_FIND_AN_EXIT"
+  ],
+  "labels": {
+   "NAB_THE_MAP": "Nab the Map",
+   "SLOWLY_FIND_AN_EXIT": "Slowly Find an Exit"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.THIS_OR_THAT": {
+  "title": "This or That?",
+  "initial": [
+   "ORNATE",
+   "PLAIN"
+  ],
+  "labels": {
+   "ORNATE": "That",
+   "PLAIN": "This"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.TINKER_TIME": {
+  "title": "Tinker Time",
+  "initial": [
+   "CHOOSE_CARD_TYPE"
+  ],
+  "labels": {
+   "CHOOSE_CARD_TYPE": "Accept",
+   "CHOOSE_CARD_TYPE.ATTACK": "Weapon",
+   "CHOOSE_CARD_TYPE.POWER": "Gadget",
+   "CHOOSE_CARD_TYPE.SKILL": "Protector",
+   "CHOOSE_RIDER.CHAOS": "Chaos",
+   "CHOOSE_RIDER.CHOKING": "Choking",
+   "CHOOSE_RIDER.CURIOUS": "Curious",
+   "CHOOSE_RIDER.ENERGIZED": "Energized",
+   "CHOOSE_RIDER.EXPERTISE": "Expertise",
+   "CHOOSE_RIDER.IMPROVEMENT": "Improvement",
+   "CHOOSE_RIDER.SAPPING": "Sapping",
+   "CHOOSE_RIDER.VIOLENCE": "Violence",
+   "CHOOSE_RIDER.WISDOM": "Wisdom"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.TRASH_HEAP": {
+  "title": "Trash Heap",
+  "initial": [
+   "DIVE_IN",
+   "GRAB"
+  ],
+  "labels": {
+   "DIVE_IN": "Dive In",
+   "GRAB": "Grab Random Junk"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.TRIAL": {
+  "title": "The Trial",
+  "initial": [
+   "ACCEPT",
+   "REJECT"
+  ],
+  "labels": {
+   "ACCEPT": "Accept",
+   "MERCHANT.GUILTY": "DECIDE: Guilty",
+   "MERCHANT.INNOCENT": "DECIDE: Innocent",
+   "NOBLE.GUILTY": "DECIDE: Guilty",
+   "NOBLE.INNOCENT": "DECIDE: Innocent",
+   "NONDESCRIPT.GUILTY": "DECIDE: Guilty",
+   "NONDESCRIPT.INNOCENT": "DECIDE: Innocent",
+   "REJECT": "Reject",
+   "REJECT.ACCEPT": "Accept",
+   "REJECT.DOUBLE_DOWN": "Double Down"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.UNREST_SITE": {
+  "title": "Unrest Site",
+  "initial": [
+   "KILL",
+   "REST"
+  ],
+  "labels": {
+   "KILL": "Kill the Trees",
+   "REST": "Rest Anyways"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.WAR_HISTORIAN_REPY": {
+  "title": "War Historian, Repy",
+  "initial": [
+   "UNLOCK_CAGE",
+   "UNLOCK_CHEST"
+  ],
+  "labels": {
+   "UNLOCK_CAGE": "Unlock the Cage",
+   "UNLOCK_CHEST": "Unlock the Chest"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.WATERFALL_OF_OBVIOUS_SECRETS": {
+  "title": "Waterfall of Obvious Secrets",
+  "initial": [
+   "ENTER"
+  ],
+  "labels": {
+   "ENTER": "Enter Waterfall",
+   "ENTER.BEAT_UP": "Beat Up",
+   "ENTER.BE_NICE": "Be Nice",
+   "ENTER.NEGOTIATE": "Negotiate"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.WATERLOGGED_SCRIPTORIUM": {
+  "title": "Waterlogged Scriptorium",
+  "initial": [
+   "BLOODY_INK",
+   "PRICKLY_SPONGE",
+   "TENTACLE_QUILL"
+  ],
+  "labels": {
+   "BLOODY_INK": "Bloody Ink",
+   "PRICKLY_SPONGE": "Prickly Sponge",
+   "TENTACLE_QUILL": "Tentacle Quill"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.WELCOME_TO_WONGOS": {
+  "title": "Welcome to Wongo's",
+  "initial": [
+   "BARGAIN_BIN",
+   "FEATURED_ITEM",
+   "LEAVE",
+   "MYSTERY_BOX"
+  ],
+  "labels": {
+   "BARGAIN_BIN": "Wongo's Bargain Bin",
+   "FEATURED_ITEM": "Wongo's Featured Item",
+   "LEAVE": "Leave",
+   "MYSTERY_BOX": "Wongo's Mystery Box"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.WELLSPRING": {
+  "title": "Wellspring",
+  "initial": [
+   "BATHE",
+   "BOTTLE"
+  ],
+  "labels": {
+   "BATHE": "Bathe",
+   "BOTTLE": "Bottle"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.WHISPERING_HOLLOW": {
+  "title": "Whispering Hollow",
+  "initial": [
+   "GOLD",
+   "HUG"
+  ],
+  "labels": {
+   "GOLD": "Exchange Gold",
+   "HUG": "Hug the Tree"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": true
+ },
+ "EVENT.WOOD_CARVINGS": {
+  "title": "Wood Carvings",
+  "initial": [
+   "BIRD",
+   "SNAKE",
+   "TORUS"
+  ],
+  "labels": {
+   "BIRD": "Bird",
+   "SNAKE": "Snake",
+   "TORUS": "Torus"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.WUPPY_IN_TROUBLE": {
+  "title": "Wuppy in Trouble",
+  "initial": [
+   "BE_CAUTIOUS",
+   "HELP_IMMEDIATELY",
+   "IGNORE"
+  ],
+  "labels": {
+   "BE_CAUTIOUS": "Be Cautious",
+   "HELP_IMMEDIATELY": "Help Immediately",
+   "IGNORE": "Ignore"
+  },
+  "conditional": false,
+  "random_offer": false,
+  "random_outcome": false
+ },
+ "EVENT.ZEN_WEAVER": {
+  "title": "Zen Weaver",
+  "initial": [
+   "ARACHNID_ACUPUNCTURE",
+   "BREATHING_TECHNIQUES",
+   "EMOTIONAL_AWARENESS"
+  ],
+  "labels": {
+   "ARACHNID_ACUPUNCTURE": "Arachnid Acupuncture",
+   "BREATHING_TECHNIQUES": "Breathing Techniques",
+   "EMOTIONAL_AWARENESS": "Emotional Awareness"
+  },
+  "conditional": true,
+  "random_offer": false,
+  "random_outcome": false
+ }
+}

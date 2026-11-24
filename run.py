@@ -689,7 +689,93 @@ def parse_run(path: Path) -> dict:
 # so a fight an event started reads against the winners of the same fight.
 # v8: an ancient's whole offer (ancient_choice) is tallied, not just the pick, so the
 # turned-down relics count as offered and skipped (Relics page: Win % skipped).
-PARSER_VERSION = 8
+# v9: relics a node only handed over carry "granted" (a pick with no recorded offer).
+# v10: choices are read from how the game records them: an ancient's whole offer plus
+# the starter upgrade of a Touch of Orobas pick (Black Blood...), the relic an event
+# option hands over (Sword of Stone, the Byrdonis egg that hatches into Byrdpip) is
+# offered on every visit and picked when that option was taken, and the Sea Glass
+# variants read as Sea Glass rather than as a relic named for a character.
+# v11: each event visit the player chose in is kept as "events" (the option taken and
+# what the node recorded it handing over). The Byrdonis Nest no longer offers Byrdpip:
+# its options are the egg card and +7 max HP, and the relic only exists once the egg
+# hatches at a rest site, so it is counted there, as a pick.
+PARSER_VERSION = 11
+
+# What the ancient's pick upgrades the starter relic into (Touch of Orobas).
+TOUCH_UPGRADES = {
+    "IRONCLAD": "RELIC.BLACK_BLOOD", "SILENT": "RELIC.RING_OF_THE_DRAKE",
+    "DEFECT": "RELIC.INFUSED_CORE", "REGENT": "RELIC.DIVINE_DESTINY",
+    "NECROBINDER": "RELIC.PHYLACTERY_UNBOUND",
+}
+
+# Events whose options hand out a fixed relic, read from each event's code
+# (GenerateInitialOptions). event_choices records only the option taken, so the
+# option a visit passed over has to come from here. { event: { option: relic } };
+# every visit offers every listed relic. Left out on purpose: options that depend on
+# gold or class (Tea Master's Bone and Ember Tea), random relics (Trash Heap, Doll
+# Room, Ranwid, Relic Trader...) and two-step events (War Historian Repy).
+EVENT_RELIC_OPTIONS = {
+    "EVENT.SUNKEN_STATUE": {"GRAB_SWORD": "RELIC.SWORD_OF_STONE"},
+    "EVENT.DROWNING_BEACON": {"CLIMB": "RELIC.FRESNEL_LENS"},
+    "EVENT.GRAVE_OF_THE_FORGOTTEN": {"ACCEPT": "RELIC.FORGOTTEN_SOUL"},
+    "EVENT.LOST_WISP": {"CLAIM": "RELIC.LOST_WISP"},
+    "EVENT.ROOM_FULL_OF_CHEESE": {"SEARCH": "RELIC.CHOSEN_CHEESE"},
+    "EVENT.HUNGRY_FOR_MUSHROOMS": {"BIG_MUSHROOM": "RELIC.BIG_MUSHROOM",
+                                   "FRAGRANT_MUSHROOM": "RELIC.FRAGRANT_MUSHROOM"},
+    "EVENT.TEA_MASTER": {"TEA_OF_DISCOURTESY": "RELIC.TEA_OF_DISCOURTESY"},
+    # Not the Byrdonis Nest: TAKE hands over the Byrdonis Egg card and EAT +7 max HP.
+    # Byrdpip only exists after the egg hatches at a rest site, so it is not an offer here.
+}
+
+
+def event_visit(ps: dict):
+    """
+    One visit to a mystery event, from the local player's node stats, as
+    [option taken, [what the node recorded it handing over]], or None when
+    there is no usable choice (an ancient, whose offer ancient_choice holds
+    and the relic tables already count; the Fake Merchant, which records none).
+
+    event_choices holds only the option taken, one entry per page: the first is
+    the choice made, later ones are the path through a multi-step event, not
+    further visits. The key reads "<EVENT>.pages.<PAGE>.options.<OPTION>.title";
+    the option is bare on the first page ("TAKE") and "<PAGE>.<OPTION>" on later ones.
+    Grants are tokens: card-/relic-/potion- ids (a "-" because stored strings allow no ":"), maxhp-7, and the kinds gold_up,
+    gold_down, hurt, upgrade, remove, transform, enchant (their amounts are noisy).
+    """
+    if ps.get("ancient_choice"):
+        return None
+    choices = ps.get("event_choices") or []
+    key = (choices[0].get("title") or {}).get("key", "") if choices else ""
+    m = re.match(r"^[A-Z0-9_]+\.pages\.([A-Z0-9_]+)\.options\.([A-Z0-9_]+)\.title$", key)
+    if not m:
+        return None
+    page, opt = m.groups()
+    tokens = {f"card-{c['id']}" for c in ps.get("cards_gained", []) if c.get("id")}
+    tokens |= {f"relic-{r['choice']}" for r in ps.get("relic_choices", []) if r.get("was_picked") and r.get("choice")}
+    tokens |= {f"relic-{r}" for r in ps.get("bought_relics", []) if r}
+    tokens |= {f"potion-{r['choice']}" for r in ps.get("potion_choices", []) if r.get("was_picked") and r.get("choice")}
+    maxhp = (ps.get("max_hp_gained") or 0) - (ps.get("max_hp_lost") or 0)
+    if maxhp:
+        tokens.add(f"maxhp-{maxhp}")
+    for flag, name in ((ps.get("gold_gained"), "gold_up"), (ps.get("gold_lost") or ps.get("gold_spent"), "gold_down"),
+                       (ps.get("damage_taken"), "hurt"), (ps.get("upgraded_cards"), "upgrade"),
+                       (ps.get("cards_removed"), "remove"), (ps.get("cards_transformed"), "transform"),
+                       (ps.get("cards_enchanted"), "enchant")):
+        if flag:
+            tokens.add(name)
+    return [opt if page == "INITIAL" else f"{page}.{opt}", sorted(tokens)]
+
+
+def _ancient_relic_id(choice: dict) -> str:
+    """The relic an ancient_choice entry offers. TextKey is the relic, except the
+    Sea Glass variants, whose TextKey is a character (title SEA_GLASS.IRONCLAD.title)."""
+    title = (choice.get("title") or {}).get("key", "")
+    key = choice.get("TextKey", "")
+    if title and "." in title and title.split(".")[0] != key:
+        key = title.split(".")[0]
+    if not key:
+        return ""
+    return key if key.startswith("RELIC.") else f"RELIC.{key}"
 
 
 def _card_props(card: dict) -> dict:
@@ -906,6 +992,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     # restChoices: { act (1-indexed): { choice: count } }
     rest_choices: dict[int, dict[str, int]] = {}
     floor_idx = 0
+    events: list = []        # [event id, option taken, grant tokens] for each mystery event visit
     for act_idx, act in enumerate(map_history):
         if not isinstance(act, list):
             continue
@@ -944,22 +1031,59 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
             for cid, count in bought.items():       # buys with no shelf entry
                 for _ in range(count):
                     cards_offered.setdefault(cid, []).append({**loc, "picked": True})
-            seen_relics = set()
-            for rc in ps.get("relic_choices", []):
-                rid = rc.get("choice", "")
-                if rid:
-                    seen_relics.add(rid)
-                    relics_offered.setdefault(rid, []).append({**loc, "picked": bool(rc.get("was_picked"))})
-            # An ancient (Neow and the others) lists the whole offer in
-            # ancient_choice with was_chosen on the pick, while relic_choices
-            # keeps only the pick. The turned-down ones are tallied as skipped,
-            # so an ancient relic has an offer count and a skip rate like any other.
+            relic_rows = [rc for rc in ps.get("relic_choices", []) if rc.get("choice")]
+            rtype = rooms[0].get("room_type", "") if rooms else ""
+            # How each node records a relic choice (see the tables above):
+            #  * ancient_choice lists the whole offer with was_chosen on the pick,
+            #    so every entry is an offer; relic_choices adds what the pick set
+            #    in motion (Touch of Orobas' starter upgrade, Neow's extras).
+            #  * an event's event_choices holds only the option taken, never the
+            #    ones passed over, so EVENT_RELIC_OPTIONS (read from the game's
+            #    event code) says which options hand out a relic: every visit
+            #    offers it, taking the option picks it.
+            #  * a shop shelf, or any node that lists a turned-down relic, is a
+            #    real choice: each row is offered, picked by was_picked.
+            #  * everything else (elite, chest, boss, random event relics) lists
+            #    only what was taken: "granted", a pick with no recorded offer.
+            has_choice = rtype == "shop" or ntype == "shop" or any(not rc.get("was_picked") for rc in relic_rows)
+            handled = set()          # relic ids whose offer this node tallies itself
+
+            def tally(rid, picked, granted=False):
+                entry = {**loc, "picked": picked}
+                if granted:
+                    entry["granted"] = True
+                relics_offered.setdefault(rid, []).append(entry)
+
             for ac in ps.get("ancient_choice", []):
-                key = ac.get("TextKey", "")
-                rid = key if key.startswith("RELIC.") else f"RELIC.{key}"
-                if key and rid not in seen_relics:
-                    seen_relics.add(rid)
-                    relics_offered.setdefault(rid, []).append({**loc, "picked": bool(ac.get("was_chosen"))})
+                rid = _ancient_relic_id(ac)
+                if rid and rid not in handled:
+                    handled.add(rid)
+                    tally(rid, bool(ac.get("was_chosen")))
+                    if rid == "RELIC.TOUCH_OF_OROBAS" and char in TOUCH_UPGRADES:
+                        # the pick upgrades the starter relic: the same decision
+                        up = TOUCH_UPGRADES[char]
+                        handled.add(up)
+                        tally(up, bool(ac.get("was_chosen")))
+            event_id = enc if rtype == "event" else ""
+            opts = EVENT_RELIC_OPTIONS.get(event_id)
+            if opts:
+                chosen = [ec.get("title", {}).get("key", "") for ec in ps.get("event_choices", [])]
+                first = chosen[0] if chosen else ""
+                if f"{event_id[len('EVENT.'):]}.pages.INITIAL.options." in first:
+                    taken = first.split(".options.")[1].split(".")[0]
+                    for opt, rid in opts.items():
+                        handled.add(rid)
+                        tally(rid, opt == taken)
+            if event_id:
+                visit = event_visit(ps)
+                if visit:
+                    events.append([event_id, *visit])
+            for rc in relic_rows:
+                rid = rc["choice"]
+                if rid in handled:
+                    continue
+                picked = bool(rc.get("was_picked"))
+                tally(rid, picked, granted=picked and (not has_choice or bool(ps.get("ancient_choice"))))
             if ntype == "rest_site":
                 act_choices = rest_choices.setdefault(act_num, {})
                 for choice in ps.get("rest_site_choices", []):
@@ -1020,6 +1144,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         "cardsOffered":  cards_offered,
         "relicsOffered": relics_offered,
         "restChoices":   rest_choices,
+        **({"events": events} if events else {}),
         "finalDeck":     final_deck,
         "finalRelics":   final_relics,
         "fights":        extract_fights(data, char, asc, run_won, local_idx),
@@ -1061,6 +1186,7 @@ _JS_MODULES = [
     "sticky-offsets.js",
     "cards-page.js",
     "relics-page.js",
+    "events-page.js",
     "seeds.js",
     "run-detail.js",
     "run-records.js",
@@ -1247,6 +1373,7 @@ _CARD_DATA_FILE   = _HERE / "card_data.json"
 _RELIC_DATA_FILE  = _HERE / "relic_data.json"
 _POTION_DATA_FILE = _HERE / "potion_data.json"
 _ENCHANT_DATA_FILE = _HERE / "enchantments_data.json"
+_EVENT_CATALOG_FILE = _HERE / "event_catalog.json"   # tools/build_event_catalog.py
 
 
 def build_card_char(card_data: dict) -> dict[str, str]:
@@ -1404,6 +1531,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <button class="page-tab" id="tab-detail" onclick="showPage('detail')">Runs</button>
   <button class="page-tab" id="tab-cards" onclick="showPage('cards')">Cards</button>
   <button class="page-tab" id="tab-relics" onclick="showPage('relics')">Relics</button>
+  <button class="page-tab" id="tab-events" onclick="showPage('events')">Events</button>
   <button class="page-tab" id="tab-seeds" onclick="showPage('seeds')">Seeds</button>
 </nav>
 
@@ -1689,6 +1817,16 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 </div>
 
 </div><!-- end #page-relics -->
+
+<div id="page-events" style="display:none">
+
+<div class="chart-box">
+  <h2>Event choices</h2>
+  <p class="chart-caption" id="events-caption">Every option taken at an event under the current filters.</p>
+  <div id="events-list"></div>
+</div>
+
+</div><!-- end #page-events -->
 
 <!-- ================================================================
      Seeds page
@@ -1987,6 +2125,7 @@ def build_html(runs: list[dict]) -> str:
         "cardCoop":           build_card_coop(card_data),
         "cardVariants":       card_variants,
     "enchantmentData":    enchantment_data,
+    "eventCatalog":       json.loads(_EVENT_CATALOG_FILE.read_text(encoding="utf-8")) if _EVENT_CATALOG_FILE.exists() else {},
         "measuredRuns":       measured_runs,
         "fightDemand":        fight_demand,
         "relicData":          relic_data,

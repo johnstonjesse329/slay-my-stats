@@ -94,6 +94,7 @@ slay-my-stats/
 │   ├── run-detail.js        Runs page
 │   ├── cards-page.js        Cards page (and the favorites tallies the Relics page shares)
 │   ├── relics-page.js       Relics page
+│   ├── events-page.js       Events page: each option taken at an event, how often, what it handed over
 │   ├── seeds.js             Seeds page
 │   ├── charts.js            Chart.js setup
 │   ├── card-face.js         card rendering
@@ -134,6 +135,7 @@ slay-my-stats/
 │   ├── smoke_site.py        loads the deployed site as a visitor would; deploy.py runs it last
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
+│   ├── build_event_catalog.py  event_catalog.json (event options, from the game's events.json)
 │   ├── rebuild_stats.py     recount users/_stats.json.gz and each player's _seeds.json.gz
 │   ├── backfill_measured.py give runs uploaded before `measured` their per-floor numbers, from their stored logs
 │   ├── build_measured_cards.py  card costs for the ingest Lambda, cut from card_data.json at bundle time
@@ -546,7 +548,8 @@ can change without recounting. It also counts each character's card and relic pi
 buys, for the All players favorites on the Cards and Relics pages, plus how often each was offered and how often a skipped
 offer went on to win, for the "All" columns of the card and relic pick rate tables (the file's `pickSlots` says which layout
 it has; a file counted before offers were kept has none, and the page then leaves those columns out until
-`tools/rebuild_stats.py` recounts it).
+`tools/rebuild_stats.py` recounts it). The same file holds each event's visits and options taken (`picks[char].events`, with
+`eventsVersion`), for the Events page's All players column, hidden until a recount.
 
 The Seeds page's All players toggle searches every player's seeds. Each player's `_seeds.json.gz` (about 480 bytes
 a run) is added to by their uploads and fetched only when the toggle is switched on; opening another player's

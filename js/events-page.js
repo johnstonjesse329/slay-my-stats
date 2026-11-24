@@ -1,0 +1,133 @@
+// =========================================================================
+// Events page: every option taken at a mystery event, how often, and what the
+// node recorded it handing over, yours beside all players'. A save records only
+// the option taken (never the ones passed over), so an option nobody took is
+// listed only for events whose option set is fixed (DATA.eventCatalog, from
+// tools/build_event_catalog.py), and no option is ever called the default.
+//
+// A tally is { eventId: { v: visits, o: { option: [taken, wins, { grant: n }] } } },
+// the shape run.py's "events" take once added up, in the site totals as well.
+// =========================================================================
+
+const EVENT_GRANT_MIN_SHARE = 0.5;   // a grant shows when it came with at least this share of an option's visits
+
+function eventTalliesYou() {
+  const out = {};
+  filterRuns().forEach(run => (run.events || []).forEach(([id, opt, grants]) => {
+    const ev = out[id] || (out[id] = { v: 0, o: {} });
+    ev.v++;
+    const o = ev.o[opt] || (ev.o[opt] = [0, 0, {}]);
+    o[0]++; o[1] += run.won ? 1 : 0;
+    grants.forEach(g => { o[2][g] = (o[2][g] || 0) + 1; });
+  }));
+  return out;
+}
+
+// What the site totals hold for the characters in view, or null when they have
+// no complete event count (a total recounted before events were kept).
+function eventTalliesAll() {
+  const all = favTalliesAll();
+  if (!all || siteStatsForFavs.eventsVersion !== 1) return null;
+  const out = {};
+  const chars = sharedActiveChar === "ALL" ? Object.keys(all.picks) : [sharedActiveChar];
+  chars.forEach(char => Object.entries(all.picks[char]?.events || {}).forEach(([id, ev]) => {
+    const into = out[id] || (out[id] = { v: 0, o: {} });
+    into.v += ev.v;
+    Object.entries(ev.o).forEach(([opt, [n, w, grants]]) => {
+      const o = into.o[opt] || (into.o[opt] = [0, 0, {}]);
+      o[0] += n; o[1] += w;
+      Object.entries(grants).forEach(([g, c]) => { o[2][g] = (o[2][g] || 0) + c; });
+    });
+  }));
+  return out;
+}
+
+function eventGrantName(token) {
+  const [kind, ...rest] = token.split("-");
+  const id = rest.join("-");
+  if (kind === "card") return fmtCardLabel(id);
+  if (kind === "relic") return fmtRelicLabel(id);
+  if (kind === "potion") return (DATA.potionData?.[id]?.title) || titleCaseId(id.replace(/^POTION\./, ""));
+  if (kind === "maxhp") return `${Number(id) > 0 ? "+" : ""}${id} max HP`;
+  return { gold_up: "gold", gold_down: "gold spent", hurt: "damage", upgrade: "upgrade", remove: "card removed",
+           transform: "transform", enchant: "enchant" }[token] || token;
+}
+
+// What an option handed over, from the grants that came with at least half its visits.
+// Card, relic and potion ids that differ from visit to visit read as "random ...".
+function eventGrantText(option) {
+  const [taken, , grants] = option;
+  const bar = taken * EVENT_GRANT_MIN_SHARE;
+  const parts = [];
+  ["card", "relic", "potion"].forEach(kind => {
+    const own = Object.entries(grants).filter(([g]) => g.startsWith(kind + "-"));
+    const top = own.reduce((best, e) => !best || e[1] > best[1] ? e : best, null);
+    const total = own.reduce((n, e) => n + e[1], 0);
+    if (top && top[1] >= bar) parts.push(eventGrantName(top[0]));
+    else if (total >= bar) parts.push(`random ${kind}`);
+  });
+  Object.entries(grants).filter(([g, n]) => !/^(card|relic|potion)-/.test(g) && n >= bar)
+    .sort((a, b) => b[1] - a[1]).forEach(([g]) => parts.push(eventGrantName(g)));
+  return parts.length ? parts.join(", ") : "not recorded";
+}
+
+// { eventId: { visits, options: [{ key, label, taken, grant }], not_taken: [labels],
+//   flags: { conditional, random_offer, random_outcome, outcome_recorded } } }
+// from a tally. not_taken lists the catalog's options nobody took, for a fixed set only.
+function eventChoices(tally) {
+  const catalog = DATA.eventCatalog || {};
+  const out = {};
+  Object.entries(tally).forEach(([id, ev]) => {
+    const cat = catalog[id] || {};
+    const label = key => (cat.labels || {})[key] || titleCaseId(key.split(".").pop());
+    const options = Object.entries(ev.o).sort((a, b) => b[1][0] - a[1][0] || a[0].localeCompare(b[0]))
+      .map(([key, o]) => ({ key, label: label(key), taken: o[0], grant: eventGrantText(o) }));
+    const fixed = !!cat.initial && !cat.conditional && !cat.random_offer;
+    out[id] = {
+      visits: ev.v,
+      options,
+      not_taken: fixed ? cat.initial.filter(k => !(k in ev.o)).map(label) : [],
+      flags: { conditional: !!cat.conditional, random_offer: !!cat.random_offer, random_outcome: !!cat.random_outcome,
+               outcome_recorded: options.some(o => o.grant !== "not recorded") },
+    };
+  });
+  return out;
+}
+
+function eventName(id) {
+  return (DATA.eventCatalog?.[id]?.title) || titleCaseId(id.replace(/^EVENT\./, ""));
+}
+
+function eventColumnHtml(who, ch) {
+  const head = who === "you" ? "Your runs" : "All players";
+  if (!ch) return `<div class="event-col event-col-${who}"><h4>${head}</h4><p class="event-none">—</p></div>`;
+  const rows = ch.options.map(o => `<div class="event-opt">
+      <span class="event-opt-name">${o.label}</span>
+      <span class="event-opt-n">${o.taken}</span>
+      <span class="event-opt-bar"><i style="width:${Math.round(o.taken / ch.visits * 100)}%"></i></span>
+      <span class="event-opt-grant${o.grant === "not recorded" ? " event-opt-none" : ""}">${o.grant}</span>
+    </div>`).join("")
+    + ch.not_taken.map(l => `<div class="event-opt event-opt-never"><span class="event-opt-name">${l}</span><span class="event-opt-n">0</span><span class="event-opt-bar"></span><span class="event-opt-grant"></span></div>`).join("");
+  const notes = [ch.flags.conditional && "Some options are only offered at times", ch.flags.random_offer && "The options on offer vary"]
+    .filter(Boolean).join(". ");
+  return `<div class="event-col event-col-${who}"><h4>${head} <span class="event-visits">${ch.visits} visit${ch.visits !== 1 ? "s" : ""}</span></h4>${rows}${notes ? `<p class="event-note">${notes}</p>` : ""}</div>`;
+}
+
+function renderEventsPage() {
+  loadSiteStatsForFavs();
+  const you = eventChoices(eventTalliesYou());
+  const allTally = eventTalliesAll();
+  const all = allTally ? eventChoices(allTally) : null;
+  const ids = [...new Set([...Object.keys(you), ...Object.keys(all || {})])]
+    .sort((a, b) => ((you[b]?.visits || 0) - (you[a]?.visits || 0)) || ((all?.[b]?.visits || 0) - (all?.[a]?.visits || 0)) || eventName(a).localeCompare(eventName(b)));
+  const scope = sharedActiveChar === "ALL" ? "all characters" : fmtCharName(sharedActiveChar);
+  const n = Object.keys(you).length;
+  document.getElementById("events-caption").textContent =
+    `${n} event${n !== 1 ? "s" : ""} recorded under the current filters (${scope}).`;
+  document.getElementById("events-list").innerHTML = ids.length
+    ? ids.map(id => `<section class="event-card">
+        <h3>${eventName(id)}</h3>
+        <div class="event-cols">${eventColumnHtml("you", you[id])}${all ? eventColumnHtml("all", all[id]) : ""}</div>
+      </section>`).join("")
+    : `<p class="event-none">No events recorded under the current filters.</p>`;
+}

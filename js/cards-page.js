@@ -92,7 +92,7 @@ function aggregateCards() {
 // were counted before offers were kept.
 function globalCardTallies() {
   const all = favTalliesAll();
-  if (!all || siteStatsForFavs.pickSlots !== 6) return null;
+  if (!all || siteStatsForFavs.pickSlots !== 7) return null;
   const byId = {};
   const chars = sharedActiveChar === "ALL" ? Object.keys(all.picks) : [sharedActiveChar];
   chars.forEach(char => Object.entries(all.picks[char]?.cards || {}).forEach(([id, q]) => {
@@ -349,7 +349,7 @@ function loadSiteStatsForFavs() {
       // loading (the idle pre-render of the page does exactly that), so keep it
       // dirty when it is not on screen: the next visit then draws the "All"
       // columns instead of the stale table without them.
-      ["cards", "relics"].forEach(page => {
+      ["cards", "relics", "events"].forEach(page => {
         if (currentPage === page) PAGE_RENDERERS[page]();
         else pageDirty[page] = true;
       });
@@ -430,11 +430,21 @@ function favTalliesAll() {
   }).forEach(m => {
     Object.entries(m.chars || {}).forEach(([char, pair]) => { runs[char] = (runs[char] || 0) + pair[0]; });
     Object.entries(m.picks || {}).forEach(([char, kinds]) => {
-      const into = picks[char] || (picks[char] = { cards: {}, relics: {} });
+      const into = picks[char] || (picks[char] = { cards: {}, relics: {}, events: {} });
       ["cards", "relics"].forEach(kind => Object.entries(kinds[kind] || {}).forEach(([id, q]) => {
         const have = into[kind][id] || (into[kind][id] = [0, 0, 0, 0, 0, 0]);
         q.forEach((n, i) => { have[i] += n; });
       }));
+      // Event choices are objects, not slot lists (see events-page.js).
+      Object.entries(kinds.events || {}).forEach(([id, ev]) => {
+        const have = into.events[id] || (into.events[id] = { v: 0, o: {} });
+        have.v += ev.v;
+        Object.entries(ev.o).forEach(([opt, [n, w, grants]]) => {
+          const o = have.o[opt] || (have.o[opt] = [0, 0, {}]);
+          o[0] += n; o[1] += w;
+          Object.entries(grants).forEach(([g, c]) => { o[2][g] = (o[2][g] || 0) + c; });
+        });
+      });
     });
   });
   return Object.keys(runs).length ? { picks, runs } : null;
