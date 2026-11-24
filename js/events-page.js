@@ -101,18 +101,27 @@ function eventName(id) {
 // One colour per option, shared by its slice of the pie and its row, in the order of the rows.
 const EVENT_SLICE_COLORS = ["#e0c468", "#6fd6c6", "#9db8f0", "#d97a3a", "#c58be0", "#8fd16b", "#e0788c", "#8fa0b8"];
 
-// Each option's share of the visits, as a ring: a slice per option taken.
+// Each option has its own arc, so hovering its stroke hits only that slice.
 function eventPieHtml(ch) {
-  const total = ch.options.reduce((n, o) => n + o.taken, 0) || 1;
-  let at = 0;
+  const total = ch.options.reduce((n, o) => n + o.taken, 0);
+  if (!total) return "";
+  const radius = 15.9;
+  const point = angle => `${21 + radius * Math.cos(angle)} ${21 + radius * Math.sin(angle)}`;
+  let at = -Math.PI / 2;
   const slices = ch.options.map((o, i) => {
+    if (!o.taken) return "";
     const share = o.taken / total * 100;
-    const out = `<circle class="event-pie-slice" r="15.9155" cx="21" cy="21" fill="none" stroke="${EVENT_SLICE_COLORS[i % EVENT_SLICE_COLORS.length]}" stroke-width="9"
-      stroke-dasharray="${share} ${100 - share}" stroke-dashoffset="${25 - at}"><title>${escapeHtml(o.label)}: ${o.taken} of ${total}</title></circle>`;
-    at += share;
-    return out;
+    const end = at + (2 * Math.PI * o.taken) / total;
+    const shape = share === 100 ? `circle cx="21" cy="21" r="${radius}"` :
+      `path d="M ${point(at)} A ${radius} ${radius} 0 ${share > 50 ? 1 : 0} 1 ${point(end)}"`;
+    at = end;
+    const pct = share < 0.1 ? "<0.1" : Math.round(share * 10) / 10;
+    const label = escapeHtml(`${o.label}: ${o.taken} of ${total} choices (${pct}%)`);
+    // data-tip takes HTML, so encode the already escaped text for its attribute.
+    return `<${shape} class="event-pie-slice" fill="none" stroke="${EVENT_SLICE_COLORS[i % EVENT_SLICE_COLORS.length]}" stroke-width="9"
+      role="img" aria-label="${label}" data-tip="${escapeHtml(label)}" tabindex="0"/>`;
   }).join("");
-  return `<svg class="event-pie" viewBox="0 0 42 42" role="img" aria-label="Share of visits by option">${slices}</svg>`;
+  return `<svg class="event-pie" viewBox="0 0 42 42" role="group" aria-label="Share of recorded choices by option">${slices}</svg>`;
 }
 
 function eventColumnHtml(who, ch) {
@@ -174,6 +183,22 @@ function eventArtHtml(id) {
   </div>`;
 }
 
+function placeEventArtPreview(thumbnail) {
+  const preview = thumbnail?.nextElementSibling;
+  if (!preview || !preview.offsetWidth) return;
+  const { vw, vh } = viewportSize();
+  const { left, right, top, bottom, width, height } = thumbnail.getBoundingClientRect();
+  const w = preview.offsetWidth, h = preview.offsetHeight, gap = 8;
+  let x = left + (width - w) / 2;
+  let y = top + (height - h) / 2;
+  if (right + w + gap * 2 <= vw) x = right + gap;
+  else if (left >= w + gap * 2) x = left - w - gap;
+  else y = vh - bottom >= top ? bottom + gap : top - h - gap;
+  preview.style.left = `${clampAxis(x, w, vw, gap)}px`;
+  preview.style.top = `${clampAxis(y, h, vh, gap)}px`;
+  preview.style.visibility = "visible";
+}
+
 function eventCardHtml(id, you, all) {
   const art = eventArtHtml(id);
   return `<section class="event-card${art ? " event-card-art" : ""}">${art}
@@ -207,6 +232,20 @@ function renderEventsPage() {
 }
 
 document.getElementById("events-search").addEventListener("input", e => { eventsQuery = e.target.value; renderEventsPage(); });
+const eventsList = document.getElementById("events-list");
+eventsList.addEventListener("pointerover", e => {
+  if (e.pointerType === "mouse" && e.target.matches(".event-art-thumbnail")) {
+    requestAnimationFrame(() => placeEventArtPreview(e.target));
+  }
+});
+eventsList.addEventListener("focusin", e => {
+  if (e.target.matches(".event-art-thumbnail")) placeEventArtPreview(e.target);
+});
+eventsList.addEventListener("load", e => {
+  if (e.target.matches(".event-art-preview")) placeEventArtPreview(e.target.previousElementSibling);
+}, true);
+window.addEventListener("scroll", () => placeEventArtPreview(eventsList.querySelector(".event-art-thumbnail:focus")), { passive: true });
+window.addEventListener("resize", () => placeEventArtPreview(eventsList.querySelector(".event-art-thumbnail:focus, .event-art-thumbnail:hover")), { passive: true });
 document.getElementById("events-act-chips").addEventListener("click", e => {
   const b = e.target.closest("[data-act]");
   if (!b) return;
