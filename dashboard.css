@@ -2140,6 +2140,17 @@ h1 {
 .nt-enc    { color: var(--text); font-size: var(--fs-sm); font-weight: 600; margin-bottom: 2px; }
 /* A wide group or a tall boss both fit within the same medium-sized space. */
 .encounter-art { display: block; width: 17.5rem; max-width: 100%; height: 5rem; object-fit: contain; object-position: left center; margin: 2px 0 4px; }
+.encounter-tip {
+  max-width: calc(100vw - 16px);
+  padding: 0.65rem 0.85rem;
+  background: var(--bg-deep);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.65);
+  text-align: center;
+  white-space: normal;
+}
 .encounter-tip .encounter-art { object-position: center; }
 [data-encounter-tip] { cursor: help; }
 .nt-dmg     { color: var(--loss); font-size: var(--fs-sm); }
@@ -3428,9 +3439,9 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .event-card { min-width: 0; background: var(--panel-2); border: 1px solid var(--hairline); border-radius: 10px; padding: 0.9rem 1.1rem 1rem; }
 .event-card h3 { font-size: var(--fs-md); color: var(--gold-bright); margin-bottom: 0.6rem; }
 /* Keep the thumbnail in place while the centered preview shows the full image. */
-.event-card-art { display: flex; align-items: stretch; gap: 1rem; }
-.event-art { flex: 0 0 8rem; min-height: 7rem; }
-.event-art-thumbnail { width: 100%; height: 100%; object-fit: cover; display: block; border: 1px solid var(--hairline); border-radius: 8px; }
+.event-card-art { display: flex; align-items: center; gap: 1rem; }
+.event-art { flex: 0 0 8rem; }
+.event-art-thumbnail { width: 100%; height: 7rem; object-fit: cover; display: block; border: 1px solid var(--hairline); border-radius: 8px; }
 .event-art-preview {
   display: none;
   position: fixed;
@@ -3450,7 +3461,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 }
 .event-art-thumbnail:focus-visible + .event-art-preview { display: block; }
 @media (hover: hover) {
-  body:not(.suppress-hover-tooltips) .event-art:hover .event-art-preview { display: block; }
+  body:not(.suppress-hover-tooltips) .event-art-thumbnail:hover + .event-art-preview { display: block; }
 }
 @media (hover: none) {
   .event-art-thumbnail:focus + .event-art-preview { display: block; }
@@ -3487,7 +3498,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 @media (max-width: 700px) {
   .event-card { padding: 0.8rem 0.8rem 0.9rem; }
   .event-card-art { display: block; }
-  .event-art { min-height: 0; margin-bottom: 0.6rem; }
+  .event-art { margin-bottom: 0.6rem; }
   .event-art-thumbnail { height: 5.5rem; }
 }
 /* Cards favorites: the character and You / All players columns keep to their text,
