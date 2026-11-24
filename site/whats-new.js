@@ -98,11 +98,8 @@
   function showAsked(article, asked) {
     article.querySelector(".post-asked")?.remove();
     if (!asked.count) return;
-    const others = asked.count - 1;
-    const text = asked.mine
-      ? "You asked for this" + (others ? `, with ${plural(others, "other player")}` : "")
-      : `Requested by ${plural(asked.count, "player")} through Feedback`;
-    const line = el("p", { className: "post-asked" + (asked.mine ? " post-asked-mine" : ""), textContent: text });
+    const text = `Requested by ${plural(asked.count, "player")} through Feedback`;
+    const line = el("p", { className: "post-asked", textContent: text });
     article.querySelector(".post-head").after(line);
   }
 

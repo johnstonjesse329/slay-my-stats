@@ -86,7 +86,6 @@
 .site-page .post-focus { border-left: 3px solid var(--gold); margin-left: -1rem; padding-left: calc(1rem - 3px); }
 .site-page .posts-missing { color: var(--text-faint); font-size: var(--fs-sm); }
 .post-asked { display: inline-block; margin: 0 0 0.6rem; color: var(--text-dim); font-size: var(--fs-sm); }
-.post-asked-mine { padding: 0.15rem 0.65rem; border-radius: 999px; background: var(--gold); color: var(--bg-deep); font-weight: 700; }
 .post-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.5rem; }
 .post-reactions[hidden] { display: none; }
 .react {
