@@ -98,6 +98,18 @@ const detailRunsPage = document.getElementById("detail-runs-page");
 detailRunsPrevious.addEventListener("click", () => renderDetailRunList(-1));
 detailRunsNext.addEventListener("click", () => renderDetailRunList(1));
 
+// A picked tag is an archetype (runTags), or a synergy from Overview's table
+// ("synergy:<char>:<name>", see openSynergyRuns), which matches the runs that table counts.
+const synergyTag = (char, name) => `synergy:${char}:${name}`;
+const parseSynergyTag = t => t.startsWith("synergy:") ? { char: t.split(":")[1], name: t.split(":").slice(2).join(":") } : null;
+const tagLabel = t => { const s = parseSynergyTag(t); return s ? `${s.name} synergy` : t; };
+function runHasTag(run, t) {
+  const s = parseSynergyTag(t);
+  if (!s) return runTags(run).includes(t);
+  return run.char === s.char && typeof run.won === "boolean" && runSynergies(run).has(s.name);
+}
+const runHasDetailTags = run => [...detailTags].every(t => runHasTag(run, t));
+
 function matchesDetailAct(run) {
   return [...detailActs].every(act => (run.timeline || []).some(node => node.act === act));
 }
@@ -334,7 +346,8 @@ function renderDetailActFilter(runs) {
   box.querySelector(".tag-filter-text").textContent = detailActs.size
     ? [...detailActs].sort().map(a => `Act ${a}`).join(" + ") : "Any act";
   box.querySelector(".tag-filter-clear").hidden = detailActs.size === 0;
-  box.querySelector(".tag-filter-chips").innerHTML = `<div class="tag-filter-tags">` + [1, 2, 3].map(a =>
+  // Every run reaches Act 1, so only the later acts are offered.
+  box.querySelector(".tag-filter-chips").innerHTML = `<div class="tag-filter-tags">` + [2, 3].map(a =>
     `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailActs.has(a)}" data-act="${a}">Act ${a} <span class="run-tag-n">${runs.filter(r => (r.timeline || []).some(n => n.act === a)).length}</span></button>`).join("") + `</div>`;
   box.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
     const a = Number(btn.dataset.act);
@@ -427,17 +440,19 @@ function renderDetailTagFilter(runs) {
   const groups = roster.map(char => {
     const known = Object.keys((DATA.archetypes && DATA.archetypes[char]) || {});
     const byTag = counts[char] || {};
-    const tags = [...new Set([...Object.keys(byTag), ...known.filter(t => detailTags.has(t))])]
+    const synergies = [...detailTags].filter(t => parseSynergyTag(t)?.char === char);
+    synergies.forEach(t => { byTag[t] = runs.filter(r => runHasTag(r, t)).length; });
+    const tags = [...new Set([...synergies, ...Object.keys(byTag), ...known.filter(t => detailTags.has(t))])]
       .sort((a, b) => (byTag[b] || 0) - (byTag[a] || 0) || a.localeCompare(b));
     return { char, byTag, tags };
   }).filter(g => g.tags.length);
   box.style.display = groups.length ? "" : "none";
-  box.querySelector(".tag-filter-text").textContent = detailTags.size ? [...detailTags].join(" + ") : "All";
+  box.querySelector(".tag-filter-text").textContent = detailTags.size ? [...detailTags].map(tagLabel).join(" + ") : "All";
   box.querySelector(".tag-filter-clear").hidden = detailTags.size === 0;
   const chips = box.querySelector(".tag-filter-chips");
   chips.innerHTML = groups.map(g => `<div class="tag-filter-group"><span class="tag-filter-char">${charLabelHtml(g.char)}</span>`
     + `<div class="tag-filter-tags">`
-    + g.tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)} <span class="run-tag-n">${g.byTag[t] || 0}</span></button>`).join("")
+    + g.tags.map(t => `<button type="button" class="run-tag run-tag-btn" aria-pressed="${detailTags.has(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(tagLabel(t))} <span class="run-tag-n">${g.byTag[t] || 0}</span></button>`).join("")
     + `</div></div>`).join("");
   chips.querySelectorAll(".run-tag-btn").forEach(btn => btn.addEventListener("click", () => {
     const t = btn.dataset.tag;
@@ -462,8 +477,8 @@ function renderDetailRunList(pageStep = 0) {
   const filtered = getDetailRuns();
   renderDetailActFilter(filterRuns());
   renderDetailTagFilter(filtered);
-  renderDetailPartnerFilter(filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t))));
-  const runs = filtered.filter(r => [...detailTags].every(t => runTags(r).includes(t)) && playedWithAll(r));
+  renderDetailPartnerFilter(filtered.filter(runHasDetailTags));
+  const runs = filtered.filter(r => runHasDetailTags(r) && playedWithAll(r));
   const container = document.getElementById("detail-run-list");
   detailRunPagination.hidden = runs.length <= DETAIL_RUNS_PER_PAGE;
 
