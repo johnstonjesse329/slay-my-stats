@@ -429,7 +429,7 @@
   const SHOWCASE_TABS = [
     ["op", "OP runs", null],
     ["blocked", "Most blocked in a turn", n => `${n} Block`],
-    ["held", "Most block gained", n => `${n} Block`],
+    ["held", "Peak Block in a turn", n => `${n} Block`],
     ["hit", "Biggest hit in a turn", n => `${n} damage`],
     ["deck", "Most cards in a deck", n => `${n} cards`],
   ];

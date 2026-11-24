@@ -39,7 +39,7 @@ function renderPersonalBests() {
   const chars = DATA.characters;
   const allRuns = [...filterRuns()].sort((a, b) => a.ts - b.ts);
 
-  const fresh = () => ({ gamesPlayed: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, tiers: {},
+  const fresh = () => ({ gamesPlayed: 0, finalBossDeaths: 0, eliteDeaths: 0, currentStreak: 0, longestStreak: 0, _streak: 0, fastestWin: null, fewestElites: null, mostElitesWin: null, mostCards: null, fewestCards: null, mostRelics: null, fewestRelics: null, mostMaxHp: null, fewestMaxHp: null, mostFinalBossTurns: null, fewestFinalBossTurns: null, runMostMaxHp: null, runFewestMaxHp: null, runMostRelics: null, runFewestCards: null, tiers: {},
     // Every winning run's figure, for the medians the table shows before its ranges.
     won: { elites: [], cards: [], relics: [], maxHp: [], bossTurns: [] } });
   const bests = {};
@@ -94,6 +94,15 @@ function renderPersonalBests() {
         b.won.maxHp.push(finalMaxHp);
       }
     }
+    // Records over every run, lost ones included (the winning-runs ranges below are wins only).
+    // A run that ended in a death can close its timeline at 0, so the last real maximum counts.
+    const endMaxHp = (run.timeline || []).reduce((m, t) => t.maxHp > 0 ? t.maxHp : m, null);
+    if (endMaxHp != null) {
+      if (b.runMostMaxHp === null || endMaxHp > b.runMostMaxHp.value) b.runMostMaxHp = { value: endMaxHp, ts: run.ts };
+      if (b.runFewestMaxHp === null || endMaxHp < b.runFewestMaxHp.value) b.runFewestMaxHp = { value: endMaxHp, ts: run.ts };
+    }
+    if (run.relics != null && (b.runMostRelics === null || run.relics > b.runMostRelics.value)) b.runMostRelics = { value: run.relics, ts: run.ts };
+    if (run.cards != null && (b.runFewestCards === null || run.cards < b.runFewestCards.value)) b.runFewestCards = { value: run.cards, ts: run.ts };
     const elites = (run.fights || []).filter(f => f.type === "elite" && f.won).length;
     if (run.won) {
       if (b.fewestElites === null || elites < b.fewestElites.value) b.fewestElites = { value: elites, ts: run.ts };
@@ -178,6 +187,10 @@ function renderPersonalBests() {
     ["Current win streak", b => b.currentStreak],
     ["Best win streak",   b => b.longestStreak],
     ["Fastest win",       b => link(b.fastestWin, fmtHrsMin)],
+    ["Most max HP",       b => link(b.runMostMaxHp)],
+    ["Least max HP",      b => link(b.runFewestMaxHp)],
+    ["Most relics",       b => link(b.runMostRelics)],
+    ["Smallest deck",     b => link(b.runFewestCards)],
     `Winning runs<span class="pb-phone-only">, median</span>`,
     ["Elites",            b => medRange(b.won.elites, b.fewestElites, b.mostElitesWin), ],
     ["Cards",             b => medRange(b.won.cards, b.fewestCards, b.mostCards), ],
