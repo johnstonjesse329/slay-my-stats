@@ -16,6 +16,7 @@ The result is checked in. Regenerate it after a game patch:
 conditional    an option has a LOCKED variant (or NO_OPTIONS): what was offered depends on the
                deck, gold or potions at that moment, which the save does not record.
 random_offer   the set of options differs per visit (dishes, characters, relics, dolls).
+acts           the acts whose event pool holds it (empty: shared, any act).
 random_outcome the same option can give a different result (random card, relic, potion, gold).
 The last two come from reading each event's code (src/Core/Models/Events/<Name>.cs: Rng use);
 they are the lists below, taken from output/event-audit.md sections 2 and 3 (FB-75).
@@ -42,10 +43,23 @@ RANDOM_OUTCOME = {
     "COLORFUL_PHILOSOPHERS", "LOST_WISP", "SUNKEN_STATUE", "SUNKEN_TREASURY", "JUNGLE_MAZE_ADVENTURE",
     "PUNCH_OFF", "DENSE_VEGETATION",
 }
+ACTS = ["Overgrowth", "Underdocks", "Hive", "Glory"]   # src/Core/Models/Acts/<Act>.cs, AllEvents
 _KEY = re.compile(r"^([A-Z0-9_]+)\.pages\.([A-Z0-9_]+)\.options\.([A-Z0-9_]+)\.title$")
 
 
-def build(loc: dict) -> dict:
+def act_events(pck: Path) -> dict:
+    """{ "SUNKEN_STATUE": ["Overgrowth", "Underdocks"] } from each act's AllEvents list.
+    An event in none of them is shared (it can turn up in any act) and gets no acts."""
+    out: dict = {}
+    for act in ACTS:
+        src = (pck / "src" / "Core" / "Models" / "Acts" / f"{act}.cs").read_text(encoding="utf-8")
+        block = re.search(r"AllEvents =>.*?\}\)", src, re.S)
+        for cls in re.findall(r"ModelDb\.Event<(\w+)>", block.group(0) if block else ""):
+            out.setdefault(re.sub(r"(?<!^)(?=[A-Z])", "_", cls).upper(), []).append(act)
+    return out
+
+
+def build(loc: dict, acts: dict | None = None) -> dict:
     events: dict = {}
     for key, text in loc.items():
         if key.endswith(".title") and key.count(".") == 1:
@@ -78,13 +92,15 @@ def build(loc: dict) -> dict:
             "conditional": e["_locked"],
             "random_offer": name in RANDOM_OFFER,
             "random_outcome": name in RANDOM_OUTCOME,
+            "acts": (acts or {}).get(name, []),
         }
     return out
 
 
 def main() -> None:
-    loc = json.loads((pck_root.find_pck_root() / "localization" / "eng" / "events.json").read_text(encoding="utf-8"))
-    cat = build(loc)
+    pck = pck_root.find_pck_root()
+    loc = json.loads((pck / "localization" / "eng" / "events.json").read_text(encoding="utf-8"))
+    cat = build(loc, act_events(pck))
     OUT.write_text(json.dumps(cat, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"{len(cat)} events -> {OUT}")
 

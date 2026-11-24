@@ -3388,6 +3388,12 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .ka-party tbody th { text-align: left; font-weight: 600; white-space: nowrap; }
 
 /* Events page: one card per event, yours beside all players' (stacks on a phone). */
+.events-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin: 0.4rem 0 0.9rem; }
+.events-filter input[type=search] { flex: 0 1 18rem; min-width: 0; padding: 0.35rem 0.6rem; background: var(--panel-2); color: var(--text); border: 1px solid var(--hairline); border-radius: 6px; font: inherit; }
+.events-act-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.events-act-chips .run-tag-btn { margin: 0; }
+.events-act-head { font-size: var(--fs-lg, 1.15rem); color: var(--text); border-bottom: 1px solid var(--hairline); padding-bottom: 0.25rem; margin: 1.2rem 0 0.7rem; }
+.events-act-head:first-child { margin-top: 0.2rem; }
 .event-card { background: var(--panel-2); border: 1px solid var(--hairline); border-radius: 10px; padding: 0.9rem 1.1rem 1rem; margin-bottom: 0.9rem; }
 .event-card h3 { font-size: var(--fs-md); color: var(--gold-bright); margin-bottom: 0.6rem; }
 .event-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 0.8rem 2.2rem; }
