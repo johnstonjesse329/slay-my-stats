@@ -923,6 +923,8 @@ for a second Spine track. Keep the base idle animation on track 0 and add the co
 to assemble its rings around the hourglass. Vantom uses `_tracks/charged_1` and Soul Nexus uses
 `tracks/writhe`. Review the WebPs at tooltip size after baking. The `TOOLTIP_FRAMES` in
 `tools/render_encounter_art.py` keep the Soul Nexus and Infested Prisms bodies prominent in the preview.
+Check combat skin setup too. Skulking Colony needs the `normal` skin that the game applies when Phobia
+Mode is off. Record it in `COMBAT_SKINS` so future bakes include the body and limbs.
 
 The other baked art is ignored, and `tools/art_manifest.json` (tracked) lists those served files and their SHA-256 digests. Each bake
 script records what it wrote there, so a re-bake shows up in `git diff`; commit it with the change. The bake scripts
