@@ -1952,7 +1952,9 @@ function actRouteComparison(map) {
   // Broad route styles, any that fit (a route can earn more than one).
   const styles = [["Restful", at("RestSite") >= 4], ["Ambitious", at("Elite") >= 3],
     ["Fortuitous", at("Shop") >= 2], ["Curious", at("Unknown") >= 4]].filter(([, on]) => on).map(([name]) => name);
-  return { styles: styles.length ? `<div class="act-map-styles">Path style: ${styles.join(" · ")}</div>` : "",
+  // None of the above: a route that didn't lean into any one thing.
+  if (!styles.length) styles.push("Balanced");
+  return { styles: `<div class="act-map-styles">Path style: ${styles.join(" · ")}</div>`,
     table: `<dl class="act-map-route">${types.map(([, label], i) => `<div><dt>${label}</dt><dd>${taken_[i]}</dd></div>`).join("")}</dl>` };
 }
 
