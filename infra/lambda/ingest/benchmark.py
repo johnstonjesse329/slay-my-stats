@@ -62,6 +62,12 @@ def upload_fights(store, published, key, facts=None):
                                      "asc": raw.get("ascension") or 0, "deck": sum(1 for c in player.get("deck") or [] if c.get("id")),
                                      "won": bool(raw.get("win")), "solo": len(raw["players"]) == 1,
                                      "standard": raw.get("game_mode", "standard") == "standard"}
+                    if raw.get("win") and len(raw["players"]) == 1:  # only a showcase candidate needs them
+                        try:
+                            facts[run_id]["syn"] = showcase.deck_synergies(
+                                player.get("character"), player.get("deck"), player.get("relics"))
+                        except Exception as e:  # noqa: BLE001 -- the names are extra; never cost the refresh
+                            print(json.dumps({"showcase_synergy_failed": f"{type(e).__name__}: {e}"}))
     except IngestError as e:
         print(json.dumps({"benchmark_skipped_upload": key, "error": f"{e.code}: {e}"}))
         return None
@@ -110,7 +116,7 @@ def publish_showcase(store, by_run, facts, benchmark, now):
             if not names[steam_id]:
                 continue
             c = {"slug": names[steam_id][0], "name": names[steam_id][1], "ts": f["ts"], "char": f["char"],
-                 "asc": f["asc"], "deck": f["deck"],
+                 "asc": f["asc"], "deck": f["deck"], "syn": f.get("syn"),
                  "op": f["standard"] and showcase.is_op(fights, benchmark["encounters"], benchmark["cuts"])}
             got = store.get(telemetry_key(steam_id, f["ts"]))
             if got:

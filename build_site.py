@@ -452,6 +452,22 @@ def build_synergy() -> dict | None:
     return out
 
 
+def write_showcase_synergy(path) -> bool:
+    """
+    The table the ingest Lambda's showcase (infra/lambda/ingest/showcase.py) names a run's deck
+    synergies with: build_synergy() as the page gets it, plus the Basic cards (a link made
+    only of starters is dropped). Written when the Lambda is bundled; False (nothing written)
+    when power_data.json isn't generated, and the showcase then leaves the synergies out.
+    """
+    table = build_synergy()
+    if table is None:
+        return False
+    cards = json.loads((run._HERE / "card_data.json").read_text(encoding="utf-8"))
+    basic = sorted(k for k, c in cards.items() if c.get("rarity") == "Basic")
+    Path(path).write_text(json.dumps({"synergy": table, "basic": basic}, separators=(",", ":")), encoding="utf-8")
+    return True
+
+
 def build_archetypes() -> dict | None:
     """
     {CHARACTER: {archetype: {"cards": [ids], "needs": [ids]}}}: which cards count toward

@@ -74,5 +74,7 @@ fight_demand.json
 infra/lambda/ingest/measured_cards.json
 # Likewise the known character, card and relic IDs (tools/build_known_ids.py).
 infra/lambda/ingest/known_ids.json
+# And the deck-synergy table the showcase names synergies with (build_site.write_showcase_synergy).
+infra/lambda/ingest/showcase_synergy.json
 NOTES.md
 slay-my-stats.code-workspace
