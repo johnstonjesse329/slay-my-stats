@@ -59,7 +59,7 @@ def act_events(pck: Path) -> dict:
     return out
 
 
-def build(loc: dict, acts: dict | None = None) -> dict:
+def build(loc: dict, acts: dict | None = None, art: set[str] | None = None) -> dict:
     events: dict = {}
     for key, text in loc.items():
         if key.endswith(".title") and key.count(".") == 1:
@@ -93,6 +93,10 @@ def build(loc: dict, acts: dict | None = None) -> dict:
             "random_offer": name in RANDOM_OFFER,
             "random_outcome": name in RANDOM_OUTCOME,
             "acts": (acts or {}).get(name, []),
+            # The event's own illustration, for the Events page. A path relative to
+            # the repo (tools/downscale_art.py builds event_images/); run.py and
+            # build_site.py resolve it to a URL, or blank it where the art is missing.
+            **({"imagePath": f"event_images/{name.lower()}.webp"} if art and name.lower() in art else {}),
         }
     return out
 
@@ -100,7 +104,8 @@ def build(loc: dict, acts: dict | None = None) -> dict:
 def main() -> None:
     pck = pck_root.find_pck_root()
     loc = json.loads((pck / "localization" / "eng" / "events.json").read_text(encoding="utf-8"))
-    cat = build(loc, act_events(pck))
+    art = {p.stem for p in (pck / "images" / "events").glob("*.png")}
+    cat = build(loc, act_events(pck), art)
     OUT.write_text(json.dumps(cat, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"{len(cat)} events -> {OUT}")
 

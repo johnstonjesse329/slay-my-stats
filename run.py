@@ -2132,7 +2132,7 @@ def build_html(runs: list[dict]) -> str:
         "cardCoop":           build_card_coop(card_data),
         "cardVariants":       card_variants,
     "enchantmentData":    enchantment_data,
-    "eventCatalog":       json.loads(_EVENT_CATALOG_FILE.read_text(encoding="utf-8")) if _EVENT_CATALOG_FILE.exists() else {},
+    "eventCatalog":       resolve_image_paths(json.loads(_EVENT_CATALOG_FILE.read_text(encoding="utf-8"))) if _EVENT_CATALOG_FILE.exists() else {},
         "measuredRuns":       measured_runs,
         "fightDemand":        fight_demand,
         "relicData":          relic_data,

@@ -162,10 +162,22 @@ function renderEventActChips(ids) {
     `<button type="button" class="run-tag-btn" data-act="${a}" aria-pressed="${a === eventsAct}">${label} <span class="event-visits">${count(a)}</span></button>`).join("");
 }
 
+// The event's own illustration (event_images/, from tools/downscale_art.py), as a
+// tall crop down the left of the card: which event this is, read at a glance. The
+// source is a wide banner, so hover (or focus) opens the whole uncropped image.
+function eventArtHtml(id) {
+  const src = DATA.eventCatalog?.[id]?.imagePath;
+  if (!src) return "";
+  return `<div class="event-art"><img loading="lazy" src="${src}" alt="" tabindex="0"></div>`;
+}
+
 function eventCardHtml(id, you, all) {
-  return `<section class="event-card">
+  const art = eventArtHtml(id);
+  return `<section class="event-card${art ? " event-card-art" : ""}">${art}
+        <div class="event-main">
         <h3>${eventName(id)}</h3>
         <div class="event-cols">${eventColumnHtml("you", you[id])}${all ? eventColumnHtml("all", all[id]) : ""}</div>
+        </div>
       </section>`;
 }
 
