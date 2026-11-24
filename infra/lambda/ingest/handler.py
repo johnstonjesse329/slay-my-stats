@@ -765,7 +765,13 @@ def clean_event_log(obj) -> dict | None:
     out = _drop_abandoned_fights(out)
     if not out:
         return None
-    return {"v": 3, "log": out, "truncated": truncated}
+    cleaned = {"v": 3, "log": out, "truncated": truncated}
+    # Self-check findings, sent only by a mod with its debug switch on (testers). Kept as
+    # sent, bounded like everything else, and never read by the site.
+    health = _sanitize(obj.get("health"))
+    if isinstance(health, dict) and health:
+        cleaned["health"] = health
+    return cleaned
 
 
 def _drop_abandoned_fights(events: list[dict]) -> list[dict]:
