@@ -943,7 +943,10 @@
       // the newest start time), so the browser reuses its copy until a run is
       // added to or removed from that month, instead of revalidating every visit.
       const runsInMonth = userDoc.months[m] || [];
-      const key = `${runsInMonth.length}-${runsInMonth[runsInMonth.length - 1] || 0}-${userDoc.v || 0}`;
+      // The parser version is in the key too: a rebuild under a new parser rewrites
+      // every month without changing its run list, and without it a returning
+      // browser would keep the old month (old ancient offers) for a year.
+      const key = `${runsInMonth.length}-${runsInMonth[runsInMonth.length - 1] || 0}-${userDoc.v || 0}-p${userDoc.parser || 0}`;
       const resp = await fetch(`/users/${slug}/${m}.json.gz?v=${key}`);
       if (resp.status === 403 || resp.status === 404) return [];
       if (!resp.ok) throw new Error(`${m}: ${resp.status}`);
