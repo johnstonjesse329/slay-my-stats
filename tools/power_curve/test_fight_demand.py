@@ -56,6 +56,27 @@ def run(rooms, players=1, abandoned=False, win=True, taken=(5,), healed=None):
             } for r in rooms]]}
 
 
+class RatingMix(unittest.TestCase):
+    def mix(self, runs, readings):
+        with mock.patch.object(fd, "act_readings"), mock.patch.object(fd, "run_reading", side_effect=readings):
+            return fd.rating_mix(runs, {}, {})
+
+    def test_counts_solo_runs_by_character_tier_and_rating(self):
+        def solo(char, asc):
+            return [{**fight(asc=asc), "char": char}]
+        read = lambda verdict, op=False: {"verdict": verdict, "op": op}
+        runs = [solo("CHARACTER.A", 0), solo("CHARACTER.A", 3), solo("CHARACTER.A", 10), solo("CHARACTER.B", 9),
+                solo("CHARACTER.A", 10)]
+        readings = [read("behind"), read("ahead"), read("meeting"), read("ahead", op=True), None]
+        self.assertEqual(self.mix(runs, readings), {
+            "A": {"0": [1, 0, 1, 0], "1": [0, 1, 0, 0]},
+            "B": {"1": [0, 0, 0, 1]}})
+
+    def test_party_runs_are_left_out(self):
+        party = [{**fight(share=2), "char": "CHARACTER.A"}]
+        self.assertEqual(self.mix([party], []), {})
+
+
 class BodyPool(unittest.TestCase):
     def pool(self, monster):
         with mock.patch.object(fd, "monster_data", return_value=MONSTERS):

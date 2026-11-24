@@ -563,6 +563,10 @@ h1 {
 .asc-readings-chart-rows { display: grid; gap: 0.6rem; }
 .asc-readings-row { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr) 5rem; gap: 0.75rem; align-items: center; font-size: var(--fs-sm); }
 .asc-readings-char { overflow-wrap: anywhere; }
+.asc-readings-group { display: grid; gap: 0.25rem; }
+.asc-readings-pool { color: var(--text-dim); }
+.asc-readings-pool .asc-readings-bar { height: 0.8rem; opacity: 0.8; }
+.asc-readings-who { overflow-wrap: anywhere; }
 .asc-readings-bar { display: flex; height: 1.2rem; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.06); }
 .asc-readings-bar > span { min-width: 2px; }
 .asc-reading-bar-rough { background: #c45d68; } .asc-reading-bar-mid { background: #c79c4b; }

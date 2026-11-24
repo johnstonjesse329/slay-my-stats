@@ -444,7 +444,16 @@ function renderAscTracker() {
       runs.forEach(run => { const reading = run.mode === "dread" ? null : runReadingOf(run); counts[!reading ? "Unrated" : reading.op ? "OP" : KEEP_WORDS[reading.verdict]]++; });
       const desc = Object.entries(counts).map(([name, n]) => `${name}: ${n}`).join(", ");
       const bars = Object.entries(counts).map(([name, n]) => n ? `<span class="asc-reading-bar-${name.toLowerCase()}" style="width:${n / runs.length * 100}%" data-tip="${name}: ${n} of ${runs.length}"></span>` : "").join("");
-      return `<div class="asc-readings-row"><div class="asc-readings-char"></div><div class="asc-readings-bar" role="img" aria-label="${desc}">${bars}</div><span>${runCount(runs.length)}</span></div>`;
+      const own = `<div class="asc-readings-row"><div class="asc-readings-char"></div><div class="asc-readings-bar" role="img" aria-label="${desc}">${bars}</div><span>${runCount(runs.length)}</span></div>`;
+      // Every player's solo runs of this character, in the tuning tiers the selected runs were played in.
+      const pool = [0, 0, 0, 0];
+      new Set(runs.filter(run => run.mode !== "dread").map(run => keepTier(run.asc))).forEach(level => (DATA.fightDemand?.ratings?.[char]?.[level] || []).forEach((n, i) => { pool[i] += n; }));
+      const poolTotal = pool.reduce((a, b) => a + b, 0);
+      if (!runs.length || !poolTotal) return own;
+      const poolNames = ["Rough", "Mid", "Hype", "OP"];
+      const poolDesc = poolNames.map((name, i) => `${name}: ${pool[i]}`).join(", ");
+      const poolBars = poolNames.map((name, i) => pool[i] ? `<span class="asc-reading-bar-${name.toLowerCase()}" style="width:${pool[i] / poolTotal * 100}%" data-tip="${name}: ${pool[i]} of ${poolTotal}"></span>` : "").join("");
+      return `<div class="asc-readings-group">${own}<div class="asc-readings-row asc-readings-pool"><div class="asc-readings-who">All players</div><div class="asc-readings-bar" role="img" aria-label="All players, ${poolDesc}">${poolBars}</div><span>${runCount(poolTotal)}</span></div></div>`;
     }).join("");
     chart.querySelectorAll(".asc-readings-char").forEach((node, i) => { node.innerHTML = charLabelHtml(DATA.characters[i]); });
   }, 0);
