@@ -848,7 +848,10 @@ h1 {
 /* On every page, so the filters stay in reach while you scroll. On a phone
    only the one-line summary sticks; opened, the rows are taller than the screen. */
 @media (min-width: 1000px) and (min-height: 600px) {
-  #shared-filter-bar { position: sticky; top: 0; z-index: 220; }
+  /* The page tabs stick too, with the filter bar docked right under them; js/sticky-offsets.js
+     publishes their height as --page-tabs-h and adds it into --filter-bar-h. */
+  .page-tabs { position: sticky; top: 0; z-index: 221; background: var(--bg-deep); }
+  #shared-filter-bar { position: sticky; top: var(--page-tabs-h, 0px); z-index: 220; }
 }
 @media (max-width: 999px), (max-height: 599px) {
   #shared-filter-bar:not(.expanded) { position: sticky; top: 0; z-index: 220; }
