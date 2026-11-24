@@ -3267,11 +3267,15 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .act-map-head small, .act-map-large-head small { color: #b4aed6; font-weight: 400; }
 .act-map-body { padding: 0 14px 14px; display: flex; justify-content: center; }
 .act-map-body svg { border-radius: 8px; width: min(340px, calc((100vh - 7rem) * 0.4757)); max-width: 100%; height: auto; }
-.act-map-route { margin: 0 14px 10px; cursor: auto; }
-.act-map-head .act-map-styles { color: var(--gold, #e8c46a); font-weight: 600; }
+.act-map-styles { margin: -4px 14px 8px; color: var(--gold, #e8c46a); font-weight: 600; font-size: 0.9em; }
+.act-map-route { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0 14px 10px; cursor: auto; }
+.act-map-route > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; }
+.act-map-route dt { color: #b4aed6; white-space: nowrap; }
+.act-map-route dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 .act-map-overlay { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; background: rgba(8, 6, 20, 0.82); }
 .act-map-large { background: var(--panel-2, #211e36); border: 1px solid var(--border, #3a3560); border-radius: 10px; padding-bottom: 12px; max-width: 96vw; }
 .act-map-large-head { align-items: center; }
+.act-map-large .act-map-styles { margin-top: 0; }
 .act-map-large-head button { margin-left: auto; font-size: 1.4rem; line-height: 1; color: inherit; background: none; border: 0; cursor: pointer; }
 .act-map-large svg { display: block; margin: 0 auto; border-radius: 8px; height: calc(100vh - 6rem); width: auto; max-width: 92vw; }
 /* An ancient boon's name beside its icon, so the icons read without hovering. */

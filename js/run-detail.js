@@ -1984,9 +1984,8 @@ function actRouteComparison(map) {
   // Broad route styles, any that fit (a route can earn more than one).
   const styles = [["Restful", at("RestSite") >= 4], ["Ambitious", at("Elite") >= 3],
     ["Fortuitous", at("Shop") >= 2], ["Curious", at("Unknown") >= 4]].filter(([, on]) => on).map(([name]) => name);
-  return { styles: styles.length ? `<small class="act-map-styles">Path style: ${styles.join(" · ")}</small>` : "", table: `<div class="act-map-route"><table class="detail-summary-table">
-    <tbody>${types.map(([, label], i) => `<tr><th scope="row">${label}</th><td>${taken_[i]}</td></tr>`).join("")}</tbody>
-  </table></div>` };
+  return { styles: styles.length ? `<div class="act-map-styles">Path style: ${styles.join(" · ")}</div>` : "",
+    table: `<dl class="act-map-route">${types.map(([, label], i) => `<div><dt>${label}</dt><dd>${taken_[i]}</dd></div>`).join("")}</dl>` };
 }
 
 // Fur Coat's own icon, with the relic's usual hover tooltip, on the act it was picked up in,
@@ -2019,7 +2018,7 @@ function renderDetailMaps(run) {
     const coated = floors.length === m.path.length ? furCoatNodes(run, run.timeline || [], null) : new Set();
     const coatedPath = new Set(floors.flatMap((n, i) => coated.has(run.timeline.indexOf(n)) ? [i] : []));
     const route = m === sent ? actRouteComparison(m) : null;
-    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}${furCoatBadge(run, m.act)}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small>${route ? route.styles : ""}<svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button><div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed, coatedPath)}</div>${route ? route.table : ""}</section>`;
+    return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}${furCoatBadge(run, m.act)}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button>${route ? route.styles + route.table : ""}<div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed, coatedPath)}</div></section>`;
   }).join("") + `</div></div>` : "";
   for (const card of box.querySelectorAll(".act-map")) card.addEventListener("click", event => {
     if (!event.target.closest(".act-map-route")) openActMap(card);
@@ -2030,7 +2029,7 @@ function renderDetailMaps(run) {
 function openActMap(card) {
   const ov = document.createElement("div");
   ov.className = "act-map-overlay";
-  ov.innerHTML = `<div class="act-map-large"><div class="act-map-large-head">${card.querySelector(".act-map-head").innerHTML.replace(/<svg class="act-map-zoom".*<\/svg>/, "")}<button type="button" aria-label="Close">×</button></div>${card.querySelector(".act-map-body").innerHTML}</div>`;
+  ov.innerHTML = `<div class="act-map-large"><div class="act-map-large-head">${card.querySelector(".act-map-head").innerHTML.replace(/<svg class="act-map-zoom".*<\/svg>/, "")}<button type="button" aria-label="Close">×</button></div>${card.querySelector(".act-map-styles")?.outerHTML || ""}${card.querySelector(".act-map-body").innerHTML}</div>`;
   const close = () => { ov.remove(); document.removeEventListener("keydown", onKey); };
   const onKey = e => { if (e.key === "Escape") close(); };
   ov.addEventListener("click", e => { if (!e.target.closest("svg")) close(); });
