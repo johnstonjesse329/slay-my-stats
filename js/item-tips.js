@@ -133,6 +133,111 @@ function renderCardFace(id, upgrade = 0, width = 200, opts = {}) {
   return `<img loading="lazy" class="cardface" style="width:${w}" ${imgSrcAttr(src, opts.deferred)} alt="${name}">`;
 }
 
+// =========================================================================
+// Card pop -- the one enlarged-card hover, shared by every small card image
+// =========================================================================
+// A card drawn small (a table thumbnail, a favourites tile, a floor tooltip's
+// card) pops its full card_final face open beside it: one popup on <body>, one
+// size, one placement rule, so every such image behaves alike. Mark the trigger
+// with cardPopAttrs(id, upgrade) in markup, or attachCardPop(el, id, opts) on a
+// node; delegated listeners below do the rest, so rows redrawn on every render
+// need no re-binding.
+//   mouse     hovering the trigger (pointerover/out)
+//   keyboard  focusing it (give it tabindex="0"); focus on a container opens
+//             the first marked descendant, so a tile can pop from its art only
+//   touch     tapping it; a tap anywhere else, Esc, or any scroll closes it
+// The popup ignores the pointer (so a trigger inside another hover tooltip
+// keeps that open), skips a trigger already about as large as the popup, and
+// falls back to the card's hand-built tooltip when there is no baked face.
+const CARD_POP_SEL = "[data-card-pop]";
+let cardPopEl = null, cardPopTrigger = null;
+
+function cardPopAttrs(id, upgrade = 0) {
+  return `data-card-pop="${id}"${upgrade > 0 ? ` data-card-pop-up="1"` : ""}`;
+}
+function attachCardPop(el, id, opts = {}) {
+  el.dataset.cardPop = id;
+  if (opts.upgrade > 0) el.dataset.cardPopUp = "1";
+  return el;
+}
+
+function cardPopHide() {
+  cardPopTrigger = null;
+  if (cardPopEl) cardPopEl.classList.remove("open");
+}
+
+function cardPopShow(trigger) {
+  if (cardPopTrigger === trigger) return;
+  const id = trigger.dataset.cardPop;
+  const upgrade = trigger.dataset.cardPopUp ? 1 : 0;
+  const face = cardFaceAvailable() ? renderCardFace(id, upgrade, cardFaceWidth(210, 300)) : "";
+  if (!face) {
+    // No bake: the older tooltip, where this page has it.
+    cardPopHide();
+    if (typeof buildCardTooltip === "function" && typeof showFloatingHtmlTooltip === "function") {
+      showFloatingHtmlTooltip(trigger, buildCardTooltip(id, upgrade));
+    }
+    return;
+  }
+  if (!cardPopEl) {
+    cardPopEl = document.createElement("div");
+    cardPopEl.className = "card-pop";
+    cardPopEl.setAttribute("aria-hidden", "true");
+    document.body.appendChild(cardPopEl);
+  }
+  cardPopEl.innerHTML = face;
+  cardPopEl.style.visibility = "hidden";
+  cardPopEl.classList.add("open");
+  const anchor = trigger.querySelector("img") || trigger;
+  const place = () => {
+    const r = anchor.getBoundingClientRect();
+    const w = cardPopEl.offsetWidth, h = cardPopEl.offsetHeight, gap = 8;
+    const { vw, vh } = viewportSize();
+    let left, top;
+    if (r.right + gap + w <= vw - gap) { left = r.right + gap; top = r.top + r.height / 2 - h / 2; }
+    else if (r.left - gap - w >= gap) { left = r.left - gap - w; top = r.top + r.height / 2 - h / 2; }
+    else {
+      // No room beside it (a phone): above or below, whichever has more.
+      left = r.left + r.width / 2 - w / 2;
+      top = vh - r.bottom >= r.top ? r.bottom + gap : r.top - gap - h;
+    }
+    cardPopEl.style.left = `${clampAxis(left, w, vw, gap)}px`;
+    cardPopEl.style.top = `${clampAxis(top, h, vh, gap)}px`;
+    cardPopEl.style.visibility = "";
+  };
+  place();
+  // Nothing to gain when the card is already about this size.
+  if (anchor.getBoundingClientRect().width >= cardPopEl.offsetWidth * 0.9) { cardPopHide(); return; }
+  cardPopTrigger = trigger;
+  const img = cardPopEl.querySelector("img");
+  if (img && !img.complete) img.addEventListener("load", () => { if (cardPopTrigger === trigger) place(); }, { once: true });
+}
+
+document.addEventListener("pointerover", e => {
+  if (e.pointerType !== "mouse") return;
+  const t = e.target.closest?.(CARD_POP_SEL);
+  if (t) cardPopShow(t);
+});
+document.addEventListener("pointerout", e => {
+  if (e.pointerType !== "mouse") return;
+  const t = e.target.closest?.(CARD_POP_SEL);
+  if (t && !t.contains(e.relatedTarget)) cardPopHide();
+});
+document.addEventListener("focusin", e => {
+  const t = e.target.closest?.(CARD_POP_SEL) || e.target.querySelector?.(CARD_POP_SEL);
+  if (t) cardPopShow(t);
+});
+document.addEventListener("focusout", e => {
+  if (cardPopTrigger && !cardPopTrigger.contains(e.relatedTarget)) cardPopHide();
+});
+document.addEventListener("pointerdown", e => {
+  const t = e.target.closest?.(CARD_POP_SEL);
+  if (!t) cardPopHide();
+  else if (e.pointerType !== "mouse") cardPopShow(t);
+}, { capture: true, passive: true });
+document.addEventListener("keydown", e => { if (e.key === "Escape") cardPopHide(); });
+document.addEventListener("scroll", cardPopHide, { capture: true, passive: true });
+
 function fmtCardLabel(id) {
   if (!id) return id;
   if (DATA.cardLabels && DATA.cardLabels[id]) return DATA.cardLabels[id];
