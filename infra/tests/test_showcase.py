@@ -26,6 +26,20 @@ class TurnPeaks(unittest.TestCase):
         ]}
         self.assertEqual(showcase.turn_peaks(log), {"blocked": 12, "overkill": 10})
 
+    def test_block_held_counts_carry_over(self):
+        def snap(f, t, why, blk, enemy=300):
+            return {"k": "snap", "f": f, "t": t, "a": {"why": why, "creatures": [
+                {"c": "P", "you": True, "blk": blk}, {"c": "Louse", "you": False, "blk": enemy}]}}
+        log = {"log": [
+            {"k": "blk", "f": 1, "t": 1, "a": {"c": "P", "n": 40}},
+            snap(1, 1, "side1", 40),
+            snap(1, 2, "turn0", 40),                       # carried over
+            {"k": "blk", "f": 1, "t": 2, "a": {"c": "P", "n": 30}},
+            snap(1, 2, "side1", 70),
+            snap(1, 3, "fight0", 999),                     # not a turn reading
+        ]}
+        self.assertEqual(showcase.turn_peaks(log), {"blocked": 40, "held": 70})
+
     def test_missing_figures_are_left_out(self):
         self.assertEqual(showcase.turn_peaks({"log": []}), {})
         self.assertEqual(showcase.turn_peaks(None), {})
@@ -34,10 +48,11 @@ class TurnPeaks(unittest.TestCase):
 class Build(unittest.TestCase):
     def test_window_and_gaps(self):
         old = run(NOW - 31 * 86400, deck=90, op=True)
-        out = showcase.build([old, run(NOW - 86400, op=True), run(NOW - 2 * 86400, deck=40, blocked=30)], NOW)
+        out = showcase.build([old, run(NOW - 86400, op=True), run(NOW - 2 * 86400, deck=40, blocked=30, held=55)], NOW)
         self.assertEqual([e["ts"] for e in out["op"]], [NOW - 86400])
         self.assertEqual([e["n"] for e in out["deck"]], [40, 20])
         self.assertEqual([e["n"] for e in out["blocked"]], [30])
+        self.assertEqual([e["n"] for e in out["held"]], [55])
         self.assertEqual(out["overkill"], [])
 
     def test_handful(self):
