@@ -168,7 +168,7 @@ function renderEventActChips(ids) {
 function eventArtHtml(id) {
   const src = DATA.eventCatalog?.[id]?.imagePath;
   if (!src) return "";
-  return `<div class="event-art"><img loading="lazy" src="${src}" alt="" tabindex="0"></div>`;
+  return `<div class="event-art"><img loading="lazy" src="/${src}" alt="" tabindex="0"></div>`;
 }
 
 function eventCardHtml(id, you, all) {
