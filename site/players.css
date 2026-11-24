@@ -279,6 +279,25 @@
 .recent-uploads li a:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 .recent-uploads .recent-meta { color: var(--text-dim); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 
+/* Showcase (boot.js showShowcase): tabs over a short list of runs, each row a link. Reuses the
+   recent-uploads row. Tabs wrap on a phone and keep a tap-sized height. */
+.showcase { margin-top: 1.5rem; }
+.showcase-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.6rem; }
+.showcase-tabs button {
+  min-height: 2.5rem; padding: 0.3rem 0.9rem; border-radius: 999px; cursor: pointer;
+  background: transparent; color: var(--text-dim); border: 1px solid var(--hairline); font: inherit; font-size: 0.9rem;
+}
+.showcase-tabs button[aria-selected="true"] { color: var(--gold); border-color: var(--gold); background: rgba(224,196,104,0.08); }
+.showcase-runs li { padding: 0; }
+.showcase-runs li a {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.75rem; flex: 1 1 auto; min-width: 0;
+  min-height: 2.75rem; padding: 0.3rem 0; color: var(--text); text-decoration: none; border-radius: 4px;
+}
+.showcase-runs li a:hover, .showcase-runs li a:focus-visible { background: rgba(224,196,104,0.08); color: var(--gold); }
+.showcase-runs li a:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.showcase-figure { color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.showcase-runs .recent-meta { color: var(--text-dim); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
 @media (max-width: 1200px) {
   .site-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
