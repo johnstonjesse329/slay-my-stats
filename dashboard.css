@@ -2138,11 +2138,10 @@ h1 {
 .nt-floor  { font-weight: 700; color: var(--gold); font-size: var(--fs-sm); margin-bottom: 2px; }
 .nt-hp-gold { color: var(--text); font-size: var(--fs-sm); margin-bottom: 4px; }
 .nt-enc    { color: var(--text); font-size: var(--fs-sm); font-weight: 600; margin-bottom: 2px; }
-/* The fight's line-up, rendered from the game's own art. Stored at
-   2x (560px wide, trimmed): half its pixel width is its CSS width, so
-   the art stays crisp on a 2x display. height:auto keeps the aspect of a trimmed image, which varies per
-   fight: a row of slimes is short and wide, a boss is tall. */
-.nt-enc-art { display: block; width: 280px; max-width: 100%; height: auto; margin: 2px 0 4px; }
+/* A wide group or a tall boss both fit within the same medium-sized space. */
+.encounter-art { display: block; width: 17.5rem; max-width: 100%; height: 5rem; object-fit: contain; object-position: left center; margin: 2px 0 4px; }
+.encounter-tip .encounter-art { object-position: center; }
+[data-encounter-tip] { cursor: help; }
 .nt-dmg     { color: var(--loss); font-size: var(--fs-sm); }
 .nt-avg-dmg { color: color-mix(in srgb, var(--loss) 53%, transparent); font-size: var(--fs-sm); }
 .nt-heal   { color: var(--win); font-size: var(--fs-sm); }
@@ -3420,20 +3419,45 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .events-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin: 0.4rem 0 0.9rem; }
 .events-filter input[type=search] { flex: 0 1 18rem; min-width: 0; padding: 0.35rem 0.6rem; background: var(--panel-2); color: var(--text); border: 1px solid var(--hairline); border-radius: 6px; font: inherit; }
 .events-act-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.events-act-chips .run-tag-btn { margin: 0; }
-.events-act-head { font-size: var(--fs-lg, 1.15rem); color: var(--text); border-bottom: 1px solid var(--hairline); padding-bottom: 0.25rem; margin: 1.2rem 0 0.7rem; }
-.events-act-head:first-child { margin-top: 0.2rem; }
-.event-card { background: var(--panel-2); border: 1px solid var(--hairline); border-radius: 10px; padding: 0.9rem 1.1rem 1rem; margin-bottom: 0.9rem; }
+#events-list { display: grid; gap: 0.9rem 1rem; align-items: start; }
+@media (min-width: 1200px) {
+  #events-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.events-act-head { grid-column: 1 / -1; font-size: var(--fs-lg, 1.15rem); color: var(--text); border-bottom: 1px solid var(--hairline); padding-bottom: 0.25rem; margin: 0.3rem 0 0; }
+.events-act-head:first-child { margin-top: 0; }
+.event-card { min-width: 0; background: var(--panel-2); border: 1px solid var(--hairline); border-radius: 10px; padding: 0.9rem 1.1rem 1rem; }
 .event-card h3 { font-size: var(--fs-md); color: var(--gold-bright); margin-bottom: 0.6rem; }
-/* The event's illustration down the left of the card: a tall crop of a wide
-   banner, so hover or keyboard focus opens the whole thing over the figures. */
+/* Keep the thumbnail in place while the centered preview shows the full image. */
 .event-card-art { display: flex; align-items: stretch; gap: 1rem; }
-.event-art { flex: 0 0 8rem; min-height: 7rem; position: relative; }
-.event-art img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; border: 1px solid var(--hairline); border-radius: 8px; transition: width 0.14s ease, height 0.14s ease, box-shadow 0.14s; }
-.event-art img:hover, .event-art img:focus-visible { position: absolute; width: 18rem; height: auto; object-fit: contain; z-index: 30; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6); outline: none; border-color: var(--gold-bright); }
+.event-art { flex: 0 0 8rem; min-height: 7rem; }
+.event-art-thumbnail { width: 100%; height: 100%; object-fit: cover; display: block; border: 1px solid var(--hairline); border-radius: 8px; }
+.event-art-preview {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(32rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100dvh - 2rem));
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 75;
+  border: 1px solid var(--gold-bright);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+.event-art-thumbnail:focus-visible + .event-art-preview { display: block; }
+@media (hover: hover) {
+  body:not(.suppress-hover-tooltips) .event-art:hover .event-art-preview { display: block; }
+}
+@media (hover: none) {
+  .event-art-thumbnail:focus + .event-art-preview { display: block; }
+}
 .event-main { flex: 1 1 auto; min-width: 0; }
-.event-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 0.8rem 2.2rem; }
-.event-col { min-width: 0; }
+.event-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 0.8rem 1.2rem; }
+.event-col { min-width: 0; container-type: inline-size; position: relative; }
 .event-col h4 { font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--hairline); }
 .event-visits { color: var(--text-dim); font-weight: 400; margin-left: 0.4rem; }
 .event-body { display: flex; align-items: flex-start; gap: 1rem; }
@@ -3454,7 +3478,18 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .event-opt-none { color: var(--text-dim); font-style: italic; }
 .event-opt-never { color: var(--text-dim); }
 .event-note, .event-none { color: var(--text-dim); font-size: var(--fs-sm); margin-top: 0.3rem; }
-@media (max-width: 700px) { .event-card { padding: 0.8rem 0.8rem 0.9rem; } .event-card-art { display: block; } .event-art { min-height: 0; margin-bottom: 0.6rem; } .event-art img { height: 5.5rem; } .event-col { position: relative; } .event-pie { position: absolute; top: 0; right: 0; width: 1.9rem; height: 1.9rem; } .event-body { display: block; } .event-opt { grid-template-columns: minmax(0, 1fr) 1.6rem 2.6rem 5.4rem; gap: 0.1rem 0.35rem; font-size: 0.82rem; } }
+@container (max-width: 25rem) {
+  .event-col h4 { padding-right: 2.25rem; }
+  .event-pie { position: absolute; top: 0; right: 0; width: 1.9rem; height: 1.9rem; }
+  .event-body { display: block; }
+  .event-opt { grid-template-columns: minmax(0, 1fr) 1.6rem 2.6rem 5.4rem; gap: 0.1rem 0.35rem; font-size: 0.82rem; }
+}
+@media (max-width: 700px) {
+  .event-card { padding: 0.8rem 0.8rem 0.9rem; }
+  .event-card-art { display: block; }
+  .event-art { min-height: 0; margin-bottom: 0.6rem; }
+  .event-art-thumbnail { height: 5.5rem; }
+}
 /* Cards favorites: the character and You / All players columns keep to their text,
    so the card columns take the rest instead of the table spreading its slack around. */
 .fav-card-table .fav-char-head { width: 8.5rem; }

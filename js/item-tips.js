@@ -100,6 +100,25 @@ function imgSrcAttr(src, deferred) {
   return deferred ? `data-src="${src}"` : `src="${src}"`;
 }
 
+function encounterArtHtml(id, deferred = false) {
+  const src = DATA.encounterArt?.[id];
+  return src ? `<img class="encounter-art" ${imgSrcAttr(src, deferred)} alt="">` : "";
+}
+
+function buildEncounterTooltip(id, label) {
+  const art = encounterArtHtml(id, true);
+  if (!art) return "";
+  const title = document.createElement("strong");
+  title.textContent = label;
+  return `<div class="encounter-tip">${title.outerHTML}${art}</div>`;
+}
+
+function encounterTipAttrs(id, label, focusable = true) {
+  return DATA.encounterArt?.[id]
+    ? `data-encounter-tip="${escapeHtml(id)}" data-tip="${escapeHtml(label)}"${focusable ? ' tabindex="0"' : ""}`
+    : "";
+}
+
 function loadDeferredImages(root) {
   for (const img of root.querySelectorAll("img[data-src]")) {
     img.src = img.dataset.src;

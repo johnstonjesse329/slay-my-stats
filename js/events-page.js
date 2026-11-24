@@ -159,7 +159,7 @@ function renderEventActChips(ids) {
   const chips = [["all", "All"], ...EVENT_ACTS.map(a => [a, a]), ["shared", "Any act"]]
     .filter(([a]) => a === "all" || count(a) || a === eventsAct);
   document.getElementById("events-act-chips").innerHTML = chips.map(([a, label]) =>
-    `<button type="button" class="run-tag-btn" data-act="${a}" aria-pressed="${a === eventsAct}">${label} <span class="event-visits">${count(a)}</span></button>`).join("");
+    `<button type="button" class="run-tag run-tag-btn" data-act="${a}" aria-pressed="${a === eventsAct}">${label} <span class="run-tag-n">${count(a)}</span></button>`).join("");
 }
 
 // The event's own illustration (event_images/, from tools/downscale_art.py), as a
@@ -168,7 +168,10 @@ function renderEventActChips(ids) {
 function eventArtHtml(id) {
   const src = DATA.eventCatalog?.[id]?.imagePath;
   if (!src) return "";
-  return `<div class="event-art"><img loading="lazy" src="${src}" alt="" tabindex="0"></div>`;
+  return `<div class="event-art">
+    <img class="event-art-thumbnail" loading="lazy" src="${src}" alt="" tabindex="0">
+    <img class="event-art-preview" loading="lazy" src="${src}" alt="">
+  </div>`;
 }
 
 function eventCardHtml(id, you, all) {

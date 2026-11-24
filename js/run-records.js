@@ -32,8 +32,10 @@ const RECORDS_STYLE = `
 
 function recordsPlace(row) {
   if (!row) return "";
-  const enc = row.enc ? encLabel({ enc: `ENCOUNTER.${row.enc}` }) : "";
-  return `${enc ? escapeHtml(enc) + ", " : ""}turn ${row.turn}`;
+  if (!row.enc) return `turn ${row.turn}`;
+  const id = `ENCOUNTER.${row.enc}`;
+  const name = encLabel({ enc: id });
+  return `<span ${encounterTipAttrs(id, name)}>${escapeHtml(name)}</span>, turn ${row.turn}`;
 }
 
 const recordsNone = text => `<span class="run-records-none">${text || "Not recorded"}</span>`;

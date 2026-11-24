@@ -32,11 +32,12 @@ function encLabel(l) {
 
 function locBadge(l) {
   const color   = nodeColor(l.type);
-  const tip     = (l.picked ? "✓ Picked — " : "Not picked — ") + encLabel(l).replace(/"/g, "&quot;");
+  const tip     = (l.picked ? "✓ Picked — " : "Not picked — ") + encLabel(l);
+  const attrs   = encounterTipAttrs(l.enc, tip) || `data-tip="${escapeHtml(tip)}"`;
   const label   = nodeTypeLabel(l.type);
   const flColor = l.picked ? "#e0e0e0" : "#555";
   const picked  = l.picked ? `<span style="color:${COLORS.win};font-size:var(--fs-xs);margin-left:1px">✓</span>` : "";
-  return `<span class="seed-loc-badge" style="border-color:${color};opacity:${l.picked ? 1 : 0.5}" data-tip="${tip}"><span style="color:${color};font-size:var(--fs-sm)">${label}</span><span style="color:${flColor}">${l.floor}</span>${picked}</span>`;
+  return `<span class="seed-loc-badge" style="border-color:${color};opacity:${l.picked ? 1 : 0.5}" ${attrs}><span style="color:${color};font-size:var(--fs-sm)">${label}</span><span style="color:${flColor}">${l.floor}</span>${picked}</span>`;
 }
 
 // Deduplicate runs to one entry per seed+character (most recent play wins),

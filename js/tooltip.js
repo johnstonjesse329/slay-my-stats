@@ -152,6 +152,13 @@ Chart.defaults.plugins.tooltip.animation = false;
 function showTableTooltip(target, clientX = null, clientY = null) {
   const text = target.dataset.tip;
   if (!text) return;
+  if (target.dataset.encounterTip) {
+    const html = buildEncounterTooltip(target.dataset.encounterTip, text);
+    if (html) {
+      showFloatingHtmlTooltip(target, html);
+      return;
+    }
+  }
   const el = getFloatingTooltipEl();
   cancelTipHide();
   tipTrigger = target;
@@ -204,6 +211,12 @@ document.addEventListener("focusin", e => {
 document.addEventListener("focusout", e => {
   const target = e.target.closest("[data-tip]");
   if (target && !target.contains(e.relatedTarget)) hideTableTooltip();
+});
+document.addEventListener("pointerup", e => {
+  if (e.pointerType === "touch" || e.pointerType === "pen") {
+    const target = e.target.closest("[data-encounter-tip]");
+    if (target) showTableTooltip(target);
+  }
 });
 
 // Rich-content variant of the same floating element, for callers that need
@@ -267,7 +280,7 @@ document.addEventListener("pointerleave", e => {
 // press inside it (to read or scroll it) keeps it. A press on a different
 // trigger closes this one and the browser's own focus-follows-tap, or the
 // compat mouseover that follows, opens that one right after.
-const TIP_FOCUS_TRIGGERS = ".card-tile, .relic-tile, .fav-item, .run-boon-wrap, .node-card, .site-tip";
+const TIP_FOCUS_TRIGGERS = ".card-tile, .relic-tile, .fav-item, .run-boon-wrap, .node-card, .site-tip, .event-art-thumbnail";
 function dismissTipsOutside(target) {
   const active = document.activeElement;
   if (active && active.matches(TIP_FOCUS_TRIGGERS) && !active.contains(target)) active.blur();

@@ -1638,17 +1638,8 @@ function buildNodeTooltip(node) {
 
   if (node.enc) {
     lines.push(`<div class="nt-enc">${fmtNodeLabel(node.enc)}</div>`);
-    // The fight's own line-up, rendered from the game's art by
-    // tools/render_encounter_art.py into encounter_art/.
-    // An encounter with no image (removed content) simply has no picture:
-    // onerror drops the element rather than leaving a broken-image box.
-    if (node.enc.startsWith("ENCOUNTER.")) {
-      const slug = node.enc.slice("ENCOUNTER.".length).toLowerCase();
-      if (/^[a-z0-9_]+$/.test(slug)) {
-        lines.push(`<img class="nt-enc-art" src="/encounter_art/encounter_${slug}.webp" alt="" loading="lazy" onerror="this.remove()">`);
-      }
-    }
   }
+  lines.push(encounterArtHtml(node.fight || node.enc));
   if (node.dmg > 0) {
     lines.push(`<div class="nt-dmg">${node.dmg} Damage</div>`);
   }
@@ -1843,7 +1834,7 @@ function actMapSvg(m, act, bossKeys, floors, seed, coatedPath = new Set()) {
   const at = c => c[0] === 0 ? ANCIENT : isBoss2(c) ? BOSS2 : c[0] > rows ? BOSS : pos.get(c[0] + "," + c[1]);
   const walked = new Set();
   for (let i = 0; i + 1 < m.path.length; i++) walked.add(m.path[i].join(",") + ">" + m.path[i + 1].join(","));
-  const visited = new Set(m.path.map(c => c.join(",")));
+  const visited = new Map(m.path.map((c, i) => [c.join(","), i]));
   const dots = { todo: [], walked: [] };
   const road = (a, b) => {
     const p = at(a), q = at(b);
@@ -1876,22 +1867,27 @@ function actMapSvg(m, act, bossKeys, floors, seed, coatedPath = new Set()) {
   const img = (src, x, y, w, h, extra = "") => src ? `<image href="${src}" x="${x}" y="${y}" width="${w}" height="${h}"${extra}/>` : "";
   let body = "", rings = "";
   for (const n of m.nodes) {
-    const lit = visited.has(n[0] + "," + n[1]), [x, y] = pos.get(n[0] + "," + n[1]);
+    const coord = n[0] + "," + n[1];
+    const pathIndex = visited.get(coord) ?? -1;
+    const lit = pathIndex >= 0, [x, y] = pos.get(coord);
+    const floor = floors?.length === m.path.length ? floors[pathIndex] : null;
+    const fight = floor?.fight || floor?.enc;
+    const tip = encounterTipAttrs(fight, fmtNodeLabel(fight), false);
     let key = `node_${act}_${MAP_NODE_KEYS[n[2]] || "unknown"}`;
     // The game swaps a visited "?" for the room it was. floors lines up with the route only
     // when the run's floors in this act match its stops one for one.
-    if (n[2] === "Unknown" && lit && floors && floors.length === m.path.length) {
-      const room = unknownRoom(floors[m.path.findIndex(c => c[0] === n[0] && c[1] === n[1])]);
+    if (n[2] === "Unknown" && floor) {
+      const room = unknownRoom(floor);
       if (room) key = `node_${act}_unknown_${room}`;
     }
-    body += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(gauss() * 8).toFixed(1)})">${img(art[key], -46, -46, 92, 92, lit ? "" : ' opacity="0.5"')}<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title></g>`;
-    if (coatedPath.has(m.path.findIndex(c => c[0] === n[0] && c[1] === n[1]))) {
+    body += `<g ${tip} transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(gauss() * 8).toFixed(1)})">${img(art[key], -46, -46, 92, 92, lit ? "" : ' opacity="0.5"')}${tip ? "" : `<title>${MAP_TYPE_NAMES[n[2]] || n[2]}</title>`}</g>`;
+    if (coatedPath.has(pathIndex)) {
       // The game's own red X (its quest marker) across the fight's icon.
       rings += `<g transform="translate(${(x + 30).toFixed(1)} ${(y + 30).toFixed(1)})">${img(art.marked_x, -26, -23, 52, 46)}<title>Fur Coat fight: enemies started at 1 HP each, left out of the averages and act ratings</title></g>`;
     }
     if (lit) {
       const size = 200 * (0.85 + rnd() * 0.05);
-      rings += img(art.circle, -size / 2, -size / 2, size, size, ` opacity="0.95" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(rnd() * 360).toFixed(0)})"`);
+      rings += img(art.circle, -size / 2, -size / 2, size, size, ` pointer-events="none" opacity="0.95" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(rnd() * 360).toFixed(0)})"`);
     }
   }
   // NAncientMapPoint: the Ancient the run met, its outline in the map colour, itself in ink.
@@ -1902,8 +1898,10 @@ function actMapSvg(m, act, bossKeys, floors, seed, coatedPath = new Set()) {
   // NBossMapPoint: a Spine boss, or the boss's picture on its outline, drawn round its centre.
   const scale = two ? 0.75 : 1;
   [BOSS, BOSS2].slice(0, two ? 2 : 1).forEach(([cx, cy], i) => {
-    const boss = bossKeys[i] ? bossKeys[i].replace(/^ENCOUNTER\./, "").toLowerCase() : null;
-    const g = inner => `<g transform="translate(${cx} ${cy}) scale(${scale})">${inner}<title>Boss</title></g>`;
+    const fight = bossKeys[i];
+    const boss = fight ? fight.replace(/^ENCOUNTER\./, "").toLowerCase() : null;
+    const tip = encounterTipAttrs(fight, fmtNodeLabel(fight), false);
+    const g = inner => `<g ${tip} transform="translate(${cx} ${cy}) scale(${scale})">${inner}${tip ? "" : "<title>Boss</title>"}</g>`;
     if (boss && art[`boss_${boss}_spine`]) body += g(img(art[`boss_${boss}_spine`], -187, -153, 399, 342, ` filter="url(#${id}spine${i})"`));
     else if (boss && art[`boss_${boss}`]) body += g(img(art[`boss_${boss}_outline`], -187, -175, 374, 350, ` preserveAspectRatio="xMidYMid meet" filter="url(#${id}bg)"`) +
       img(art[`boss_${boss}`], -187, -175, 374, 350, ` preserveAspectRatio="xMidYMid meet" filter="url(#${id}boss${i})"`));
@@ -2001,7 +1999,9 @@ function renderDetailMaps(run) {
     return `<section class="act-map"><button type="button" class="act-map-head" title="Open this map large">${ACT_LABELS[m.act + 1] || `Act ${m.act + 1}`}${furCoatBadge(run, m.act)}<small>Ascended ${visited} floor${visited === 1 ? "" : "s"}</small><svg class="act-map-zoom" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M12.5 12.5 18 18M6 8.5h5M8.5 6v5"/></svg></button>${route ? route.styles + route.table : ""}<div class="act-map-body">${actMapSvg(m, act, bossKeys, floors, run.seed, coatedPath)}</div></section>`;
   }).join("") + `</div></div>` : "";
   for (const card of box.querySelectorAll(".act-map")) card.addEventListener("click", event => {
-    if (!event.target.closest(".act-map-route")) openActMap(card);
+    if (event.target.closest(".act-map-route")) return;
+    if (event.pointerType === "touch" && event.target.closest("[data-encounter-tip]")) return;
+    openActMap(card);
   });
 }
 
@@ -2100,12 +2100,15 @@ const nodePointImages = new Map();  // "size src" -> Image
 // The clip for a chart's floor icons: none, or the plot's sides alone where one act is on show.
 const iconClip = () => isPhone() ? { left: 0, right: 0, top: false, bottom: false } : false;
 function nodePoints(nodes, getChart, highlight, size = nodePointSize(), keyOf = nodeIconKey) {
-  const srcs = nodes.map((n, i) => {
+  const points = nodes.map((n, i) => {
     const key = keyOf(n);
-    return highlight(n, key, i) && DATA.nodeIcons ? DATA.nodeIcons[key] : null;
+    const src = highlight(n, key, i) && DATA.nodeIcons?.[key];
+    const fight = n.type === "monster" || n.type === "elite" || n.type === "boss" ||
+      (n.fight || n.enc || "").startsWith("ENCOUNTER.");
+    return { src, size: fight ? Math.min(size, FIGHT_POINT) : size };
   });
   return {
-    pointStyle: srcs.map(src => {
+    pointStyle: points.map(({ src, size }) => {
       if (!src) return "circle";
       const sized = `${size} ${src}`;
       let img = nodePointImages.get(sized);
@@ -2118,13 +2121,14 @@ function nodePoints(nodes, getChart, highlight, size = nodePointSize(), keyOf = 
       return img;
     }),
     // A floor without an icon still gets the charts' small dot, so every floor reads as a point.
-    pointHoverRadius: srcs.map(src => src ? size / 2 : 5),
+    pointHoverRadius: points.map(({ src, size }) => src ? size / 2 : 5),
     // An icon on the first or last floor overhangs the plot's side edge. Not where the chart shows
     // one act of the run (iconClip), whose neighbouring floors sit past the edge.
     clip: iconClip(),
   };
 }
 const NODE_POINT = 30;
+const FIGHT_POINT = 24;
 // A phone shows one act at a time, so the floors are close together: the desktop's icons would
 // overlap into a smear over the line. Sized to sit just inside the floor spacing instead.
 const NODE_POINT_PHONE = 17;
@@ -2582,17 +2586,7 @@ function renderDetailGoldChart(run) {
       plugins: {
         // One line, named by the heading above, so no key.
         legend: { display: false },
-        tooltip: {
-          callbacks: {
-            title: items => {
-              const idx = items[0].dataIndex;
-              const node = nodes[idx];
-              const enc = node.enc ? fmtNodeLabel(node.enc) : titleCaseId(node.type || "");
-              return `Floor ${node.floor + 1} — ${enc}`;
-            },
-            label: item => `Gold: ${item.raw}`,
-          },
-        },
+        tooltip: { enabled: false, external: context => showFloorTip(context, i => `${floorTipHead(nodes[i])}<div>Gold: ${goldData[i]}</div>`) },
       },
       scales: {
         x: floorAxis({ grid: { color: "#2e3035" } }),
@@ -3013,7 +3007,8 @@ const floorTipHead = (node, total, unit) => {
   const kind = node.type === "boss" ? "boss" : keepRank(node) ? "elite" : "monster";
   const key = DATA.nodeIcons?.[fight] ? fight : kind;
   const icon = fight ? nodeIconHtml(key, 24, kind) + " " : "";
-  return `<div class="ft-head">${icon}<b>Floor ${node.floor + 1}</b> — ${enc}${total == null ? "" : ` · ${total} ${unit}`}</div>`;
+  return `<div class="ft-head">${icon}<b>Floor ${node.floor + 1}</b> — ${enc}${total == null ? "" : ` · ${total} ${unit}`}</div>` +
+    encounterArtHtml(node.fight || node.enc);
 };
 const floorTipCaption = (m, colors) =>
   `<div class="ft-cap">Gained${m.count > 1 ? " ×" + m.count : ""} · ` +
@@ -4314,8 +4309,11 @@ function renderKeepActs(run, nodes, measured) {
   // The fights an act's numbers cover, by kind: normal, elites, boss.
   const kindOf = key => key in KEEP_KINDS ? key : "boss";
   const order = Object.keys(KEEP_KINDS);
-  const kinds = a => Object.entries(a.kinds).sort(([x], [y]) => order.indexOf(kindOf(x)) - order.indexOf(kindOf(y))).map(([key, n]) =>
-    `<span class="keep-kind" title="${KEEP_KINDS[kindOf(key)]}: ${n}">${nodeIconHtml(key, 27, kindOf(key))}${n}</span>`).join("");
+  const kinds = a => Object.entries(a.kinds).sort(([x], [y]) => order.indexOf(kindOf(x)) - order.indexOf(kindOf(y))).map(([key, n]) => {
+    const label = `${KEEP_KINDS[kindOf(key)]}: ${n}`;
+    const attrs = encounterTipAttrs(key, fmtNodeLabel(key)) || `title="${label}"`;
+    return `<span class="keep-kind" ${attrs}>${nodeIconHtml(key, 27, kindOf(key))}${n}</span>`;
+  }).join("");
   // The run's rating first, across the grid: its totals on the same two meters, and how it is read.
   const whole = runReadingOf(run);
   const wholeMeters = whole ? keepReadingMeters(whole) : null;

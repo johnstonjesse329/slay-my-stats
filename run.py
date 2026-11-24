@@ -1372,6 +1372,15 @@ def build_node_icons(url_for=Path.as_uri) -> dict[str, str]:
     for p in sorted(root.glob("*_boss.png")):
         result["ENCOUNTER." + p.stem.upper()] = url_for(p)
     return result
+
+
+def build_encounter_art(url_for=Path.as_uri) -> dict[str, str]:
+    return {
+        "ENCOUNTER." + image.stem.removeprefix("encounter_").upper(): url_for(image)
+        for image in sorted((_HERE / "encounter_art").glob("encounter_*.webp"))
+    }
+
+
 _CARD_DATA_FILE   = _HERE / "card_data.json"
 _RELIC_DATA_FILE  = _HERE / "relic_data.json"
 _POTION_DATA_FILE = _HERE / "potion_data.json"
@@ -2138,6 +2147,7 @@ def build_html(runs: list[dict]) -> str:
         "relicData":          relic_data,
         "potionData":         potion_data,
         "nodeIcons":          node_icons,
+        "encounterArt":       build_encounter_art(),
         "cardFinal":          card_final,
         "energyIcons":        energy_icons,
         "charIcons":          char_icons,

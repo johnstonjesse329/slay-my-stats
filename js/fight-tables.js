@@ -226,8 +226,9 @@ function renderFightLanes(elId, encGroups, fightData, opts) {
     html += `<div><div class="fl-section">${label}</div><div class="fl-rows">`;
     rows.forEach(enc => {
       const src = icons[enc] || icons.elite;
-      html += `${src ? `<img src="${src}" alt="">` : `<span></span>`}` +
-        `<div class="fl-name">${(DATA.encLabels[enc] || enc).replace(/ (Boss|Elite)$/, "")}</div>` +
+      const name = (DATA.encLabels[enc] || enc).replace(/ (Boss|Elite)$/, "");
+      html += `${src ? `<img src="${src}" alt="" ${encounterTipAttrs(enc, name, false)}>` : `<span></span>`}` +
+        `<div class="fl-name" ${encounterTipAttrs(enc, name)}>${escapeHtml(name)}</div>` +
         opts.lane(fightData[enc]["ALL"]);
     });
     html += `${axis}</div></div>`;
