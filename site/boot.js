@@ -464,11 +464,13 @@
       const icon = ((catalog.charIcons || {})[id.toUpperCase()] || {}).icon;
       const tr = el("tr", {}, [
         cell("showcase-player", [
-          ...(icon ? [el("img", { className: "showcase-char-icon", src: icon, alt: "" })] : []),
           el("a", { href: `/u/${r.slug}#detail/${r.ts}`, className: "site-row-name", textContent: r.name }),
         ]),
-        cell("showcase-char", [el("span", { style: `color:${(catalog.charColorMap || {})[id] || CHAR_FALLBACK_COLOR}`,
-          textContent: `${titleCaseId(id)} A${r.asc}` })]),
+        cell("showcase-char", [
+          ...(icon ? [el("img", { className: "showcase-char-icon", src: icon, alt: "" })] : []),
+          el("span", { style: `color:${(catalog.charColorMap || {})[id] || CHAR_FALLBACK_COLOR}`, textContent: titleCaseId(id) }),
+        ]),
+        cell("showcase-asc", [`A${r.asc}`]),
       ]);
       if (label) tr.append(cell("showcase-figure", r.n != null ? [label(r.n)] : []));
       tr.append(cell("showcase-syn", [(r.syn || []).join(" · ")]));
@@ -478,7 +480,7 @@
     const select = key => {
       const [, , label] = tabs.find(t => t[0] === key);
       tablist.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
-      head.replaceChildren(...["Player", "Character", ...(label ? ["Figure"] : []), "Deck synergies", "When"]
+      head.replaceChildren(...["Player", "Character", "Ascension", ...(label ? ["Figure"] : []), "Deck synergies", "When"]
         .map(t => el("th", { scope: "col", textContent: t, className: t === "Deck synergies" ? "showcase-syn" : "" })));
       body.replaceChildren(...data[key].map(r => runRow(r, label)));
     };

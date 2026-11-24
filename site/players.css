@@ -306,6 +306,7 @@
 .showcase-player { white-space: nowrap; }
 .showcase-char-icon { width: 1.4rem; height: 1.4rem; margin-right: 0.5rem; vertical-align: middle; }
 .showcase-char { font-weight: 600; white-space: nowrap; }
+.showcase-asc { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .showcase-syn { color: var(--text-dim); font-size: 0.85rem; width: 45%; }
 .showcase-figure { color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .showcase-runs .recent-meta { color: var(--text-dim); font-size: 0.82rem; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
