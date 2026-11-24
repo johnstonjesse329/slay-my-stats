@@ -1638,6 +1638,16 @@ function buildNodeTooltip(node) {
 
   if (node.enc) {
     lines.push(`<div class="nt-enc">${fmtNodeLabel(node.enc)}</div>`);
+    // The fight's own line-up, rendered from the game's art by
+    // tools/render_encounter_art.py into encounter_art/.
+    // An encounter with no image (removed content) simply has no picture:
+    // onerror drops the element rather than leaving a broken-image box.
+    if (node.enc.startsWith("ENCOUNTER.")) {
+      const slug = node.enc.slice("ENCOUNTER.".length).toLowerCase();
+      if (/^[a-z0-9_]+$/.test(slug)) {
+        lines.push(`<img class="nt-enc-art" src="/encounter_art/encounter_${slug}.webp" alt="" loading="lazy" onerror="this.remove()">`);
+      }
+    }
   }
   if (node.dmg > 0) {
     lines.push(`<div class="nt-dmg">${node.dmg} Damage</div>`);

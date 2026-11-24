@@ -141,7 +141,8 @@ EXPORT_DIR = Path("local_data") / "deploy-build"
 NOT_INPUTS = {"dist", "local_data", "output", "__pycache__", ".playwright-mcp", "cdk.out"}
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
 ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images",
-            "enchantment_images", "ui_icons", "thumbs"]
+            "enchantment_images", "ui_icons", "thumbs", "encounter_art"]
+COMMITTED_ART_DIRS = {"encounter_art"}
 ZERO_SHA = "0" * 40
 
 # Art is the bulk of what the site serves -- one Run Detail session pulls a few
@@ -598,15 +599,21 @@ def check_art() -> None:
     print("Site: art matches tools/art_manifest.json.", flush=True)
 
 
+def art_source(folder: str) -> Path:
+    """Use the exported commit for tracked art and the main checkout for baked inputs."""
+    return SRC if folder in COMMITTED_ART_DIRS else LOCAL
+
+
 def art_digests() -> dict[str, str]:
     digests = {}
     for folder in ART_DIRS:
-        root = LOCAL / folder
+        source = art_source(folder)
+        root = source / folder
         if not root.is_dir():
             raise DeployError(f"Missing art folder: {root}")
         for path in sorted(root.rglob("*")):
             if path.is_file():
-                digests[path.relative_to(LOCAL).as_posix()] = hashlib.md5(path.read_bytes()).hexdigest()
+                digests[path.relative_to(source).as_posix()] = hashlib.md5(path.read_bytes()).hexdigest()
     return digests
 
 
@@ -637,7 +644,7 @@ def read_art_manifest(s3, bucket: str, digests: dict) -> tuple[dict, str]:
 
 
 def upload_art_object(s3, key: str, digest: str) -> None:
-    path = LOCAL / key
+    path = art_source(key.partition("/")[0]) / key
     content_type = CONTENT_TYPES.get(path.suffix.lower()) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     with path.open("rb") as body:
         s3.put_object(Bucket=SITE_BUCKET, Key=key, Body=body, CacheControl=ART_CACHE_CONTROL,

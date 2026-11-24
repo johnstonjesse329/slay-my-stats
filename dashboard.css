@@ -2138,6 +2138,11 @@ h1 {
 .nt-floor  { font-weight: 700; color: var(--gold); font-size: var(--fs-sm); margin-bottom: 2px; }
 .nt-hp-gold { color: var(--text); font-size: var(--fs-sm); margin-bottom: 4px; }
 .nt-enc    { color: var(--text); font-size: var(--fs-sm); font-weight: 600; margin-bottom: 2px; }
+/* The fight's line-up, rendered from the game's own art. Stored at
+   2x (560px wide, trimmed): half its pixel width is its CSS width, so
+   the art stays crisp on a 2x display. height:auto keeps the aspect of a trimmed image, which varies per
+   fight: a row of slimes is short and wide, a boss is tall. */
+.nt-enc-art { display: block; width: 280px; max-width: 100%; height: auto; margin: 2px 0 4px; }
 .nt-dmg     { color: var(--loss); font-size: var(--fs-sm); }
 .nt-avg-dmg { color: color-mix(in srgb, var(--loss) 53%, transparent); font-size: var(--fs-sm); }
 .nt-heal   { color: var(--win); font-size: var(--fs-sm); }

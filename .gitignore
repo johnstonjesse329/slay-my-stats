@@ -78,3 +78,12 @@ infra/lambda/ingest/known_ids.json
 infra/lambda/ingest/showcase_synergy.json
 NOTES.md
 slay-my-stats.code-workspace
+
+# The spine-godot GDExtension tools/render_encounter_art.py copies out of the
+# game PCK to draw the fight images: it ships with the game, not with us.
+tools/encounter_art_project/addons/
+tools/encounter_art_project/.godot/
+
+# Godot 4.5.2 editor: the only thing that can render the game's Spine monster
+# art (tools/render_encounter_art.py), and what card-art work already uses.
+tools/godot/

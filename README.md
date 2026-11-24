@@ -185,6 +185,7 @@ paths:
 ├── potion_images/           (served)
 ├── node_icons/              map node icons (served)
 ├── ui_icons/                energy icons, character portraits, map_scroll.webp background (served)
+├── encounter_art/           one picture of each fight's monsters, for the fight tooltips (served, committed)
 └── card_chrome/             card frames and banners (input to the superseded bake_finished_cards.py; not served)
 ```
 
@@ -907,7 +908,14 @@ node icons, visited circle, Ancients and bosses, in `ui_icons/map/`) is baked by
 Three bosses are animated skeletons on the map; `tools/render_spine_bosses.html` renders them to still frames first
 and passes them in with `--spine` (steps in its header).
 
-The art is ignored, but `tools/art_manifest.json` (tracked) lists every served art file and its sha256. Each bake
+The fight tooltips show the monsters you meet. `tools/render_encounter_art.py` reads every encounter the game
+ships out of the extraction (`tools/encounter_manifest.py`: roster, skeleton, scale, skin and slot position),
+draws each fight with the game's own Spine skeletons in a small Godot project (`tools/encounter_art_project/`,
+run by `tools/godot/`), and writes one trimmed webp per fight to `encounter_art/`. Unlike the other art those
+are committed, since the extraction is gitignored and ~3 GB. A fight the game has removed simply has no
+picture, and the tooltip drops the image rather than showing a broken one.
+
+The other baked art is ignored, and `tools/art_manifest.json` (tracked) lists those served files and their SHA-256 digests. Each bake
 script records what it wrote there, so a re-bake shows up in `git diff`; commit it with the change. The bake scripts
 refuse to run from a checkout behind `origin/gamma`, and `tools/deploy.py` and `tools/serve_site.py` refuse to run
 when the art on disk differs from the manifest (`python tools/art_manifest.py` lists the differences). Card faces

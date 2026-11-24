@@ -1,0 +1,17 @@
+; Renders the game's Spine monster skeletons to one image per encounter.
+; Driven by tools/render_encounter_art.py -- see that file for how to run it.
+; addons/spine/ is the game's own spine-godot GDExtension, copied out of the
+; PCK extraction at render time and gitignored: it ships with the game, not us.
+config_version=5
+
+[application]
+config/name="encounter-art"
+run/main_scene="res://groups.tscn"
+config/features=PackedStringArray("4.5")
+
+[rendering]
+textures/canvas_textures/default_texture_filter=1
+
+[display]
+window/size/viewport_width=320
+window/size/viewport_height=240

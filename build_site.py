@@ -67,6 +67,7 @@ _PAGE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # First-level paths the site already uses; a page there would shadow them.
 _RESERVED_PAGES = {"u", "users", "ids", "api", "index", "card_final", "card_portraits", "node_icons",
                    "relic_images", "potion_images", "enchantment_images", "ui_icons", "thumbs",
+                   "encounter_art",
                    "card_chrome"}
 _NAV_LABEL = re.compile(r"^\s*<!--\s*nav:\s*(.+?)\s*-->")
 
