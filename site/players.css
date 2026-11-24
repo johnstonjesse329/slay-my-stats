@@ -290,6 +290,9 @@
 }
 .showcase-tabs button[aria-selected="true"] { color: var(--gold); border-color: var(--gold); background: rgba(224,196,104,0.08); }
 .showcase-runs { width: 100%; border-collapse: collapse; }
+.showcase-pager { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 0.6rem; color: var(--text-dim); font-size: 0.9rem; }
+.showcase-pager button { min-height: 2.5rem; padding: 0.3rem 0.9rem; border-radius: 999px; cursor: pointer; background: transparent; color: var(--text-dim); border: 1px solid var(--hairline); font: inherit; }
+.showcase-pager button:disabled { opacity: 0.4; cursor: default; }
 .showcase-runs th {
   text-align: left; font-weight: 500; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--text-dim); padding: 0.3rem 0.75rem; border-bottom: 1px solid var(--hairline);

@@ -424,14 +424,14 @@
 
   // ---- Showcase (the root page, under the hero) -------------------------------
   //
-  // /users/_showcase.json.gz is built daily (infra/lambda/ingest/showcase.py): a handful of
-  // winning runs from the last 30 days per tab, none ranked. A tab with no runs is left
+  // /users/_showcase.json.gz is built daily (infra/lambda/ingest/showcase.py): winning runs from the last 30 days per tab (every OP run, the top 30 for the rest), 10 to a
+  // page, none ranked. A tab with no runs is left
   // out, and with no tabs at all so is the section. A row leads with its character's head and
   // colour (from /catalog.json, as the stats below use) and ends with the deck's synergy names
   // (r.syn; a row from an older file has none).
+  const SHOWCASE_PAGE = 10;  // rows per view; a tab with more gets Prev / Next
   const SHOWCASE_TABS = [
     ["op", "OP runs", null],
-    ["blocked", "Most blocked in a turn", n => `${n} Block`],
     ["held", "Peak Block in a turn", n => `${n} Block`],
     ["hit", "Biggest hit in a turn", n => `${n} damage`],
     ["deck", "Most cards in a deck", n => `${n} cards`],
@@ -478,12 +478,27 @@
       tr.append(cell("recent-meta", [whenLabel(r.ts, true)]));
       return tr;
     };
-    const select = key => {
+    const pager = el("div", { className: "showcase-pager", hidden: true });
+    let current = null, page = 0;
+    const select = (key, to = 0) => {
+      if (key !== current) page = 0;
+      current = key;
+      page = to;
       const [, , label] = tabs.find(t => t[0] === key);
+      const rows = data[key], pages = Math.ceil(rows.length / SHOWCASE_PAGE);
       tablist.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
       head.replaceChildren(...["Player", "Character", "Ascension", ...(label ? ["Figure"] : []), "Deck synergies", "When"]
         .map(t => el("th", { scope: "col", textContent: t, className: t === "Deck synergies" ? "showcase-syn" : "" })));
-      body.replaceChildren(...data[key].map(r => runRow(r, label)));
+      body.replaceChildren(...rows.slice(page * SHOWCASE_PAGE, (page + 1) * SHOWCASE_PAGE).map(r => runRow(r, label)));
+      pager.hidden = pages < 2;
+      const step = (text, to) => {
+        const b = el("button", { type: "button", textContent: text, disabled: to < 0 || to >= pages });
+        b.addEventListener("click", () => select(key, to));
+        return b;
+      };
+      pager.replaceChildren(step("Prev", page - 1),
+        el("span", { textContent: `${page * SHOWCASE_PAGE + 1}–${Math.min(rows.length, (page + 1) * SHOWCASE_PAGE)} of ${rows.length}` }),
+        step("Next", page + 1));
     };
     for (const [key, title] of tabs) {
       const button = el("button", { type: "button", role: "tab", textContent: title });
@@ -494,7 +509,7 @@
     main.append(el("section", { className: "site-list showcase" }, [
       el("h3", { textContent: "Runs worth a look" }),
       el("p", { className: "site-note", textContent: "Wins from the last 30 days." }),
-      tablist, panel,
+      tablist, panel, pager,
     ]));
     select(tabs[0][0]);
   }

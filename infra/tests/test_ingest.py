@@ -1798,8 +1798,10 @@ class RealHistoryTests(unittest.TestCase):
         self.assertEqual(res["rejected"], 0, res)
         parsed = (run.parse_run(f) for f in files)
         expected = sorted((r for r in parsed if r["floor"] >= 3), key=lambda r: r["ts"])
-        # Ingest adds multiplayerIdsShared to co-op runs (the mod's upload setting); a .run file has no such field.
-        stored = [{k: v for k, v in r.items() if k != "multiplayerIdsShared"} for r in store.runs(steam_id)]
+        # Ingest adds multiplayerIdsShared to co-op runs (the mod's upload setting) and the game's win badges, read from
+        # the upload at ingest; the local parse reads neither.
+        added = {"multiplayerIdsShared", "badges"}
+        stored = [{k: v for k, v in r.items() if k not in added} for r in store.runs(steam_id)]
         self.assertEqual(stored, json.loads(json.dumps(expected)))
 
 

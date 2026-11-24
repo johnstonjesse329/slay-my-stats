@@ -1129,7 +1129,6 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
     };
   }
   const plugins = ranges.some(Boolean) ? [makeWinRangePlugin(ranges)] : [];
-  if (extra.averageGuide) plugins.push(keepAverageGuide);
   chart = new Chart(canvas.getContext("2d"),
     floorChartConfig(nodes, plugins, tip, y, datasets, actWindow(nodes)));
   bindRangeSelect(chart, nodes);
@@ -1225,7 +1224,6 @@ function renderPartyCharts(players) {
     perFight(r => r.winTotal === undefined ? undefined : FB62 === "score" ? fb62Ratio(r.winTotal, r.total) : (r.total + 1) / (r.winTotal + 1)),
     (p, i, v) => times(v), FB62 === "flip", fightIcon, {
       floorAtZero: true, fb62: true, fb62unit: "×",
-      averageGuide: true,
       fightRows: benchmarkRows,
       lines: [
         { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) },
@@ -3635,23 +3633,6 @@ const KEEP_TURN_STYLE = {
   label: "Fight turns", borderColor: "#9aa9bf", borderWidth: 1.75, borderDash: [6, 4],
   order: 5, pointRadius: 3, pointHoverRadius: 5,
 };
-const keepAverageGuide = {
-  id: "keepAverageGuide",
-  afterDatasetsDraw({ ctx, chartArea, scales }) {
-    const y = scales.y.getPixelForValue(1);
-    if (y < chartArea.top + 14 || y > chartArea.bottom) return;
-    ctx.save();
-    ctx.font = "600 11px system-ui";
-    ctx.textAlign = "right";
-    ctx.textBaseline = "bottom";
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "#211e34";
-    ctx.fillStyle = "#ded9e7";
-    ctx.strokeText("1× avg win", chartArea.right - 3, y - 4);
-    ctx.fillText("1× avg win", chartArea.right - 3, y - 4);
-    ctx.restore();
-  },
-};
 
 function keepLegendEntry({ label, borderColor, borderDash, borderWidth }) {
   const [dash, gap] = borderDash || [];
@@ -4676,7 +4657,7 @@ function renderDetailKeepCharts(run) {
     line(takenLine, r => r.winTotal === undefined ? undefined : FB62 === "score" ? fb62Ratio(r.winTotal, r.total) : (r.total + 1) / (r.winTotal + 1), "share"),
     { ...line({ label: KEEP_TURN_STYLE.label, color: KEEP_TURN_STYLE.borderColor },
       r => r.winTurns === undefined ? undefined : FB62 === "score" ? fb62Cap(r.winTurns / r.turns) : r.turns / r.winTurns), ...KEEP_TURN_STYLE },
-  ], shareTip, null, false, [keepAverageGuide, ...(ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : [])], true);
+  ], shareTip, null, false, (ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : []), true);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";

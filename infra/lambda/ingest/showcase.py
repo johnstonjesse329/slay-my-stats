@@ -2,12 +2,12 @@
 
 Built by the daily benchmark refresh (benchmark.py), which already reads every published
 run, and published as users/_showcase.json.gz. The page only draws it. Nothing here ranks
-players: each tab is a short handful of runs worth opening, and a run with no turn data
+players: each tab is a list of runs worth opening (every OP run, the top 30 for the rest), and a run with no turn data
 simply isn't a candidate for the turn tabs.
 
     {"v": 1, "at": <seconds>, "days": 30,
      "op":       [{"slug", "name", "ts", "char", "asc", "syn"}, ...],
-     "blocked":  [{..., "n"}], "held": [{..., "n"}], "hit": [{..., "n"}], "deck": [{..., "n"}]}
+     "held": [{..., "n"}], "hit": [{..., "n"}], "deck": [{..., "n"}]}
 
 `syn` is the run's deck synergies, up to SYNERGIES_SHOWN names the Overview's "Win % by
 synergy" table also uses (deck_synergies), biggest first; it is left out when the deck has none
@@ -20,8 +20,8 @@ import run as run_py
 from tools.power_curve.fight_demand import act_readings, run_reading
 
 WINDOW_DAYS = 30
-PER_TAB = 6
-TABS = ("op", "blocked", "held", "hit", "deck")
+PER_TAB = 30  # the figure tabs; every OP run in the window is kept, they are rare
+TABS = ("op", "held", "hit", "deck")
 SYNERGIES_SHOWN = 3
 
 # The names the Overview's synergy table files keys under (SYNERGY_FAMILIES in js/card-face.js,
@@ -147,8 +147,8 @@ def build(candidates, now, per_tab=PER_TAB) -> dict:
         return {**out, "n": n} if n is not None else out
 
     out = {"v": 1, "at": int(now), "days": WINDOW_DAYS,
-           "op": [entry(c) for c in sorted((c for c in recent if c.get("op")), key=lambda c: -c["ts"])[:per_tab]]}
-    for tab, field in (("blocked", "blocked"), ("held", "held"), ("hit", "hit"), ("deck", "deck")):
+           "op": [entry(c) for c in sorted((c for c in recent if c.get("op")), key=lambda c: -c["ts"])]}
+    for tab, field in (("held", "held"), ("hit", "hit"), ("deck", "deck")):
         best = sorted((c for c in recent if c.get(field)), key=lambda c: (-c[field], -c["ts"]))
         out[tab] = [entry(c, c[field]) for c in best[:per_tab]]
     return out
