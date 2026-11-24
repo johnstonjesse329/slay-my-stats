@@ -917,6 +917,13 @@ run by `tools/godot/`), and writes one trimmed webp per fight to `encounter_art/
 are committed, since the extraction is gitignored and ~3 GB. A fight the game has removed simply has no
 picture, and the tooltip drops the image rather than showing a broken one.
 
+If a monster bakes as detached or missing pieces, check its game-side `SetupSkins` and VFX initialization
+for a second Spine track. Keep the base idle animation on track 0 and add the combat overlay on track 1 in
+`IDLE_OVERLAYS` in `tools/encounter_art_project/render_groups.gd`. Aeonglass needs `_track1/rings_normal`
+to assemble its rings around the hourglass. Vantom uses `_tracks/charged_1` and Soul Nexus uses
+`tracks/writhe`. Review the WebPs at tooltip size after baking. The `TOOLTIP_FRAMES` in
+`tools/render_encounter_art.py` keep the Soul Nexus and Infested Prisms bodies prominent in the preview.
+
 The other baked art is ignored, and `tools/art_manifest.json` (tracked) lists those served files and their SHA-256 digests. Each bake
 script records what it wrote there, so a re-bake shows up in `git diff`; commit it with the change. The bake scripts
 refuse to run from a checkout behind `origin/gamma`, and `tools/deploy.py` and `tools/serve_site.py` refuse to run
