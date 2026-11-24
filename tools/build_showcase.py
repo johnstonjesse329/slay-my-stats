@@ -16,7 +16,16 @@ Usage:
     python tools/build_showcase.py --bucket slay-my-stats-data --write
         Another bucket (prod's is refused unless you pass it explicitly).
 
-Needs AWS credentials (`aws login`).
+    python tools/build_showcase.py --local
+        No AWS: reads this checkout's local_data/ (the runs you uploaded or ran the
+        site on) and writes users/_fight-demand.json.gz and users/_showcase.json.gz
+        there, so tools/serve_site.py shows the home page showcase. Turn data comes from
+        local_data/telemetry/ and, where that has none, from the telemetry kept with
+        the act-validation work (local_data/act_validation/confirmation/telemetry/).
+        The tabs only fill from runs in the last 30 days with turn data, so on a
+        local copy a tab can be short or absent.
+
+The bucket modes need AWS credentials (`aws login`).
 """
 
 import argparse
@@ -47,14 +56,41 @@ class _ReadOnly:
         return None
 
 
+class _LocalTelemetry:
+    """A DirStore over local_data/ that, for a run with no telemetry of its own, reads the
+    telemetry kept under act_validation/confirmation/telemetry/<steam id>/<ts>.json.gz."""
+
+    def __init__(self, store, fallback):
+        self._store = store
+        self._fallback = fallback
+
+    def __getattr__(self, name):
+        return getattr(self._store, name)
+
+    def get(self, key):
+        got = self._store.get(key)
+        if got is None and key.startswith("telemetry/"):
+            path = self._fallback / key.split("/", 1)[1]
+            if path.is_file():
+                return (path.read_bytes(), path.stat().st_mtime, "fallback", {})
+        return got
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--bucket", default=GAMMA)
     ap.add_argument("--write", action="store_true", help="write the results (default: dry run)")
+    ap.add_argument("--local", action="store_true",
+                    help="build from local_data/ instead of a bucket, and write it there")
     args = ap.parse_args()
     os.environ["DATA_BUCKET"] = args.bucket
     import benchmark
     import handler
+    if args.local:
+        local = _REPO_ROOT / "local_data"
+        handler._store = _LocalTelemetry(handler.DirStore(local),
+                                         local / "act_validation" / "confirmation" / "telemetry")
+        args.write = True
     store = handler._get_store()
     if not args.write:
         store = _ReadOnly(store)
