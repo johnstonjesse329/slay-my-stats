@@ -1948,5 +1948,79 @@ class PlayerStatsTests(unittest.TestCase):
         self.assertIsNone(run.player_stats_at({"player_stats": [{"max_hp": 70}]}, 0).get("current_gold"))
 
 
+
+class RelicChoiceParsingTests(unittest.TestCase):
+    """How each node records a relic choice, from the owner's raw runs."""
+
+    @staticmethod
+    def parse(nodes, char="CHARACTER.IRONCLAD"):
+        raw = minimal_run(1700000000, map_point_history=[nodes],
+                          players=[{"character": char, "deck": [], "relics": []}])
+        return run.parse_run_data(raw)["relicsOffered"]
+
+    @staticmethod
+    def ancient(event, offers, chosen, extra=()):
+        return {"map_point_type": "ancient", "rooms": [{"model_id": event, "room_type": "event"}],
+                "player_stats": [{"ancient_choice": [
+                    {"TextKey": k, "title": {"key": f"{k}.title"}, "was_chosen": k == chosen} for k in offers],
+                    "relic_choices": [{"choice": f"RELIC.{k}", "was_picked": True} for k in (chosen, *extra)]}]}
+
+    @staticmethod
+    def event(event, option, relics=()):
+        name = event[len("EVENT."):]
+        return {"map_point_type": "unknown", "rooms": [{"model_id": event, "room_type": "event"}],
+                "player_stats": [{"event_choices": [{"title": {"key": f"{name}.pages.INITIAL.options.{option}.title"}}],
+                                  "relic_choices": [{"choice": f"RELIC.{r}", "was_picked": True} for r in relics]}]}
+
+    def flags(self, got, rid):
+        return [(bool(l["picked"]), bool(l.get("granted"))) for l in got.get(f"RELIC.{rid}", [])]
+
+    def test_ancient_offer_counts_every_relic_and_the_starter_upgrade_follows_touch_of_orobas(self):
+        offers = ("ELECTRIC_SHRYMP", "ALCHEMICAL_COFFER", "TOUCH_OF_OROBAS")
+        got = self.parse([self.ancient("EVENT.OROBAS", offers, "TOUCH_OF_OROBAS", ("BLACK_BLOOD",)),
+                          self.ancient("EVENT.OROBAS", offers, "ELECTRIC_SHRYMP")])
+        self.assertEqual(self.flags(got, "TOUCH_OF_OROBAS"), [(True, False), (False, False)])
+        self.assertEqual(self.flags(got, "BLACK_BLOOD"), [(True, False), (False, False)])
+        self.assertEqual(self.flags(got, "ALCHEMICAL_COFFER"), [(False, False), (False, False)])
+
+    def test_sea_glass_variants_are_one_relic_not_one_named_for_each_character(self):
+        node = self.ancient("EVENT.OROBAS", ("DRIFTWOOD", "IRONCLAD"), "IRONCLAD", ("SEA_GLASS",))
+        node["player_stats"][0]["ancient_choice"][1]["title"] = {"key": "SEA_GLASS.IRONCLAD.title"}
+        node["player_stats"][0]["relic_choices"] = [{"choice": "RELIC.SEA_GLASS", "was_picked": True}]
+        got = self.parse([node])
+        self.assertEqual(self.flags(got, "SEA_GLASS"), [(True, False)])
+        self.assertNotIn("RELIC.IRONCLAD", got)
+
+    def test_ancient_extras_are_handed_over(self):
+        got = self.parse([self.ancient("EVENT.NEOW", ("NEOWS_BONES", "LARGE_CAPSULE", "SCROLL_BOXES"),
+                                       "NEOWS_BONES", ("GOLDEN_PEARL",))])
+        self.assertEqual(self.flags(got, "GOLDEN_PEARL"), [(True, True)])
+        self.assertEqual(self.flags(got, "LARGE_CAPSULE"), [(False, False)])
+
+    def test_event_option_that_grants_a_relic_is_offered_every_visit(self):
+        got = self.parse([self.event("EVENT.SUNKEN_STATUE", "GRAB_SWORD", ("SWORD_OF_STONE",)),
+                          self.event("EVENT.SUNKEN_STATUE", "DIVE_INTO_WATER")])
+        self.assertEqual(self.flags(got, "SWORD_OF_STONE"), [(True, False), (False, False)])
+
+    def test_byrdonis_egg_is_the_byrdpip_pick_and_hatching_is_not_counted_again(self):
+        hatch = {"map_point_type": "rest_site", "rooms": [{"room_type": "rest_site"}],
+                 "player_stats": [{"relic_choices": [{"choice": "RELIC.BYRDPIP", "was_picked": True}]}]}
+        got = self.parse([self.event("EVENT.BYRDONIS_NEST", "TAKE"), hatch,
+                          self.event("EVENT.BYRDONIS_NEST", "EAT")])
+        self.assertEqual(self.flags(got, "BYRDPIP"), [(True, False), (False, False)])
+
+    def test_rewards_and_random_event_relics_have_no_alternative(self):
+        elite = {"map_point_type": "elite", "rooms": [{"room_type": "elite"}],
+                 "player_stats": [{"relic_choices": [{"choice": "RELIC.VAJRA", "was_picked": True}]}]}
+        got = self.parse([elite, self.event("EVENT.RANWID_THE_ELDER", "RELIC", ("PEAR",))])
+        self.assertEqual(self.flags(got, "VAJRA"), [(True, True)])
+        self.assertEqual(self.flags(got, "PEAR"), [(True, True)])
+
+    def test_shop_shelf_is_a_real_choice(self):
+        shop = {"map_point_type": "shop", "rooms": [{"room_type": "shop"}], "player_stats": [{"relic_choices": [
+            {"choice": "RELIC.ANCHOR", "was_picked": True}, {"choice": "RELIC.LANTERN", "was_picked": False}]}]}
+        got = self.parse([shop])
+        self.assertEqual((self.flags(got, "ANCHOR"), self.flags(got, "LANTERN")), ([(True, False)], [(False, False)]))
+
 if __name__ == "__main__":
     unittest.main()

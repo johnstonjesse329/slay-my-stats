@@ -689,9 +689,52 @@ def parse_run(path: Path) -> dict:
 # so a fight an event started reads against the winners of the same fight.
 # v8: an ancient's whole offer (ancient_choice) is tallied, not just the pick, so the
 # turned-down relics count as offered and skipped (Relics page: Win % skipped).
-# v9: relics a node only handed over (rewards, event relics, an ancient's starter
-# upgrade) carry "granted" and no longer count as offered.
-PARSER_VERSION = 9
+# v9: relics a node only handed over carry "granted" (a pick with no recorded offer).
+# v10: choices are read from how the game records them: an ancient's whole offer plus
+# the starter upgrade of a Touch of Orobas pick (Black Blood...), the relic an event
+# option hands over (Sword of Stone, the Byrdonis egg that hatches into Byrdpip) is
+# offered on every visit and picked when that option was taken, and the Sea Glass
+# variants read as Sea Glass rather than as a relic named for a character.
+PARSER_VERSION = 10
+
+# What the ancient's pick upgrades the starter relic into (Touch of Orobas).
+TOUCH_UPGRADES = {
+    "IRONCLAD": "RELIC.BLACK_BLOOD", "SILENT": "RELIC.RING_OF_THE_DRAKE",
+    "DEFECT": "RELIC.INFUSED_CORE", "REGENT": "RELIC.DIVINE_DESTINY",
+    "NECROBINDER": "RELIC.PHYLACTERY_UNBOUND",
+}
+
+# Events whose options hand out a fixed relic, read from each event's code
+# (GenerateInitialOptions). event_choices records only the option taken, so the
+# option a visit passed over has to come from here. { event: { option: relic } };
+# every visit offers every listed relic. Left out on purpose: options that depend on
+# gold or class (Tea Master's Bone and Ember Tea), random relics (Trash Heap, Doll
+# Room, Ranwid, Relic Trader...) and two-step events (War Historian Repy).
+EVENT_RELIC_OPTIONS = {
+    "EVENT.SUNKEN_STATUE": {"GRAB_SWORD": "RELIC.SWORD_OF_STONE"},
+    "EVENT.DROWNING_BEACON": {"CLIMB": "RELIC.FRESNEL_LENS"},
+    "EVENT.GRAVE_OF_THE_FORGOTTEN": {"ACCEPT": "RELIC.FORGOTTEN_SOUL"},
+    "EVENT.LOST_WISP": {"CLAIM": "RELIC.LOST_WISP"},
+    "EVENT.ROOM_FULL_OF_CHEESE": {"SEARCH": "RELIC.CHOSEN_CHEESE"},
+    "EVENT.HUNGRY_FOR_MUSHROOMS": {"BIG_MUSHROOM": "RELIC.BIG_MUSHROOM",
+                                   "FRAGRANT_MUSHROOM": "RELIC.FRAGRANT_MUSHROOM"},
+    "EVENT.TEA_MASTER": {"TEA_OF_DISCOURTESY": "RELIC.TEA_OF_DISCOURTESY"},
+    # TAKE hands over the Byrdonis Egg card; hatching it at a rest site gives Byrdpip.
+    # EAT (+7 max HP) is the other option.
+    "EVENT.BYRDONIS_NEST": {"TAKE": "RELIC.BYRDPIP"},
+}
+
+
+def _ancient_relic_id(choice: dict) -> str:
+    """The relic an ancient_choice entry offers. TextKey is the relic, except the
+    Sea Glass variants, whose TextKey is a character (title SEA_GLASS.IRONCLAD.title)."""
+    title = (choice.get("title") or {}).get("key", "")
+    key = choice.get("TextKey", "")
+    if title and "." in title and title.split(".")[0] != key:
+        key = title.split(".")[0]
+    if not key:
+        return ""
+    return key if key.startswith("RELIC.") else f"RELIC.{key}"
 
 
 def _card_props(card: dict) -> dict:
@@ -908,6 +951,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     # restChoices: { act (1-indexed): { choice: count } }
     rest_choices: dict[int, dict[str, int]] = {}
     floor_idx = 0
+    egg_pending = False      # a Byrdonis Egg taken at the nest, not yet hatched into Byrdpip
     for act_idx, act in enumerate(map_history):
         if not isinstance(act, list):
             continue
@@ -946,39 +990,60 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
             for cid, count in bought.items():       # buys with no shelf entry
                 for _ in range(count):
                     cards_offered.setdefault(cid, []).append({**loc, "picked": True})
-            seen_relics = set()
             relic_rows = [rc for rc in ps.get("relic_choices", []) if rc.get("choice")]
-            # A node offers a real choice when it lists a turned-down relic or is
-            # a shop shelf. Otherwise relic_choices only records what the node
-            # handed over (an elite or chest reward, an event's relic, the starter
-            # relic an ancient's pick upgrades, e.g. Touch of Orobas -> Black
-            # Blood): taken, never offered, so it carries "granted" and is left
-            # out of the offer and skip counts.
-            has_choice = ntype == "shop" or any(not rc.get("was_picked") for rc in relic_rows)
-            ancient_keys = set()
-            for ac in ps.get("ancient_choice", []):
-                key = ac.get("TextKey", "")
-                if key:
-                    ancient_keys.add(key if key.startswith("RELIC.") else f"RELIC.{key}")
-            for rc in relic_rows:
-                rid = rc["choice"]
-                if rid in ancient_keys:
-                    continue                     # counted from the ancient's list below
-                seen_relics.add(rid)
-                entry = {**loc, "picked": bool(rc.get("was_picked"))}
-                if not has_choice or ancient_keys:
+            rtype = rooms[0].get("room_type", "") if rooms else ""
+            # How each node records a relic choice (see the tables above):
+            #  * ancient_choice lists the whole offer with was_chosen on the pick,
+            #    so every entry is an offer; relic_choices adds what the pick set
+            #    in motion (Touch of Orobas' starter upgrade, Neow's extras).
+            #  * an event's event_choices holds only the option taken, never the
+            #    ones passed over, so EVENT_RELIC_OPTIONS (read from the game's
+            #    event code) says which options hand out a relic: every visit
+            #    offers it, taking the option picks it.
+            #  * a shop shelf, or any node that lists a turned-down relic, is a
+            #    real choice: each row is offered, picked by was_picked.
+            #  * everything else (elite, chest, boss, random event relics) lists
+            #    only what was taken: "granted", a pick with no recorded offer.
+            has_choice = rtype == "shop" or ntype == "shop" or any(not rc.get("was_picked") for rc in relic_rows)
+            handled = set()          # relic ids whose offer this node tallies itself
+
+            def tally(rid, picked, granted=False):
+                entry = {**loc, "picked": picked}
+                if granted:
                     entry["granted"] = True
                 relics_offered.setdefault(rid, []).append(entry)
-            # An ancient (Neow and the others) lists the whole offer in
-            # ancient_choice with was_chosen on the pick, while relic_choices
-            # keeps only the pick. The turned-down ones are tallied as skipped,
-            # so an ancient relic has an offer count and a skip rate like any other.
+
             for ac in ps.get("ancient_choice", []):
-                key = ac.get("TextKey", "")
-                rid = key if key.startswith("RELIC.") else f"RELIC.{key}"
-                if key and rid not in seen_relics:
-                    seen_relics.add(rid)
-                    relics_offered.setdefault(rid, []).append({**loc, "picked": bool(ac.get("was_chosen"))})
+                rid = _ancient_relic_id(ac)
+                if rid and rid not in handled:
+                    handled.add(rid)
+                    tally(rid, bool(ac.get("was_chosen")))
+                    if rid == "RELIC.TOUCH_OF_OROBAS" and char in TOUCH_UPGRADES:
+                        # the pick upgrades the starter relic: the same decision
+                        up = TOUCH_UPGRADES[char]
+                        handled.add(up)
+                        tally(up, bool(ac.get("was_chosen")))
+            event_id = enc if rtype == "event" else ""
+            opts = EVENT_RELIC_OPTIONS.get(event_id)
+            if opts:
+                chosen = [ec.get("title", {}).get("key", "") for ec in ps.get("event_choices", [])]
+                first = chosen[0] if chosen else ""
+                if f"{event_id[len('EVENT.'):]}.pages.INITIAL.options." in first:
+                    taken = first.split(".options.")[1].split(".")[0]
+                    for opt, rid in opts.items():
+                        handled.add(rid)
+                        tally(rid, opt == taken)
+                        if opt == taken and rid == "RELIC.BYRDPIP":
+                            egg_pending = True
+            for rc in relic_rows:
+                rid = rc["choice"]
+                if rid in handled:
+                    continue
+                picked = bool(rc.get("was_picked"))
+                if rid == "RELIC.BYRDPIP" and egg_pending and ntype == "rest_site":
+                    egg_pending = False          # the egg hatching: already the event's pick
+                    continue
+                tally(rid, picked, granted=picked and (not has_choice or bool(ps.get("ancient_choice"))))
             if ntype == "rest_site":
                 act_choices = rest_choices.setdefault(act_num, {})
                 for choice in ps.get("rest_site_choices", []):
