@@ -1798,8 +1798,10 @@ class RealHistoryTests(unittest.TestCase):
         self.assertEqual(res["rejected"], 0, res)
         parsed = (run.parse_run(f) for f in files)
         expected = sorted((r for r in parsed if r["floor"] >= 3), key=lambda r: r["ts"])
-        # Ingest adds multiplayerIdsShared to co-op runs (the mod's upload setting); a .run file has no such field.
-        stored = [{k: v for k, v in r.items() if k != "multiplayerIdsShared"} for r in store.runs(steam_id)]
+        # Ingest adds multiplayerIdsShared to co-op runs (the mod's upload setting) and the game's win badges, read from
+        # the upload at ingest; the local parse reads neither.
+        added = {"multiplayerIdsShared", "badges"}
+        stored = [{k: v for k, v in r.items() if k not in added} for r in store.runs(steam_id)]
         self.assertEqual(stored, json.loads(json.dumps(expected)))
 
 
@@ -1943,6 +1945,18 @@ class EventLogTests(Uploads, unittest.TestCase):
         self.assertEqual(starts, [(1, "ENCOUNTER.A"), (9, "ENCOUNTER.BOSS"), (13, "ENCOUNTER.C")])
         self.assertEqual([e["q"] for e in cleaned["log"]], [1, 2, 3, 4, 9, 10, 11, 12, 13, 14])
         self.assertFalse(cleaned["truncated"])
+
+    def test_debug_health_findings_are_kept_bounded_and_absent_otherwise(self):
+        events = [{"q": 1, "k": "fight0", "a": {}}, {"q": 2, "k": "fight1", "a": {}}]
+        self.assertNotIn("health", handler.clean_event_log({"v": 3, "log": events}))
+        self.assertNotIn("health", handler.clean_event_log({"v": 3, "log": events, "health": "junk"}))
+        health = {"events": 2, "hooks": 9, "hookMs": 1.5, "hookMaxMs": 0.4,
+                  "problems": [{"code": "duplicate-fight", "detail": "x" * 500}] * 300}
+        kept = handler.clean_event_log({"v": 3, "log": events, "health": health})["health"]
+        self.assertEqual(kept["events"], 2)
+        self.assertEqual(kept["problems"][0]["code"], "duplicate-fight")
+        self.assertEqual(len(kept["problems"][0]["detail"]), handler.TELEMETRY_MAX_NAME)
+        self.assertLessEqual(len(kept["problems"]), handler.TELEMETRY_MAX_LIST)
 
     def test_a_log_with_no_usable_events_is_refused(self):
         self.assertIsNone(handler.clean_event_log({"v": 3, "log": []}))
