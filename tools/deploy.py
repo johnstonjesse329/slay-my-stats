@@ -141,7 +141,7 @@ EXPORT_DIR = Path("local_data") / "deploy-build"
 NOT_INPUTS = {"dist", "local_data", "output", "__pycache__", ".playwright-mcp", "cdk.out"}
 # Mirrors the root-absolute art paths build_site.py's catalog points at.
 ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images",
-            "enchantment_images", "ui_icons", "thumbs"]
+            "event_images", "enchantment_images", "ui_icons", "thumbs"]
 ZERO_SHA = "0" * 40
 
 # Art is the bulk of what the site serves -- one Run Detail session pulls a few

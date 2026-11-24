@@ -1,6 +1,6 @@
 """
-Downscales relic and potion art and copies the floor-node icons out of the PCK
-extraction into the repo's own art directories.
+Downscales relic, potion and event art and copies the floor-node icons out of
+the PCK extraction into the repo's own art directories.
 
 Why this exists
 ---------------
@@ -13,6 +13,7 @@ card_portraits/); this does the same for the other two asset families.
 Output (gitignored, built here and uploaded by tools/deploy.py):
     relic_images/   relic art, downscaled to RELIC_W, as WebP
     potion_images/  potion art, downscaled to POTION_W, as WebP
+    event_images/   the per-event illustration, downscaled to EVENT_W, as WebP
     node_icons/     the handful of floor-node icons run.py actually uses
 
 Run after a PCK recovery, before extract_card_data.py (which records the
@@ -37,9 +38,13 @@ RELIC_SRC  = PCK / "images" / "relics"
 # the potion bar and in rewards, and is the only size worth carrying.
 POTION_SRC = PCK / "images" / "potions" / "large"
 ICON_SRC  = PCK / "images" / "ui" / "run_history"
+# One illustration per event, at the top of images/events/ (the subdirectories
+# hold an event's own minigame pieces, which nothing here draws).
+EVENT_SRC = PCK / "images" / "events"
 RELIC_DST  = ROOT / "relic_images"
 POTION_DST = ROOT / "potion_images"
 ICON_DST  = ROOT / "node_icons"
+EVENT_DST = ROOT / "event_images"
 
 # Relics render at 88x68 in the tile grid and 72px tall in tooltips, so 176px
 # wide is 2x for retina. Source art is 256x256; full-res was ~18 MB for 380
@@ -58,6 +63,11 @@ POTION_W = 176
 # this is second only to card_final/ in bytes served. Keep the two in step:
 # tools/bake_finished_cards.py uses the same quality.
 QUALITY = 85
+
+# The Events page draws the illustration as a tall crop beside the options, and
+# the whole banner about 280px wide on hover, so 560px is 2x of the bigger size.
+# Source art is 1024px wide and ~700 KB a file; no page should pull 60 of those.
+EVENT_W = 560
 
 # run.py only maps these node types, plus the thirteen per-boss portraits
 # (<name>_boss.png) it uses for boss timeline nodes, the eight per-Ancient
@@ -116,6 +126,24 @@ def downscale_potions():
     return len(srcs), total
 
 
+def downscale_events():
+    if not EVENT_SRC.exists():
+        return 0, 0
+    srcs = sorted(EVENT_SRC.glob("*.png"))
+    shutil.rmtree(EVENT_DST, ignore_errors=True)
+    EVENT_DST.mkdir()
+    total = 0
+    for src in srcs:
+        img = Image.open(src).convert("RGBA")
+        if img.width > EVENT_W:
+            h = max(1, round(img.height * EVENT_W / img.width))
+            img = img.resize((EVENT_W, h), Image.LANCZOS)
+        dst = (EVENT_DST / src.name).with_suffix(".webp")
+        img.save(dst, "WEBP", quality=QUALITY, method=6)
+        total += dst.stat().st_size
+    return len(srcs), total
+
+
 def copy_node_icons():
     shutil.rmtree(ICON_DST, ignore_errors=True)
     ICON_DST.mkdir()
@@ -141,6 +169,8 @@ def main():
     print(f"Relics : {n} images -> {RELIC_DST}  ({size/1024/1024:.2f} MB at {RELIC_W}px)")
     pn, psize = downscale_potions()
     print(f"Potions: {pn} images -> {POTION_DST}  ({psize/1024/1024:.2f} MB at {POTION_W}px)")
+    en, esize = downscale_events()
+    print(f"Events : {en} images -> {EVENT_DST}  ({esize/1024/1024:.2f} MB at {EVENT_W}px)")
     copied, missing, isize = copy_node_icons()
     print(f"Icons  : {copied} icons -> {ICON_DST}  ({isize/1024:.0f} KB)")
     if missing:
@@ -148,7 +178,7 @@ def main():
         # an asset; run.py falls back to an emoji for any node type (or
         # boss encounter) whose icon didn't make it into node_icons/.
         print(f"  ! missing: {', '.join(missing)}")
-    art_manifest.update(["relic_images", "potion_images", "node_icons"])
+    art_manifest.update(["relic_images", "potion_images", "event_images", "node_icons"])
 
 
 if __name__ == "__main__":

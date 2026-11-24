@@ -718,3 +718,64 @@ function renderRunEndLanes(pivotData) {
     ],
     [charLaneAxis(cardsMax), charLaneAxis(relicsMax)], LOST_WON_LEGEND);
 }
+
+// =========================================================================
+// Progressive table bodies
+// =========================================================================
+// The Cards and Relics tables list every card or relic recorded, which is
+// several hundred rows of art and figures. Building them all up front made the
+// page slow to open and slow to re-sort, for rows nobody had scrolled to yet.
+// fillTableProgressively() lays out the first chunk and then one more chunk at
+// a time as the "more" row comes into view, with a button for anyone who would
+// rather click (and for a browser with no IntersectionObserver).
+const TABLE_CHUNK_ROWS = 60;
+
+// tbody   the <tbody> to fill (emptied first)
+// rows    the row data, already filtered and sorted
+// rowHtml (row) => "<tr>…</tr>"
+// onChunk (scope, trs) after each chunk, for binding tooltips and listeners to
+//         the new rows only. `scope` answers querySelectorAll over them, so a
+//         binder written against a container works unchanged.
+function fillTableProgressively(tbody, rows, rowHtml, onChunk, chunk = TABLE_CHUNK_ROWS) {
+  // A re-render (sort, filter, character switch) invalidates a load in flight.
+  const token = (tbody._fillToken = (tbody._fillToken || 0) + 1);
+  tbody._fillObserver?.disconnect();
+  tbody._fillObserver = null;
+  tbody.innerHTML = "";
+  let at = 0;
+
+  const more = document.createElement("tr");
+  more.className = "table-more";
+  more.addEventListener("click", e => { if (e.target.closest("button")) step(); });
+
+  const colCount = () =>
+    tbody.closest("table")?.querySelector("thead tr:last-child")?.children.length || 1;
+
+  function step() {
+    if (tbody._fillToken !== token) return;
+    const slice = rows.slice(at, at + chunk);
+    at += slice.length;
+    const holder = document.createElement("tbody");
+    holder.innerHTML = slice.map(rowHtml).join("");
+    const trs = [...holder.children];
+    trs.forEach(tr => tbody.insertBefore(tr, more.parentNode === tbody ? more : null));
+    onChunk?.({ querySelectorAll: sel => trs.flatMap(tr => [...tr.querySelectorAll(sel)]) }, trs);
+    const left = rows.length - at;
+    if (left > 0) {
+      more.innerHTML = `<td colspan="${colCount()}"><button type="button" class="table-more-btn">`
+        + `Show ${Math.min(chunk, left)} more<span class="table-more-left">${left} left</span></button></td>`;
+      if (more.parentNode !== tbody) tbody.appendChild(more);
+    } else {
+      more.remove();
+    }
+  }
+
+  step();
+  if (window.IntersectionObserver) {
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting) && more.parentNode) step();
+    }, { rootMargin: "500px" });
+    io.observe(more);
+    tbody._fillObserver = io;
+  }
+}

@@ -136,21 +136,77 @@ function eventColumnHtml(who, ch) {
     <div class="event-body">${eventPieHtml(ch)}<div class="event-opts">${rows}</div></div>${notes ? `<p class="event-note">${notes}</p>` : ""}</div>`;
 }
 
+// Filter bar: a text match on the event or any option, and one act (or "Any act", the shared
+// events). With no act picked the list is sectioned by act, in the game's order.
+const EVENT_ACTS = ["Overgrowth", "Underdocks", "Hive", "Glory"];
+let eventsQuery = "";
+let eventsAct = "all";   // "all", an EVENT_ACTS name, or "shared"
+
+function eventActsOf(id) {
+  const acts = DATA.eventCatalog?.[id]?.acts || [];
+  return acts.length ? acts : ["shared"];
+}
+
+function eventMatches(id, you, all) {
+  const q = eventsQuery.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [eventName(id), ...[you, all].flatMap(ch => ch ? ch.options.map(o => o.label) : [])];
+  return hay.some(s => s.toLowerCase().includes(q));
+}
+
+function renderEventActChips(ids) {
+  const count = act => ids.filter(id => act === "all" || eventActsOf(id).includes(act)).length;
+  const chips = [["all", "All"], ...EVENT_ACTS.map(a => [a, a]), ["shared", "Any act"]]
+    .filter(([a]) => a === "all" || count(a) || a === eventsAct);
+  document.getElementById("events-act-chips").innerHTML = chips.map(([a, label]) =>
+    `<button type="button" class="run-tag-btn" data-act="${a}" aria-pressed="${a === eventsAct}">${label} <span class="event-visits">${count(a)}</span></button>`).join("");
+}
+
+// The event's own illustration (event_images/, from tools/downscale_art.py), as a
+// tall crop down the left of the card: which event this is, read at a glance. The
+// source is a wide banner, so hover (or focus) opens the whole uncropped image.
+function eventArtHtml(id) {
+  const src = DATA.eventCatalog?.[id]?.imagePath;
+  if (!src) return "";
+  return `<div class="event-art"><img loading="lazy" src="${src}" alt="" tabindex="0"></div>`;
+}
+
+function eventCardHtml(id, you, all) {
+  const art = eventArtHtml(id);
+  return `<section class="event-card${art ? " event-card-art" : ""}">${art}
+        <div class="event-main">
+        <h3>${eventName(id)}</h3>
+        <div class="event-cols">${eventColumnHtml("you", you[id])}${all ? eventColumnHtml("all", all[id]) : ""}</div>
+        </div>
+      </section>`;
+}
+
 function renderEventsPage() {
   loadSiteStatsForFavs();
   const you = eventChoices(eventTalliesYou());
   const allTally = eventTalliesAll();
   const all = allTally ? eventChoices(allTally) : null;
-  const ids = [...new Set([...Object.keys(you), ...Object.keys(all || {})])]
+  const every = [...new Set([...Object.keys(you), ...Object.keys(all || {})])]
     .sort((a, b) => ((you[b]?.visits || 0) - (you[a]?.visits || 0)) || ((all?.[b]?.visits || 0) - (all?.[a]?.visits || 0)) || eventName(a).localeCompare(eventName(b)));
+  renderEventActChips(every);
+  const ids = every.filter(id => eventMatches(id, you[id], all?.[id]));
   const scope = sharedActiveChar === "ALL" ? "all characters" : fmtCharName(sharedActiveChar);
   const n = Object.keys(you).length;
   document.getElementById("events-caption").textContent =
     `${n} event${n !== 1 ? "s" : ""} recorded under the current filters (${scope}).`;
-  document.getElementById("events-list").innerHTML = ids.length
-    ? ids.map(id => `<section class="event-card">
-        <h3>${eventName(id)}</h3>
-        <div class="event-cols">${eventColumnHtml("you", you[id])}${all ? eventColumnHtml("all", all[id]) : ""}</div>
-      </section>`).join("")
-    : `<p class="event-none">No events recorded under the current filters.</p>`;
+  const sections = [...EVENT_ACTS, "shared"]
+    .filter(a => eventsAct === "all" || eventsAct === a)
+    .map(a => [a, ids.filter(id => eventActsOf(id).includes(a))]).filter(([, list]) => list.length);
+  document.getElementById("events-list").innerHTML = sections.length
+    ? sections.map(([a, list]) => `<h3 class="events-act-head">${a === "shared" ? "Any act" : a}</h3>`
+        + list.map(id => eventCardHtml(id, you, all)).join("")).join("")
+    : `<p class="event-none">${every.length ? "No events match." : "No events recorded under the current filters."}</p>`;
 }
+
+document.getElementById("events-search").addEventListener("input", e => { eventsQuery = e.target.value; renderEventsPage(); });
+document.getElementById("events-act-chips").addEventListener("click", e => {
+  const b = e.target.closest("[data-act]");
+  if (!b) return;
+  eventsAct = b.dataset.act === eventsAct ? "all" : b.dataset.act;
+  renderEventsPage();
+});

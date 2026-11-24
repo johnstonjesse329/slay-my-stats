@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "tools" / "art_manifest.json"
 # The folders tools/deploy.py uploads and build_site.py's catalog points at.
 ART_DIRS = ["card_final", "card_portraits", "node_icons", "relic_images", "potion_images",
-            "enchantment_images", "ui_icons", "thumbs"]
+            "event_images", "enchantment_images", "ui_icons", "thumbs"]
 
 
 def _digest(path: Path) -> str:
