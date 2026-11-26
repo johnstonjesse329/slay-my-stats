@@ -131,11 +131,7 @@ function renderCardTile(c) {
   // level does NOT — the card face renders it the way the game does, as a
   // green "Strike+" title, so a separate +1 chip would just repeat it.
   const countLabel = c.count > 1 ? `<span class="tile-count">×${c.count}</span>` : "";
-  const floors = [...(c.addedFloors || [])].sort(([a], [b]) => a - b);
-  const floorLabel = c.seqMark ? `<div class="tile-added-floors">${c.seqMark}</div>` : floors.length
-    ? `<div class="tile-added-floors">Added ${floors.map(([floor, count]) =>
-        `F${floor}${count > 1 ? ` ×${count}` : ""}`).join(" · ")}</div>`
-    : "";
+  const floorLabel = c.seqMark ? `<div class="tile-added-floors">${c.seqMark}</div>` : "";
   // An enchantment is identity, so it gets the same treatment as the count: a chip
   // on the tile rather than a second card face. The game draws it on the card
   // itself, which the baked face cannot show.
@@ -199,9 +195,9 @@ function rarityRank(r) { return RARITY_RANK[r] || 0; }
 // and are carried onto the row for the face lookup. An enchantment does too: a
 // Nimble Strike is a different card from a plain Strike, and merging them would
 // drop the enchantment from the tile entirely.
-function dedupeCardCounts(deck, added) {
+function dedupeCardCounts(deck) {
   const cardMap = new Map();
-  deck.forEach((c, index) => {
+  deck.forEach(c => {
     const ench = c.enchantment ? `${c.enchantment.id}:${c.enchantment.amount || 1}` : "";
     const key = c.id + "|" + c.upgrade + "|" + (c.props ? JSON.stringify(c.props) : "") + "|" + ench;
     if (!cardMap.has(key)) {
@@ -209,13 +205,7 @@ function dedupeCardCounts(deck, added) {
         id: c.id, upgrade: c.upgrade, count: 0, props: c.props, enchantment: c.enchantment,
       });
     }
-    const row = cardMap.get(key);
-    row.count++;
-    const floor = added?.[index];
-    if (Number.isInteger(floor) && floor >= 1) {
-      row.addedFloors ??= new Map();
-      row.addedFloors.set(floor, (row.addedFloors.get(floor) || 0) + 1);
-    }
+    cardMap.get(key).count++;
   });
   // Rarest first within a deck group; the same rarity falls back to name order.
   return [...cardMap.values()].sort((a, b) => {
@@ -318,7 +308,7 @@ function renderCardsByFloorHtml(deck, added) {
     byFloor.get(floor).push(c);
   });
   const tiles = [...byFloor].sort(([a], [b]) => a - b).flatMap(([floor, cards]) =>
-    dedupeCardCounts(cards, null).map(c => renderCardTile({ ...c, seqMark: floor ? `F${floor}` : "Start" })));
+    dedupeCardCounts(cards).map(c => renderCardTile({ ...c, seqMark: floor ? `F${floor}` : "Start" })));
   return `<div class="deck-tile-row deck-sequence">${tiles.join("")}</div>`;
 }
 
@@ -333,7 +323,7 @@ function renderDetailDeckRelics(run) {
     return;
   }
 
-  const groupsHtml = renderCardGroupsHtml(dedupeCardCounts(deck, run.deckAdded));
+  const groupsHtml = renderCardGroupsHtml(dedupeCardCounts(deck));
   // Only a run that says when each card came has a second view to offer.
   const hasFloors = Array.isArray(run.deckAdded) && run.deckAdded.length === deck.length;
   const view = hasFloors ? deckView : "type";
