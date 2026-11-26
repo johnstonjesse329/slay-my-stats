@@ -24,7 +24,7 @@ BENCH = {"encounters": {"ENCOUNTER.A": {"pool": [90, 110], "many": False, "count
 STATS = {"solo": {"chars": {"FOOL": [20, 15]}, "cards": {"CARD.A": [20, 15]}, "relics": {},
                   "killers": {"X": 1},
                   "records": {"fastestWin": {"slug": "me", "steamId": "76561198000000001"}},
-                  "picks": {"FOOL": {"cards": {"CARD.A": [1, 2, 3, 4, 5, 6, 7],
+                  "picks": {"FOOL": {"cards": {"CARD.A": [9, 2, 3, 4, 5, 6, 7],
                                                "CARD.B": [1, 2, 3, 4]},
                                      "events": {"E": {}}}}}}
 
@@ -38,7 +38,7 @@ class Build(unittest.TestCase):
         self.assertNotIn("ratings", pack["ruler"])
         solo = pack["lanes"]["solo"]
         self.assertEqual(set(solo), {"chars", "cards", "relics", "picks"})
-        self.assertEqual(solo["picks"], {"FOOL": {"cards": {"CARD.A": [1, 2, 5, 6]}, "relics": {}}})
+        self.assertEqual(solo["picks"], {"FOOL": {"cards": {"CARD.A": [2, 2, 5, 6]}, "relics": {}}})
         self.assertEqual(json.loads(body)["basic"], ["CARD.STRIKE"])
         self.assertRegex(name, r"^synergy\.[0-9a-f]{10}\.json$")
 
