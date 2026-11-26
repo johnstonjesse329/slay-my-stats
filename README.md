@@ -1,10 +1,11 @@
 # slay-my-stats
 
 Yet another Slay the Spire 2 analysis solution, but this time it's focused on you and your progression, not
-social stats. You can upload the `.run` files the game saves manually at [slay-my-stats.com](https://slay-my-stats.com),
-or install the [Slay My Stats mod](https://steamcommunity.com/sharedfiles/filedetails/?id=3838251909)
-([source](https://github.com/johnstonjesse329/slay-my-stats-mod)) for automatic run capture, with more granular
-data and functionality on top. Your profile lives at `/u/<name>`, named after your Steam name, and anyone can
+social stats. You can [upload your run history by hand](https://slay-my-stats.com/upload)
+or install the [Slay My Stats mod](https://github.com/johnstonjesse329/slay-my-stats-mod#install)
+for automatic uploads, more detailed fight logs, and in-game stats. While Steam Workshop updates are on
+hold for manual approval, get the current version from the [GitHub release](https://github.com/johnstonjesse329/slay-my-stats-mod/releases/latest).
+Your profile lives at `/u/<name>`, named after your Steam name, and anyone can
 find it by searching on the home page.
 
 **Overview:** totals, the ascension tracker (each character's highest win, the game's Dread gem past A10; its header counts the characters with an A10 win and a Dread win, solo and multiplayer, and the longest A10 and Dread win streaks), then a table of each character's win rates and records.
@@ -109,7 +110,7 @@ slay-my-stats/
 │   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>, pages
 │   ├── pages/               hand-written pages: <name>.html is served at /<name> (see its README)
 │   ├── whats-new/           What's new posts, one HTML file each, shown on pages/whats-new.html (see its README)
-│   ├── home-intro.html      the home page's hero: title, upload button, a line pointing to the Workshop mod, preview picture
+│   ├── home-intro.html      the home page's hero: Workshop notice, title, upload button, preview picture
 │   ├── home-preview.webp    that picture, and og-preview.png (the link preview): shots of a made-up player,
 │   │                        retaken by hand when the dashboard's look changes
 │   ├── fonts/               Kreon (headings), with its licence
