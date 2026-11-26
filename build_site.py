@@ -238,6 +238,7 @@ TEXT_SYNERGY = {k: (_rx(m), _rx(u)) for k, (m, u) in {
     # Strength lands on every hit, so attacks that hit more than once pay off on it.
     "power:Strength":   (r"\b[Gg]ain N Strength",
                          r"for each Strength|you gain Strength each|damage(?: to [^.\n]+)? N times|damage(?: to [^.\n]+)? twice|hits twice"),
+    "power:Vigor":      (r"\b[Gg]ain N Vigor", None),
     "power:Vulnerable": (None, r"Vulnerable enemies|[Ee]nemies with Vulnerable|Vulnerable and Weak|"
                                r"apply Vulnerable|Vulnerable on the enemy|enemy is Vulnerable"),
     "power:Weak":       (None, r"Weak enemies|[Ee]nemies with Weak|Vulnerable and Weak"),
@@ -283,6 +284,9 @@ TEXT_SYNERGY = {k: (_rx(m), _rx(u)) for k, (m, u) in {
 def extra_synergy(item_id, item, made, need):
     """Metadata relationships that printed rules text alone cannot identify."""
     if item_id.startswith("CARD."):
+        # Vigor is spent by the next Attack. Treat that as a specific payoff for its sources.
+        if item.get("type") == "Attack":
+            need.add("power:Vigor")
         if item_id == "CARD.SOVEREIGN_BLADE":
             need.add("forge")
         # Song tags are granted by the named card, not by mentioning another song.
