@@ -78,11 +78,12 @@
 /* What's new (site/pages/whats-new.html; posts from site/whats-new/, reactions by site/whats-new.js).
    Each post is a section of the page under a hairline, its title its own link. */
 .site-page .post { border-top: 1px solid var(--hairline); margin-top: 1.25rem; padding-top: 1.1rem; scroll-margin-top: 1rem; }
-.site-page .post-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.75rem; margin-bottom: 0.5rem; }
-.site-page .post-head h2 { margin: 0; }
-.site-page .post-head h2 a { color: var(--gold); text-decoration: none; }
-.site-page .post-head h2 a:hover { text-decoration: underline; }
-.site-page .post-head time { color: var(--text-faint); font-size: var(--fs-sm); }
+.site-page .post-head { cursor: pointer; color: var(--gold); }
+.site-page .post-head h2 { display: inline; margin: 0; }
+.site-page .post-head:hover h2 { text-decoration: underline; }
+.site-page .post-head:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.site-page .post-head time { display: inline-block; margin-inline-start: 0.75rem; color: var(--text-faint); font-size: var(--fs-sm); }
+.site-page .post-content { margin-top: 0.5rem; }
 .post-screenshots { display: grid; gap: 0.75rem; margin: 1rem 0; }
 .post-screenshots img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
 /* The post a /whats-new/<id> link opened. */

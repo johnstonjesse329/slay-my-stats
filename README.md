@@ -53,7 +53,8 @@ The dashboard has five pages: Overview, Runs, Cards, Relics and Seeds. They cove
 rates by character, ascension and build, boss and elite results, card and relic picks, per-floor HP and damage,
 and seed lookup, among your own runs or everyone's.
 
-**What's new** (`/whats-new`) lists what's shipped on the site and the mod, newest first, each post at its own
+**What's new** (`/whats-new`) lists what's shipped on the site and the mod, newest first. Open older posts
+by clicking their headings. Each post has its own
 link (`/whats-new/<id>`). Anyone can read it. Signed in through Steam, you can react to a post with one
 of six of the game's icons (Rest Site, Elite, Red Skull, Glass Eye, Unknown, Happy Flower), and a post that closes
 feedback notes says how many players asked for it, with "You asked for this" for those who did. The site bar marks
