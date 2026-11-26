@@ -313,6 +313,12 @@
    character in its colour, the tab's figure, deck synergies, when). Reuses the
    recent-uploads row. Tabs wrap on a phone and keep a tap-sized height. */
 .showcase { margin-top: 1.5rem; }
+.showcase-mode-filter { color: var(--text-dim); font-size: 0.9rem; }
+.showcase-mode-filter select {
+  min-height: 2.75rem; margin-left: 0.55rem; padding: 0.3rem 0.65rem;
+  color: var(--text); background: transparent; color-scheme: dark;
+  border: 1px solid var(--hairline); border-radius: 0.5rem; font: inherit;
+}
 .showcase-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.6rem; }
 .showcase-tabs button {
   min-height: 2.5rem; padding: 0.3rem 0.9rem; border-radius: 999px; cursor: pointer;
@@ -321,6 +327,7 @@
 .showcase-tabs button[aria-selected="true"] { color: var(--gold); border-color: var(--gold); background: rgba(224,196,104,0.08); }
 .showcase-runs { width: 100%; border-collapse: collapse; }
 .showcase-pager { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 0.6rem; color: var(--text-dim); font-size: 0.9rem; }
+.showcase-pager[hidden] { display: none; }
 .showcase-pager button { min-height: 2.5rem; padding: 0.3rem 0.9rem; border-radius: 999px; cursor: pointer; background: transparent; color: var(--text-dim); border: 1px solid var(--hairline); font: inherit; }
 .showcase-pager button:disabled { opacity: 0.4; cursor: default; }
 .showcase-runs th {
@@ -337,6 +344,7 @@
 .showcase-runs .site-row-name::after { content: ""; position: absolute; inset: 0; }
 .showcase-runs .site-row-name:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 .showcase-player { white-space: nowrap; }
+.showcase-run-mode { display: block; color: var(--text-dim); }
 .showcase-char-icon { width: 1.4rem; height: 1.4rem; margin-right: 0.5rem; vertical-align: middle; }
 .showcase-char { font-weight: 600; white-space: nowrap; }
 .showcase-asc { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -347,6 +355,7 @@
 @media (max-width: 640px) {
   .showcase-syn { display: none; }
   .showcase-runs td, .showcase-runs th { padding-left: 0.4rem; padding-right: 0.4rem; }
+  .showcase-player, .showcase-char, .showcase-figure { white-space: normal; overflow-wrap: anywhere; }
 }
 
 @media (max-width: 1200px) {
