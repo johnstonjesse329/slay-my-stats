@@ -3,12 +3,18 @@ import gzip
 import io
 import json
 import re
+import sys
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import test_benchmark  # noqa: F401 -- sets up the import path
 import benchmark
+import handler
 import mod_pack
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+import build_mod_pack  # noqa: E402
 
 STATIC = {"synergy": {"cards": {}}, "archetypes": {}, "basic": ["CARD.STRIKE"]}
 BENCH = {"encounters": {"ENCOUNTER.A": {"pool": [90, 110], "many": False, "count": 1, "tiers": [
@@ -52,6 +58,16 @@ class FakeStore:
         self.objects[key] = data
 
 
+class CacheHeaders(unittest.TestCase):
+    def test_s3_cache_control(self):
+        store = handler.S3Store.__new__(handler.S3Store)
+        store._s3, store._bucket = mock.Mock(), "b"
+        for key in ("mod/v1/pack.json.gz", "mod/v1/synergy.0a1b2c3d4e.json"):
+            store.put(key, b"x", {}, None)
+        self.assertEqual([c.kwargs["CacheControl"] for c in store._s3.put_object.call_args_list],
+                         ["public, max-age=3600", "public, max-age=31536000, immutable"])
+
+
 class Publish(unittest.TestCase):
     def test_writes_both_files_without_steam_ids(self):
         store = FakeStore({benchmark.STATS_KEY: benchmark._pack(STATS)})
@@ -66,6 +82,14 @@ class Publish(unittest.TestCase):
         self.assertIn(mod_pack.PREFIX + pack["synergy"], files)
         for text in files.values():
             self.assertIsNone(re.search(r"7656119\d{10}", text))
+
+    def test_gamma_script_publishes_from_gamma_data(self):
+        store = FakeStore({benchmark.STATS_KEY: benchmark._pack(STATS),
+                           benchmark.BENCHMARK_KEY: benchmark._pack(BENCH)})
+        with mock.patch.object(build_mod_pack, "game_data", return_value=STATIC),                 contextlib.redirect_stdout(io.StringIO()):
+            build_mod_pack.publish_gamma(store)
+        pack = json.loads(gzip.decompress(store.objects[mod_pack.PACK_KEY]))
+        self.assertIn(mod_pack.PREFIX + pack["synergy"], store.objects)
 
     def test_a_failure_is_logged_not_raised(self):
         out = io.StringIO()

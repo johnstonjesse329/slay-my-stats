@@ -128,6 +128,7 @@ slay-my-stats/
 │   ├── lambda/ingest/reactions.py             What's new reactions and who asked for a post, kept in the feedback table
 │   ├── lambda/ingest/views.py                 page views, counted from CloudFront's access logs for the morning digest
 │   ├── lambda/ingest/digest_html.py           the morning digest as an HTML email (tables), sent through SES
+│   ├── lambda/ingest/mod_pack.py              the mod's daily stats snapshot
 │   ├── tests/test_ingest.py, test_measured.py, test_feedback.py, test_gamma_auth.py, test_views.py, test_whats_new.py
 │   └── requirements.txt     CDK, boto3
 ├── tools/
@@ -138,6 +139,7 @@ slay-my-stats/
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
 │   ├── build_event_catalog.py  event_catalog.json (event options, which acts each event belongs to, and its illustration)
+│   ├── build_mod_pack.py    builds the mod's snapshot locally, or publishes gamma's
 │   ├── rebuild_stats.py     recount users/_stats.json.gz and each player's _seeds.json.gz
 │   ├── backfill_measured.py give runs uploaded before `measured` their per-floor numbers, from their stored logs
 │   ├── build_measured_cards.py  card costs for the ingest Lambda, cut from card_data.json at bundle time
@@ -252,7 +254,7 @@ own, `SlayMyStatsFeedbackStack` (`infra/slay_my_stats/feedback_stack.py`), which
 | Resource | Configuration | Why |
 |----------|---------------|-----|
 | **Site bucket** `slay-my-stats-site` | Private (CloudFront OAC only). Destroyed with the stack. | The built `dist/` plus game art. Rebuildable from the repo at any time. |
-| **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` only). **Retained** if the stack is deleted (gamma too, and gamma's is versioned; old versions outside `feedback/` expire after 30 days). CORS for `https://slay-my-stats.com` POSTs, since uploads go straight here. Upload results expire after 7 days. | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
+| **Data bucket** `slay-my-stats-data` | Private (CloudFront OAC for `users/*` and `mod/*` only). **Retained** if the stack is deleted (gamma too, and gamma's is versioned; old versions outside `feedback/` expire after 30 days). CORS for `https://slay-my-stats.com` POSTs, since uploads go straight here. Upload results expire after 7 days. | Players' uploads live only here. Standing the stack up again needs the old bucket imported, or emptied and deleted by hand, first. |
 | **CloudFront distribution** | `slay-my-stats.com`, HTTP redirects to HTTPS, default root `index.html`. Behaviors below; `auth/*` goes to the ingest Lambda's Function URL. | One domain for the site, the profile data and the sign-in, so the browser needs no CORS and the session cookie stays on the site. |
 | **CloudFront Function** (`ProfileUrlRewriteFunction`) | Viewer request, JS 2.0. Sets the URI to `/index.html`. | Page URLs like `/u/<slug>` have no S3 object. Rewriting at the edge keeps the shareable URL in the address bar. Attached only to page behaviors, so asset requests never pay for it. |
 | **Route 53 A record** | Alias to the distribution, in an existing hosted zone. | The domain. The hosted zone is created outside CDK. |
@@ -286,6 +288,7 @@ scripts read).
 | `/<page>`, `/<page>/` (one pair per `site/pages/` file) | rewrite to `/index.html` | site bucket | optimized |
 | `/whats-new/*` (a What's new post's own link) | rewrite to `/index.html` | site bucket | optimized |
 | `/users/*` | none | data bucket | **disabled**, so a profile shows an upload straight away |
+| `/mod/*` | none | data bucket | optimized, for as long as each file's `Cache-Control` says |
 | everything else (`/`, `/app.<hash>.js`, `/catalog.<hash>.json`, art) | none | site bucket | optimized |
 
 `ids/*` in the data bucket has no behavior, so it's unreachable from outside.
@@ -311,6 +314,8 @@ profile on `/u/<slug>`, which it loads by fetching the catalog (`/catalog.<hash>
 | `users/_stats.json.gz` | yes | site-wide running totals for the home page (see below) |
 | `users/_uploads/<id>.json.gz` | yes | one upload's result (counts, or why it failed), which the page that sent it polls. The id is random; expires after 7 days. |
 | `users/<slug>/_coop.json.gz` | yes | the profile's co-op runs that other profiles have a copy of: `{"v":1, "runs": {"<ts>": {"i", "with": [{"slug", "ts", "i"}]}}}`, `i` being the party slot (see [Co-op links](#co-op-links)) |
+| `mod/v1/pack.json.gz` | yes, at `/mod/` | the mod's daily stats snapshot: fight lines and card and relic win and pick totals; kept an hour |
+| `mod/v1/synergy.<hash>.json` | yes, at `/mod/` | the synergy tables the snapshot names; named by content, kept a year |
 | `ids/<steamid>.json.gz` | no | `{"slug"}`, so an upload finds its profile |
 | `coop/<seed>.json.gz` | no | every uploaded copy of a co-op game on that seed whose uploader shared the party's Steam IDs: `{"slug", "ts", "party", "i", "ids"}` |
 | `raw/<steamid>/<time>-<id>.ndjson.gz` | no | every upload exactly as sent, so profiles can be rebuilt after a parser fix |
@@ -941,9 +946,11 @@ EventBridge Scheduler invokes the benchmark Lambda in the production stack. It r
 production raw uploads for runs currently published on the site and writes aggregate results
 to `users/_fight-demand.json.gz`, including how many solo runs of each character got each run rating, by tier,
 for the Overview's "Run readings by character" chart.
+The same refresh publishes the mod's snapshot under `mod/v1/` (`mod_pack.py`).
 Profile pages use those results when available.
 Gamma can preview the same aggregate at that path in its own data bucket. Its benchmark
-stays at the last preview until it is refreshed manually.
+stays at the last preview until it is refreshed manually. `python tools/build_mod_pack.py --gamma`
+publishes gamma's mod snapshot from its own data.
 
 The site build also carries a fallback benchmark, made after the game-data refresh:
 `python tools/power_curve/fight_demand.py` (writes `fight_demand.json`), which also reads the runs in

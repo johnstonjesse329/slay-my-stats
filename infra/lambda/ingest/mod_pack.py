@@ -90,8 +90,9 @@ def encode(pack: dict) -> bytes:
     return gzip.compress(json.dumps(pack, separators=(",", ":")).encode("utf-8"), mtime=0)
 
 
-def publish(store, benchmark: dict, stats: dict, now: float) -> None:
-    pack, name, body = build(benchmark, stats, static_data(), now)
+def publish(store, benchmark: dict, stats: dict, now: float, static: dict | None = None) -> None:
+    """static: the game data, when it isn't in the bundle (tools/build_mod_pack.py)."""
+    pack, name, body = build(benchmark, stats, static_data() if static is None else static, now)
     # The synergy file first, so the pack never names one that isn't there.
     if name and store.get(PREFIX + name) is None:  # the name is the content: written once
         store.put(PREFIX + name, gzip.compress(body, mtime=0), {}, None)
