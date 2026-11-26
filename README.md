@@ -314,7 +314,7 @@ profile on `/u/<slug>`, which it loads by fetching the catalog (`/catalog.<hash>
 | `users/_stats.json.gz` | yes | site-wide running totals for the home page (see below) |
 | `users/_uploads/<id>.json.gz` | yes | one upload's result (counts, or why it failed), which the page that sent it polls. The id is random; expires after 7 days. |
 | `users/<slug>/_coop.json.gz` | yes | the profile's co-op runs that other profiles have a copy of: `{"v":1, "runs": {"<ts>": {"i", "with": [{"slug", "ts", "i"}]}}}`, `i` being the party slot (see [Co-op links](#co-op-links)) |
-| `mod/v1/pack.json.gz` | yes, at `/mod/` | the mod's daily stats snapshot: fight lines and card and relic win and pick totals; kept an hour |
+| `mod/v1/pack.json.gz` | yes, at `/mod/` | the mod's daily stats snapshot: fight lines, card and relic win and pick totals and event choice totals; kept an hour |
 | `mod/v1/synergy.<hash>.json` | yes, at `/mod/` | the synergy tables the snapshot names; named by content, kept a year |
 | `ids/<steamid>.json.gz` | no | `{"slug"}`, so an upload finds its profile |
 | `coop/<seed>.json.gz` | no | every uploaded copy of a co-op game on that seed whose uploader shared the party's Steam IDs: `{"slug", "ts", "party", "i", "ids"}` |

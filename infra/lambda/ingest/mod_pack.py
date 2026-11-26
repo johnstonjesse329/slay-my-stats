@@ -11,7 +11,12 @@ computed and the public totals (users/_stats.json.gz). Two files under mod/v1/:
                "cuts": {"acts": [{"guard": [lo, hi], "pace": [lo, hi]}], "run": {...}}},
      "lanes": {"solo" | "multi": {
          "chars" | "cards" | "relics": {id: [runs, wins]},
-         "picks": {char: {"cards" | "relics": {id: [picks, wins picked, offers, wins skipped]}}}}}}
+         "picks": {char: {"cards" | "relics": {id: [picks, wins picked, offers, wins skipped]}}},
+         "events": {event: {"v": visits, "o": {option: [taken, wins]}}}}}}
+
+Events count the choice made on an event's first page, summed over characters. "v" is there
+only where every visit offers every option (the event catalog flags the others), so that
+taken / v is a pick rate.
 
 A pick here is one taken from an offer, so picks / offers is the pick rate; a relic handed
 over unasked is left out of it. Wins picked still counts the runs that were handed one.
@@ -40,7 +45,7 @@ _STATIC_FILE = Path(__file__).with_name("mod_synergy.json")
 
 
 def static_data() -> dict:
-    """{"synergy", "archetypes", "basic"} from the bundle (build_site.write_mod_synergy),
+    """{"synergy", "archetypes", "basic", "fixedEvents"} from the bundle (build_site.write_mod_synergy),
     or {} when the bundle has none."""
     try:
         return json.loads(_STATIC_FILE.read_text(encoding="utf-8"))
@@ -73,12 +78,29 @@ def _picks(picks: dict) -> dict:
             for char, kinds in picks.items()}
 
 
-def lanes(stats: dict) -> dict:
+def _events(picks: dict, fixed: set) -> dict:
+    out = {}
+    for kinds in picks.values():
+        for event_id, ev in kinds.get("events", {}).items():
+            into = out.setdefault(event_id, {"o": {}})
+            if event_id in fixed:
+                into["v"] = into.get("v", 0) + ev["v"]
+            for option, (taken, wins, *_) in ev["o"].items():
+                if "." in option:  # a later page of a multi-step event
+                    continue
+                have = into["o"].setdefault(option, [0, 0])
+                have[0] += taken
+                have[1] += wins
+    return out
+
+
+def lanes(stats: dict, fixed_events: set = frozenset()) -> dict:
     out = {}
     for lane in ("solo", "multi"):
         totals = stats.get(lane, {})
         out[lane] = {**{k: totals.get(k, {}) for k in ("chars", "cards", "relics")},
-                     "picks": _picks(totals.get("picks", {}))}
+                     "picks": _picks(totals.get("picks", {})),
+                     "events": _events(totals.get("picks", {}), fixed_events)}
     return out
 
 
@@ -91,7 +113,7 @@ def build(benchmark: dict, stats: dict, static: dict, now: float):
                           sort_keys=True, separators=(",", ":")).encode("utf-8")
         name = f"synergy.{hashlib.sha256(body).hexdigest()[:10]}.json"
     pack = {"v": 1, "built": int(now), "synergy": name, "ruler": ruler(benchmark),
-            "lanes": lanes(stats)}
+            "lanes": lanes(stats, set(static.get("fixedEvents") or ()))}
     return pack, name, body
 
 

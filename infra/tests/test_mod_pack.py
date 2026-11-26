@@ -16,7 +16,8 @@ import mod_pack
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import build_mod_pack  # noqa: E402
 
-STATIC = {"synergy": {"cards": {}}, "archetypes": {}, "basic": ["CARD.STRIKE"]}
+STATIC = {"synergy": {"cards": {}}, "archetypes": {}, "basic": ["CARD.STRIKE"],
+          "fixedEvents": ["E"]}
 BENCH = {"encounters": {"ENCOUNTER.A": {"pool": [90, 110], "many": False, "count": 1, "tiers": [
     {"turns": 3.1, "taken": 6.2, "rate": 2, "n": 40, "fast": 2,
      "coop": {"turns": 4, "taken": 5, "n": 6, "rate": 1}}, {}]}},
@@ -26,7 +27,10 @@ STATS = {"solo": {"chars": {"FOOL": [20, 15]}, "cards": {"CARD.A": [20, 15]}, "r
                   "records": {"fastestWin": {"slug": "me", "steamId": "76561198000000001"}},
                   "picks": {"FOOL": {"cards": {"CARD.A": [9, 2, 3, 4, 5, 6, 7],
                                                "CARD.B": [1, 2, 3, 4]},
-                                     "events": {"E": {}}}}}}
+                                     "events": {"E": {"v": 5, "o": {"A": [3, 2, {"hurt": 1}],
+                                                                    "B.C": [1, 1, {}]}},
+                                                "F": {"v": 2, "o": {"A": [2, 0, {}]}}}},
+                            "SILENT": {"events": {"E": {"v": 4, "o": {"A": [1, 1, {}]}}}}}}}
 
 
 class Build(unittest.TestCase):
@@ -37,8 +41,10 @@ class Build(unittest.TestCase):
             {"turns": 3.1, "taken": 6.2, "n": 40, "coop": {"turns": 4, "taken": 5, "n": 6}}, {}]})
         self.assertNotIn("ratings", pack["ruler"])
         solo = pack["lanes"]["solo"]
-        self.assertEqual(set(solo), {"chars", "cards", "relics", "picks"})
-        self.assertEqual(solo["picks"], {"FOOL": {"cards": {"CARD.A": [2, 2, 5, 6]}, "relics": {}}})
+        self.assertEqual(set(solo), {"chars", "cards", "relics", "picks", "events"})
+        self.assertEqual(solo["events"], {"E": {"v": 9, "o": {"A": [4, 3]}}, "F": {"o": {"A": [2, 0]}}})
+        self.assertEqual(solo["picks"], {"FOOL": {"cards": {"CARD.A": [2, 2, 5, 6]}, "relics": {}},
+                                          "SILENT": {"cards": {}, "relics": {}}})
         self.assertEqual(json.loads(body)["basic"], ["CARD.STRIKE"])
         self.assertRegex(name, r"^synergy\.[0-9a-f]{10}\.json$")
 
