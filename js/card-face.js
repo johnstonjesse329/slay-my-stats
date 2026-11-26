@@ -102,8 +102,8 @@ function enchantmentLabel(card, meta) {
   return amount && meta.showAmount ? `${meta.title} ${amount}` : meta.title;
 }
 
-// What the enchantment does to this card, or "" for the few whose text reads a
-// value off the card it is attached to (Adroit's "Gain {Block} Block"). Those have
+// What the enchantment does to this card, or "" for any whose text reads a
+// value off the card it is attached to. Those have
 // no honest number without a card, so their tooltip shows the name alone rather
 // than a number that came from nowhere.
 function enchantmentText(card, meta) {

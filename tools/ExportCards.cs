@@ -306,6 +306,8 @@ public partial class ExportCards : Node
 			{
 				EnchantmentModel instance = enchantment.ToMutable();
 				instance.Amount = amount;
+				// Some read a var that the game derives from Amount (Adroit's Block).
+				instance.RecalculateValues();
 				descriptions[amount.ToString()] = instance.DynamicDescription.GetFormattedText();
 			}
 		}
