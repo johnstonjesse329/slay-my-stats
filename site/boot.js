@@ -840,7 +840,28 @@
 
   // ---- Entry point ---------------------------------------------------------
 
+  function initWorkshopNotice() {
+    const notice = document.querySelector(".workshop-notice[data-dismiss-key]");
+    const close = notice?.querySelector(".workshop-notice-close");
+    if (!close) return;
+    const key = notice.dataset.dismissKey;
+    try {
+      if (localStorage.getItem(key) === "1") {
+        notice.hidden = true;
+        return;
+      }
+    } catch { /* Storage may be disabled. */ }
+    close.hidden = false;
+    close.addEventListener("click", () => {
+      notice.hidden = true;
+      try {
+        localStorage.setItem(key, "1");
+      } catch { /* The notice can still be closed for this page. */ }
+    });
+  }
+
   async function main() {
+    initWorkshopNotice();
     // The bar's search is on every page, so it belongs to no one renderer in
     // particular -- start it before the route picks one.
     showNavSearch();
