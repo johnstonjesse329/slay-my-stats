@@ -98,7 +98,7 @@
 /* The way out once an upload is over (upload.js finishAtProfile). */
 .upload-done { display: table; margin-top: 0.75rem; }
 
-/* The mod callout on the Upload page and the Workshop notice on the home page. */
+/* The mod callout on the Upload page. */
 .mod-callout {
   max-width: 44rem;
   margin: 1.25rem 0;
@@ -107,13 +107,6 @@
   border-radius: 8px;
 }
 .mod-callout a { color: var(--gold); }
-
-.workshop-notice {
-  grid-column: 1 / -1;
-  max-width: none;
-  margin: 0;
-  line-height: 1.5;
-}
 
 /* Inside the Upload page the page's own card is the box; the panel needn't be a second one. */
 .site-page .upload-panel { background: none; border: 0; padding: 0; margin: 1rem 0; }

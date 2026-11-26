@@ -55,6 +55,7 @@ PAGES_DIR = _HERE / "site" / "pages"
 _RUN_RECORDS = _HERE / "local_data" / "run_records.json"
 _BADGE_CATALOG = _HERE / "badge_catalog.json"
 HOME_INTRO = _HERE / "site" / "home-intro.html"
+WORKSHOP_NOTICE = _HERE / "site" / "workshop-notice.html"
 # Binary files published as they are, under their own names at the site root
 # (dashboard.css asks for the fonts there; site/home-intro.html and the link
 # preview tags for the images). site/fonts/OFL.txt is Kreon's licence.
@@ -678,7 +679,7 @@ def build_index_html() -> str:
     links = [(f"/{name}", site_link_label(name, label)) for name, _, label in site_pages() if label]
     # Pages go in name order, but Upload, drawn as a button (upload.css), stays at the end.
     links.sort(key=lambda link: link[0] == "/upload")
-    body = run.dashboard_body_html(site_links=links)
+    body = run.dashboard_body_html(site_links=links, site_notice=WORKSHOP_NOTICE.read_text(encoding="utf-8"))
     shared_scripts = "\n".join(f'<script src="{asset(name)}"></script>' for name in SHARED_JS)
     # Every URL serves this same file, so a shared link says what the site is
     # rather than whose page it is: link previews don't run boot.js.

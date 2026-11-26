@@ -1489,7 +1489,8 @@ _GITHUB_MARK = ("M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.
                 "0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z")
 
 
-def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | None = None) -> str:
+def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | None = None,
+                        site_notice: str = "") -> str:
     """
     The markup between <body> and the <script> tag: the map background
     (dashboard.css; panned by js/map-bg.js), skip link, header, the
@@ -1508,6 +1509,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
     A GitHub icon link ends .site-links; site/upload.js adds its button
     before it. The local file passes
     None: it has no site to link to, so it keeps the plain title header.
+    site_notice is optional HTML shown underneath the site bar.
     """
     links = "".join(f'\n    <a class="site-link" href="{href}">{label}</a>' for href, label in site_links or [])
     links += f"""
@@ -1524,6 +1526,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
 </nav>
 </div>
+{site_notice}
 <header class="player-head" id="player-head" hidden>
   <h1 id="player-name"></h1>
   <p id="player-meta"></p>

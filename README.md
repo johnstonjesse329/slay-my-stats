@@ -110,7 +110,8 @@ slay-my-stats/
 │   ├── boot.js              router: player finder + site stats on /, profiles on /u/<slug>, pages
 │   ├── pages/               hand-written pages: <name>.html is served at /<name> (see its README)
 │   ├── whats-new/           What's new posts, one HTML file each, shown on pages/whats-new.html (see its README)
-│   ├── home-intro.html      the home page's hero: Workshop notice, title, upload button, preview picture
+│   ├── home-intro.html      the home page's hero: title, upload button, preview picture
+│   ├── workshop-notice.html the Workshop notice below the shared site navigation
 │   ├── home-preview.webp    that picture, and og-preview.png (the link preview): shots of a made-up player,
 │   │                        retaken by hand when the dashboard's look changes
 │   ├── fonts/               Kreon (headings), with its licence
