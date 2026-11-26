@@ -13,6 +13,9 @@ computed and the public totals (users/_stats.json.gz). Two files under mod/v1/:
          "chars" | "cards" | "relics": {id: [runs, wins]},
          "picks": {char: {"cards" | "relics": {id: [picks, wins picked, offers, wins skipped]}}}}}}
 
+A pick here is one taken from an offer, so picks / offers is the pick rate; a relic handed
+over unasked is left out of it. Wins picked still counts the runs that were handed one.
+
 A line is {"turns", "taken", "n"} of the runs that won, with "coop" the same for a party,
 or {} when too few have won. Synergies are suggestions only: no win rate is kept for a
 combination. No Steam ID, name or seed goes into either file.
@@ -31,6 +34,7 @@ PACK_KEY = PREFIX + "pack.json.gz"
 SIZE_BUDGET = 400 * 1024  # gzipped pack; over it is logged
 LINE_FIELDS = ("turns", "taken", "n")
 PICK_FIELDS = (0, 1, 4, 5)  # of handler's pick slots: picks, wins picked, offers, wins skipped
+HANDED_OVER = 6  # of the same slots: picks that were never offered
 
 _STATIC_FILE = Path(__file__).with_name("mod_synergy.json")
 
@@ -57,8 +61,13 @@ def ruler(benchmark: dict) -> dict:
             "cuts": benchmark["cuts"]}
 
 
+def _pick(q: list) -> list:
+    picks, *rest = (q[s] for s in PICK_FIELDS)
+    return [picks - sum(q[HANDED_OVER:HANDED_OVER + 1]), *rest]
+
+
 def _picks(picks: dict) -> dict:
-    return {char: {kind: {i: [q[s] for s in PICK_FIELDS] for i, q in kinds.get(kind, {}).items()
+    return {char: {kind: {i: _pick(q) for i, q in kinds.get(kind, {}).items()
                           if len(q) > max(PICK_FIELDS)}  # shorter totals never counted offers
                    for kind in ("cards", "relics")}
             for char, kinds in picks.items()}
