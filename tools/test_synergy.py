@@ -83,6 +83,19 @@ class SynergyTests(unittest.TestCase):
             with self.subTest(key=key, maker=maker):
                 self.pair(maker, user, key)
 
+    def test_attacks_and_ethereal_exhaust(self):
+        for maker, user, key in [
+            ('CARD.BLADE_DANCE', 'CARD.FINISHER', 'attacks'),
+            ('CARD.DAGGER_SPRAY', 'RELIC.KUNAI', 'attacks'),
+            ('CARD.DEFILE', 'CARD.ASHEN_STRIKE', 'exhaust'),
+        ]:
+            with self.subTest(key=key, maker=maker):
+                self.pair(maker, user, key)
+        self.pair('RELIC.MUSIC_BOX', 'CARD.ASHEN_STRIKE', 'exhaust')
+        self.assertIn('power:Strength', self.links['relics']['RELIC.MUSIC_BOX'][1])
+        for relic in ('RELIC.ART_OF_WAR', 'RELIC.RIPPLE_BASIN'):
+            self.assertNotIn('attacks', self.links['relics'].get(relic, [[], []])[1])
+
     def test_mentions_do_not_invent_production(self):
         for cid, key in [('CARD.ANGUISH', 'sadness'),
                          ('CARD.PUNCH_OF_JOY', 'sadness'),

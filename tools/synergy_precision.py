@@ -7,6 +7,13 @@ import re
 
 NUMBER = r"(?:\d+|X|\{\{[\w:]+\}\})"
 
+# These reward playing Attacks. Rewards for not playing them (Art of War, Ripple Basin) stay out.
+ATTACK_PAYOFFS = {
+    "CARD.FINISHER", "CARD.STOMP", "CARD.JUGGLING", "CARD.RAGE", "CARD.CALAMITY",
+    "RELIC.KUNAI", "RELIC.SHURIKEN", "RELIC.ORNAMENTAL_FAN", "RELIC.KUSARIGAMA", "RELIC.NUNCHAKU",
+    "RELIC.PEN_NIB", "RELIC.DAUGHTER_OF_THE_WIND",
+}
+
 
 def refine(item_id, item, export, made, need):
     desc = item.get("desc", "")
@@ -51,8 +58,13 @@ def refine(item_id, item, export, made, need):
     attack_output = has(r"\b(?:add|create|fill|choose)\b[^.\n]*\b(?:random Attacks?|"
                         r"(?:Inky )?Shivs?|Sweeping Gaze|copy of the (?:first|third) Attack)\b")
     attack_copy = item.get("type") == "Attack" and has(r"\bcopy of this card\b")
-    if (creation and (attack_output or attack_copy)) or has(r"\bcreate The Shot\b"):
+    makes_attacks = (creation and (attack_output or attack_copy)) or has(r"\bcreate The Shot\b")
+    if makes_attacks:
         need.add("power:Strength")
+    role("attacks", source=not relic and (makes_attacks or item.get("type") == "Attack"),
+         payoff=item_id in ATTACK_PAYOFFS)
+    if relic and makes_attacks:
+        made.add("attacks")
     if has(r"another player|their Hand"):
         # The creator may earn creation rewards (Largesse), but the Colorless
         # card is not available to that creator's Heirloom Hammer.
@@ -82,7 +94,9 @@ def refine(item_id, item, export, made, need):
     # an effect that can actually exhaust their card type.
     exhaust_other = "exhaust" in made
     exhaust_self = "Exhaust" in item.get("keywords", []) or has(r"(?:^|\n)Exhaust\.")
-    role("exhaust", source=exhaust_other or exhaust_self)
+    # An Ethereal card Exhausts itself if it is still in hand at the end of the turn.
+    ethereal = "ethereal" in made
+    role("exhaust", source=exhaust_other or exhaust_self or ethereal)
     if has(r"this card is Exhausted|this is in your Exhaust Pile|ALL Ethereal cards in your Exhaust Pile"):
         need.discard("exhaust")
     selection = export.get("exhausts")
@@ -91,7 +105,8 @@ def refine(item_id, item, export, made, need):
     attack_target = any_type or selection == "randomAttack" or has(r"Exhaust a random Attack")
     skill_event = has(r"Exhaust a Skill")
     role("exhaust skills", source=skill_target, payoff=item.get("type") == "Skill" and has(r"this card is Exhausted"))
-    role("Skill Exhaust", source=skill_target or (exhaust_self and item.get("type") == "Skill"), payoff=skill_event)
+    role("Skill Exhaust", source=skill_target or ((exhaust_self or ethereal) and item.get("type") == "Skill"),
+         payoff=skill_event)
     if skill_event:
         need.discard("exhaust")
     role("exhaust attacks", source=attack_target, payoff=item.get("type") == "Attack" and not exhaust_self and has(r"this is in your Exhaust Pile"))

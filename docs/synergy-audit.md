@@ -29,6 +29,11 @@ payoffs. Generic Block-to-Block links remain excluded. Creation links require an
 explicit creation payoff. Zero-cost attacks have their own key so Feral and One
 for All do not take non-Attack cards as inputs.
 
+Attack links run from Attack cards, and cards or relics that make Attacks, to the
+listed rewards for playing them (`ATTACK_PAYOFFS` in `tools/synergy_precision.py`).
+Ethereal cards, and makers of them, count as Exhaust sources: an Ethereal card
+Exhausts itself if it is still in hand at the end of the turn.
+
 Base and upgraded text/costs contribute to catalog relationships. The union is
 kept in `synergy.cards`; `synergy.cardVariants` supplies the actual base/upgraded
 rows used by each copy in a run. A base Zap, for example, no longer acquires an
