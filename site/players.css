@@ -176,6 +176,17 @@
   .nav-search { order: 3; flex: 1 1 100%; margin: 0.6rem 0 0; }
 }
 
+.workshop-notice {
+  margin-bottom: 1.25rem;
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  background: var(--gold);
+  color: var(--bg-deep);
+  line-height: 1.5;
+}
+.workshop-notice a { color: inherit; font-weight: 600; text-decoration: underline; }
+.workshop-notice a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
 /* Whose page this is. Every number below depends on it, and a shared link
    otherwise carries no owner. boot.js's showPlayerName fills it; it stays
    hidden on the root page, where there is no profile to name. */
