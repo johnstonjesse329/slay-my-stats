@@ -479,6 +479,23 @@ def write_showcase_synergy(path) -> bool:
     return True
 
 
+def write_mod_synergy(path) -> bool:
+    """
+    The static game data the mod's snapshot is built with (infra/lambda/ingest/mod_pack.py):
+    the synergy and archetype tables and the Basic cards. Written when the Lambda is bundled;
+    False (nothing
+    written) when power_data.json isn't generated, and the snapshot then has neither.
+    """
+    table = build_synergy()
+    if table is None:
+        return False
+    cards = json.loads((run._HERE / "card_data.json").read_text(encoding="utf-8"))
+    basic = sorted(k for k, c in cards.items() if c.get("rarity") == "Basic")
+    Path(path).write_text(json.dumps({"synergy": table, "archetypes": build_archetypes(), "basic": basic},
+                                     separators=(",", ":")), encoding="utf-8")
+    return True
+
+
 def build_archetypes() -> dict | None:
     """
     {CHARACTER: {archetype: {"cards": [ids], "needs": [ids]}}}: which cards count toward

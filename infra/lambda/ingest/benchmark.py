@@ -1,4 +1,5 @@
-"""Publish a daily fight benchmark from the production run uploads."""
+"""Publish a daily fight benchmark, the home page showcase and the mod's snapshot from the
+production run uploads."""
 
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -6,8 +7,9 @@ import json
 
 import time
 
-from handler import (RAW_KEY_RE, IngestError, _get_store, _pack, _unpack, blob_key, id_key,
+from handler import (RAW_KEY_RE, STATS_KEY, IngestError, _get_store, _pack, _unpack, blob_key, id_key,
                      iter_upload_lines, telemetry_key)
+import mod_pack
 import showcase
 from tools.power_curve.fight_demand import cuts_of, rating_mix, run_fights, table
 
@@ -96,8 +98,20 @@ def refresh(event, context):
     benchmark = {"encounters": encounters, "cuts": cuts, "ratings": rating_mix(runs, encounters, cuts)}
     store.put(BENCHMARK_KEY, _pack(benchmark), {}, previous[2] if previous else None)
     publish_showcase(store, by_run, facts, benchmark, time.time())
+    publish_mod_pack(store, benchmark, time.time())
     print(json.dumps({"benchmark_runs": len(runs), "encounters": len(encounters),
                       "skipped_uploads": skipped}))
+
+
+def publish_mod_pack(store, benchmark, now):
+    """The mod's snapshot (mod_pack.py). Best effort, like the showcase."""
+    try:
+        stats = store.get(STATS_KEY)
+        if stats is None:
+            raise RuntimeError("no totals to publish")
+        mod_pack.publish(store, benchmark, _unpack(stats[0]), now)
+    except Exception as e:  # noqa: BLE001
+        print(json.dumps({"mod_pack_failed": f"{type(e).__name__}: {e}"}))
 
 
 def publish_showcase(store, by_run, facts, benchmark, now):

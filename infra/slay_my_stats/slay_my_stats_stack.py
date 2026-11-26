@@ -60,7 +60,10 @@ RETIRED_IDS = Path(__file__).resolve().parents[2] / "tools" / "retired_ids.json"
 # The deck-synergy table the home page showcase names a run's synergies with: build_site.py's
 # build_synergy(), written into the bundle (and so hashed through the files it is built from).
 SYNERGY_SOURCES = [Path(__file__).resolve().parents[2] / name
-                   for name in ("build_site.py", "tools/synergy_precision.py")]
+                   for name in ("build_site.py", "tools/synergy_precision.py", "card_variants.json",
+                                # the mod snapshot's archetype tables
+                                *(f"tools/power_curve/{m}.py" for m in
+                                  ("archetypes", "power_curve", "approaches", "gamma_curves")))]
 # Hand-written site pages: site/pages/<name>.html is served at /<name>.
 # tools/deploy.py checks the names (build_site.site_pages()) before cdk
 # runs; each page gets its own CloudFront behavior below.
@@ -101,6 +104,7 @@ class _CopyIngestSources:
             sys.path.insert(0, str(SYNERGY_SOURCES[0].parent))
             import build_site
             build_site.write_showcase_synergy(Path(output_dir) / "showcase_synergy.json")
+            build_site.write_mod_synergy(Path(output_dir) / "mod_synergy.json")
         return True
 
 
