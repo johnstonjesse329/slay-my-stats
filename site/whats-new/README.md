@@ -11,6 +11,9 @@ voice and don't invent detail (see `CLAUDE.md`).
 Start the file with a comment that names the post, then write plain HTML, as for a site page
 (`site/pages/README.md`): `<p>`, `<ul>`, `<a href>`, `<img src>`.
 
+Save screenshots as WebP under `screenshots/` and prefix their names with the post ID.
+The build publishes them at `/<filename>.webp`. Set the image dimensions and alt text in the post.
+
 ```html
 <!--
 title: Drag across a run's charts to add up a stretch

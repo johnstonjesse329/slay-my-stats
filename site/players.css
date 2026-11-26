@@ -83,6 +83,8 @@
 .site-page .post-head h2 a { color: var(--gold); text-decoration: none; }
 .site-page .post-head h2 a:hover { text-decoration: underline; }
 .site-page .post-head time { color: var(--text-faint); font-size: var(--fs-sm); }
+.post-screenshots { display: grid; gap: 0.75rem; margin: 1rem 0; }
+.post-screenshots img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
 /* The post a /whats-new/<id> link opened. */
 .site-page .post-focus { border-left: 3px solid var(--gold); margin-left: -1rem; padding-left: calc(1rem - 3px); }
 .site-page .posts-missing { color: var(--text-faint); font-size: var(--fs-sm); }
