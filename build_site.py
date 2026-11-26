@@ -60,6 +60,7 @@ HOME_INTRO = _HERE / "site" / "home-intro.html"
 # preview tags for the images). site/fonts/OFL.txt is Kreon's licence.
 SITE_FILES = (_HERE / "site" / "fonts" / "kreon-400.woff2", _HERE / "site" / "fonts" / "kreon-700.woff2",
               _HERE / "site" / "home-preview.webp", _HERE / "site" / "og-preview.png")
+POST_SCREENSHOTS = _HERE / "site" / "whats-new" / "screenshots"
 SITE_URL = "https://slay-my-stats.com"
 SITE_DESCRIPTION = ("Slay your stats by uploading and reviewing your run history "
                     "with a focus on you rather than aggregates.")
@@ -755,7 +756,7 @@ def main():
         print(f"WARNING: {_SITE_BOOT_JS} does not exist yet — dist/boot.js not written.")
     for name in ("upload.js", "upload.css", "players.css", "feedback.js", "whats-new.js"):
         write_hashed(name, (_HERE / "site" / name).read_text(encoding="utf-8"))
-    for f in SITE_FILES:
+    for f in (*SITE_FILES, *sorted(POST_SCREENSHOTS.glob("*.webp"))):
         write(f.name, f.read_bytes())
     # Page bodies, fetched by boot.js. Flat names (not a pages/ folder) so
     # tools/deploy.py's top-level ETag check covers them.
