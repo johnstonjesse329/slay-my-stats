@@ -72,12 +72,16 @@ class PostsTest(unittest.TestCase):
 
     def test_page_body_puts_the_posts_at_the_mark(self):
         self.write('2026-11-18-span-panel.html', "<!--\ntitle: Tom & Jerry's\nfixes: FB-7\n-->\n<p>Body</p>")
+        self.write('2026-11-17-older.html', '<!-- title: Older -->\n<p>Older body</p>')
         page = self.dir.parent / f'{self.dir.name}-page.html'
         self.addCleanup(page.unlink, missing_ok=True)
         page.write_text('<h1>What\'s new</h1>\n<!-- posts -->\n', encoding='utf-8')
         html = build_site.page_body('whats-new', page)
         self.assertIn('<article class="post" id="span-panel" data-post="span-panel" data-fixes="7">', html)
-        self.assertIn('<a href="/whats-new/span-panel">Tom &amp; Jerry&#x27;s</a>', html)
+        newest, older = html.split('<article class="post" id="older"', 1)
+        self.assertIn('<details open>\n<summary class="post-head"><h2>Tom &amp; Jerry&#x27;s</h2>', newest)
+        self.assertIn('<details>\n<summary class="post-head"><h2>Older</h2>', older)
+        self.assertIn('<a href="/whats-new/span-panel">Link to this post</a>', newest)
         self.assertIn('<time datetime="2026-11-18">November 18, 2026</time>', html)
         self.assertNotIn('<!-- posts -->', html)
         page.write_text('<h1>No mark</h1>', encoding='utf-8')

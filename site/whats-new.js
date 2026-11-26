@@ -100,7 +100,7 @@
     if (!asked.count) return;
     const text = `Requested by ${plural(asked.count, "player")} through Feedback`;
     const line = el("p", { className: "post-asked", textContent: text });
-    article.querySelector(".post-head").after(line);
+    article.querySelector(".post-content").prepend(line);
   }
 
   async function call(options, query) {
@@ -149,6 +149,8 @@
     if (postId) {
       const target = articles.find(a => a.dataset.post === postId);
       if (target) {
+        articles[0].querySelector("details").open = false;
+        target.querySelector("details").open = true;
         target.classList.add("post-focus");
         const title = target.querySelector(".post-head h2")?.textContent.trim();
         if (title) document.title = `${title} — What's new — Slay My Stats`;

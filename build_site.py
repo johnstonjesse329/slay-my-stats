@@ -158,16 +158,21 @@ def posts() -> list[dict]:
     return sorted(out, key=lambda post: (post["date"], post["time"], post["id"]), reverse=True)
 
 
-def render_post(post: dict) -> str:
+def render_post(post: dict, *, expanded: bool = False) -> str:
     """One post as the What's new page shows it. site/whats-new.js finds the article by its
     data-post and fills .post-reactions (and, for data-fixes, the request line)."""
     day = datetime.date.fromisoformat(post["date"])
     fixes = f' data-fixes="{",".join(map(str, post["fixes"]))}"' if post["fixes"] else ""
+    opened = " open" if expanded else ""
     return (f'<article class="post" id="{post["id"]}" data-post="{post["id"]}"{fixes}>\n'
-            f'<header class="post-head"><h2><a href="/{POSTS_PAGE}/{post["id"]}">{html.escape(post["title"])}</a></h2>\n'
-            f'<time datetime="{post["date"]}">{day:%B} {day.day}, {day.year}</time></header>\n'
+            f'<details{opened}>\n'
+            f'<summary class="post-head"><h2>{html.escape(post["title"])}</h2>\n'
+            f'<time datetime="{post["date"]}">{day:%B} {day.day}, {day.year}</time></summary>\n'
+            f'<div class="post-content">\n'
             f'{post["body"]}\n'
+            f'<p><a href="/{POSTS_PAGE}/{post["id"]}">Link to this post</a></p>\n'
             f'<div class="post-reactions"></div>\n'
+            f'</div>\n</details>\n'
             f'</article>')
 
 
@@ -178,7 +183,8 @@ def page_body(name: str, f: Path) -> str:
     if name == POSTS_PAGE:
         if POSTS_MARK not in text:
             raise PageError(f"site/pages/{f.name}: the posts go where it says {POSTS_MARK}")
-        text = text.replace(POSTS_MARK, "\n".join(render_post(p) for p in posts())
+        text = text.replace(POSTS_MARK, "\n".join(render_post(post, expanded=index == 0)
+                                                  for index, post in enumerate(posts()))
                             or '<p class="posts-empty">Nothing here yet.</p>')
     return text
 
