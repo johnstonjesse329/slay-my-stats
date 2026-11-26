@@ -2026,6 +2026,12 @@ class S3Store:
         # a browser may keep one for a year; a changed month is a different URL.
         if re.search(r"/\d{4}-\d{2}\.json\.gz$", key):
             cond["CacheControl"] = "public, max-age=31536000"
+        # The mod's snapshot (mod_pack.py): the synergy file is named by its content,
+        # the pack is replaced daily.
+        elif key.startswith("mod/v1/synergy."):
+            cond["CacheControl"] = "public, max-age=31536000, immutable"
+        elif key == "mod/v1/pack.json.gz":
+            cond["CacheControl"] = "public, max-age=3600"
         try:
             self._s3.put_object(
                 Bucket=self._bucket, Key=key, Body=data,

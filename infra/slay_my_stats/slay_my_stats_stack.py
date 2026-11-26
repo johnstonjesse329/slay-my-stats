@@ -60,7 +60,10 @@ RETIRED_IDS = Path(__file__).resolve().parents[2] / "tools" / "retired_ids.json"
 # The deck-synergy table the home page showcase names a run's synergies with: build_site.py's
 # build_synergy(), written into the bundle (and so hashed through the files it is built from).
 SYNERGY_SOURCES = [Path(__file__).resolve().parents[2] / name
-                   for name in ("build_site.py", "tools/synergy_precision.py")]
+                   for name in ("build_site.py", "tools/synergy_precision.py", "card_variants.json",
+                                # the mod snapshot's archetype tables
+                                *(f"tools/power_curve/{m}.py" for m in
+                                  ("archetypes", "power_curve", "approaches", "gamma_curves")))]
 # Hand-written site pages: site/pages/<name>.html is served at /<name>.
 # tools/deploy.py checks the names (build_site.site_pages()) before cdk
 # runs; each page gets its own CloudFront behavior below.
@@ -101,6 +104,7 @@ class _CopyIngestSources:
             sys.path.insert(0, str(SYNERGY_SOURCES[0].parent))
             import build_site
             build_site.write_showcase_synergy(Path(output_dir) / "showcase_synergy.json")
+            build_site.write_mod_synergy(Path(output_dir) / "mod_synergy.json")
         return True
 
 
@@ -266,11 +270,12 @@ class SlayMyStatsStack(Stack):
         if gamma and owner_id not in allowed_ids:
             raise ValueError('"ownerSteamId" must be one of "gammaAllowedSteamIds".')
 
+        # mod/v1/: the mod's daily stats snapshot (mod_pack.py), served at mod/*.
         # users/<slug>.json.gz and users/<slug>/<YYYY-MM>.json.gz: each
         # player's profile summary and runs by month, plus the public
         # users/_index.json.gz list and users/_uploads/<id>.json.gz, each
         # upload's result for the page to poll. Private (CloudFront only
-        # serves users/*): ids/<steamid>.json.gz maps Steam IDs to slugs,
+        # serves users/* and mod/*): ids/<steamid>.json.gz maps Steam IDs to slugs,
         # coop/<seed>.json.gz lists co-op copies by party Steam IDs (behind each
         # profile's public users/<slug>/_coop.json.gz links),
         # limits/ holds the upload rate limits, analytics/ a note per upload,
@@ -307,7 +312,7 @@ class SlayMyStatsStack(Stack):
                     prefix=prefix,
                     noncurrent_version_expiration=Duration.days(30),
                     expired_object_delete_marker=True,
-                ) for prefix in ("users/", "ids/", "coop/", "limits/", "analytics/", "raw/")
+                ) for prefix in ("users/", "mod/", "ids/", "coop/", "limits/", "analytics/", "raw/")
             ] if gamma else []),
         )
 
@@ -380,6 +385,8 @@ class SlayMyStatsStack(Stack):
             auto_delete_objects=gamma,
         )
 
+        data_origin = origins.S3BucketOrigin.with_origin_access_control(data_bucket)
+
         distribution = cloudfront.Distribution(
             self, "Distribution",
             enable_logging=True,
@@ -396,11 +403,19 @@ class SlayMyStatsStack(Stack):
             ),
             additional_behaviors={
                 "users/*": cloudfront.BehaviorOptions(
-                    origin=origins.S3BucketOrigin.with_origin_access_control(data_bucket),
+                    origin=data_origin,
                     viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                     # Disabled outright, not just short-TTL: a viewer landing right
                     # after an upload must see that upload, not a cached miss.
                     cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
+                    function_associations=gate_associations,
+                ),
+                # The mod's snapshot: the same file for everyone, replaced once a day, so
+                # prod caches it for as long as each file's own Cache-Control says.
+                "mod/*": cloudfront.BehaviorOptions(
+                    origin=data_origin,
+                    viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                    cache_policy=site_cache_policy,
                     function_associations=gate_associations,
                 ),
                 "u/*": page_behavior,
@@ -745,6 +760,7 @@ class SlayMyStatsStack(Stack):
             data_bucket.grant_read_write(benchmark_fn, "users/_fight-demand.json.gz")
             data_bucket.grant_read(benchmark_fn, "telemetry/*")  # the showcase's turn tabs
             data_bucket.grant_read_write(benchmark_fn, "users/_showcase.json.gz")
+            data_bucket.grant_read_write(benchmark_fn, "mod/v1/*")  # the mod's snapshot
             scheduler.Schedule(
                 self, "BenchmarkSchedule",
                 schedule=scheduler.ScheduleExpression.cron(
