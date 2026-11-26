@@ -389,8 +389,7 @@ def build_enchantments(game_file: dict) -> dict:
 
     Text is per amount because a canonical enchantment has Amount 0 and its
     template reads {Amount}, so formatting it unattached says "Gain 0 Block".
-    Where the game itself reads a value off the enchanted card ("Gain {Block}
-    Block") there is no honest answer without one, so no text is carried and the
+    Where the game itself reads a value off the enchanted card there is no honest answer without one, so no text is carried and the
     UI should show the title and amount only.
     """
     out = {}
