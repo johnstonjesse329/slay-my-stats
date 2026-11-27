@@ -1301,7 +1301,7 @@ function renderPartyComposition(run, panel) {
   const changed = floorChangeTip(runFloorChanges(run));
   const datasets = keys.map(key => ({
     label: key, data: counts[key], borderColor: T.color[key], borderWidth: 2,
-    pointRadius: 3, pointHoverRadius: 5, cubicInterpolationMode: "monotone",
+    pointHoverRadius: 5, cubicInterpolationMode: "monotone",
   }));
   const tip = context => showFloorTip(context, i => {
     const table = keys.filter(key => counts[key][i] > 0).map(key =>
@@ -1309,7 +1309,7 @@ function renderPartyComposition(run, panel) {
     return `${floorTipHead(nodes[i], totals[i], "cards")}<table>${table}</table>${changed(i)}`;
   });
   const chart = new Chart(panel.querySelector("canvas"),
-    floorChartConfig(nodes, [], tip, { min: 0, stacked: false }, datasets, actWindow(nodes)));
+    floorChartConfig(nodes, [floorDotDensity], tip, { min: 0, stacked: false }, datasets, actWindow(nodes)));
   panel.querySelector(".floor-legend").innerHTML = floorLegendRow("Type", keys, T.color);
   bindRangeSelect(chart, nodes);
   return chart;
@@ -2783,7 +2783,6 @@ function floorBands(bands) {
       backgroundColor: isStarter(key) ? hatchPattern(color) : color + "4d",
       borderWidth: 2,
       borderDash: isStarter(key) ? [5, 4] : [],
-      pointRadius: 3,
       pointHoverRadius: 5,
       pointBackgroundColor: color,
       // Monotone curves never overshoot, so a band only moves on a floor
@@ -3370,6 +3369,22 @@ function rangeSummaryHtml() {
   return `<div class="range-top">${title}<span class="range-meta">${meta}</span>${clear}</div>${groups}${hint}`;
 }
 
+// Read the act picker's floor labels before Chart.js resolves point options.
+const floorDotDensity = {
+  id: "floorDotDensity",
+  beforeUpdate(chart) {
+    const { labels } = chart.data;
+    const { min, max } = chart.options.scales.x;
+    const first = min == null ? 0 : labels.indexOf(min);
+    const end = max == null ? labels.length : labels.indexOf(max) + 1;
+    for (const dataset of chart.data.datasets) {
+      const visiblePoints = dataset.data.slice(first, end).filter(Number.isFinite).length;
+      // A scriptable radius refreshes the point options on update("none").
+      dataset.pointRadius = () => visiblePoints > 15 ? 0 : 3;
+    }
+  },
+};
+
 function floorChartConfig(nodes, plugins, tip, y, datasets, view = {}) {
   return {
     type: "line",
@@ -3483,7 +3498,7 @@ function renderDetailDeckChart(run, panel = null) {
     ticks: { callback: v => Math.abs(v) },
   };
   const chart = new Chart(get("chart").getContext("2d"),
-    floorChartConfig(nodes, [makeMarkPlugin(marks, totals, R.color, panel ? 0.75 : 1), halves], tip, y, floorBands([
+    floorChartConfig(nodes, [floorDotDensity, makeMarkPlugin(marks, totals, R.color, panel ? 0.75 : 1), halves], tip, y, floorBands([
       ...tKeys.map(k => ({ key: k, data: byT[k], color: T.color[k], stack: "type" })),
       ...rKeys.map(k => ({ key: k, data: byR[k].map(v => -v), color: R.color[k], stack: "rarity" })),
     ])));
@@ -3567,7 +3582,7 @@ function renderDetailRelicChart(run, panel = null) {
 
   const peak = Math.max(...totals);
   const chart = new Chart(get("chart").getContext("2d"),
-    floorChartConfig(nodes, [makeMarkPlugin(marks, totals, G.color, panel ? 0.75 : 1)], tip,
+    floorChartConfig(nodes, [floorDotDensity, makeMarkPlugin(marks, totals, G.color, panel ? 0.75 : 1)], tip,
       { min: 0, max: Math.ceil(peak * 1.3 / 2) * 2, afterDataLimits: markHeadroom(marks, totals, 2, panel ? 0.75 : 1) },
       floorBands(keys.map(k => ({ key: k, data: counts[k], color: G.color[k], stack: "relics" })))));
   bindRangeSelect(chart, nodes);
@@ -4587,10 +4602,10 @@ function renderDetailKeepCharts(run) {
       `<table>${tKeys.filter(k => byT[k][i] > 0).map(k => row(k, T.color[k], byT[k][i])).join("")}</table>${changed(i)}`);
     const deckLine = (label, color, data, dash) => ({
       label, data, borderColor: color, pointHoverBackgroundColor: color,
-      borderWidth: 2, borderDash: dash || [], pointRadius: 3, pointHoverRadius: 5,
+      borderWidth: 2, borderDash: dash || [], pointHoverRadius: 5,
       cubicInterpolationMode: "monotone",
     });
-    chart("deck", tKeys.map(k => deckLine(k, T.color[k], byT[k])), deckTip);
+    chart("deck", tKeys.map(k => deckLine(k, T.color[k], byT[k])), deckTip, null, [floorDotDensity]);
   }
 
   const damage = run.mp
