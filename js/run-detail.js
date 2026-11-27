@@ -1006,9 +1006,17 @@ function observedPartyRun(owner, player) {
 }
 
 const PARTY_SUPPORT_METRICS = [
-  ["damage", "Damage enabled"], ["damageReduced", "Damage reduced"], ["block", "Block given"], ["draw", "Cards drawn"],
-  ["energy", "Energy given"], ["generated", "Cards created"], ["freePlays", "Free plays"],
-  ["energySaved", "Energy saved"], ["extraPlays", "Extra plays"],
+  ["damage", "Dmg enabled", "Extra damage your effects add to teammates’ hits, when the log credits you.", ["KNOCKDOWN", "FLANKING", "BASH"]],
+  ["damageReduced", "Dmg reduced", "Incoming damage you prevent for teammates before Block.", ["NEUTRALIZE"]],
+  ["damageRedirected", "Dmg redirect", "Damage the log shows redirected to another player.", ["INTERCEPT"]],
+  ["block", "Block given", "Block you grant to teammates.", ["LIFT"]],
+  ["draw", "Teammate draws", "Cards teammates draw because of your effects.", ["HUDDLE_UP"]],
+  ["energy", "Energy given", "Energy you grant to teammates.", ["BELIEVE_IN_YOU"]],
+  ["generated", "Cards created", "New cards you create for teammates.", ["BLADE_SYMPHONY"]],
+  ["transferred", "Cards transferred", "Existing cards you pass to teammates, changing their owner.", ["THE_BALL"]],
+  ["freePlays", "Free plays", "Cards teammates play for free because of your effects.", ["ENSEMBLE"]],
+  ["energySaved", "Energy saved", "Energy teammates save on card plays because of your effects.", ["ENSEMBLE"]],
+  ["extraPlays", "Card replays", "Extra times teammates’ cards resolve because of your effects.", ["TAG_TEAM"]],
 ];
 
 function partySupportFloors(owner, runs) {
@@ -1033,49 +1041,71 @@ function renderPartySupport(owner, runs) {
   if (!floors.length) return;
   const roster = partyRoster(owner);
   const supportLabel = p => `<span class="party-member">${partyPlayerName(p)}</span>`;
-  const table = visible => {
-    const totals = new Map();
-    for (const { rows } of visible) {
+  const table = (visible, byRecipient) => {
+    const players = roster.map(player => ({ player, counts: {}, recipients: new Map() }));
+    const totals = {};
+    const add = (counts, metric, value) => { counts[metric] = (counts[metric] || 0) + value; };
+    for (const { rows, debuffs } of visible) {
+      for (const { player, counts } of players) {
+        const count = debuffs?.[player.slot];
+        if (!Number.isSafeInteger(count) || count < 0) continue;
+        add(counts, "debuffs", count);
+        add(totals, "debuffs", count);
+      }
       for (const row of rows) {
-        const from = roster[row.from], to = roster[row.to];
-        if (!from || !to || from === to) continue;
-        const key = `${from.slot}:${to.slot}`;
-        const pair = totals.get(key) || { from, to, counts: {} };
+        const from = players[row.from], to = roster[row.to];
+        if (!from || !to || from.player === to) continue;
+        const recipient = from.recipients.get(to) || {};
         for (const [metric] of PARTY_SUPPORT_METRICS) {
           const value = row[metric];
-          if (Number.isSafeInteger(value) && value > 0) pair.counts[metric] = (pair.counts[metric] || 0) + value;
+          if (!Number.isSafeInteger(value) || value <= 0) continue;
+          add(from.counts, metric, value);
+          add(recipient, metric, value);
+          add(totals, metric, value);
         }
-        totals.set(key, pair);
+        from.recipients.set(to, recipient);
       }
     }
-    if (!totals.size) return '<p class="chart-caption">No teammate contributions were attributed in this selection.</p>';
-    return `<table class="ft-party-table"><thead><tr><th>From</th><th>To</th>` +
-      PARTY_SUPPORT_METRICS.map(([, label]) => `<th scope="col">${label}</th>`).join("") +
-      `</tr></thead><tbody>${[...totals.values()].map(({ from, to, counts }) =>
-        `<tr><th scope="row">${supportLabel(from)}</th><td>${supportLabel(to)}</td>` +
-        PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] || "—"}</td>`).join("") + "</tr>"
-      ).join("")}</tbody></table>`;
-  };
-  const debuffs = visible => {
-    const recorded = visible.filter(fight => fight.debuffs);
-    if (!recorded.length) return "";
-    return `<h4 class="strength-label">Debuffs applied to enemies</h4>
-      <dl class="party-support-debuffs">${roster.map(p =>
-        `<div><dt>${supportLabel(p)}</dt><dd>${recorded.reduce((sum, fight) => sum + (fight.debuffs[p.slot] || 0), 0)}</dd></div>`
-      ).join("")}</dl>`;
+    const contributors = players.filter(({ counts, recipients }) => counts.debuffs != null || recipients.size);
+    if (!contributors.length) return '<p class="chart-caption">No teammate contributions were attributed in this selection.</p>';
+    const cells = counts => PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] ?? "—"}</td>`).join("") +
+      `<td>${counts.debuffs ?? "—"}</td>`;
+    const heading = (label, description, examples) => {
+      const cards = examples.map(key => {
+        const id = `CARD.${key}`;
+        const name = cardInfo(id)?.name || fmtCardLabel(id);
+        return `<button type="button" class="party-support-card" ${cardPopAttrs(id)}>${escapeHtml(name)}</button>`;
+      });
+      const text = escapeHtml(description);
+      return `<th scope="col"><span class="party-support-example" tabindex="0" data-tip="${text}" aria-description="${text}">${label}` +
+        `<template><div>${text}</div><div class="party-support-examples">Example ${cards.length === 1 ? "card" : "cards"} ${cards.join(", ")}</div></template></span></th>`;
+    };
+    return `<table class="ft-party-table"><thead><tr><th scope="col">Player</th>` +
+      PARTY_SUPPORT_METRICS.map(([, label, description, examples]) => heading(label, description, examples)).join("") +
+      heading("Debuffs applied", "Debuff applications to enemies. Each application counts once, regardless of stacks.", ["BASH"]) +
+      `</tr></thead><tbody>${contributors.map(({ player, counts, recipients }) => {
+        const summary = `<tr><th scope="row">${supportLabel(player)}</th>${cells(counts)}</tr>`;
+        if (!byRecipient) return summary;
+        return summary + [...recipients].map(([to, counts]) =>
+          `<tr class="party-support-recipient"><th scope="row">To ${supportLabel(to)}</th>${cells(counts)}</tr>`
+        ).join("");
+      }).join("")}</tbody>` +
+      `<tfoot><tr><th scope="row">Team total</th>${cells(totals)}</tr></tfoot></table>`;
   };
   const fights = (owner.timeline || []).filter(keepFight);
   panel.innerHTML = `<h3 class="strength-label">Teammate support</h3>
-    <p class="chart-caption">Damage reduced counts attributed incoming damage before block. Debuff totals count applications to enemies.</p>
+    <p class="chart-caption">Damage reduced and redirected use pre-block amounts. Debuff totals count applications to enemies.</p>
     <div class="party-support-filters">
       <div role="group" aria-label="Support act">${[1, 2, 3, 0].map(act =>
         `<button type="button" class="toggle-btn" data-act="${act}" aria-pressed="false">${act ? `Act ${act}` : "All"}</button>`
       ).join("")}</div>
       <label>Fight <select></select></label>
+      <label class="party-support-breakdown"><input type="checkbox"> Player-to-player breakdown</label>
     </div>
     <p class="chart-caption party-support-coverage"></p>
     <div class="party-support-table"></div>`;
   const selector = panel.querySelector("select");
+  const breakdown = panel.querySelector('input[type="checkbox"]');
   const coverage = panel.querySelector(".party-support-coverage");
   const results = panel.querySelector(".party-support-table");
   const actButtons = [...panel.querySelectorAll("button[data-act]")];
@@ -1091,12 +1121,13 @@ function renderPartySupport(owner, runs) {
       `<option value="${floor}">Floor ${floor}</option>`).join("")}`;
     selector.disabled = !scoped.length;
     coverage.textContent = `Attributed effects from ${scoped.length} of ${available} fights.`;
-    selector.onchange = () => {
+    const renderSelection = () => {
       const selected = Number(selector.value);
       const visible = scoped.filter(fight => !selected || fight.floor === selected);
-      results.innerHTML = debuffs(visible) + table(visible);
+      results.innerHTML = table(visible, breakdown.checked);
     };
-    selector.onchange();
+    selector.onchange = breakdown.onchange = renderSelection;
+    renderSelection();
   };
   for (const button of actButtons) button.onclick = () => renderAct(Number(button.dataset.act));
   renderAct(0);
@@ -1248,7 +1279,7 @@ function renderPartyCharts(players) {
   const benchmarkPlayer = players.findIndex(p => tl(p) === nodes);
   const benchmarkRows = readings.get(players[benchmarkPlayer]?.slot);
   const readingAt = (p, i) => readings.get(p.slot)?.[i];
-  const ranges = benchmarkRows ? keepDamageRanges(players[benchmarkPlayer].run, nodes, benchmarkRows) : [];
+  const ranges = benchmarkRows ? keepFightRanges(players[benchmarkPlayer].run, nodes, benchmarkRows) : { done: [], taken: [] };
   const historical = (key, ranges, reverse) => ({
     ranges, reverse,
     lines: [{ ...KEEP_AVERAGE_STYLE, data: nodes.map((_, i) => benchmarkRows?.[i]?.[key] ?? null), spanGaps: true }],
@@ -1335,14 +1366,14 @@ function renderPartyCharts(players) {
   });
   const partyDamage = partyDamageFallback(players[benchmarkPlayer]?.run || detailOwnerRun, nodes, damageSources, damageTotals);
   document.getElementById("detail-keep-damage-caption").textContent = partyDamageCaption(partyDamage);
-  const damageHistory = partyDamageHistory(historical("ask", ranges, false), partyDamage);
+  const damageHistory = partyDamageHistory(historical("ask", ranges.done, false), partyDamage);
   showKeepNotice("damage", partyDamage.notice, partyDamage.linkMod);
   const keep = [
     share,
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => keepWinRatio(r.grossRate, r.winGrossRate)),
       (p, i, v) => keepRatioLabel(v), true, fightIcon, {
         lines: [{ ...KEEP_AVERAGE_STYLE, spanGaps: true, data: nodes.map(() => 1) }],
-        ratioAxis: true, fightRows: benchmarkRows,
+        ratioAxis: true, ranges: ranges.taken, fightRows: benchmarkRows,
         compare: (party, i) => partyIncomingComparison(party, p => readingAt(p, i), benchmarkRows?.[i]),
         detail: (p, i) => { const row = readingAt(p, i); return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
@@ -4166,15 +4197,20 @@ function fightReadings(run, nodes, measured, partyDamage = null, partySources = 
   return rows.some(r => r) ? rows : null;
 }
 
-// Damage per turn for the quickest and slowest quarters of wins.
+// Damage done uses HP per turn. Damage taken uses the same win average as the player's ratio.
 const KEEP_RANGE_MIN = 10;
-function keepDamageRanges(run, nodes, rows) {
+function keepFightRanges(run, nodes, rows) {
   const demand = DATA.fightDemand.encounters;
-  return nodes.map((n, i) => {
+  const done = [], taken = [];
+  nodes.forEach((n, i) => {
     const r = rows[i], d = demand[keepFight(n)], how = r && d && keepWinners(run, d);
     const ok = how && !r.furCoatAffected && how.n >= KEEP_RANGE_MIN;
-    return ok && r.ask !== undefined && how.slow && how.fast ? { bad: r.pool / how.slow, good: r.pool / how.fast } : null;
+    done.push(ok && r.ask !== undefined && how.slow && how.fast ? { bad: r.pool / how.slow, good: r.pool / how.fast } : null);
+    const good = ok ? keepWinRatio(how.gross?.light, r.winGrossRate) : undefined;
+    const bad = ok ? keepWinRatio(how.gross?.heavy, r.winGrossRate) : undefined;
+    taken.push(good !== undefined && bad !== undefined ? { good, bad } : null);
   });
+  return { done, taken };
 }
 
 const keepMark = (value, [low, high]) => value < low ? "behind" : value > high ? "ahead" : "meeting";
@@ -4397,7 +4433,7 @@ function renderKeepActs(run, nodes, measured) {
   const acts = actReadings(run, nodes, measured, party && partyFightCosts(party, nodes));
   const coverage = document.getElementById("detail-keep-party-coverage");
   coverage.hidden = !party || !acts.length;
-  coverage.textContent = party ? `Party average · ${party.length} of ${partyRoster(run).length} run copies` : "";
+  coverage.textContent = party ? "Party average" : "";
   box.style.display = acts.length || acts.unrated.length ? "" : "none";
   // One metric on one line, as cells of the half-card's grid: icon and label take the slack,
   // then the figure and either its mark and the average win's, or (a per-turn figure) its
@@ -4724,13 +4760,10 @@ function renderDetailKeepCharts(run) {
     pointHoverBackgroundColor: KEEP_AVERAGE_STYLE.borderColor, pointHoverRadius: 3, spanGaps: true,
     cubicInterpolationMode: "monotone",
   });
-  const ranges = keepDamageRanges(run, nodes, rows);
+  const ranges = keepFightRanges(run, nodes, rows);
   const chart = (id, series, tipFor, marks, plugins = []) => {
-    // Only the lines.
-    // The ring, where the chart has any, is the HP chart's: the best quarter of the wins.
-    const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 25% of wins", false) : "";
-    document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(keepLegendEntry).join("")}${ring}</div>`;
-    // Room for a ring that sits above everything else on the chart.
+    const range = marks?.some(Boolean) ? rangeKey("Best and worst 25% of wins", false) : "";
+    document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(keepLegendEntry).join("")}${range}</div>`;
     const base = iconAxis({ min: 0 });
     const ratioAxis = id === "in" || id === "share";
     const yAxis = { ...base, stacked: false, reverse: id === "in", ticks: { ...base.ticks, maxTicksLimit: 5 } };
@@ -4774,13 +4807,13 @@ function renderDetailKeepCharts(run) {
     ? { ...line(damageLine, r => r.doing), pointRadius: 3 }
     : line(damageLine, r => r.doing, "damage");
   const damageCanvas = document.getElementById("detail-keep-damage-chart");
-  const damageHistory = partyDamageHistory({ lines: [winners(r => r.ask)], ranges }, fallback);
+  const damageHistory = partyDamageHistory({ lines: [winners(r => r.ask)], ranges: ranges.done }, fallback);
   const markers = run.mp ? [keepDamageMarkers(nodes, rows.map((r, i) => damageHistory.lines[0]?.data[i] ??
     (fallback.partySize > 1 ? fallback.rates[i] : r?.doing)), damageCanvas, () => Chart.getChart(damageCanvas))] : [];
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
     ...damageHistory.lines, ...(fallback?.chartLines || []), ...markers], damageTip, damageHistory.ranges);
   const average = () => ({ ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) });
-  chart("in", [line(takenLine, r => keepWinRatio(r.grossRate, r.winGrossRate), "in"), average()], inTip);
+  chart("in", [line(takenLine, r => keepWinRatio(r.grossRate, r.winGrossRate), "in"), average()], inTip, ranges.taken);
 
   // Each fight scores turns and damage taken against an average win. Above 1 is ahead, so a slide is the
   // run falling behind. The ticks under the floor mark the deck changes between fights, so the

@@ -157,6 +157,58 @@ class Overkill(unittest.TestCase):
 
 
 class PartySupport(unittest.TestCase):
+    def _support(self, events):
+        log = handler.clean_event_log({"v": 3, "log": [{"q": i, "k": kind, "a": args}
+            for i, (kind, args) in enumerate([
+                ("fight0", {"damageSlots": 3, "support": 1}), *events, ("fight1", {})
+            ])]})
+        return measured.party_numbers(log["log"], {})["supportBySlot"]
+
+    def test_tag_team_credits_the_replay_only_when_it_resolves(self):
+        attack = {"action": 1, "sourceSlot": 1, "card": "CARD.STRIKE_IRONCLAD"}
+        replay = {"action": 1, "targetSlot": 1, "card": attack["card"], "before": 1, "after": 2,
+                  "modifiers": [{"model": "POWER.TAG_TEAM_POWER", "sourceSlot": 0}]}
+        events = [("playCount", replay), ("play1", {**attack, "playIndex": 0})]
+        self.assertEqual(self._support(events), [])  # the first play ended the fight
+        self.assertEqual(self._support(events + [("play1", {**attack, "playIndex": 1})]),
+                         [{"from": 0, "to": 1, "extraPlays": 1}])
+
+    def test_plot_credits_actual_extra_draws_in_an_unambiguous_later_hand(self):
+        power = {"p": "POWER.DRAW_CARDS_NEXT_TURN_POWER", "card": "CARD.PLOT", "sourceSlot": 0, "d": 2, "n": 2}
+        hand = {"before": 5, "after": 7, "nextTurnDraw": True, "nextTurnOnly": True}
+        events = [
+            ("pow", {**power, "targetSlot": 1}),
+            ("pow", {**power, "targetSlot": 2}),
+            ("pow", {**power, "targetSlot": 2, "sourceSlot": 1, "n": 4}),
+            ("turn0", {"targetSlot": 1, "turn": 1}),
+            ("handDraw", {**hand, "targetSlot": 1}),
+            ("handDraw", {**hand, "targetSlot": 2, "after": 9}),
+            *(("draw1", {"targetSlot": 1, "hand": True}),) * 6,
+            *(("draw1", {"targetSlot": 2, "hand": True}),) * 9,
+            ("turn0", {"targetSlot": 1, "turn": 2}),
+            ("draw1", {"targetSlot": 1, "hand": True}),
+        ]
+        self.assertEqual(self._support(events), [{"from": 0, "to": 1, "draw": 1}])
+
+    def test_only_cross_player_transfers_and_confirmed_enemy_redirects_are_credited(self):
+        redirect = {"targetSlot": 0, "targetId": 10, "originalTargetSlot": 1, "originalTargetId": 11,
+                    "blocked": 3, "intendedHpLoss": 9}
+        self.assertEqual(self._support([
+            ("cardTransfer", {"sourceSlot": 0, "targetSlot": 1, "card": "CARD.THE_BALL"}),
+            ("cardTransfer", {"sourceSlot": 0, "targetSlot": 0, "card": "CARD.THE_BALL"}),
+            ("damageResolved", {**redirect, "damageId": 1}),  # outside an enemy attack
+            ("atk", {"side": "Player", "by": "E0", "done": False}),
+            ("damageResolved", {**redirect, "damageId": 2}),
+            ("damageResolved", {**redirect, "damageId": 2}),
+            ("damageResolved", {**redirect, "damageId": 3, "sourceSlot": 2}),
+            ("damageResolved", {**redirect, "damageId": 4, "targetSlot": None}),  # a pet took the hit
+            ("damageCalc", {"targetSlot": 1, "targetId": 11, "before": 10, "after": 0,
+                            "modifiers": [{"model": "POWER.COVERED_POWER", "sourceSlot": 0}]}),
+            ("damageResolved", {"targetSlot": 1, "targetId": 11, "originalTargetId": 11,
+                                "damageId": 5, "intendedHpLoss": 0, "blocked": 0}),
+            ("atk", {"side": "Player", "by": "E0", "done": True}),
+        ]), [{"from": 0, "to": 1, "transferred": 1, "damageRedirected": 12, "damageReduced": 10}])
+
     def test_damage_reduction_and_debuffs_from_confirmed_enemy_hits(self):
         target = {"targetSlot": 2, "targetId": 2}
         hit = {**target, "originalTargetId": 2, "blocked": 2, "intendedHpLoss": 3}

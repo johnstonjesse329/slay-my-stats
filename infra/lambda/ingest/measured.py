@@ -32,6 +32,7 @@ _CARDS = Path(__file__).with_name("measured_cards.json")
 _cards = None
 _WEAK = "POWER.WEAK_POWER"
 _DEBILITATE = "POWER.DEBILITATE_POWER"
+_NEXT_TURN_DRAW = "POWER.DRAW_CARDS_NEXT_TURN_POWER"
 # Core PowerModel types. Negative applications of Strength, Dexterity and Focus
 # are also debuffs under the game's GetTypeForAmount rules.
 _DEBUFFS = frozenset(f"POWER.{name}_POWER" for name in """
@@ -45,7 +46,7 @@ _DEBUFFS = frozenset(f"POWER.{name}_POWER" for name in """
 """.split())
 _SIGNED_DEBUFFS = frozenset(f"POWER.{name}_POWER" for name in
                             ("DEXTERITY", "FOCUS", "SHRIEK", "SHRINK", "STRENGTH"))
-_OTHER_DAMAGE_REDUCERS = {"POWER.SHRINK_POWER", "POWER.STRENGTH_POWER"}
+_OTHER_DAMAGE_REDUCERS = {"POWER.COVERED_POWER", "POWER.SHRINK_POWER", "POWER.STRENGTH_POWER"}
 
 
 def card_table() -> dict:
@@ -204,7 +205,8 @@ def party_numbers(events, costs):
                                if isinstance(c, dict) and "move" in c and type(c.get("combatId")) is int)
         elif event.get("k") == "hit" and a.get("enemy") is True and type(a.get("targetId")) is int:
             enemies.add(a["targetId"])
-    enemy_attacks, debilitate, reduced_hits = [], {}, set()
+    enemy_attacks, debilitate, reduced_hits, redirected_hits = [], {}, set(), set()
+    plot_grants, hand_draws = {}, {}
     support, actions, parents, discounts, extra_plays, resolved = {}, {}, {}, {}, {}, {}
     previous_kind, previous = None, {}
     for event in events:
@@ -220,6 +222,21 @@ def party_numbers(events, costs):
                 enemy_attacks.append(a["by"])
             elif enemy_attacks and enemy_attacks[-1] == a["by"]:
                 enemy_attacks.pop()
+        elif kind == "pow" and target is not None and a.get("p") == _NEXT_TURN_DRAW:
+            amount = count(a.get("n"))
+            if not amount:
+                plot_grants.pop(target, None)
+            elif a.get("card") == "CARD.PLOT" and source is not None and count(a.get("d")):
+                prior = plot_grants.get(target)
+                # The game stacks several grants into one power. Keep credit only
+                # when the entire stack is accounted for by the same player.
+                if (prior is None and amount == a["d"]) or (
+                        prior is not None and prior == (source, amount - a["d"])):
+                    plot_grants[target] = (source, amount)
+                else:
+                    plot_grants.pop(target, None)
+            else:
+                plot_grants.pop(target, None)
         elif kind == "pow" and target is None and type(a.get("targetId")) is int and a["targetId"] in enemies:
             power, amount = a.get("p"), a.get("d")
             if isinstance(power, str) and type(amount) is int:
@@ -234,11 +251,27 @@ def party_numbers(events, costs):
                         debilitate[name] = source if debilitate.get(name, source) == source else None
         elif kind == "turn0" and target is not None and count(a.get("turn")):
             turns[target].add(a["turn"])
+            hand_draws.pop(target, None)
+        elif kind == "handDraw" and target is not None:
+            hand_draws.pop(target, None)
+            if a.get("nextTurnDraw") is True:
+                grant = plot_grants.pop(target, None)
+                before, after = a.get("before"), a.get("after")
+                if (grant and a.get("nextTurnOnly") is True and type(before) is int and type(after) is int
+                        and before >= 0 and after - before == grant[1]):
+                    hand_draws[target] = (grant[0], before, after)
         elif kind == "draw1" and target is not None:
             plays[target]["draw"] += 1
             plays[target]["junk"] += a.get("card") in dt.JUNK
             if a.get("hand") is False:
                 add(actor, target, "draw", 1)
+            elif a.get("hand") is True and target in hand_draws:
+                helper, before, after = hand_draws[target]
+                add(helper, target, "draw", int(before <= 0))
+                if after > 1:
+                    hand_draws[target] = (helper, before - 1, after - 1)
+                else:
+                    del hand_draws[target]
         elif kind == "eps" and source is not None:
             plays[source]["spent"] += count(a.get("n"))
         elif kind == "play1" and source is not None:
@@ -269,12 +302,22 @@ def party_numbers(events, costs):
             add(source if source is not None else actor, target, "block", count(a.get("n")))
         elif kind == "gen" and a.get("card") not in dt.JUNK:
             add(source, target, "generated", 1)
-        elif (kind == "damageResolved" and previous_kind == "damageCalc" and source is None
+        elif kind == "cardTransfer":
+            add(source, target, "transferred", 1)
+        elif (kind == "damageResolved" and source is None
               and seat(a.get("petOwnerSlot")) is None and target is not None):
+            damage_id = count(a.get("damageId"))
+            original = seat(a.get("originalTargetSlot"))
+            if (enemy_attacks and damage_id and damage_id not in redirected_hits
+                    and original is not None and original != target
+                    and a.get("targetId") is not None and a.get("originalTargetId") is not None
+                    and a["targetId"] != a["originalTargetId"]):
+                add(target, original, "damageRedirected", count(a.get("blocked")) + count(a.get("intendedHpLoss")))
+                redirected_hits.add(damage_id)
             # Enemy attacks need not have an action id. The immediately preceding
             # calculation must match the resolved hit and its pre-block damage.
-            damage_id = count(a.get("damageId"))
-            if (damage_id and damage_id not in reduced_hits and hit_key(previous) == hit_key(a)
+            if (previous_kind == "damageCalc" and damage_id and damage_id not in reduced_hits
+                    and hit_key(previous) == hit_key(a)
                     and previous.get("targetSlot") == target
                     and a.get("targetId") is not None and a["targetId"] == a.get("originalTargetId")
                     and delta(previous) < 0 and previous["after"] >= 0

@@ -590,7 +590,7 @@ class SlayMyStatsStack(Stack):
             )
             feedback_access(self, ingest_fn.role, read=("prod", "counter"), write=("prod", "counter"))
 
-        # The game mod's way in: POST /mod and /mod/runs, open to any Steam
+        # The game mod's way in: POST /mod, /mod/runs and /mod/feedback, open to any Steam
         # account. Same code as the ingest function, but a function of its
         # own, so it can be shut off alone without taking the website's
         # uploads with it (README "Mod uploads"):
@@ -615,10 +615,14 @@ class SlayMyStatsStack(Stack):
                 "DATA_BUCKET": data_bucket.bucket_name,
                 "ENTRY": "mod",
                 "STEAM_API_KEY_PARAM_NAME": STEAM_API_KEY_PARAM_NAME,
+                "FEEDBACK_TABLE": FEEDBACK_TABLE,
+                "FEEDBACK_ENV": stage,
+                "FEEDBACK_ORIGIN": f"https://{domain_name}",
                 **({"ALLOWED_STEAM_IDS": ",".join(allowed_ids)} if gamma else {}),
             },
         )
         data_bucket.grant_read_write(mod_fn)
+        feedback_access(self, mod_fn.role, read=(stage, "counter"), write=(stage, "counter"))
         steam_api_key_param.grant_read(mod_fn)
         mod_fn.add_to_role_policy(
             iam.PolicyStatement(

@@ -2133,13 +2133,13 @@ def _response(status: int, body: dict) -> dict:
             "body": json.dumps(body)}
 
 
-def _mod_body(event) -> dict:
+def _mod_body(event, limit=MOD_BODY_MAX_BYTES) -> dict:
     """The JSON object a POST /mod carried, or {} for anything else."""
     raw = event.get("body") or ""
     try:
         if event.get("isBase64Encoded"):
             raw = base64.b64decode(raw).decode("utf-8")
-        body = json.loads(raw) if len(raw) <= MOD_BODY_MAX_BYTES else None
+        body = json.loads(raw) if len(raw) <= limit else None
     except ValueError:
         body = None
     return body if isinstance(body, dict) else {}
@@ -2207,7 +2207,7 @@ def _site_upload(event: dict, steam_id: str) -> dict:
 def lambda_handler(event, context):
     """The Function URL (payload format 2.0). The site's way in (ENTRY "site") serves /auth/*
     through CloudFront: Steam sign-in, uploads and, on prod, feedback (session.py). The mod's
-    (ENTRY "mod") serves /mod and /mod/runs."""
+    (ENTRY "mod") serves /mod, /mod/runs and /mod/feedback."""
     http = event.get("requestContext", {}).get("http", {})
     path = event.get("rawPath", "").rstrip("/")
     entry = os.environ.get("ENTRY", "")
@@ -2218,14 +2218,26 @@ def lambda_handler(event, context):
         return _response(405, {"error": "method_not_allowed", "message": "POST only."})
     # Log lines from the mod's way in say so: the stack counts them, and
     # alarms when there are too many.
-    via = {"via": "mod"} if path in ("/mod", "/mod/runs") else {}
+    via = {"via": "mod"} if path in ("/mod", "/mod/runs", "/mod/feedback") else {}
     # On AWS each function answers only its own way in: ENTRY is "site" on
     # the website's and "mod" on the mod's. Unset (the dev server, tests),
     # it answers both. The site's uploads now go through /auth/upload.
     if not via or entry not in ("", "mod"):
         return _response(404, {"error": "not_found", "message": "Nothing here."})
-    store = _get_store()
     try:
+        if path == "/mod/feedback":
+            if not os.environ.get("FEEDBACK_TABLE"):
+                raise IngestError(503, "feedback_unavailable", "In-game feedback is unavailable here.")
+            from feedback import Refused, file_from_mod
+            body = _mod_body(event, limit=64000)
+            steam_id = _mod_player(body)
+            try:
+                result = file_from_mod(body, steam_id)
+            except Refused as e:
+                raise IngestError(e.status, "feedback_refused", e.message) from None
+            print(json.dumps({**via, "status": 200, "feedback": result["seq"]}))
+            return _response(200, result)
+        store = _get_store()
         if path == "/mod/runs":
             result = mod_runs(_mod_body(event), store)
             print(json.dumps({**via, "status": 200, "runs": len(result["runs"])}))

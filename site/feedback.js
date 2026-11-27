@@ -101,7 +101,7 @@
     .close-form input{background:#101316;color:#fff;border:1px solid #82735b;padding:7px 9px;border-radius:6px;font:inherit}
     .close-form div{display:flex;gap:8px}
     .close-form select{background:#101316;color:#fff;border:1px solid #82735b;padding:7px 9px;border-radius:6px;font:inherit}
-    #filters{display:flex;gap:8px;margin:0 0 8px}
+    #filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
     #find{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
     #find input,#find select{min-width:90px;background:#101316;color:#fff;border:1px solid #82735b;padding:6px 8px;border-radius:6px;font:inherit}
     #find input{flex:2}#find select{flex:1}
@@ -152,7 +152,7 @@
     <div id="view-inbox" role="tabpanel">
       <div id="summary-row"><p id="summary"></p><button id="toggle-all" type="button">Expand all</button></div>
       <div id="scope" role="group" aria-label="Inbox scope"><button id="scope-site" type="button" aria-pressed="true">Whole site</button><button id="scope-page" type="button" aria-pressed="false">This page</button></div>
-      <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="backlog">Backlog</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option><option value="kudos">Kudos</option></select><select id="filter-env" aria-label="Environment" hidden></select></div>
+      <div id="filters"><select id="filter-status" aria-label="Status"><option value="open">Open</option><option value="backlog">Backlog</option><option value="resolved">Resolved</option><option value="all">All</option></select><select id="filter-kind" aria-label="Type"><option value="">Any type</option><option value="bug">Bug</option><option value="feature">Feature request</option><option value="improvement">Improvement idea</option><option value="kudos">Kudos</option></select><select id="filter-source" aria-label="Source"><option value="">Any source</option><option value="website">Website</option><option value="mod">In-game</option></select><select id="filter-env" aria-label="Environment" hidden></select></div>
       <div id="find"><input id="search" type="search" placeholder="Search notes" aria-label="Search notes"><select id="filter-author" aria-label="Author"><option value="">Anyone</option></select><select id="sort" aria-label="Sort by"><option value="newest">Newest</option><option value="votes">Most upvotes</option></select></div>
       <div id="notes"></div>
       <button id="load-more" type="button" hidden>Load the next 25</button>
@@ -164,7 +164,7 @@
   <button id="launcher" type="button"><span aria-hidden="true">✎</span> <span id="launcher-label">Feedback</span><span id="launcher-count" aria-hidden="true" hidden></span></button>`;
   const $ = id => root.getElementById(id);
   const ORIGIN = location.origin;
-  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'site', status = 'open', filterKind = '', envFilter = '', writeEnv = '', envs = [], admin = false, nextCursor = null, view = 'inbox', picking = false, start, previousFocus, oldTouchAction;
+  let target = {kind: 'page',viewport:{width:innerWidth,height:innerHeight}}, notes = [], pageCache = [], scope = 'site', status = 'open', filterKind = '', filterSource = '', envFilter = '', writeEnv = '', envs = [], admin = false, nextCursor = null, view = 'inbox', picking = false, start, previousFocus, oldTouchAction;
   const mark = document.createElement('div');
   Object.assign(mark.style, {position:'fixed',pointerEvents:'none',zIndex:'2147483645',border:'2px solid #f6c66d',background:'#f6c66d22',display:'none'});
   document.body.append(mark);
@@ -363,6 +363,7 @@
   // One bucket per whole-page note set and per pinned element or region, so the
   // inbox reads as categories instead of a single stream.
   function bucketOf(note) {
+    if(note.source==='mod')return {key:'mod',kind:'in-game',label:'In-game feedback'};
     const page=note.target?.kind==='page', selector=note.target?.selector||'';
     return {key:(page?'page:':'element:')+note.path+(page?'':':'+selector),
             kind:page?'whole page':note.target?.kind==='region'?'region':'element',
@@ -387,7 +388,7 @@
     return out.sort((a,b)=>b.notes[0].created-a.notes[0].created);
   }
   const when = ts => new Date(ts*1000).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
-  const matchesFilter = note => (status==='all'||stateOf(note)===status)&&(!filterKind||note.category===filterKind);
+  const matchesFilter = note => (status==='all'||stateOf(note)===status)&&(!filterKind||note.category===filterKind)&&(!filterSource||(note.source||'website')===filterSource);
   // A name the lookup gave once stays for the session, so a later response where Steam could not be
   // asked does not turn the same person back into an ID fragment.
   const names = new Map();
@@ -451,8 +452,17 @@
     meta.append(pill);
     if(note.env&&envs.length>1){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=ENV_NAMES[note.env]||note.env;meta.append(tag);}
     if(note.category){const tag=document.createElement('span');tag.className='pill kind';tag.textContent=KINDS[note.category]||note.category;meta.append(tag);}
-    meta.append(vote,place);
+    meta.append(vote);
+    if(note.source==='mod'){
+      const tag=document.createElement('span');tag.className='pill kind';tag.textContent='Mod '+note.mod_version;
+      meta.append(tag);
+    }else meta.append(place);
     url.className='note-url';url.textContent=note.url || ORIGIN + note.path;
+    if(note.source==='mod'){
+      const fight=note.target?.fight;
+      url.textContent=fight?[fight.encounter,fight.turn?'Turn '+fight.turn:'',fight.lastCard?'Last card: '+fight.lastCard:''].filter(Boolean).join(' · '):'';
+      url.hidden=!fight;
+    }
     resolve.textContent=note.resolved?'Reopen':'Resolve';
     const send=async(fields,button)=>{
       button.disabled=true;
@@ -604,7 +614,7 @@
   };
   // Search and author narrow the notes already loaded; Load more brings in older ones.
   let me='',query='',filterAuthor='',sort='newest';
-  const searchable=note=>[note.comment,note.close_note,note.target?.text,note.path,author(note),author(note,'resolved_by')].filter(Boolean).join(' ').toLowerCase();
+  const searchable=note=>[note.comment,note.close_note,note.target?.text,note.mod_version,note.target?.fight?.encounter,note.target?.fight?.lastCard,note.path,author(note),author(note,'resolved_by')].filter(Boolean).join(' ').toLowerCase();
   const shown=()=>notes.filter(note=>(!filterAuthor||String(note.author)===filterAuthor)&&(!query||searchable(note).includes(query)));
   function renderInbox() {
     if(loading) return;
@@ -654,13 +664,13 @@
       else if(!nextCursor&&scope==='page'&&!triedSite){triedSite=true;scope='site';load(true);return;}
     }
     const open=visible.filter(note=>stateOf(note)==='open').length,backlogged=visible.filter(note=>stateOf(note)==='backlog').length;
-    $('filter-status').value=status;$('filter-kind').value=filterKind;
+    $('filter-status').value=status;$('filter-kind').value=filterKind;$('filter-source').value=filterSource;
     const places=new Set(visible.map(note=>bucketOf(note).key)).size;
     $('summary').innerHTML=`<b>${visible.length}</b> note${visible.length===1?'':'s'}${nextCursor?'+':''}${visible.length<notes.length?` of ${notes.length} loaded`:''} · ${open} open${backlogged?` · ${backlogged} backlog`:''} · ${places} ${places===1?'place':'places'}`;
     $('load-more').hidden=!nextCursor;
     $('copy').textContent=visible.length?`Copy all notes (${visible.length}${nextCursor?' loaded':''})`:'Copy all notes';
     $('copy').disabled=!visible.length;
-    say(groups.length?'':(status==='all'&&!filterKind&&!query&&!filterAuthor?(scope==='page'?'No notes on this page yet.':'No notes yet.'):'No notes match.'),'inbox');
+    say(groups.length?'':(status==='all'&&!filterKind&&!filterSource&&!query&&!filterAuthor?(scope==='page'?'No notes on this page yet.':'No notes yet.'):'No notes match.'),'inbox');
   }
   // pageCache feeds the launcher badge and the composer's earlier notes; the
   // inbox owns its own paged list in `notes`.
@@ -691,6 +701,7 @@
     try {
       const params={scope,status};
       if(filterKind) params.category=filterKind;
+      if(filterSource) params.source=filterSource;
       if(envFilter) params.env=envFilter;
       if(scope==='page') params.path=currentPath();
       // Rank every matching note, using the same bounded requests as the default inbox.
@@ -778,6 +789,7 @@
   $('scope-site').onclick=()=>{if(scope!=='site'){scope='site';load(true);}};
   $('filter-status').onchange=e=>{status=e.target.value;load(true);};
   $('filter-kind').onchange=e=>{filterKind=e.target.value;load(true);};
+  $('filter-source').onchange=e=>{filterSource=e.target.value;load(true);};
   $('filter-env').onchange=e=>{envFilter=e.target.value===writeEnv?'':e.target.value;load(true);};
   $('search').oninput=e=>{query=e.target.value.trim().toLowerCase();renderInbox();};
   $('filter-author').onchange=e=>{filterAuthor=e.target.value;renderInbox();};
