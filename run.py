@@ -1979,7 +1979,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <div class="keep-acts" id="detail-keep-acts"></div>
         <div id="detail-keep-share">
         <h3 class="strength-label">Keeping up, fight by fight</h3>
-        <p class="chart-caption">Damage taken after healing and fight turns, as multiples of an average win. Smaller multiples appear higher. <span id="detail-keep-share-picks">Hover a floor to see card and relic changes.</span></p>
+        <p class="chart-caption">Damage taken and fight turns compared with an average win. Higher is better. <span id="detail-keep-share-picks">Hover a floor to see card and relic changes.</span></p>
         <p class="keep-data-notice" id="detail-keep-share-note" role="status" hidden><strong>Run data</strong> <span></span></p>
         <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-share-chart"></canvas></div>
         <div class="floor-legend" id="detail-keep-share-legend"></div>

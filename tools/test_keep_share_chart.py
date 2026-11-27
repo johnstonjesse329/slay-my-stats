@@ -49,8 +49,8 @@ def expected_series(run, demand):
         total = max(0, gross - (node.get("healed") or 0))
         gross_win_rate = (how.get("gross") or {}).get("rate")
         out[i] = {
-            "taken": total / how["taken"] if how["taken"] else None,
-            "turns": node["turns"] / how["turns"],
+            "taken": min(4, (how["taken"] + 1) / (total + 1)),
+            "turns": min(4, how["turns"] / node["turns"]),
             "incoming": recorded / node["turns"] / gross_win_rate if gross_win_rate else None,
         }
     return out
@@ -218,7 +218,10 @@ def main():
             assert got, "the share chart did not render"
             assert "choiceTicks" in got["plugins"], got["plugins"]
             assert "manyIcons" in got["plugins"], got["plugins"]
-            assert got["axes"] == [{"min": 0, "zeroAboveWin": True, "winTick": "1×"}] * 2, got["axes"]
+            assert got["axes"] == [
+                {"min": 0, "zeroAboveWin": False, "winTick": "1×"},
+                {"min": 0, "zeroAboveWin": True, "winTick": "1×"},
+            ], got["axes"]
             assert all(value == 1 for value in got["incomingBaseline"])
             assert not page.locator("#fb62-toggle").count()
             labels = [d["label"] for d in got["datasets"]]

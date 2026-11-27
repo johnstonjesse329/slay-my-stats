@@ -1039,6 +1039,13 @@ const keepWinRatio = (own, average) => Number.isFinite(own) && Number.isFinite(a
   ? own / average : undefined;
 const keepRatioLabel = value => value == null ? "—" : `${+value.toFixed(2)}×`;
 const keepRatioTick = value => `${value}×`;
+const KEEP_FIGHT_SCORE_CAP = 4;
+const keepFightDamageScore = row => row?.winTotal === undefined ? undefined
+  : Math.min(KEEP_FIGHT_SCORE_CAP, (row.winTotal + 1) / (row.total + 1));
+const keepFightTurnScore = row => row?.winTurns === undefined ? undefined
+  : Math.min(KEEP_FIGHT_SCORE_CAP, row.winTurns / row.turns);
+const keepFightScoreLabel = value => value == null ? "—"
+  : value >= KEEP_FIGHT_SCORE_CAP ? `≥${KEEP_FIGHT_SCORE_CAP}×` : `${value.toFixed(2)}×`;
 
 function partyChart(id, nodes, players, series, cell, reverse = false, icon = null, extra = {}) {
   const canvas = document.getElementById(id);
@@ -1173,16 +1180,18 @@ function renderPartyCharts(players) {
   const gold = build("detail-gold-chart", "detail-gold-legend", players.map(p => pad(tl(p).map(n => n.gold ?? null))), count, false,
     (n, key) => GOLD_ICON_KEYS.has(key));
   if (gold) detailGoldChart = gold;
-  // Keeping up, fight by fight: each player's damage taken as a multiple of the average win. The
-  // fight is the same for all of them, so its turns and the 1x line are drawn once.
+  // Keeping up, fight by fight: score damage taken per player and fight turns once for the party.
   const fightIcon = (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc);
   const turnsShare = nodes.map((_, i) => {
-    for (const r of readings.values()) { const x = r && r[i]; if (x?.winTurns > 0) return keepWinRatio(x.turns, x.winTurns); }
+    for (const r of readings.values()) {
+      const score = keepFightTurnScore(r?.[i]);
+      if (score !== undefined) return score;
+    }
     return null;
   });
   const share = build("detail-keep-share-chart", "detail-keep-share-legend",
-    perFight(r => keepWinRatio(r.total, r.winTotal)),
-    (p, i, v) => keepRatioLabel(v), true, fightIcon, {
+    perFight(keepFightDamageScore),
+    (p, i, v) => keepFightScoreLabel(v), false, fightIcon, {
       ratioAxis: true,
       fightRows: benchmarkRows,
       lines: [
@@ -1192,11 +1201,11 @@ function renderPartyCharts(players) {
       compare: (party, i) => {
         const r = benchmarkRows?.[i];
         const turns = r?.winTurns === undefined ? "" :
-          `<div class="ft-cap">Fight turns <b>${r.turns}</b> · ${keepRatioLabel(turnsShare[i])} avg win · Avg win ${+r.winTurns.toFixed(1)}</div>`;
-        return turns + partyFloorTable(party, ["Damage taken after healing", "× avg win"], p => {
+          `<div class="ft-cap">Fight turns <b>${r.turns}</b> · Score ${keepFightScoreLabel(turnsShare[i])} · Avg win ${+r.winTurns.toFixed(1)}</div>`;
+        return turns + partyFloorTable(party, ["Damage taken", "Score"], p => {
           const row = readingAt(p, i);
-          return [row?.total, keepRatioLabel(keepWinRatio(row?.total, row?.winTotal))];
-        }, r?.winTotal === undefined ? null : [Math.round(r.winTotal), keepRatioLabel(keepWinRatio(r.winTotal, r.winTotal))]);
+          return [row?.total, keepFightScoreLabel(keepFightDamageScore(row))];
+        }, r?.winTotal === undefined ? null : [Math.round(r.winTotal), keepFightScoreLabel(1)]);
       },
       detail: (p, i) => { const row = readingAt(p, i); return row && keepShareTip(row, p.color); },
     });
@@ -4443,11 +4452,11 @@ function keepIncomingTip(r, mp = false) {
 
 function keepShareTip(r, color = KEEP_LINES.taken.color) {
   if (r.winTurns === undefined) return "";
-  return `<table><tr><th></th><th>This run</th><th>× avg win</th><th class="ft-win">Avg win</th></tr>` +
-    `<tr><td>${swatch(color)}Damage taken after healing</td><td><b>${Math.round(r.total)}</b></td>` +
-    `<td>${keepRatioLabel(keepWinRatio(r.total, r.winTotal))}</td><td class="ft-win">${Math.round(r.winTotal)}</td></tr>` +
+  return `<table><tr><th></th><th>This run</th><th>Score</th><th class="ft-win">Avg win</th></tr>` +
+    `<tr><td>${swatch(color)}Damage taken</td><td><b>${Math.round(r.total)}</b></td>` +
+    `<td>${keepFightScoreLabel(keepFightDamageScore(r))}</td><td class="ft-win">${Math.round(r.winTotal)}</td></tr>` +
     `<tr><td>${swatch(KEEP_TURN_STYLE.borderColor)}Fight turns</td><td><b>${r.turns}</b></td>` +
-    `<td>${keepRatioLabel(keepWinRatio(r.turns, r.winTurns))}</td><td class="ft-win">${+r.winTurns.toFixed(1)}</td></tr></table>` +
+    `<td>${keepFightScoreLabel(keepFightTurnScore(r))}</td><td class="ft-win">${+r.winTurns.toFixed(1)}</td></tr></table>` +
     (r.lost ? `<div class="ft-cap">The fight that ended the run.</div>` : "");
 }
 
@@ -4539,14 +4548,15 @@ function renderDetailKeepCharts(run) {
     cubicInterpolationMode: "monotone",
   });
   const ranges = keepDamageRanges(run, nodes, rows);
-  const chart = (id, series, tipFor, marks, ratioAxis = false, plugins = []) => {
+  const chart = (id, series, tipFor, marks, plugins = []) => {
     // Only the lines.
     // The ring, where the chart has any, is the HP chart's: the best quarter of the wins.
     const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 25% of wins", false) : "";
     document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(keepLegendEntry).join("")}${ring}</div>`;
     // Room for a ring that sits above everything else on the chart.
     const base = iconAxis({ min: 0 });
-    const yAxis = { ...base, stacked: false, reverse: ratioAxis, ticks: { ...base.ticks, maxTicksLimit: 5 } };
+    const ratioAxis = id === "in" || id === "share";
+    const yAxis = { ...base, stacked: false, reverse: id === "in", ticks: { ...base.ticks, maxTicksLimit: 5 } };
     if (ratioAxis) yAxis.ticks.callback = keepRatioTick;
     const stretch = yAxis.afterDataLimits;
     yAxis.afterDataLimits = scale => {
@@ -4593,10 +4603,9 @@ function renderDetailKeepCharts(run) {
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
     ...damageHistory.lines, ...(fallback?.chartLines || []), ...markers], damageTip, damageHistory.ranges);
   const average = () => ({ ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) });
-  chart("in", [line(takenLine, r => keepWinRatio(r.grossRate, r.winGrossRate), "in"), average()], inTip, null, true);
+  chart("in", [line(takenLine, r => keepWinRatio(r.grossRate, r.winGrossRate), "in"), average()], inTip);
 
-  // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:
-  // turns (time) and damage taken (HP). Below 1 is ahead of the average win, so a slide is the
+  // Each fight scores turns and damage taken against an average win. Above 1 is ahead, so a slide is the
   // run falling behind. The ticks under the floor mark the deck changes between fights, so the
   // slide can be read against what the run had just added, removed or upgraded. The hover names
   // the fight's shape (single or multi-enemy) and every change, so the choice sits beside its
@@ -4606,10 +4615,10 @@ function renderDetailKeepCharts(run) {
   const shareTip = tip(r => keepShareTip(r, takenLine.color));
   chart("share", [
     average(),
-    line(takenLine, r => keepWinRatio(r.total, r.winTotal), "share"),
+    line(takenLine, keepFightDamageScore, "share"),
     { ...line({ label: KEEP_TURN_STYLE.label, color: KEEP_TURN_STYLE.borderColor },
-      r => keepWinRatio(r.turns, r.winTurns)), ...KEEP_TURN_STYLE },
-  ], shareTip, null, true, ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : []);
+      keepFightTurnScore), ...KEEP_TURN_STYLE },
+  ], shareTip, null, ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : []);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";
