@@ -957,6 +957,8 @@ h1 {
   border-radius: 8px;
   background: rgba(0,0,0,0.18);
 }
+.filter-ascensions { min-width: 0; flex-wrap: wrap; }
+#shared-asc-checkboxes { display: flex; flex-wrap: wrap; gap: 0.4rem; min-width: 0; }
 .toggle-btn {
   font-size: var(--fs-sm);
   color: var(--text-dim);
@@ -3114,7 +3116,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
     gap: 0.35rem;
   }
   #shared-filter-bar .filter-group > .filter-label { flex: none; width: var(--fl-w); margin: 0 0 0 calc(-1 * var(--fl-w)); }
-  #shared-filter-bar #shared-char-selector, #shared-filter-bar #shared-asc-checkboxes { flex: 1 1 0; min-width: 0; }
+  #shared-filter-bar #shared-char-selector { flex: 1 1 0; min-width: 0; }
   #shared-filter-bar .toggle-btn, #shared-filter-bar label, #shared-filter-bar input[type=date] { min-height: 2.25rem; }
   /* Dates share one line; the presets start the next. */
   #shared-filter-bar input[type=date] { flex: 1 1 0; min-width: 0; padding: 0.2rem 0.4rem; }
@@ -3358,8 +3360,8 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 @media (max-width: 760px) {
   .party-floor-grid { grid-template-columns: minmax(0, 1fr); }
   .party-floor-player .chart-wrap { height: 210px; }
-  .party-floor-focus { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .party-floor-focus select { min-width: 0; font: inherit; padding: 4px 8px; background: var(--panel); color: var(--text); border: 1px solid var(--hairline); border-radius: 6px; }
+  .party-floor-focus { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+  .party-floor-focus button { min-height: 2.75rem; max-width: 100%; overflow-wrap: anywhere; }
   .party-floor-player[data-inactive] { display: none; }
 }
 @media (max-height: 430px) and (orientation: landscape) {

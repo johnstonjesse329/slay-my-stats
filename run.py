@@ -1583,12 +1583,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   </div>
   <div class="filter-row">
     <span class="filter-section">Game</span>
-    <div class="filter-group">
+    <div class="filter-group filter-ascensions">
       <span class="filter-label">Ascension</span>
-      <button class="toggle-btn" id="shared-asc-granular" aria-pressed="false" title="Pick individual ascension levels, and split the tables into one column per level instead of A0–7 / A8+ / All">Show granular</button>
-      <div id="shared-asc-checkboxes" style="display:none;gap:0.4rem;flex-wrap:wrap"></div>
-      <button class="toggle-btn" id="shared-asc-all" style="display:none">All</button>
-      <button class="toggle-btn" id="shared-asc-none" style="display:none">None</button>
+      <div id="shared-asc-checkboxes" role="group" aria-label="Ascension levels"></div>
+      <button class="toggle-btn" id="shared-asc-all">All</button>
+      <button class="toggle-btn" id="shared-asc-none">None</button>
+      <button class="toggle-btn" id="shared-asc-granular" aria-pressed="false" title="Show one table column per selected ascension level">Split columns</button>
     </div>
     <div class="filter-group filter-dropdown-wrap" data-overview="unlocked">
       <span class="filter-label">Build</span>
@@ -1620,7 +1620,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
 
   </div>
   <div class="filter-row filter-preset-toolbar">
-    <span class="filter-section">Saved</span>
+    <span class="filter-section">Presets</span>
     <div class="filter-group filter-presets">
       <label for="shared-filter-presets">Filter set</label>
       <select id="shared-filter-presets" aria-label="Current filter set"></select>

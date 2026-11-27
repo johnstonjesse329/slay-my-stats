@@ -200,7 +200,7 @@ function openRunLink(ts, view = "") {
     const state = currentSharedFilterState();
     const widen = {};
     if (state.char !== "ALL" && state.char !== run.char) widen.char = "ALL";
-    if (!sharedActiveAscs.has(runAsc(run))) { widen.ascGranular = false; widen.ascs = undefined; }
+    if (!sharedActiveAscs.has(runAsc(run))) widen.ascs = undefined;
     if (!sharedActiveBuilds.has(run.build)) widen.builds = [...DATA.builds];
     if (run.ts < state.tsFrom || run.ts > state.tsTo) { widen.tsFrom = 0; widen.tsTo = TS_NO_UPPER_BOUND; }
     if (state.players !== "all" && (state.players === "multi") !== !!run.mp) widen.players = "all";
@@ -209,7 +209,7 @@ function openRunLink(ts, view = "") {
     if (!runHasDetailTags(run)) { detailTags.clear(); changed.push("tags"); }
     if (!playedWithAll(run)) { detailPartners.clear(); changed.push("played with"); }
     if (!matchesDetailAct(run)) { detailActs.clear(); changed.push("act reached"); }
-    const names = { char: "character", ascGranular: "ascension", builds: "build", tsFrom: "date", players: "players", modes: "mode", mods: "mods" };
+    const names = { char: "character", ascs: "ascension", builds: "build", tsFrom: "date", players: "players", modes: "mode", mods: "mods" };
     Object.keys(names).forEach(key => { if (key in widen) changed.push(names[key]); });
     if (Object.keys(widen).length > 0) {
       applySharedFilterState({ ...state, ...widen }, "detail");
@@ -290,8 +290,7 @@ function updateSharedCharBtns() {
 }
 
 // ---- Shared ascension filter ----
-// Off by default: every level is included and the tables group columns by
-// ASC_BUCKETS. "Show granular" reveals the per-level checkboxes.
+// The level filters are always visible. The table column layout is independent.
 const sharedAscBox     = document.getElementById("shared-asc-checkboxes");
 const sharedAscGranularBtn = document.getElementById("shared-asc-granular");
 const sharedAscAll     = document.getElementById("shared-asc-all");
@@ -310,8 +309,6 @@ function syncAscControls() {
   setActive(sharedAscNone, sharedActiveAscs.size === 0);
   setActive(sharedAscGranularBtn, sharedAscGranular);
   sharedAscGranularBtn.setAttribute("aria-pressed", String(sharedAscGranular));
-  sharedAscBox.style.display = sharedAscGranular ? "flex" : "none";
-  sharedAscAll.style.display = sharedAscNone.style.display = sharedAscGranular ? "" : "none";
 }
 
 function setSharedAscs(ascs) {
@@ -336,8 +333,6 @@ sharedAscNone.addEventListener("click", () => setSharedAscs([]));
 
 sharedAscGranularBtn.addEventListener("click", () => {
   sharedAscGranular = !sharedAscGranular;
-  // Outside granular view every level is included; the picks don't carry over.
-  if (!sharedAscGranular) sharedActiveAscs = new Set(DATA.ascensions);
   syncAscControls();
   rerenderCurrentPage();
 });
@@ -555,9 +550,8 @@ function liveSharedFilterState() {
     // a page-forced value (see charIsLocked()) that doesn't reflect what
     // the user actually chose.
     char:   lastUnlockedChar,
-    // Ascension picks only exist in granular view (see savedAscState()).
     ascGranular: sharedAscGranular,
-    ...(sharedAscGranular && { ascs: [...sharedActiveAscs] }),
+    ...(sharedActiveAscs.size !== DATA.ascensions.length && { ascs: [...sharedActiveAscs] }),
     builds: [...sharedActiveBuilds],
     allBuilds: sharedActiveBuilds.size === DATA.builds.length,
     players: sharedActivePlayers,
@@ -774,15 +768,12 @@ document.getElementById("shared-filter-copy-link").addEventListener("click", asy
 });
 refreshFilterPresets();
 
-// A save only carries ascension picks when granular view was on; otherwise every
-// level is included. Saves from before granular view existed have no ascGranular and
-// always carry ascs: they open in granular view if they left any level unchecked,
-// so the checkboxes showing that selection aren't hidden.
+// Older saves may have a level selection without an explicit column layout.
 function savedAscState(state) {
   const all  = [...DATA.ascensions];
   const ascs = Array.isArray(state.ascs) ? state.ascs.filter(a => DATA.ascensions.includes(a)) : all;
   const granular = state.ascGranular ?? ascs.length !== all.length;
-  return { granular, ascs: granular ? ascs : all };
+  return { granular, ascs };
 }
 
 function sameAscState(a, b) {
