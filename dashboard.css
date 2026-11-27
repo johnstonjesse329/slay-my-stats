@@ -865,9 +865,11 @@ h1 {
   gap: 0.5rem;
 }
 .filter-bar-2row .filter-row {
+  --filter-section-width: 3.6rem;
+  --filter-row-gap: 0.75rem;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--filter-row-gap);
   flex-wrap: wrap;
 }
 /* The one-line summary the filter rows collapse behind. This used to be
@@ -907,7 +909,7 @@ h1 {
 .filters-locked .filter-row :disabled { cursor: not-allowed; }
 .filters-locked [data-mode="custom"] { display: none; }
 .filter-bar .filter-section {
-  flex: 0 0 3.6rem;
+  flex: 0 0 var(--filter-section-width, 3.6rem);
   font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -956,6 +958,10 @@ h1 {
   border: 1px solid var(--hairline);
   border-radius: 8px;
   background: rgba(0,0,0,0.18);
+}
+.filter-ascension-row {
+  display: flex; flex-basis: 100%; min-width: 0;
+  padding-inline-start: calc(var(--filter-section-width) + var(--filter-row-gap));
 }
 .filter-ascensions { min-width: 0; flex-wrap: wrap; }
 #shared-asc-checkboxes { display: flex; flex-wrap: wrap; gap: 0.4rem; min-width: 0; }
@@ -3109,6 +3115,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
      group's controls wrapping beside it (a hanging indent: the label sits in
      the group's left padding), and controls tall enough to tap. */
   #shared-filter-bar .filter-row { gap: 0.6rem; }
+  .filter-ascension-row { padding-inline-start: 0; }
   #shared-filter-bar .filter-group {
     --fl-w: 4.6rem;
     border: 0; background: none; border-radius: 0;
