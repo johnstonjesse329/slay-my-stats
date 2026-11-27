@@ -1574,21 +1574,21 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <span class="filter-label">Modes</span>
       <div id="shared-modes-checkboxes" style="display:flex;gap:0.4rem;flex-wrap:wrap"></div>
     </div>
-    <div class="filter-group" id="shared-mods-group" style="display:none">
-      <span class="filter-label">Mods</span>
-      <button class="toggle-btn" id="shared-mods-all">All</button>
-      <button class="toggle-btn" id="shared-mods-vanilla">Unmodded</button>
-      <button class="toggle-btn" id="shared-mods-modded">Modded</button>
-    </div>
-  </div>
-  <div class="filter-row">
-    <span class="filter-section">Game</span>
     <div class="filter-group filter-ascensions">
       <span class="filter-label">Ascension</span>
       <div id="shared-asc-checkboxes" role="group" aria-label="Ascension levels"></div>
       <button class="toggle-btn" id="shared-asc-all">All</button>
       <button class="toggle-btn" id="shared-asc-none">None</button>
       <button class="toggle-btn" id="shared-asc-granular" aria-pressed="false" title="Show one table column per selected ascension level">Split columns</button>
+    </div>
+  </div>
+  <div class="filter-row">
+    <span class="filter-section">Game</span>
+    <div class="filter-group" id="shared-mods-group" style="display:none">
+      <span class="filter-label">Mods</span>
+      <button class="toggle-btn" id="shared-mods-all">All</button>
+      <button class="toggle-btn" id="shared-mods-vanilla">Unmodded</button>
+      <button class="toggle-btn" id="shared-mods-modded">Modded</button>
     </div>
     <div class="filter-group filter-dropdown-wrap" data-overview="unlocked">
       <span class="filter-label">Build</span>
