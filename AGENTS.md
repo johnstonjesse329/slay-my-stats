@@ -33,6 +33,13 @@ foreach ($p in "$env:LOCALAPPDATA\pip\cache", "$env:LOCALAPPDATA\uv\cache",
 
 # Visual review baseline
 
+Treat a `?` in a card or relic art slot as a missing-art defect. Record the page,
+item ID, and upgrade or variant, then check the catalog lookup and the deployed
+asset response. Check the portrait and baked face separately, since a full card
+can render while its preview has no art. Verify the preview image loads after the
+fix. The synergy explorer logs `Missing synergy preview art:` with the item ID
+once per page when its art lookups are exhausted.
+
 For Gamma UI changes, let the user drive visual review. After the deployment
 smoke check, give them a direct Gamma link and the specific controls or charts
 to inspect. Run basic correctness checks, then deploy. Run additional browser
