@@ -3434,6 +3434,10 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .ka-party th, .ka-party td { padding: 0.2rem 0.5rem; text-align: right; font-size: var(--fs-sm); }
 .ka-party thead th { color: var(--text-dim); font-weight: 400; }
 .ka-party tbody th { text-align: left; font-weight: 600; white-space: nowrap; }
+@media (max-width: 560px) {
+  .ka-party th, .ka-party td { padding-inline: 0.25rem; }
+  .ka-party tbody th { white-space: normal; overflow-wrap: anywhere; }
+}
 
 /* Progressive table bodies (fillTableProgressively): the row that loads the next
    chunk, and doubles as a button for anyone who would rather click. */
