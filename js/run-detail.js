@@ -1425,10 +1425,19 @@ function renderPartyFloorPanels(players) {
     const box = document.getElementById(id);
     const grid = document.createElement("div");
     grid.className = "party-floor-grid";
-    const picker = document.createElement("label");
-    picker.className = "party-floor-focus";
-    picker.innerHTML = `Breakdown <select>${players.map((player, i) =>
-      `<option value="${i}"${i === partyBreakdownIndex ? " selected" : ""}>${escapeHtml(player.label)}</option>`).join("")}</select>`;
+    const picker = document.createElement("div");
+    picker.className = "party-toggle party-floor-focus";
+    picker.setAttribute("role", "group");
+    picker.setAttribute("aria-label", "Breakdown player");
+    picker.innerHTML = `<span>Breakdown</span>${players.map((player, i) =>
+      `<button type="button" value="${i}">${escapeHtml(player.label)}</button>`).join("")}`;
+    picker.addEventListener("click", event => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      partyBreakdownIndex = Number(button.value);
+      showPartyBreakdown();
+      closeFloorTip();
+    });
     box.style.display = "";
     box.classList.add("party-floor-active");
     box.append(picker, grid);
@@ -1464,17 +1473,11 @@ function renderPartyFloorPanels(players) {
 }
 
 function showPartyBreakdown() {
-  document.querySelectorAll(".party-floor-focus select").forEach(select => { select.value = partyBreakdownIndex; });
+  document.querySelectorAll(".party-floor-focus button").forEach(button =>
+    button.setAttribute("aria-pressed", String(Number(button.value) === partyBreakdownIndex)));
   document.querySelectorAll(".party-floor-player").forEach(panel =>
     panel.toggleAttribute("data-inactive", Number(panel.dataset.player) !== partyBreakdownIndex));
 }
-
-document.addEventListener("change", event => {
-  if (!event.target.matches(".party-floor-focus select")) return;
-  partyBreakdownIndex = Number(event.target.value);
-  showPartyBreakdown();
-  closeFloorTip();
-});
 
 // ---- Timeline ----
 

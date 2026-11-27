@@ -313,12 +313,18 @@
    character in its colour, the tab's figure, deck synergies, when). Reuses the
    recent-uploads row. Tabs wrap on a phone and keep a tap-sized height. */
 .showcase { margin-top: 1.5rem; }
-.showcase-mode-filter { color: var(--text-dim); font-size: 0.9rem; }
-.showcase-mode-filter select {
-  min-height: 2.75rem; margin-left: 0.55rem; padding: 0.3rem 0.65rem;
-  color: var(--text); background: transparent; color-scheme: dark;
+.showcase-mode-filter {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem;
+  color: var(--text-dim); font-size: 0.9rem;
+}
+.showcase-mode-filter[hidden] { display: none; }
+.showcase-mode-filter button {
+  min-height: 2.75rem; padding: 0.3rem 0.65rem; cursor: pointer;
+  color: var(--text); background: transparent;
   border: 1px solid var(--hairline); border-radius: 0.5rem; font: inherit;
 }
+.showcase-mode-filter button[aria-pressed="true"] { color: var(--gold); border-color: var(--gold); background: rgba(224,196,104,0.12); }
+.showcase-mode-filter button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .showcase-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.6rem; }
 .showcase-tabs button {
   min-height: 2.5rem; padding: 0.3rem 0.9rem; border-radius: 999px; cursor: pointer;

@@ -457,9 +457,23 @@
     const tabs = SHOWCASE_TABS.filter(([key]) => (data[key] || []).length);
     if (!tabs.length) return;
     const modeLabels = { all: "All runs", solo: "Solo", multiplayer: "Multiplayer" };
-    const mode = el("select", {}, Object.entries(modeLabels).map(([value, textContent]) =>
-      el("option", { value, textContent })));
-    const modeFilter = el("label", { className: "showcase-mode-filter", hidden: !data.modes }, ["Mode", mode]);
+    let selectedMode = "all";
+    const modeFilter = el("div", { className: "showcase-mode-filter", hidden: !data.modes, role: "group" }, [
+      el("span", { textContent: "Mode" }),
+    ]);
+    modeFilter.setAttribute("aria-label", "Mode");
+    for (const [value, textContent] of Object.entries(modeLabels)) {
+      const button = el("button", { type: "button", value, textContent });
+      button.setAttribute("aria-pressed", String(value === selectedMode));
+      button.addEventListener("click", () => {
+        if (value === selectedMode) return;
+        selectedMode = value;
+        modeFilter.querySelectorAll("button").forEach(choice =>
+          choice.setAttribute("aria-pressed", String(choice === button)));
+        select(current);
+      });
+      modeFilter.append(button);
+    }
     const tablist = el("div", { className: "showcase-tabs", role: "tablist" });
     const head = el("tr", {});
     const body = el("tbody", {});
@@ -473,7 +487,7 @@
       const tr = el("tr", {}, [
         cell("showcase-player", [
           el("a", { href: `/u/${r.slug}#detail/${r.ts}`, className: "site-row-name", textContent: r.name }),
-          ...(r.multiplayer && mode.value === "all"
+          ...(r.multiplayer && selectedMode === "all"
             ? [el("small", { className: "showcase-run-mode", textContent: "Multiplayer" })]
             : []),
         ]),
@@ -493,7 +507,6 @@
     const select = (key, page = 0) => {
       current = key;
       const [, , label] = tabs.find(t => t[0] === key);
-      const selectedMode = mode.value;
       const rows = (selectedMode === "all" ? data[key] : data.modes?.[selectedMode]?.[key]) || [];
       const pages = Math.ceil(rows.length / SHOWCASE_PAGE);
       tablist.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
@@ -519,7 +532,6 @@
       button.addEventListener("click", () => select(key));
       tablist.append(button);
     }
-    mode.addEventListener("change", () => select(current));
     main.append(el("section", { className: "site-list showcase" }, [
       el("h3", { textContent: "Runs worth a look" }),
       el("p", { className: "site-note", textContent: "Wins from the last 30 days." }),

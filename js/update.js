@@ -66,9 +66,7 @@ const ASC_RANGES = [
 const ASC_BUCKETS = ASC_RANGES.map(b => ({ ...b, ascs: DATA.ascensions.filter(a => a >= b.min && a <= b.max) }))
  .filter(b => b.ascs.length);
 let sharedActiveAscs   = new Set(DATA.ascensions);
-// "Show granular" reveals the per-level ascension checkboxes and splits the tables
-// into one column per level instead of per ASC_BUCKETS range. With it off,
-// every level is included.
+// "Split columns" shows one table column per selected level instead of grouped ranges.
 let sharedAscGranular  = false;
 
 // The ascension columns every per-ascension table renders before its ALL
