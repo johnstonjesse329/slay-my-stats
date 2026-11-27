@@ -1006,17 +1006,17 @@ function observedPartyRun(owner, player) {
 }
 
 const PARTY_SUPPORT_METRICS = [
-  ["damage", "Dmg enabled", "Knockdown makes an enemy take more damage from a teammate’s hit. The extra HP lost counts here."],
-  ["damageReduced", "Dmg reduced", "Neutralize applies Weak. When that enemy attacks your teammate, the damage lost to Weak counts here before Block."],
-  ["damageRedirected", "Dmg redirect", "Intercept protects an ally from attacks. Damage counts here when the log confirms the hit landed on a different player."],
-  ["block", "Block given", "Lift gives Block directly to another player."],
-  ["draw", "Teammate draws", "Huddle Up makes the whole party draw. Each card a teammate actually draws counts here."],
-  ["energy", "Energy given", "Believe in You gives Energy to another player."],
-  ["generated", "Cards created", "Blade Symphony adds new Shivs to teammates’ hands."],
-  ["transferred", "Cards transferred", "The Ball changes owners when you pass it to a teammate. That counts as one transfer."],
-  ["freePlays", "Free plays", "Ensemble makes a teammate’s card free. Playing that card counts as one free play."],
-  ["energySaved", "Energy saved", "If Ensemble makes a two-Energy card free, the teammate saves two Energy when they play it."],
-  ["extraPlays", "Card replays", "Tag Team makes a teammate’s next Attack on the marked enemy play again. The repeat counts here."],
+  ["damage", "Dmg enabled", "Extra HP an enemy loses from a teammate’s hit because of your effect.\nCards like Knockdown and Flanking make enemies take more damage. Vulnerable, such as from Bash, can count when the log can credit the bonus to you."],
+  ["damageReduced", "Dmg reduced", "Incoming damage you prevented for a teammate, measured before Block.\nWeak from Neutralize can make an enemy hit your teammate for less."],
+  ["damageRedirected", "Dmg redirect", "Damage the log shows landing on a different player than the original target.\nIntercept is meant to take an attack aimed at an ally."],
+  ["block", "Block given", "Block you grant to a teammate.\nLift gives Block directly to another player."],
+  ["draw", "Teammate draws", "Cards a teammate actually draws thanks to your effect.\nHuddle Up makes the whole party draw."],
+  ["energy", "Energy given", "Energy you grant to a teammate.\nBelieve in You gives Energy directly to another player."],
+  ["generated", "Cards created", "New cards you create for teammates.\nBlade Symphony puts new Shivs into teammates’ hands."],
+  ["transferred", "Cards transferred", "Existing cards you pass to a teammate, changing their owner.\nThe Ball goes from you to a teammate after you play it."],
+  ["freePlays", "Free plays", "Times your effect lets a teammate play a card for free.\nPlaying a card made free by Ensemble counts as one."],
+  ["energySaved", "Energy saved", "Energy a teammate avoids spending because of your effect.\nIf Ensemble makes a two-Energy card free, that play saves two Energy."],
+  ["extraPlays", "Card replays", "Extra times a teammate’s card resolves because of your effect.\nTag Team makes their next Attack on the marked enemy play again."],
 ];
 
 function partySupportFloors(owner, runs) {
@@ -1074,7 +1074,7 @@ function renderPartySupport(owner, runs) {
       `data-tip="${escapeHtml(example)}" aria-description="${escapeHtml(example)}">${label}</span></th>`;
     return `<table class="ft-party-table"><thead><tr><th scope="col">Player</th>` +
       PARTY_SUPPORT_METRICS.map(([, label, example]) => heading(label, example)).join("") +
-      heading("Debuffs applied", "Bash applying Vulnerable to one enemy counts as one application, even if it adds multiple stacks.") +
+      heading("Debuffs applied", "Times you apply a debuff to an enemy.\nBash counts as one application even when it adds multiple stacks of Vulnerable.") +
       `</tr></thead><tbody>${contributors.map(({ player, counts, recipients }) => {
         const summary = `<tr><th scope="row">${supportLabel(player)}</th>${cells(counts)}</tr>`;
         if (!byRecipient) return summary;
