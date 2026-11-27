@@ -1006,10 +1006,17 @@ function observedPartyRun(owner, player) {
 }
 
 const PARTY_SUPPORT_METRICS = [
-  ["damage", "Dmg enabled", "Damage enabled"], ["damageReduced", "Dmg reduced", "Damage reduced"],
-  ["damageRedirected", "Dmg redirect", "Damage redirected"],
-  ["block", "Block given"], ["draw", "Teammate draws"], ["energy", "Energy given"], ["generated", "Cards created"],
-  ["transferred", "Cards transferred"], ["freePlays", "Free plays"], ["energySaved", "Energy saved"], ["extraPlays", "Card replays"],
+  ["damage", "Dmg enabled", "Knockdown makes an enemy take more damage from a teammate’s hit. The extra HP lost counts here."],
+  ["damageReduced", "Dmg reduced", "Neutralize applies Weak. When that enemy attacks your teammate, the damage lost to Weak counts here before Block."],
+  ["damageRedirected", "Dmg redirect", "Intercept protects an ally from attacks. Damage counts here when the log confirms the hit landed on a different player."],
+  ["block", "Block given", "Lift gives Block directly to another player."],
+  ["draw", "Teammate draws", "Huddle Up makes the whole party draw. Each card a teammate actually draws counts here."],
+  ["energy", "Energy given", "Believe in You gives Energy to another player."],
+  ["generated", "Cards created", "Blade Symphony adds new Shivs to teammates’ hands."],
+  ["transferred", "Cards transferred", "The Ball changes owners when you pass it to a teammate. That counts as one transfer."],
+  ["freePlays", "Free plays", "Ensemble makes a teammate’s card free. Playing that card counts as one free play."],
+  ["energySaved", "Energy saved", "If Ensemble makes a two-Energy card free, the teammate saves two Energy when they play it."],
+  ["extraPlays", "Card replays", "Tag Team makes a teammate’s next Attack on the marked enemy play again. The repeat counts here."],
 ];
 
 function partySupportFloors(owner, runs) {
@@ -1063,11 +1070,12 @@ function renderPartySupport(owner, runs) {
     if (!contributors.length) return '<p class="chart-caption">No teammate contributions were attributed in this selection.</p>';
     const cells = counts => PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] ?? "—"}</td>`).join("") +
       `<td>${counts.debuffs ?? "—"}</td>`;
+    const heading = (label, example) => `<th scope="col"><span class="party-support-example" tabindex="0" ` +
+      `data-tip="${escapeHtml(example)}" aria-description="${escapeHtml(example)}">${label}</span></th>`;
     return `<table class="ft-party-table"><thead><tr><th scope="col">Player</th>` +
-      PARTY_SUPPORT_METRICS.map(([, label, fullLabel]) =>
-        `<th scope="col">${fullLabel ? `<abbr title="${fullLabel}">${label}</abbr>` : label}</th>`
-      ).join("") +
-      `<th scope="col">Debuffs applied</th></tr></thead><tbody>${contributors.map(({ player, counts, recipients }) => {
+      PARTY_SUPPORT_METRICS.map(([, label, example]) => heading(label, example)).join("") +
+      heading("Debuffs applied", "Bash applying Vulnerable to one enemy counts as one application, even if it adds multiple stacks.") +
+      `</tr></thead><tbody>${contributors.map(({ player, counts, recipients }) => {
         const summary = `<tr><th scope="row">${supportLabel(player)}</th>${cells(counts)}</tr>`;
         if (!byRecipient) return summary;
         return summary + [...recipients].map(([to, counts]) =>

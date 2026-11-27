@@ -2021,6 +2021,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         </dl>
         <p class="keep-party-coverage" id="detail-keep-party-coverage" role="status" hidden></p>
         <div class="keep-acts" id="detail-keep-acts"></div>
+        <section id="detail-party-support" hidden></section>
         <div id="detail-keep-share">
         <h3 class="strength-label">Keeping up, fight by fight</h3>
         <p class="chart-caption">Damage taken and fight turns compared with an average win. Higher is better. <span id="detail-keep-share-picks">Hover a floor to see card and relic changes.</span></p>
@@ -2061,7 +2062,6 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
           <div class="floor-legend" id="detail-keep-play-legend"></div>
         </div>
         <p class="chart-caption" id="detail-keep-play-none">No per-turn log for this run. Runs played with the mod and uploaded through it have one.</p>
-        <section id="detail-party-support" hidden></section>
       </div>
       <div class="chart-box" id="detail-gold-box" style="margin-top:16px">
         <h2>Gold by Floor</h2>

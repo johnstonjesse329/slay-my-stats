@@ -214,7 +214,7 @@ document.addEventListener("focusout", e => {
 });
 document.addEventListener("pointerup", e => {
   if (e.pointerType === "touch" || e.pointerType === "pen") {
-    const target = e.target.closest("[data-encounter-tip], .event-pie-slice[data-tip]");
+    const target = e.target.closest("[data-encounter-tip], .event-pie-slice[data-tip], .party-support-example");
     if (target) showTableTooltip(target);
   }
 });
