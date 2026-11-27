@@ -477,6 +477,8 @@ function renderOverviewSynergies(runs) {
   }).join("") || "<p>No detected synergies in the selected runs.</p>";
 }
 
+const warnedMissingSynergyArt = new Set();
+
 function renderDeckLinksHtml(deck, relics, character) {
   const links = deckLinks(deck, relics);
   if (!links.length) return "";
@@ -533,8 +535,18 @@ function renderDeckLinksHtml(deck, relics, character) {
     "power:Poison": "Poison enables scaling and additional Poison triggers."
 };
   const image = item => {
-    const src = item.id.startsWith("RELIC.") ? relicImgSrc(item.id) : cardImgSrc(item.id);
-    return src ? `<img loading="lazy" src="${escapeHtml(src)}" alt="">` : `<span aria-hidden="true">?</span>`;
+    const isRelic = item.id.startsWith("RELIC.");
+    let src = isRelic ? relicImgSrc(item.id) : cardImgSrc(item.id);
+    if (!src && !isRelic) {
+      const key = cardFaceKey(item.id, item.card?.upgrade || 0, item.card?.props);
+      src = thumbSrc(DATA.cardFinal?.[key] || DATA.cardFinal?.[item.id]);
+    }
+    if (src) return `<img loading="lazy" src="${escapeHtml(src)}" alt="">`;
+    if (!warnedMissingSynergyArt.has(item.id)) {
+      warnedMissingSynergyArt.add(item.id);
+      console.warn("Missing synergy preview art:", item.id);
+    }
+    return `<span aria-hidden="true">?</span>`;
   };
   const tile = item => {
     const card = item.card || deck.find(c => c.id === item.id);
