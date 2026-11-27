@@ -1618,7 +1618,7 @@ h1 {
 .party-member { display: inline-flex; align-items: center; gap: 0.35rem; max-width: 100%; }
 .party-member .char-icon, .party-toggle .char-icon { flex: none; margin-right: 0; }
 .party-color-key { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--player-color); }
-.party-member .fl-swatch { flex: none; }
+.party-member .fl-swatch { flex: none; width: 18px; }
 .party-none { padding: 0.2rem 0.4rem; color: var(--text-dim); }
 .party-name { overflow-wrap: anywhere; }
 .party-tab {
@@ -2020,6 +2020,7 @@ h1 {
 .party-support-table :is(th, td) { padding: 6px 8px; border-bottom: 1px solid var(--hairline); }
 .party-support-table thead th { line-height: 1.2; }
 .party-support-table :is(th:first-child, td:nth-child(2)) { text-align: left; }
+.party-support-table .party-member { white-space: nowrap; }
 .party-support-table td:nth-child(n + 3) { text-align: center; font-variant-numeric: tabular-nums; }
 .floor-tip .ft-party-picks { border-top: 1px solid var(--hairline); margin-top: 6px; padding-top: 4px; }
 .floor-tip table { border-collapse: collapse; }
