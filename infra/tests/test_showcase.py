@@ -44,8 +44,33 @@ class TurnPeaks(unittest.TestCase):
         self.assertEqual(showcase.turn_peaks({"log": []}), {})
         self.assertEqual(showcase.turn_peaks(None), {})
 
+    def test_multiplayer_uses_the_uploaders_own_events(self):
+        def event(kind, **args):
+            return {"k": kind, "f": 1, "t": 1, "a": args}
+
+        log = {"log": [
+            event("snap", why="side1", creatures=[
+                {"c": "P", "slot": 0, "blk": 100}, {"c": "P", "slot": 1, "blk": 12}]),
+            event("blk", c="P", sourceSlot=1, targetSlot=0, n=100),
+            event("blk", c="P", sourceSlot=0, targetSlot=1, n=9),
+            event("hit", by="P", t="enemy", sourceSlot=1, enemy=True, unb=20, ovk=3),
+            event("hit", by="P", t="enemy", sourceSlot=0, enemy=True, unb=100, ovk=0),
+            event("hit", by="P", t="enemy", enemy=True, unb=100, ovk=0),
+            event("hit", by="P", t="Osty", sourceSlot=1, enemy=False, unb=100, ovk=0),
+        ]}
+        self.assertEqual(showcase.turn_peaks(log, slot=1), {"blocked": 9, "held": 12, "hit": 23})
+
 
 class Build(unittest.TestCase):
+    def test_each_modes_top_runs_are_kept_even_when_the_combined_tab_is_full(self):
+        solo = run(NOW - 1, deck=40)
+        multiplayer = run(NOW - 2, deck=30, multiplayer=True, op=True)
+        out = showcase.build([solo, multiplayer], NOW, per_tab=1)
+        self.assertEqual([e["n"] for e in out["deck"]], [40])
+        self.assertEqual([e["n"] for e in out["modes"]["solo"]["deck"]], [40])
+        self.assertEqual([e["n"] for e in out["modes"]["multiplayer"]["deck"]], [30])
+        self.assertTrue(out["modes"]["multiplayer"]["op"][0]["multiplayer"])
+
     def test_window_and_gaps(self):
         old = run(NOW - 31 * 86400, deck=90, op=True)
         out = showcase.build([old, run(NOW - 86400, op=True), run(NOW - 2 * 86400, deck=40, blocked=30, held=55)], NOW)

@@ -425,9 +425,9 @@
 
   // ---- Showcase (the root page, under the hero) -------------------------------
   //
-  // /users/_showcase.json.gz is built daily (infra/lambda/ingest/showcase.py): winning runs from the last 30 days per tab (every OP run, the top 30 for the rest), 10 to a
-  // page, none ranked. A tab with no runs is left
-  // out, and with no tabs at all so is the section. A row leads with its character's head and
+  // /users/_showcase.json.gz holds 30 days of winning runs. Each mode has its own
+  // top 30 per figure tab and all eligible OP runs, 10 to a page. A tab with no runs
+  // in any mode is left out. A row leads with its character's head and
   // colour (from /catalog.json, as the stats below use) and ends with the deck's synergy names
   // (r.syn; a row from an older file has none).
   const SHOWCASE_PAGE = 10;  // rows per view; a tab with more gets Prev / Next
@@ -456,10 +456,16 @@
     }
     const tabs = SHOWCASE_TABS.filter(([key]) => (data[key] || []).length);
     if (!tabs.length) return;
+    const modeLabels = { all: "All runs", solo: "Solo", multiplayer: "Multiplayer" };
+    const mode = el("select", {}, Object.entries(modeLabels).map(([value, textContent]) =>
+      el("option", { value, textContent })));
+    const modeFilter = el("label", { className: "showcase-mode-filter", hidden: !data.modes }, ["Mode", mode]);
     const tablist = el("div", { className: "showcase-tabs", role: "tablist" });
     const head = el("tr", {});
     const body = el("tbody", {});
     const panel = el("table", { className: "showcase-runs", role: "tabpanel" }, [el("thead", {}, [head]), body]);
+    const empty = el("p", { className: "site-note", hidden: true });
+    empty.setAttribute("role", "status");
     const cell = (cls, kids) => el("td", { className: cls }, kids);
     const runRow = (r, label) => {
       const id = stripPrefix(r.char || "", "CHARACTER.");
@@ -467,6 +473,9 @@
       const tr = el("tr", {}, [
         cell("showcase-player", [
           el("a", { href: `/u/${r.slug}#detail/${r.ts}`, className: "site-row-name", textContent: r.name }),
+          ...(r.multiplayer && mode.value === "all"
+            ? [el("small", { className: "showcase-run-mode", textContent: "Multiplayer" })]
+            : []),
         ]),
         cell("showcase-char", [
           ...(icon ? [el("img", { className: "showcase-char-icon", src: icon, alt: "" })] : []),
@@ -480,14 +489,17 @@
       return tr;
     };
     const pager = el("div", { className: "showcase-pager", hidden: true });
-    let current = null, page = 0;
-    const select = (key, to = 0) => {
-      if (key !== current) page = 0;
+    let current = null;
+    const select = (key, page = 0) => {
       current = key;
-      page = to;
       const [, , label] = tabs.find(t => t[0] === key);
-      const rows = data[key], pages = Math.ceil(rows.length / SHOWCASE_PAGE);
+      const selectedMode = mode.value;
+      const rows = (selectedMode === "all" ? data[key] : data.modes?.[selectedMode]?.[key]) || [];
+      const pages = Math.ceil(rows.length / SHOWCASE_PAGE);
       tablist.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
+      panel.hidden = !rows.length;
+      empty.hidden = !!rows.length;
+      empty.textContent = rows.length ? "" : `No ${modeLabels[selectedMode].toLowerCase()} runs in this category.`;
       head.replaceChildren(...["Player", "Character", "Ascension", ...(label ? ["Figure"] : []), "Deck synergies", "When"]
         .map(t => el("th", { scope: "col", textContent: t, className: t === "Deck synergies" ? "showcase-syn" : "" })));
       body.replaceChildren(...rows.slice(page * SHOWCASE_PAGE, (page + 1) * SHOWCASE_PAGE).map(r => runRow(r, label)));
@@ -507,10 +519,11 @@
       button.addEventListener("click", () => select(key));
       tablist.append(button);
     }
+    mode.addEventListener("change", () => select(current));
     main.append(el("section", { className: "site-list showcase" }, [
       el("h3", { textContent: "Runs worth a look" }),
       el("p", { className: "site-note", textContent: "Wins from the last 30 days." }),
-      tablist, panel, pager,
+      modeFilter, tablist, panel, empty, pager,
     ]));
     select(tabs[0][0]);
   }

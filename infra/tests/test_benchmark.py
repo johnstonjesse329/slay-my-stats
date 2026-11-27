@@ -29,6 +29,19 @@ class FakeStore:
 
 
 class UploadFights(unittest.TestCase):
+    def test_showcase_reads_the_uploading_players_deck(self):
+        uploader = "76561198000000001"
+        raw = {**RUN, "win": True, "players": [
+            {"id": "76561198000000002", "character": "CHARACTER.DEFECT", "deck": [{"id": "CARD.A"}]},
+            {"id": uploader, "character": "CHARACTER.SILENT", "deck": [{"id": "CARD.B"}, {"id": "CARD.C"}]},
+        ]}
+        facts = {}
+        with mock.patch.object(benchmark, "run_fights", return_value=[[{"each": [14, 3]}]]):
+            benchmark.upload_fights(FakeStore({KEY: gz(json.dumps(raw).encode())}), {uploader: {1}}, KEY, facts)
+        self.assertEqual(facts[(uploader, 1)]["slot"], 1)
+        self.assertEqual(facts[(uploader, 1)]["char"], "CHARACTER.SILENT")
+        self.assertEqual(facts[(uploader, 1)]["deck"], 2)
+
     def fights(self, body, key=KEY):
         published = {"76561198000000001": {1}}
         with mock.patch.object(benchmark, "run_fights", return_value=[["f"]]):

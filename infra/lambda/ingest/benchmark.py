@@ -7,6 +7,7 @@ import json
 
 import time
 
+from run import local_player_index
 from handler import (RAW_KEY_RE, STATS_KEY, IngestError, _get_store, _pack, _unpack, blob_key, id_key,
                      iter_upload_lines, telemetry_key)
 import mod_pack
@@ -38,7 +39,7 @@ def profile_name(store, steam_id):
     return profile and (_unpack(player[0])["slug"], _unpack(profile[0]).get("name") or "")
 
 
-def upload_fights(store, published, key, facts=None):
+def upload_fights(store, published, key, facts=None, showcase_since=0):
     """Fights of one upload; None when the upload can't be read (logged, counted by refresh).
     `facts`, when given, gets each run's showcase facts by run id."""
     steam_id = RAW_KEY_RE.fullmatch(key)[1]
@@ -58,18 +59,19 @@ def upload_fights(store, published, key, facts=None):
                 run_id = (steam_id, raw["start_time"])
                 parsed = run_fights({run_id: raw})
                 fights[run_id] = parsed[0] if parsed else []
-                if facts is not None:
-                    player = (raw.get("players") or [{}])[0]
+                if facts is not None and raw.get("win") and raw["start_time"] >= showcase_since:
+                    multiplayer = len(raw["players"]) > 1
+                    slot = local_player_index(raw, steam_id) if multiplayer else None
+                    player = raw["players"][slot or 0]
                     facts[run_id] = {"ts": raw["start_time"], "char": player.get("character"),
                                      "asc": raw.get("ascension") or 0, "deck": sum(1 for c in player.get("deck") or [] if c.get("id")),
-                                     "won": bool(raw.get("win")), "solo": len(raw["players"]) == 1,
+                                     "slot": slot,
                                      "standard": raw.get("game_mode", "standard") == "standard"}
-                    if raw.get("win") and len(raw["players"]) == 1:  # only a showcase candidate needs them
-                        try:
-                            facts[run_id]["syn"] = showcase.deck_synergies(
-                                player.get("character"), player.get("deck"), player.get("relics"))
-                        except Exception as e:  # noqa: BLE001 -- the names are extra; never cost the refresh
-                            print(json.dumps({"showcase_synergy_failed": f"{type(e).__name__}: {e}"}))
+                    try:
+                        facts[run_id]["syn"] = showcase.deck_synergies(
+                            player.get("character"), player.get("deck"), player.get("relics"))
+                    except Exception as e:  # noqa: BLE001 -- the names are extra; never cost the refresh
+                        print(json.dumps({"showcase_synergy_failed": f"{type(e).__name__}: {e}"}))
     except IngestError as e:
         print(json.dumps({"benchmark_skipped_upload": key, "error": f"{e.code}: {e}"}))
         return None
@@ -82,16 +84,26 @@ def refresh(event, context):
     keys = sorted(key for key in store.list("raw/") if RAW_KEY_RE.fullmatch(key))
     by_run, facts = {}, {}
     skipped = 0
+    showcase_since = time.time() - showcase.WINDOW_DAYS * 86400
+
+    def read_upload(key):
+        upload_facts = {}
+        fights = upload_fights(store, published, key, facts=upload_facts, showcase_since=showcase_since)
+        return fights, upload_facts
+
     # Read uploads concurrently, but apply them in key order so newer copies win.
     with ThreadPoolExecutor(max_workers=8) as pool:
         players = sorted({RAW_KEY_RE.fullmatch(key)[1] for key in keys})
         published = dict(zip(players, pool.map(partial(published_starts, store), players)))
         active_keys = [key for key in keys if published[RAW_KEY_RE.fullmatch(key)[1]]]
-        for fights in pool.map(partial(upload_fights, store, published, facts=facts), active_keys):
+        for fights, upload_facts in pool.map(read_upload, active_keys):
             if fights is None:
                 skipped += 1
             else:
                 by_run.update(fights)
+                for run_id in fights.keys() - upload_facts.keys():
+                    facts.pop(run_id, None)
+                facts.update(upload_facts)
     runs = [fights for fights in by_run.values() if fights]
     encounters = table(runs)
     cuts = cuts_of(runs, encounters)
@@ -122,19 +134,20 @@ def publish_showcase(store, by_run, facts, benchmark, now):
         names, candidates = {}, []
         for run_id, fights in by_run.items():
             f = facts.get(run_id)
-            if not f or not f["won"] or not f["solo"] or f["ts"] < since:
+            if not f or f["ts"] < since:
                 continue
             steam_id = run_id[0]
             if steam_id not in names:
                 names[steam_id] = profile_name(store, steam_id)
             if not names[steam_id]:
                 continue
+            slot = f["slot"]
             c = {"slug": names[steam_id][0], "name": names[steam_id][1], "ts": f["ts"], "char": f["char"],
-                 "asc": f["asc"], "deck": f["deck"], "syn": f.get("syn"),
-                 "op": f["standard"] and showcase.is_op(fights, benchmark["encounters"], benchmark["cuts"])}
+                 "asc": f["asc"], "deck": f["deck"], "syn": f.get("syn"), "multiplayer": slot is not None,
+                 "op": f["standard"] and showcase.is_op(fights, benchmark["encounters"], benchmark["cuts"], slot)}
             got = store.get(telemetry_key(steam_id, f["ts"]))
             if got:
-                c.update(showcase.turn_peaks(_unpack(got[0])))
+                c.update(showcase.turn_peaks(_unpack(got[0]), slot))
             candidates.append(c)
         previous = store.get(SHOWCASE_KEY)
         store.put(SHOWCASE_KEY, _pack(showcase.build(candidates, now)), {}, previous[2] if previous else None)
