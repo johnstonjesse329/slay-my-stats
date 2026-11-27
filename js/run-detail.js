@@ -1271,7 +1271,7 @@ function renderPartyCharts(players) {
   const benchmarkPlayer = players.findIndex(p => tl(p) === nodes);
   const benchmarkRows = readings.get(players[benchmarkPlayer]?.slot);
   const readingAt = (p, i) => readings.get(p.slot)?.[i];
-  const ranges = benchmarkRows ? keepDamageRanges(players[benchmarkPlayer].run, nodes, benchmarkRows) : [];
+  const ranges = benchmarkRows ? keepFightRanges(players[benchmarkPlayer].run, nodes, benchmarkRows) : { done: [], taken: [] };
   const historical = (key, ranges, reverse) => ({
     ranges, reverse,
     lines: [{ ...KEEP_AVERAGE_STYLE, data: nodes.map((_, i) => benchmarkRows?.[i]?.[key] ?? null), spanGaps: true }],
@@ -1358,14 +1358,14 @@ function renderPartyCharts(players) {
   });
   const partyDamage = partyDamageFallback(players[benchmarkPlayer]?.run || detailOwnerRun, nodes, damageSources, damageTotals);
   document.getElementById("detail-keep-damage-caption").textContent = partyDamageCaption(partyDamage);
-  const damageHistory = partyDamageHistory(historical("ask", ranges, false), partyDamage);
+  const damageHistory = partyDamageHistory(historical("ask", ranges.done, false), partyDamage);
   showKeepNotice("damage", partyDamage.notice, partyDamage.linkMod);
   const keep = [
     share,
     build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => keepWinRatio(r.grossRate, r.winGrossRate)),
       (p, i, v) => keepRatioLabel(v), true, fightIcon, {
         lines: [{ ...KEEP_AVERAGE_STYLE, spanGaps: true, data: nodes.map(() => 1) }],
-        ratioAxis: true, fightRows: benchmarkRows,
+        ratioAxis: true, ranges: ranges.taken, fightRows: benchmarkRows,
         compare: (party, i) => partyIncomingComparison(party, p => readingAt(p, i), benchmarkRows?.[i]),
         detail: (p, i) => { const row = readingAt(p, i); return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
@@ -4189,15 +4189,20 @@ function fightReadings(run, nodes, measured, partyDamage = null, partySources = 
   return rows.some(r => r) ? rows : null;
 }
 
-// Damage per turn for the quickest and slowest quarters of wins.
+// Damage done uses HP per turn. Damage taken uses the same win average as the player's ratio.
 const KEEP_RANGE_MIN = 10;
-function keepDamageRanges(run, nodes, rows) {
+function keepFightRanges(run, nodes, rows) {
   const demand = DATA.fightDemand.encounters;
-  return nodes.map((n, i) => {
+  const done = [], taken = [];
+  nodes.forEach((n, i) => {
     const r = rows[i], d = demand[keepFight(n)], how = r && d && keepWinners(run, d);
     const ok = how && !r.furCoatAffected && how.n >= KEEP_RANGE_MIN;
-    return ok && r.ask !== undefined && how.slow && how.fast ? { bad: r.pool / how.slow, good: r.pool / how.fast } : null;
+    done.push(ok && r.ask !== undefined && how.slow && how.fast ? { bad: r.pool / how.slow, good: r.pool / how.fast } : null);
+    const good = ok ? keepWinRatio(how.gross?.light, r.winGrossRate) : undefined;
+    const bad = ok ? keepWinRatio(how.gross?.heavy, r.winGrossRate) : undefined;
+    taken.push(good !== undefined && bad !== undefined ? { good, bad } : null);
   });
+  return { done, taken };
 }
 
 const keepMark = (value, [low, high]) => value < low ? "behind" : value > high ? "ahead" : "meeting";
@@ -4747,13 +4752,10 @@ function renderDetailKeepCharts(run) {
     pointHoverBackgroundColor: KEEP_AVERAGE_STYLE.borderColor, pointHoverRadius: 3, spanGaps: true,
     cubicInterpolationMode: "monotone",
   });
-  const ranges = keepDamageRanges(run, nodes, rows);
+  const ranges = keepFightRanges(run, nodes, rows);
   const chart = (id, series, tipFor, marks, plugins = []) => {
-    // Only the lines.
-    // The ring, where the chart has any, is the HP chart's: the best quarter of the wins.
-    const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 25% of wins", false) : "";
-    document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(keepLegendEntry).join("")}${ring}</div>`;
-    // Room for a ring that sits above everything else on the chart.
+    const range = marks?.some(Boolean) ? rangeKey("Best and worst 25% of wins", false) : "";
+    document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(keepLegendEntry).join("")}${range}</div>`;
     const base = iconAxis({ min: 0 });
     const ratioAxis = id === "in" || id === "share";
     const yAxis = { ...base, stacked: false, reverse: id === "in", ticks: { ...base.ticks, maxTicksLimit: 5 } };
@@ -4797,13 +4799,13 @@ function renderDetailKeepCharts(run) {
     ? { ...line(damageLine, r => r.doing), pointRadius: 3 }
     : line(damageLine, r => r.doing, "damage");
   const damageCanvas = document.getElementById("detail-keep-damage-chart");
-  const damageHistory = partyDamageHistory({ lines: [winners(r => r.ask)], ranges }, fallback);
+  const damageHistory = partyDamageHistory({ lines: [winners(r => r.ask)], ranges: ranges.done }, fallback);
   const markers = run.mp ? [keepDamageMarkers(nodes, rows.map((r, i) => damageHistory.lines[0]?.data[i] ??
     (fallback.partySize > 1 ? fallback.rates[i] : r?.doing)), damageCanvas, () => Chart.getChart(damageCanvas))] : [];
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
     ...damageHistory.lines, ...(fallback?.chartLines || []), ...markers], damageTip, damageHistory.ranges);
   const average = () => ({ ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) });
-  chart("in", [line(takenLine, r => keepWinRatio(r.grossRate, r.winGrossRate), "in"), average()], inTip);
+  chart("in", [line(takenLine, r => keepWinRatio(r.grossRate, r.winGrossRate), "in"), average()], inTip, ranges.taken);
 
   // Each fight scores turns and damage taken against an average win. Above 1 is ahead, so a slide is the
   // run falling behind. The ticks under the floor mark the deck changes between fights, so the
