@@ -4420,7 +4420,7 @@ function renderKeepActs(run, nodes, measured) {
   const acts = actReadings(run, nodes, measured, party && partyFightCosts(party, nodes));
   const coverage = document.getElementById("detail-keep-party-coverage");
   coverage.hidden = !party || !acts.length;
-  coverage.textContent = party ? `Party average · ${party.length} of ${partyRoster(run).length} run copies` : "";
+  coverage.textContent = party ? "Party average" : "";
   box.style.display = acts.length || acts.unrated.length ? "" : "none";
   // One metric on one line, as cells of the half-card's grid: icon and label take the slack,
   // then the figure and either its mark and the average win's, or (a per-turn figure) its
