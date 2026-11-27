@@ -1034,42 +1034,44 @@ function renderPartySupport(owner, runs) {
   const roster = partyRoster(owner);
   const supportLabel = p => `<span class="party-member">${partyPlayerName(p)}</span>`;
   const table = (visible, byRecipient) => {
-    const contributions = new Map();
+    const players = roster.map(player => ({ player, counts: {}, recipients: new Map() }));
     const totals = {};
-    for (const { rows } of visible) {
+    const add = (counts, metric, value) => { counts[metric] = (counts[metric] || 0) + value; };
+    for (const { rows, debuffs } of visible) {
+      for (const { player, counts } of players) {
+        const count = debuffs?.[player.slot];
+        if (!Number.isSafeInteger(count) || count < 0) continue;
+        add(counts, "debuffs", count);
+        add(totals, "debuffs", count);
+      }
       for (const row of rows) {
-        const from = roster[row.from], to = roster[row.to];
-        if (!from || !to || from === to) continue;
-        const key = byRecipient ? `${from.slot}:${to.slot}` : from.slot;
-        const contribution = contributions.get(key) || { from, to, counts: {} };
+        const from = players[row.from], to = roster[row.to];
+        if (!from || !to || from.player === to) continue;
+        const recipient = from.recipients.get(to) || {};
         for (const [metric] of PARTY_SUPPORT_METRICS) {
           const value = row[metric];
           if (!Number.isSafeInteger(value) || value <= 0) continue;
-          contribution.counts[metric] = (contribution.counts[metric] || 0) + value;
-          totals[metric] = (totals[metric] || 0) + value;
+          add(from.counts, metric, value);
+          add(recipient, metric, value);
+          add(totals, metric, value);
         }
-        contributions.set(key, contribution);
+        from.recipients.set(to, recipient);
       }
     }
-    if (!contributions.size) return '<p class="chart-caption">No teammate contributions were attributed in this selection.</p>';
-    const cells = counts => PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] || "—"}</td>`).join("");
-    return `<table class="ft-party-table"><thead><tr>` +
-      (byRecipient ? '<th scope="col">From</th><th scope="col">To</th>' : '<th scope="col">Player</th>') +
+    const contributors = players.filter(({ counts, recipients }) => counts.debuffs != null || recipients.size);
+    if (!contributors.length) return '<p class="chart-caption">No teammate contributions were attributed in this selection.</p>';
+    const cells = counts => PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] ?? "—"}</td>`).join("") +
+      `<td>${counts.debuffs ?? "—"}</td>`;
+    return `<table class="ft-party-table"><thead><tr><th scope="col">Player</th>` +
       PARTY_SUPPORT_METRICS.map(([, label]) => `<th scope="col">${label}</th>`).join("") +
-      `</tr></thead><tbody>${[...contributions.values()].map(({ from, to, counts }) =>
-        `<tr><th scope="row">${supportLabel(from)}</th>` +
-        (byRecipient ? `<td class="party-support-recipient">${supportLabel(to)}</td>` : "") +
-        `${cells(counts)}</tr>`
-      ).join("")}</tbody>` +
-      `<tfoot><tr><th scope="row" colspan="${byRecipient ? 2 : 1}">Team total</th>${cells(totals)}</tr></tfoot></table>`;
-  };
-  const debuffs = visible => {
-    const recorded = visible.filter(fight => fight.debuffs);
-    if (!recorded.length) return "";
-    return `<h4 class="strength-label">Debuffs applied to enemies</h4>
-      <dl class="party-support-debuffs">${roster.map(p =>
-        `<div><dt>${supportLabel(p)}</dt><dd>${recorded.reduce((sum, fight) => sum + (fight.debuffs[p.slot] || 0), 0)}</dd></div>`
-      ).join("")}</dl>`;
+      `<th scope="col">Debuffs applied</th></tr></thead><tbody>${contributors.map(({ player, counts, recipients }) => {
+        const summary = `<tr><th scope="row">${supportLabel(player)}</th>${cells(counts)}</tr>`;
+        if (!byRecipient) return summary;
+        return summary + [...recipients].map(([to, counts]) =>
+          `<tr class="party-support-recipient"><th scope="row">To ${supportLabel(to)}</th>${cells(counts)}</tr>`
+        ).join("");
+      }).join("")}</tbody>` +
+      `<tfoot><tr><th scope="row">Team total</th>${cells(totals)}</tr></tfoot></table>`;
   };
   const fights = (owner.timeline || []).filter(keepFight);
   panel.innerHTML = `<h3 class="strength-label">Teammate support</h3>
@@ -1103,7 +1105,7 @@ function renderPartySupport(owner, runs) {
     const renderSelection = () => {
       const selected = Number(selector.value);
       const visible = scoped.filter(fight => !selected || fight.floor === selected);
-      results.innerHTML = debuffs(visible) + table(visible, breakdown.checked);
+      results.innerHTML = table(visible, breakdown.checked);
     };
     selector.onchange = breakdown.onchange = renderSelection;
     renderSelection();
