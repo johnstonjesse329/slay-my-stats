@@ -1022,56 +1022,23 @@ function partyHpComparison(players, i, history) {
 const COOP_BLOCK_NOTICE = '<div class="ft-cap">This fight has no verified block breakdown for every player.</div>';
 
 function partyIncomingComparison(players, rows, average) {
-  const table = partyFloorTable(players, ["Arrived", "Blocked", "Healed", "Damage taken"], p => {
+  const table = partyFloorTable(players, ["Arrived", "Blocked", "Healed", "Damage taken", "Per turn vs. win"], p => {
     const r = rows(p);
-    if (!r) return [null, null, null, null];
-    return [r.grossArrived, r.grossBlocked, r.healedAll, r.grossTaken].map(total => partyFightValue(
+    if (!r) return [null, null, null, null, null];
+    const damage = [r.grossArrived, r.grossBlocked, r.healedAll, r.grossTaken].map(total => partyFightValue(
       total, total == null ? null : total / r.turns));
-  }, average?.winGross ? [null, null, null, partyFightValue(average.winGross.total, average.winGross.rate)] : null);
+    return [...damage, keepRatioLabel(keepWinRatio(r.grossRate, r.winGrossRate))];
+  }, average?.winGross ? [null, null, null, partyFightValue(average.winGross.total, average.winGross.rate),
+    keepRatioLabel(keepWinRatio(average.winGrossRate, average.winGrossRate))] : null);
   return table + (players.some(p => rows(p) && rows(p).grossBlocked === undefined)
     ? COOP_BLOCK_NOTICE : "");
 }
 
-// One line per player with data. Desktop tooltips compare the party together.
-// Touch tooltips use the same individual breakdowns as the separate run view.
-// FB-62 proof of concept: "orig", "flip" (best on top, negative ticks) or "score" (higher = better).
-// "flip" (0x on top, labels rising downward) read as lower-is-better, so it is gone: a saved "flip"
-// loads as "score", and Score is the default.
-const FB62 = (() => { try { const v = localStorage.getItem("fb62"); return v === "orig" ? "orig" : "score"; } catch { return "score"; } })();
-// Flipped keeps the figures as they are and only turns the axis over (0 on top), so a tick reads as
-// the same number the average line and the hover box show: 1× is the average win, never -1.
-const fb62Tick = unit => v => `${+v.toFixed(2)}${unit === "×" ? "×" : ""}`;
-// Score guard: both sides get +1 (so a near-zero denominator can't blow up), and the score stops at 4.
-const FB62_CAP = 4;
-const fb62Ratio = (win, own) => win == null || own == null || Number.isNaN(win) || Number.isNaN(own) ? undefined : Math.min(FB62_CAP, (win + 1) / (own + 1));
-const fb62Cap = v => v == null ? v : Math.min(FB62_CAP, v);
-const FB62_NAME = { flip: "Flipped", score: "Score" };
-const FB62_CAPTION = { orig: "Lower is better.", flip: "Higher on the chart is better.", score: "Higher is better." };
-// A plotted value as the mode shows it.
-const fb62Show = (v, unit) => FB62 === "score" ? (v >= FB62_CAP ? `≥${FB62_CAP}×` : `${v.toFixed(2)}×`)
-  : `${unit === "×" ? v.toFixed(2) : v.toFixed(1)}${unit === "×" ? "×" : " / turn"}`;
-// Tooltip line: the mode's value, with the original beside it in Flipped.
-const fb62Cell = (label, v, orig, unit) => v == null || FB62 === "flip" ? "" :
-  `<div class="ft-cap">${label} ${FB62_NAME[FB62]} <b>${fb62Show(v, unit)}</b></div>`;
-function fb62Toggle() {
-  const cap = [...document.querySelectorAll("#detail-keep-box .chart-caption")].find(c => c.firstChild?.textContent.includes("compared with an average win"))?.firstChild;
-  if (cap?.nodeType === 3) cap.textContent = cap.textContent.replace(/(Lower|Higher) is better[^.]*\.|Closer[^.]*\./, FB62_CAPTION[FB62]);
-  if (document.getElementById("fb62-toggle")) return;
-  const host = document.getElementById("detail-keep-tier")?.closest("dl")?.parentElement;
-  if (!host) return;
-  const bar = document.createElement("div");
-  bar.id = "fb62-toggle";
-  bar.style.cssText = "margin:6px 0;font-size:12px;color:#ccc";
-  bar.innerHTML = "View: " + [["orig", "Original"], ["score", "Score"]].map(([k, t]) =>
-    `<button type="button" data-fb62="${k}" style="margin-left:6px;padding:2px 8px;cursor:pointer;color:#eee;background:${k === FB62 ? "#4a4470" : "#2a2840"};border:1px solid #555;border-radius:4px">${t}</button>`).join("");
-  bar.onclick = e => {
-    const k = e.target.dataset?.fb62;
-    if (!k) return;
-    try { localStorage.setItem("fb62", k); } catch {}
-    location.reload();
-  };
-  host.insertBefore(bar, host.firstChild);
-}
+// A zero or missing benchmark has no finite damage multiplier.
+const keepWinRatio = (own, average) => Number.isFinite(own) && Number.isFinite(average) && average > 0
+  ? own / average : undefined;
+const keepRatioLabel = value => value == null ? "—" : `${+value.toFixed(2)}×`;
+const keepRatioTick = value => `${value}×`;
 
 function partyChart(id, nodes, players, series, cell, reverse = false, icon = null, extra = {}) {
   const canvas = document.getElementById(id);
@@ -1081,9 +1048,7 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
     if (!nodes[i]) return "";
     const n = nodes[i];
     const head = floorTipHead(extra.fightRows ? { ...n, enc: n.fight || n.enc } : n) +
-      (extra.fightRows ? fightKind(n, extra.fightRows[i]) : "") + (extra.overview?.(i) || "") +
-      (extra.fb62 && FB62 !== "orig" ? players.map((p, j) => series[j] && series[j][i] != null
-        ? fb62Cell(`${partyChartSwatch(p)}`, series[j][i], series[j][i], FB62 === "score" ? "×" : extra.fb62unit) : "").join("") : "");
+      (extra.fightRows ? fightKind(n, extra.fightRows[i]) : "") + (extra.overview?.(i) || "");
     if (extra.compare && (extra.summaryOnly || (!floorTipTouch && matchMedia("(min-width: 761px)").matches))) {
       const pickups = players.map((p, j) => {
         const chips = changes[j](i);
@@ -1100,10 +1065,8 @@ function partyChart(id, nodes, players, series, cell, reverse = false, icon = nu
   });
   const base = iconAxis({ min: 0 });
   const y = { ...base, stacked: false, reverse, ticks: { ...base.ticks, maxTicksLimit: 5 } };
-  if (extra.fb62 && FB62 === "flip") y.ticks.callback = fb62Tick(extra.fb62unit);
-  // Score is a multiple of the average win too: whole steps, so 1× (the average line) is labelled.
-  if (extra.fb62 && FB62 === "score") { y.ticks.callback = fb62Tick("×"); y.ticks.stepSize = 1; }
-  if (extra.floorAtZero) {
+  if (extra.ratioAxis) {
+    y.ticks.callback = keepRatioTick;
     const stretch = y.afterDataLimits;
     y.afterDataLimits = scale => { if (stretch) stretch(scale); scale.min = Math.max(0, scale.min); };
   }
@@ -1159,7 +1122,7 @@ function renderPartyCharts(players) {
   const benchmarkPlayer = players.findIndex(p => tl(p) === nodes);
   const benchmarkRows = readings.get(players[benchmarkPlayer]?.slot);
   const readingAt = (p, i) => readings.get(p.slot)?.[i];
-  const ranges = benchmarkRows ? keepRanges(players[benchmarkPlayer].run, nodes, benchmarkRows) : { taken: [], done: [] };
+  const ranges = benchmarkRows ? keepDamageRanges(players[benchmarkPlayer].run, nodes, benchmarkRows) : [];
   const historical = (key, ranges, reverse) => ({
     ranges, reverse,
     lines: [{ ...KEEP_AVERAGE_STYLE, data: nodes.map((_, i) => benchmarkRows?.[i]?.[key] ?? null), spanGaps: true }],
@@ -1169,7 +1132,6 @@ function renderPartyCharts(players) {
     return v === undefined || Number.isNaN(v) ? null : v;
   })) : null);
   const has = series => series.some(v => v && v.some(x => x != null));
-  const turn = (p, i, v) => v == null ? "–" : v.toFixed(1);
   const count = (p, i, v) => v ?? "–";
   const dropCanvas = id => {
     const old = floorCharts().find(c => c && c.canvas.id === id);
@@ -1215,15 +1177,13 @@ function renderPartyCharts(players) {
   // fight is the same for all of them, so its turns and the 1x line are drawn once.
   const fightIcon = (n, key) => n.type === "boss" || n.type === "elite" || key === "monster" || key === "elite" || key === "unknown_elite" || (key === "unknown" && !!n.enc);
   const turnsShare = nodes.map((_, i) => {
-    for (const r of readings.values()) { const x = r && r[i]; if (x && x.winTurns !== undefined) return FB62 === "score" ? fb62Cap(x.winTurns / x.turns) : x.turns / x.winTurns; }
+    for (const r of readings.values()) { const x = r && r[i]; if (x?.winTurns > 0) return keepWinRatio(x.turns, x.winTurns); }
     return null;
   });
-  const asMode = r => FB62 === "score" ? fb62Cap(1 / r) : r;
-  const times = v => v == null ? "–" : FB62 === "score" ? fb62Show(v, "×") : `${v.toFixed(2)}×`;
   const share = build("detail-keep-share-chart", "detail-keep-share-legend",
-    perFight(r => r.winTotal === undefined ? undefined : FB62 === "score" ? fb62Ratio(r.winTotal, r.total) : (r.total + 1) / (r.winTotal + 1)),
-    (p, i, v) => times(v), FB62 === "flip", fightIcon, {
-      floorAtZero: true, fb62: true, fb62unit: "×",
+    perFight(r => keepWinRatio(r.total, r.winTotal)),
+    (p, i, v) => keepRatioLabel(v), true, fightIcon, {
+      ratioAxis: true,
       fightRows: benchmarkRows,
       lines: [
         { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) },
@@ -1232,11 +1192,11 @@ function renderPartyCharts(players) {
       compare: (party, i) => {
         const r = benchmarkRows?.[i];
         const turns = r?.winTurns === undefined ? "" :
-          `<div class="ft-cap">Fight turns <b>${r.turns}</b> · ${times(fb62Cap(turnsShare[i]))} avg win · Avg win ${+r.winTurns.toFixed(1)}</div>`;
-        return turns + partyFloorTable(party, ["Damage taken", FB62 === "score" ? FB62_NAME.score : "× avg win"], p => {
+          `<div class="ft-cap">Fight turns <b>${r.turns}</b> · ${keepRatioLabel(turnsShare[i])} avg win · Avg win ${+r.winTurns.toFixed(1)}</div>`;
+        return turns + partyFloorTable(party, ["Damage taken after healing", "× avg win"], p => {
           const row = readingAt(p, i);
-          return [row?.total, row?.winTotal === undefined ? null : times(asMode((row.total + 1) / (row.winTotal + 1)))];
-        }, r?.winTotal === undefined ? null : [Math.round(r.winTotal), times(1)]);
+          return [row?.total, keepRatioLabel(keepWinRatio(row?.total, row?.winTotal))];
+        }, r?.winTotal === undefined ? null : [Math.round(r.winTotal), keepRatioLabel(keepWinRatio(r.winTotal, r.winTotal))]);
       },
       detail: (p, i) => { const row = readingAt(p, i); return row && keepShareTip(row, p.color); },
     });
@@ -1248,14 +1208,14 @@ function renderPartyCharts(players) {
   });
   const partyDamage = partyDamageFallback(players[benchmarkPlayer]?.run || detailOwnerRun, nodes, damageSources, damageTotals);
   document.getElementById("detail-keep-damage-caption").textContent = partyDamageCaption(partyDamage);
-  const damageHistory = partyDamageHistory(historical("ask", ranges.done, false), partyDamage);
+  const damageHistory = partyDamageHistory(historical("ask", ranges, false), partyDamage);
   showKeepNotice("damage", partyDamage.notice, partyDamage.linkMod);
   const keep = [
     share,
-    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => FB62 === "score" ? fb62Ratio(r.winGrossRate, r.grossRate) : r.grossRate), turn, FB62 !== "score",
-      fightIcon, { ...(FB62 === "score" ? { ranges: [], reverse: false, lines: [{ ...KEEP_AVERAGE_STYLE, spanGaps: true,
-          data: nodes.map((_, i) => benchmarkRows?.[i]?.winGrossRate == null ? null : 1) }] }
-        : historical("winGrossRate", ranges.taken, true)), fb62: true, fb62unit: " / turn", fightRows: benchmarkRows,
+    build("detail-keep-in-chart", "detail-keep-in-legend", perFight(r => keepWinRatio(r.grossRate, r.winGrossRate)),
+      (p, i, v) => keepRatioLabel(v), true, fightIcon, {
+        lines: [{ ...KEEP_AVERAGE_STYLE, spanGaps: true, data: nodes.map(() => 1) }],
+        ratioAxis: true, fightRows: benchmarkRows,
         compare: (party, i) => partyIncomingComparison(party, p => readingAt(p, i), benchmarkRows?.[i]),
         detail: (p, i) => { const row = readingAt(p, i); return row && keepIncomingTip(row, true); } }),
     build("detail-keep-damage-chart", "detail-keep-damage-legend", damageRates,
@@ -4021,21 +3981,15 @@ function fightReadings(run, nodes, measured, partyDamage = null, partySources = 
   return rows.some(r => r) ? rows : null;
 }
 
-// The bars on the damage charts' fight floors: from the best quarter of the wins the average win is of
-// to the worst (fight_demand.py's fast and slow, light and heavy), so the bar says how far a win can
-// go either way. Damage done a turn is the fight's HP over turns, so the quickest wins do the most.
-// A bar needs enough wins to have a quarter. Per floor, {bad, good} or null.
+// Damage per turn for the quickest and slowest quarters of wins.
 const KEEP_RANGE_MIN = 10;
-function keepRanges(run, nodes, rows) {
+function keepDamageRanges(run, nodes, rows) {
   const demand = DATA.fightDemand.encounters;
-  const done = [], taken = [];
-  nodes.forEach((n, i) => {
+  return nodes.map((n, i) => {
     const r = rows[i], d = demand[keepFight(n)], how = r && d && keepWinners(run, d);
     const ok = how && !r.furCoatAffected && how.n >= KEEP_RANGE_MIN;
-    done.push(ok && r.ask !== undefined && how.slow && how.fast ? { bad: r.pool / how.slow, good: r.pool / how.fast } : null);
-    taken.push(ok && how.gross ? { bad: how.gross.heavy, good: how.gross.light } : null);
+    return ok && r.ask !== undefined && how.slow && how.fast ? { bad: r.pool / how.slow, good: r.pool / how.fast } : null;
   });
-  return { done, taken };
 }
 
 const keepMark = (value, [low, high]) => value < low ? "behind" : value > high ? "ahead" : "meeting";
@@ -4469,7 +4423,11 @@ function keepIncomingTip(r, mp = false) {
   const benchmark = r.winGross && r.winN
     ? `Damage taken benchmark: ${r.winN} recorded fights from winning runs on this encounter and ascension tier. Average incoming damage, block and healing are unavailable.`
     : "No damage taken benchmark for this fight. Average incoming damage, block and healing are unavailable.";
-  const coverage = `<div class="ft-cap">${benchmark}</div>`;
+  const ratio = keepWinRatio(r.grossRate, r.winGrossRate);
+  const comparison = ratio === undefined
+    ? (r.winGrossRate === 0 ? '<div class="ft-cap">Average win took 0 HP per turn, so no multiplier is available.</div>' : "")
+    : `<div class="ft-cap"><b>${keepRatioLabel(ratio)}</b> average win damage taken per turn</div>`;
+  const coverage = `${comparison}<div class="ft-cap">${benchmark}</div>`;
   const through = frow(keepIcon("taken", k.through), `Damage taken ${share(r.grossTaken)}`, r.grossTaken, one(r.grossRate),
     r.winGross ? one(r.winGross.total) : "—", one(r.winGrossRate) ?? "—", "ft-through");
   const healed = r.healedAll ? frow(keepIcon("healed", k.healed), "Healed", r.healedAll, one(r.healedAll / r.turns), "—", "—") : "";
@@ -4485,12 +4443,11 @@ function keepIncomingTip(r, mp = false) {
 
 function keepShareTip(r, color = KEEP_LINES.taken.color) {
   if (r.winTurns === undefined) return "";
-  const mult = v => FB62 === "score" ? fb62Show(fb62Cap(1 / v), "×") : `${v.toFixed(2)}×`;
-  return `<table><tr><th></th><th>This run</th><th>${FB62 === "score" ? FB62_NAME.score : "× avg win"}</th><th class="ft-win">Avg win</th></tr>` +
-    `<tr><td>${swatch(color)}Damage taken</td><td><b>${Math.round(r.total)}</b></td>` +
-    `<td>${mult((r.total + 1) / (r.winTotal + 1))}</td><td class="ft-win">${Math.round(r.winTotal)}</td></tr>` +
+  return `<table><tr><th></th><th>This run</th><th>× avg win</th><th class="ft-win">Avg win</th></tr>` +
+    `<tr><td>${swatch(color)}Damage taken after healing</td><td><b>${Math.round(r.total)}</b></td>` +
+    `<td>${keepRatioLabel(keepWinRatio(r.total, r.winTotal))}</td><td class="ft-win">${Math.round(r.winTotal)}</td></tr>` +
     `<tr><td>${swatch(KEEP_TURN_STYLE.borderColor)}Fight turns</td><td><b>${r.turns}</b></td>` +
-    `<td>${mult(r.turns / r.winTurns)}</td><td class="ft-win">${+r.winTurns.toFixed(1)}</td></tr></table>` +
+    `<td>${keepRatioLabel(keepWinRatio(r.turns, r.winTurns))}</td><td class="ft-win">${+r.winTurns.toFixed(1)}</td></tr></table>` +
     (r.lost ? `<div class="ft-cap">The fight that ended the run.</div>` : "");
 }
 
@@ -4552,10 +4509,7 @@ function renderDetailKeepCharts(run) {
   const damageTip = tip(r => fallback?.partySize > 1 ? partyDamageBenchmarkTip(r, fallback.partySize)
     : keepDamageTip(r, run.mp, damageLine.color), fallback?.tip);
 
-  const inTip = tip(r => keepIncomingTip(r, run.mp), FB62 === "orig" ? null : i => {
-    const r = rows[i];
-    return r && r.grossRate != null && r.winGrossRate != null ? fb62Cell("", FB62 === "score" ? fb62Ratio(r.winGrossRate, r.grossRate) : r.grossRate, r.grossRate, FB62 === "score" ? "×" : "/turn") : "";
-  });
+  const inTip = tip(r => keepIncomingTip(r, run.mp));
   const playTip = tip(simple(r => r.play ? [
     row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
     row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),
@@ -4584,27 +4538,23 @@ function renderDetailKeepCharts(run) {
     pointHoverBackgroundColor: KEEP_AVERAGE_STYLE.borderColor, pointHoverRadius: 3, spanGaps: true,
     cubicInterpolationMode: "monotone",
   });
-  const ranges = keepRanges(run, nodes, rows);
-  const chart = (id, series, tipFor, marks, up, plugins = [], floorAtZero = false) => {
+  const ranges = keepDamageRanges(run, nodes, rows);
+  const chart = (id, series, tipFor, marks, ratioAxis = false, plugins = []) => {
     // Only the lines.
     // The ring, where the chart has any, is the HP chart's: the best quarter of the wins.
     const ring = marks && marks.some(m => m) ? rangeKey("Best and worst 25% of wins", false) : "";
     document.getElementById(`detail-keep-${id}-legend`).innerHTML = `<div class="fl-items">${series.filter(s => s.showLine !== false).map(keepLegendEntry).join("")}${ring}</div>`;
     // Room for a ring that sits above everything else on the chart.
     const base = iconAxis({ min: 0 });
-    const fb = id === "in" || id === "share";
-    const yAxis = { ...base, stacked: false, ticks: { ...base.ticks, maxTicksLimit: 5 },
-      reverse: fb && FB62 === "flip" ? true : fb && FB62 === "score" ? false : !!up };
-    if (fb && FB62 === "flip") yAxis.ticks.callback = fb62Tick(id === "share" ? "×" : "");
-    // Score is a multiple of the average win too: whole steps so 1× (the average line) is labelled.
-    if (fb && FB62 === "score") { yAxis.ticks.callback = fb62Tick("×"); yAxis.ticks.stepSize = 1; }
+    const yAxis = { ...base, stacked: false, reverse: ratioAxis, ticks: { ...base.ticks, maxTicksLimit: 5 } };
+    if (ratioAxis) yAxis.ticks.callback = keepRatioTick;
     const stretch = yAxis.afterDataLimits;
     yAxis.afterDataLimits = scale => {
       const v = actView(nodes);   // only the bars in view, on a phone showing one act
       (marks || []).forEach((m, i) => { if (m && (!v || (i >= v.from && i <= v.to))) scale.max = Math.max(scale.max, m.bad, m.good); });
       stretch(scale);
       // A ratio axis has no below-zero: the icon stretch must not put one there.
-      if (floorAtZero) scale.min = Math.max(0, scale.min);
+      if (ratioAxis) scale.min = Math.max(0, scale.min);
     };
     detailKeepCharts.push(new Chart(document.getElementById(`detail-keep-${id}-chart`).getContext("2d"),
       floorChartConfig(nodes, [...(marks ? [makeWinRangePlugin(marks)] : []), ...plugins], tipFor, yAxis, series, actWindow(nodes))));
@@ -4637,15 +4587,13 @@ function renderDetailKeepCharts(run) {
     ? { ...line(damageLine, r => r.doing), pointRadius: 3 }
     : line(damageLine, r => r.doing, "damage");
   const damageCanvas = document.getElementById("detail-keep-damage-chart");
-  const damageHistory = partyDamageHistory({ lines: [winners(r => r.ask)], ranges: ranges.done }, fallback);
+  const damageHistory = partyDamageHistory({ lines: [winners(r => r.ask)], ranges }, fallback);
   const markers = run.mp ? [keepDamageMarkers(nodes, rows.map((r, i) => damageHistory.lines[0]?.data[i] ??
     (fallback.partySize > 1 ? fallback.rates[i] : r?.doing)), damageCanvas, () => Chart.getChart(damageCanvas))] : [];
   chart("damage", [...(run.mp && partyDamage.every(v => v == null) ? [] : [damage]),
     ...damageHistory.lines, ...(fallback?.chartLines || []), ...markers], damageTip, damageHistory.ranges);
-  chart("in", FB62 === "score"
-    ? [line(takenLine, r => r.winGrossRate === undefined ? undefined : fb62Ratio(r.winGrossRate, r.grossRate), "in"), winners(r => r.winGrossRate === undefined ? undefined : 1)]
-    : [line(takenLine, r => r.grossRate, "in"), winners(r => r.winGrossRate)], inTip, FB62 === "score" ? null : ranges.taken, true);
-  fb62Toggle();
+  const average = () => ({ ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) });
+  chart("in", [line(takenLine, r => keepWinRatio(r.grossRate, r.winGrossRate), "in"), average()], inTip, null, true);
 
   // Each fight's two costs -- the act card's own measures -- as a multiple of the average win:
   // turns (time) and damage taken (HP). Below 1 is ahead of the average win, so a slide is the
@@ -4655,19 +4603,13 @@ function renderDetailKeepCharts(run) {
   // next fights without those fights being read as the choice's doing.
   const ticks = changes ? changes.map((s, i) => i ? choiceTick(s) : null) : null;
   document.getElementById("detail-keep-share-picks").style.display = ticks && ticks.some(Boolean) ? "" : "none";
-  const shareTip = tip(r => keepShareTip(r, takenLine.color), FB62 === "orig" ? null : i => {
-    const r = rows[i];
-    if (!r || r.winTotal === undefined) return "";
-    const d = (r.total + 1) / (r.winTotal + 1), t = r.turns / r.winTurns;
-    return fb62Cell("Damage taken", FB62 === "score" ? fb62Cap(1 / d) : d, d, "×") + fb62Cell("Fight turns", FB62 === "score" ? fb62Cap(1 / t) : t, t, "×");
-  });
-  const average = { ...KEEP_AVERAGE_STYLE, data: nodes.map(() => 1) };
+  const shareTip = tip(r => keepShareTip(r, takenLine.color));
   chart("share", [
-    average,
-    line(takenLine, r => r.winTotal === undefined ? undefined : FB62 === "score" ? fb62Ratio(r.winTotal, r.total) : (r.total + 1) / (r.winTotal + 1), "share"),
+    average(),
+    line(takenLine, r => keepWinRatio(r.total, r.winTotal), "share"),
     { ...line({ label: KEEP_TURN_STYLE.label, color: KEEP_TURN_STYLE.borderColor },
-      r => r.winTurns === undefined ? undefined : FB62 === "score" ? fb62Cap(r.winTurns / r.turns) : r.turns / r.winTurns), ...KEEP_TURN_STYLE },
-  ], shareTip, null, false, (ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : []), true);
+      r => keepWinRatio(r.turns, r.winTurns)), ...KEEP_TURN_STYLE },
+  ], shareTip, null, true, ticks && ticks.some(Boolean) ? [makeChoiceTickPlugin(ticks)] : []);
 
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";

@@ -47,7 +47,12 @@ def expected_series(run, demand):
         recorded = node.get("dmg") or 0
         gross = max(recorded, log["taken"]) if lost and log else recorded
         total = max(0, gross - (node.get("healed") or 0))
-        out[i] = {"taken": (total + 1) / (how["taken"] + 1), "turns": node["turns"] / how["turns"]}
+        gross_win_rate = (how.get("gross") or {}).get("rate")
+        out[i] = {
+            "taken": total / how["taken"] if how["taken"] else None,
+            "turns": node["turns"] / how["turns"],
+            "incoming": recorded / node["turns"] / gross_win_rate if gross_win_rate else None,
+        }
     return out
 
 
@@ -74,9 +79,17 @@ def series_from_page(page):
     return page.evaluate("""() => {
       const c = detailKeepCharts.find(x => x.canvas.id === 'detail-keep-share-chart');
       if (!c) return null;
+      const incoming = detailKeepCharts.find(x => x.canvas.id === 'detail-keep-in-chart');
+      const axis = chart => ({
+        min: chart.scales.y.min,
+        zeroAboveWin: chart.scales.y.getPixelForValue(0) < chart.scales.y.getPixelForValue(1),
+        winTick: chart.options.scales.y.ticks.callback(1),
+      });
       return {
         plugins: c.config.plugins.map(p => p.id),
-        yMin: c.scales.y.min,
+        axes: [axis(c), axis(incoming)],
+        incoming: incoming.data.datasets[0].data,
+        incomingBaseline: incoming.data.datasets[1].data,
         datasets: c.data.datasets.map(d => ({label: d.label, data: d.data, color: d.borderColor, width: d.borderWidth, dash: d.borderDash, order: d.order || 0})),
         legend: document.getElementById('detail-keep-share-legend').innerText,
         caption: document.getElementById('detail-keep-share-picks').style.display,
@@ -205,7 +218,9 @@ def main():
             assert got, "the share chart did not render"
             assert "choiceTicks" in got["plugins"], got["plugins"]
             assert "manyIcons" in got["plugins"], got["plugins"]
-            assert got["yMin"] == 0, got["yMin"]
+            assert got["axes"] == [{"min": 0, "zeroAboveWin": True, "winTick": "1×"}] * 2, got["axes"]
+            assert all(value == 1 for value in got["incomingBaseline"])
+            assert not page.locator("#fb62-toggle").count()
             labels = [d["label"] for d in got["datasets"]]
             assert labels == ["Average win", "Damage taken", "Fight turns"], labels
             baseline, player, turns_line = got["datasets"]
@@ -219,7 +234,12 @@ def main():
             taken = got["datasets"][1]["data"]
             turns = got["datasets"][2]["data"]
             for i, row in want.items():
-                assert taken[i] is not None and abs(taken[i] - row["taken"]) < 1e-6, (i, taken[i], row)
+                for series, key in [(taken, "taken"), (got["incoming"], "incoming")]:
+                    want_value = row[key]
+                    if want_value is None:
+                        assert series[i] is None, (i, series[i], row)
+                    else:
+                        assert series[i] is not None and abs(series[i] - want_value) < 1e-6, (i, series[i], row)
                 assert turns[i] is not None and abs(turns[i] - row["turns"]) < 1e-6, (i, turns[i], row)
 
             counts = tick_kinds(page)
