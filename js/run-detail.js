@@ -204,7 +204,8 @@ function coopParty(run) {
     const label = fmtCharName(char) + (party.indexOf(char) === party.lastIndexOf(char) ? "" : ` ${number}`);
     if (i === (run.coop?.i ?? run.partySlot)) return { char, label, name: owner.name || "", self: true };
     const w = run.coop?.with.find(p => p.i === i);
-    return w ? { char, label, name: w.name, slug: w.slug, ts: w.ts } : { char, label };
+    return w ? { char, label, name: w.name, slug: w.slug, ts: w.ts }
+      : { char, label: `${fmtCharName(char)} · Slot ${i + 1}` };
   });
 }
 
