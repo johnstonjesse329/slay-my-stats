@@ -156,6 +156,60 @@ class Overkill(unittest.TestCase):
         self.assertNotIn("overkillDealt", rows[0])
 
 
+class PartySupport(unittest.TestCase):
+    def test_one_observer_measures_both_seats_and_credits_only_attributable_effects(self):
+        card = "CARD.STRIKE_IRONCLAD"
+        hit = {"action": 2, "sourceSlot": 1, "targetId": 4, "card": card}
+        calculation = {**hit, "before": 8, "after": 12, "modifiers": [{"sourceSlot": 0}]}
+        resolution = {**hit, "originalTargetId": 4, "blocked": 3, "intendedHpLoss": 9, "hpLost": 7}
+        events = [
+            ("fight0", {"enc": "ENCOUNTER.TOAD", "damageSlots": 2, "support": 1}),
+            ("turn0", {"turn": 1, "targetSlot": 0}),
+            ("turn0", {"turn": 1, "targetSlot": 1}),
+            ("action0", {"id": 1, "sourceSlot": 0}),
+            ("blk", {"action": 1, "sourceSlot": 0, "targetSlot": 1, "n": 5}),
+            ("blk", {"action": 1, "sourceSlot": 1, "targetSlot": 1, "n": 99}),
+            ("draw1", {"action": 1, "targetSlot": 1, "hand": True, "card": card}),
+            ("draw1", {"action": 1, "targetSlot": 1, "hand": False, "card": card}),
+            ("energy+", {"action": 1, "targetSlot": 1, "n": 2}),
+            ("energy+", {"targetSlot": 1, "n": 99}),
+            ("gen", {"sourceSlot": 0, "targetSlot": 1, "card": card}),
+            ("costReduction", {"sourceSlot": 0, "targetSlot": 1, "instance": 1, "before": 1, "after": 0}),
+            ("action0", {"id": 2, "sourceSlot": 1}),
+            ("play1", {**hit, "instance": 1, "energySpent": 0, "playIndex": 0, "auto": False}),
+            ("damageCalc", calculation),
+            ("damageResolved", {**resolution, "damageId": 1}),
+            ("hit", {**hit, "damageId": 1, "enemy": True, "unb": 7}),
+            ("hit", {**hit, "damageId": 1, "enemy": True, "unb": 7}),
+            ("damageCalc", {**calculation, "modifiers": [{"sourceSlot": 0}, {"sourceSlot": 1}]}),
+            ("damageResolved", {**resolution, "damageId": 2}),
+            ("hit", {**hit, "damageId": 2, "enemy": True, "unb": 7}),
+            ("fight1", {}),
+        ]
+        log = {"v": 3, "log": [{"q": i, "k": k, "a": a} for i, (k, a) in enumerate(events)]}
+        timeline = [{"floor": 4, "turns": 1, "enc": "ENCOUNTER.TOAD"}]
+        rows = measured.measured(handler.clean_event_log(log), timeline)
+        self.assertEqual(rows[0]["supportBySlot"], [
+            {"from": 0, "to": 1, "block": 5, "draw": 1, "energy": 2, "generated": 1,
+             "energySaved": 1, "freePlays": 1, "damage": 2},
+        ])
+        self.assertEqual([(p["draw"], p["played"], p["spent"]) for p in rows[0]["playBySlot"]],
+                         [(0, 0, 0), (2, 1, 0)])
+        self.assertEqual(measured.party_numbers(log["log"][:-1], {}), {})
+
+    def test_anonymous_seats_do_not_copy_missing_stats_or_account_ids(self):
+        data = {"map_point_history": [[
+            {"player_stats": [{"current_hp": 70}, {"current_hp": 12, "player_id": "private"}]},
+            {"player_stats": [{"current_hp": 60}]},
+        ]]}
+        players = [{"character": "CHARACTER.IRONCLAD"}, {"id": "private"}]
+        seats = run.party_seats(data, players, 0)
+        self.assertIsNone(seats[0])
+        self.assertEqual(seats[1]["timeline"][0]["hpAfter"], 12)
+        self.assertNotIn("hpAfter", seats[1]["timeline"][1])
+        self.assertNotIn("private", json.dumps(seats))
+
+
 @unittest.skipUnless(LOCAL, "no local event logs with their runs")
 class ParityWithTheLocalExport(unittest.TestCase):
     def test_card_table_matches_the_report(self):
@@ -181,7 +235,8 @@ class ParityWithTheLocalExport(unittest.TestCase):
                         expected.append(row)
                 got = measured.measured(handler.clean_event_log(log), parsed["timeline"])
                 self.assertTrue(got)
-                self.assertEqual(got, expected)
+                self.assertEqual([{k: v for k, v in row.items() if k not in ("playBySlot", "supportBySlot")}
+                                  for row in got], expected)
 
     def test_an_upload_carries_them_on_the_run(self):
         sid, ts, log, raw = LOCAL[0]

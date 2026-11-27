@@ -609,6 +609,8 @@ def spool_upload(body: bytes, steam_id: str, spool: Spool,
             # the site, or a mod from before the setting, always carried the IDs).
             if parsed.get("mp"):
                 parsed["multiplayerIdsShared"] = ids_shared is not False
+                parsed["partySeats"] = [seat if check_safe(seat, 2) else None
+                                        for seat in parsed["partySeats"]]
             ts = parsed.get("ts")
             ok = (isinstance(ts, int) and not isinstance(ts, bool) and TS_MIN <= ts <= TS_MAX
                   and check_safe(parsed))

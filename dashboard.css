@@ -1998,6 +1998,21 @@ h1 {
 .floor-tip .ft-party-table thead th:first-child { text-align: left; }
 .floor-tip .ft-party-table tbody th { text-align: left; font-weight: 400; }
 .floor-tip .ft-party-table tfoot { border-top: 1px solid var(--hairline); color: var(--text-dim); }
+
+#detail-party-play-metric select, #detail-party-support select {
+  font: inherit;
+  padding: 4px 8px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+}
+.party-support-table { overflow-x: auto; margin-top: 8px; }
+.party-support-table table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.party-support-table :is(th, td) { padding: 6px 8px; border-bottom: 1px solid var(--hairline); }
+.party-support-table thead th { line-height: 1.2; }
+.party-support-table :is(th:first-child, td:nth-child(2)) { text-align: left; }
+.party-support-table td:nth-child(n + 3) { text-align: center; font-variant-numeric: tabular-nums; }
 .floor-tip .ft-party-picks { border-top: 1px solid var(--hairline); margin-top: 6px; padding-top: 4px; }
 .floor-tip table { border-collapse: collapse; }
 .floor-tip th, .floor-tip td { padding: 3px 8px; text-align: right; white-space: nowrap; }

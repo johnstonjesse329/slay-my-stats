@@ -14,6 +14,7 @@ whose value is the telemetry file's name.
 
     python export_measured.py
 """
+import gzip
 import json
 import statistics
 import sys
@@ -61,27 +62,24 @@ def floor_numbers(fight, costs):
 
 
 def main():
+    sys.path.insert(0, str(HERE.parents[1] / "infra" / "lambda" / "ingest"))
+    from measured import measured
+    import run as runmod
+
     runs = tr.load_runs()
-    logs, _ = tr.load_logs(runs)
-    costs = tr.card_costs()
     out = {}
-    for (sid, ts), derived in logs.items():
-        raw = runs.get((sid, ts))
-        if raw is None:
-            continue
+    for path in sorted(tr.TELEMETRY.rglob("*.json.gz")):
         try:
-            import run as runmod
-            parsed = runmod.parse_run_data(raw, steam_id=sid, fallback_ts=ts)
-        except Exception:
-            continue
-        per_floor = []
-        for fight, node in tr.align(derived["fights"], parsed.get("timeline") or []):
-            if not fight["turns"]:
+            sid, ts = path.parent.name, int(path.name.split(".")[0])
+            raw = runs.get((sid, ts))
+            if raw is None:
                 continue
-            row = {"floor": node["floor"] + 1}
-            row.update({k: round(v, 2) if isinstance(v, float) else v
-                        for k, v in floor_numbers(fight, costs).items()})
-            per_floor.append(row)
+            with gzip.open(path, "rt", encoding="utf-8") as stream:
+                log = json.load(stream)
+            parsed = runmod.parse_run_data(raw, steam_id=sid, fallback_ts=ts)
+            per_floor = measured(log, parsed.get("timeline"))
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, IndexError):
+            continue
         if per_floor:
             out[str(ts)] = per_floor
     OUT.write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")

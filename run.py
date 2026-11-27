@@ -447,7 +447,7 @@ def extract_fights(data: dict, char: str, asc: int, won: bool, local_idx: int = 
     return fights
 
 
-def extract_timeline(data: dict, local_idx: int = 0) -> list[dict]:
+def extract_timeline(data: dict, local_idx: int = 0, *, strict_seat: bool = False) -> list[dict]:
     """
     Walk map_point_history and emit one record per node visited.
     Used by the Run Detail page to show a per-floor event timeline.
@@ -468,6 +468,13 @@ def extract_timeline(data: dict, local_idx: int = 0) -> list[dict]:
             # event, which is what the map shows; `fight` is added only for these.
             fight  = next((r for r in rooms if r.get("monster_ids")), rooms[0] if rooms else {})
             turns  = fight.get("turns_taken", 0)
+            stats = node.get("player_stats") or []
+            if strict_seat and (len(stats) <= local_idx or not isinstance(stats[local_idx], dict)):
+                nodes.append({"act": act_num, "floor": floor_idx, "type": ntype,
+                              "enc": enc_id, "turns": turns, **({"fight": fight["model_id"]}
+                              if fight.get("model_id", enc_id) != enc_id else {})})
+                floor_idx += 1
+                continue
             ps = player_stats_at(node, local_idx)
 
             hp_after = ps.get("current_hp",   0)
@@ -582,6 +589,13 @@ def extract_timeline(data: dict, local_idx: int = 0) -> list[dict]:
             })
             if fight.get("model_id", enc_id) != enc_id:
                 nodes[-1]["fight"] = fight["model_id"]
+            if strict_seat:
+                for key, field in (("hpAfter", "current_hp"), ("maxHp", "max_hp"),
+                                   ("dmg", "damage_taken"), ("healed", "hp_healed")):
+                    if field not in ps:
+                        nodes[-1].pop(key)
+                if not all(key in ps for key in ("current_hp", "damage_taken", "hp_healed")):
+                    nodes[-1].pop("hpBefore")
             floor_idx += 1
     return nodes
 
@@ -699,7 +713,7 @@ def parse_run(path: Path) -> dict:
 # what the node recorded it handing over). The Byrdonis Nest no longer offers Byrdpip:
 # its options are the egg card and +7 max HP, and the relic only exists once the egg
 # hatches at a rest site, so it is counted there, as a pick.
-PARSER_VERSION = 11
+PARSER_VERSION = 12
 
 # What the ancient's pick upgrades the starter relic into (Touch of Orobas).
 TOUCH_UPGRADES = {
@@ -939,6 +953,34 @@ def _act_maps(data: dict) -> list[dict]:
     return out
 
 
+def party_seats(data: dict, players: list, local_idx: int) -> list:
+    """Gameplay history by roster position. Missing seats never reuse another player's stats."""
+    seats = [None] * len(players)
+    if not 2 <= len(players) <= 8:
+        return seats
+    history = [node for act in data.get("map_point_history", []) if isinstance(act, list) for node in act]
+    for slot, player in enumerate(players):
+        if slot == local_idx:
+            continue
+        try:
+            timeline = extract_timeline(data, slot, strict_seat=True)
+            seat = {"timeline": timeline}
+            if history and all(len(node.get("player_stats") or []) > slot and
+                               isinstance(node["player_stats"][slot], dict) for node in history):
+                deck = [{"id": c["id"], "upgrade": c.get("current_upgrade_level", 0)}
+                        for c in player.get("deck", []) if c.get("id")]
+                relics = [{"id": r["id"]} for r in player.get("relics", []) if r.get("id")]
+                seat.update(finalDeck=deck, finalRelics=relics, **extract_deck_history(data, player, slot))
+                if "deck" not in player:
+                    seat.pop("deckAdded")
+                if "relics" not in player:
+                    seat.pop("relicsAdded")
+            seats[slot] = seat
+        except (ValueError, TypeError, KeyError, AttributeError, IndexError):
+            continue
+    return seats
+
+
 def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | None = None) -> dict:
     """
     parse_run() minus the file: takes an already-loaded .run JSON object, the
@@ -1135,7 +1177,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         # Who played, in the save's slot order, so the run list can show their
         # character heads instead of just "Multi". Characters only: never Steam IDs.
         **({"party": [strip_prefix(p.get("character") or "", "CHARACTER.") for p in players],
-            "partySlot": local_idx}
+            "partySlot": local_idx, "partySeats": party_seats(data, players, local_idx)}
            if len(players) > 1 else {}),
         "mode":          data.get("game_mode", "standard"),
         "build":         data.get("build_id", "UNKNOWN"),
@@ -2009,10 +2051,15 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <h3 class="strength-label">Energy and cards per turn</h3>
         <div id="detail-keep-play">
           <p class="chart-caption">Cards drawn, cards played and the printed cost of those played, each turn.</p>
+          <label id="detail-party-play-metric" hidden>Metric <select>
+            <option value="0">Cards drawn</option><option value="1">Cards played</option>
+            <option value="2">Printed energy cost</option><option value="3">Energy spent</option>
+          </select></label>
           <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-play-chart"></canvas></div>
           <div class="floor-legend" id="detail-keep-play-legend"></div>
         </div>
         <p class="chart-caption" id="detail-keep-play-none">No per-turn log for this run. Runs played with the mod and uploaded through it have one.</p>
+        <section id="detail-party-support" hidden></section>
       </div>
       <div class="chart-box" id="detail-gold-box" style="margin-top:16px">
         <h2>Gold by Floor</h2>

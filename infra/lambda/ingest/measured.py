@@ -13,6 +13,7 @@ together on real logs, so a change to one that the other doesn't follow fails th
     measured(log, timeline) -> [{"floor": 3, "draw": 5.0, "taken": 7, ...}, ...]
 """
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
@@ -102,6 +103,133 @@ def floor_numbers(fight, costs):
     }
 
 
+def party_fights(events):
+    """Yield the same attempts, in the same order, as derive()."""
+    fight = None
+    for event in sorted(events, key=lambda event: event.get("q", 0)):
+        if event.get("k") == "fight0":
+            if fight is not None:
+                yield fight
+            fight = [event]
+        elif fight is not None and fight[-1].get("k") != "fight1":
+            fight.append(event)
+    if fight is not None:
+        yield fight
+
+
+def party_numbers(events, costs):
+    """Read support and throughput without relying on the recorder's player identity."""
+    start = events[0].get("a") or {}
+    size = start.get("damageSlots")
+    if start.get("support") != 1 or type(size) is not int or not 2 <= size <= 8:
+        return {}
+    if events[-1].get("k") != "fight1":
+        return {}
+
+    def seat(value):
+        return value if type(value) is int and 0 <= value < size else None
+
+    def count(value):
+        return value if type(value) is int and value >= 0 else 0
+
+    def delta(a):
+        before, after = a.get("before"), a.get("after")
+        if (type(before) in (int, float) and type(after) in (int, float)
+                and math.isfinite(before) and math.isfinite(after)):
+            return int(after) - int(before)
+        return 0
+
+    def add(source, target, key, amount):
+        if source is not None and target is not None and source != target and amount > 0:
+            row = support.setdefault((source, target), {})
+            row[key] = row.get(key, 0) + amount
+
+    def contributor(a):
+        modifiers = a.get("modifiers") or []
+        sources = {seat(m.get("sourceSlot")) for m in modifiers if isinstance(m, dict)}
+        return next(iter(sources)) if len(sources) == 1 else None
+
+    def hit_key(a):
+        return tuple(a.get(k) for k in ("action", "sourceSlot", "targetId", "card"))
+
+    turns = [set() for _ in range(size)]
+    plays = [dict(draw=0, played=0, listPrice=0, spent=0, junk=0) for _ in range(size)]
+    support, actions, parents, discounts, extra_plays, resolved = {}, {}, {}, {}, {}, {}
+    previous_kind, previous = None, {}
+    for event in events:
+        kind, a = event.get("k"), event.get("a") or {}
+        source, target = seat(a.get("sourceSlot")), seat(a.get("targetSlot"))
+        action, instance = count(a.get("action")), count(a.get("instance"))
+        actor = actions.get(action)
+        if kind == "action0" and count(a.get("id")):
+            actions[a["id"]] = source
+            parents[a["id"]] = count(a.get("parent"))
+        elif kind == "turn0" and target is not None and count(a.get("turn")):
+            turns[target].add(a["turn"])
+        elif kind == "draw1" and target is not None:
+            plays[target]["draw"] += 1
+            plays[target]["junk"] += a.get("card") in dt.JUNK
+            if a.get("hand") is False:
+                add(actor, target, "draw", 1)
+        elif kind == "eps" and source is not None:
+            plays[source]["spent"] += count(a.get("n"))
+        elif kind == "play1" and source is not None:
+            cost = costs.get(a.get("card"), 0)
+            plays[source]["played"] += 1
+            plays[source]["listPrice"] += 3 if cost == "X" else (cost or 0)
+            if instance and a.get("playIndex") == 0 and a.get("auto") is False:
+                discount = discounts.pop((source, instance), None)
+                if discount and a.get("energySpent") == discount.get("after"):
+                    helper = seat(discount.get("sourceSlot"))
+                    add(helper, source, "energySaved", -delta(discount))
+                    if discount["after"] == 0 and not a.get("starsSpent"):
+                        add(helper, source, "freePlays", 1)
+            if (a.get("auto") is True and a.get("playIndex") == 0 and a.get("energySpent") == 0
+                    and not a.get("starsSpent") and a.get("card") not in dt.JUNK):
+                add(actions.get(parents.get(action)), source, "freePlays", 1)
+            extra = extra_plays.get(action)
+            if (extra and extra.get("targetSlot") == source and extra.get("card") == a.get("card")
+                    and extra["before"] <= count(a.get("playIndex")) < extra["after"]):
+                add(contributor(extra), source, "extraPlays", 1)
+        elif kind == "costReduction" and target is not None and instance and delta(a) < 0:
+            discounts[target, instance] = a
+        elif kind == "playCount" and action and type(a.get("before")) is int and delta(a) > 0:
+            extra_plays[action] = a
+        elif kind == "energy+":
+            add(actor, target, "energy", count(a.get("n")))
+        elif kind == "blk":
+            add(source if source is not None else actor, target, "block", count(a.get("n")))
+        elif kind == "gen" and a.get("card") not in dt.JUNK:
+            add(source, target, "generated", 1)
+        elif (kind == "damageResolved" and previous_kind == "damageCalc" and action
+              and (source is not None or seat(a.get("petOwnerSlot")) is not None)):
+            # In one action, the calculation immediately preceding resolution must match
+            # the exact unredirected hit. Mixed or unknown modifiers cannot be split.
+            blocked, intended = count(a.get("blocked")), count(a.get("intendedHpLoss"))
+            if (count(a.get("damageId")) and hit_key(previous) == hit_key(a)
+                    and a.get("targetId") is not None and a["targetId"] == a.get("originalTargetId")
+                    and delta(previous) > 0
+                    and int(previous["after"]) == blocked + intended):
+                hp = count(a.get("hpLost"))
+                base_hp = max(0, intended - delta(previous))
+                dealer = source if source is not None else seat(a.get("petOwnerSlot"))
+                resolved[a["damageId"]] = (contributor(previous), dealer, max(0, hp - base_hp))
+        elif kind == "hit" and a.get("enemy") is True:
+            credit = resolved.pop(count(a.get("damageId")), None)
+            if credit:
+                helper, dealer, hp = credit
+                add(helper, dealer, "damage", hp)
+        previous_kind, previous = kind, a
+
+    by_slot = [{key: round(value / len(played_turns), 2) for key, value in totals.items()}
+               if played_turns else None for totals, played_turns in zip(plays, turns)]
+    return {
+        "playBySlot": by_slot,
+        "supportBySlot": [{"from": source, "to": target, **row}
+                          for (source, target), row in sorted(support.items())],
+    }
+
+
 def measured(log, timeline) -> list[dict]:
     """One row per fight the log and the run's timeline both have, with a turn to read.
     Empty for a log in an older shape, or one nothing could be read from."""
@@ -109,6 +237,10 @@ def measured(log, timeline) -> list[dict]:
         return []
     costs = card_table()["costs"]
     derived = dt.derive(log, {})  # the move table only feeds what an enemy was about to do
+    if any(e.get("k") == "fight0" and (e.get("a") or {}).get("support") == 1
+           for e in log["log"] if isinstance(e, dict)):
+        for fight, events in zip(derived["fights"], party_fights(log["log"])):
+            fight["partyNumbers"] = party_numbers(events, costs)
     rows = []
     for fight, node in align(derived["fights"], timeline or []):
         if not fight["turns"]:
@@ -116,5 +248,6 @@ def measured(log, timeline) -> list[dict]:
         row = {"floor": node["floor"] + 1}
         row.update({k: round(v, 2) if isinstance(v, float) else v
                     for k, v in floor_numbers(fight, costs).items()})
+        row.update(fight.get("partyNumbers", {}))
         rows.append(row)
     return rows

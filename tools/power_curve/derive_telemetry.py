@@ -280,7 +280,7 @@ def derive(log, moves=None):
                         fight["incomingBySlot"] = None
 
         if kind == "hit" and a.get("enemy") is True and fight["damageBySlot"] is not None:
-            slot, damage = a.get("sourceSlot"), a.get("unb")
+            slot, damage = a.get("sourceSlot", a.get("petOwnerSlot")), a.get("unb")
             if (type(slot) is int and 0 <= slot < len(fight["damageBySlot"])
                     and type(damage) is int and 0 <= damage < HP_SENTINEL):
                 fight["damageBySlot"][slot] += damage
