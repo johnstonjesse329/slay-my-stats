@@ -1006,17 +1006,17 @@ function observedPartyRun(owner, player) {
 }
 
 const PARTY_SUPPORT_METRICS = [
-  ["damage", "Dmg enabled", "Extra HP an enemy loses from a teammate’s hit because of your effect.\nCards like Knockdown and Flanking make enemies take more damage. Vulnerable, such as from Bash, can count when the log can credit the bonus to you."],
-  ["damageReduced", "Dmg reduced", "Incoming damage you prevented for a teammate, measured before Block.\nWeak from Neutralize can make an enemy hit your teammate for less."],
-  ["damageRedirected", "Dmg redirect", "Damage the log shows landing on a different player than the original target.\nIntercept is meant to take an attack aimed at an ally."],
-  ["block", "Block given", "Block you grant to a teammate.\nLift gives Block directly to another player."],
-  ["draw", "Teammate draws", "Cards a teammate actually draws thanks to your effect.\nHuddle Up makes the whole party draw."],
-  ["energy", "Energy given", "Energy you grant to a teammate.\nBelieve in You gives Energy directly to another player."],
-  ["generated", "Cards created", "New cards you create for teammates.\nBlade Symphony puts new Shivs into teammates’ hands."],
-  ["transferred", "Cards transferred", "Existing cards you pass to a teammate, changing their owner.\nThe Ball goes from you to a teammate after you play it."],
-  ["freePlays", "Free plays", "Times your effect lets a teammate play a card for free.\nPlaying a card made free by Ensemble counts as one."],
-  ["energySaved", "Energy saved", "Energy a teammate avoids spending because of your effect.\nIf Ensemble makes a two-Energy card free, that play saves two Energy."],
-  ["extraPlays", "Card replays", "Extra times a teammate’s card resolves because of your effect.\nTag Team makes their next Attack on the marked enemy play again."],
+  ["damage", "Dmg enabled", "Extra damage your effects add to teammates’ hits, when the log credits you.", ["KNOCKDOWN", "FLANKING", "BASH"]],
+  ["damageReduced", "Dmg reduced", "Incoming damage you prevent for teammates before Block.", ["NEUTRALIZE"]],
+  ["damageRedirected", "Dmg redirect", "Damage the log shows redirected to another player.", ["INTERCEPT"]],
+  ["block", "Block given", "Block you grant to teammates.", ["LIFT"]],
+  ["draw", "Teammate draws", "Cards teammates draw because of your effects.", ["HUDDLE_UP"]],
+  ["energy", "Energy given", "Energy you grant to teammates.", ["BELIEVE_IN_YOU"]],
+  ["generated", "Cards created", "New cards you create for teammates.", ["BLADE_SYMPHONY"]],
+  ["transferred", "Cards transferred", "Existing cards you pass to teammates, changing their owner.", ["THE_BALL"]],
+  ["freePlays", "Free plays", "Cards teammates play for free because of your effects.", ["ENSEMBLE"]],
+  ["energySaved", "Energy saved", "Energy teammates save on card plays because of your effects.", ["ENSEMBLE"]],
+  ["extraPlays", "Card replays", "Extra times teammates’ cards resolve because of your effects.", ["TAG_TEAM"]],
 ];
 
 function partySupportFloors(owner, runs) {
@@ -1070,11 +1070,19 @@ function renderPartySupport(owner, runs) {
     if (!contributors.length) return '<p class="chart-caption">No teammate contributions were attributed in this selection.</p>';
     const cells = counts => PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] ?? "—"}</td>`).join("") +
       `<td>${counts.debuffs ?? "—"}</td>`;
-    const heading = (label, example) => `<th scope="col"><span class="party-support-example" tabindex="0" ` +
-      `data-tip="${escapeHtml(example)}" aria-description="${escapeHtml(example)}">${label}</span></th>`;
+    const heading = (label, description, examples) => {
+      const cards = examples.map(key => {
+        const id = `CARD.${key}`;
+        const name = cardInfo(id)?.name || fmtCardLabel(id);
+        return `<button type="button" class="party-support-card" ${cardPopAttrs(id)}>${escapeHtml(name)}</button>`;
+      });
+      const text = escapeHtml(description);
+      return `<th scope="col"><span class="party-support-example" tabindex="0" data-tip="${text}" aria-description="${text}">${label}` +
+        `<template><div>${text}</div><div class="party-support-examples">Example ${cards.length === 1 ? "card" : "cards"} ${cards.join(", ")}</div></template></span></th>`;
+    };
     return `<table class="ft-party-table"><thead><tr><th scope="col">Player</th>` +
-      PARTY_SUPPORT_METRICS.map(([, label, example]) => heading(label, example)).join("") +
-      heading("Debuffs applied", "Times you apply a debuff to an enemy.\nBash counts as one application even when it adds multiple stacks of Vulnerable.") +
+      PARTY_SUPPORT_METRICS.map(([, label, description, examples]) => heading(label, description, examples)).join("") +
+      heading("Debuffs applied", "Debuff applications to enemies. Each application counts once, regardless of stacks.", ["BASH"]) +
       `</tr></thead><tbody>${contributors.map(({ player, counts, recipients }) => {
         const summary = `<tr><th scope="row">${supportLabel(player)}</th>${cells(counts)}</tr>`;
         if (!byRecipient) return summary;

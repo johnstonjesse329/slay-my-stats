@@ -2026,6 +2026,12 @@ h1 {
 .party-support-table :is(th, td) { padding: 6px; border-bottom: 1px solid var(--hairline); }
 .party-support-table thead th { line-height: 1.2; }
 .party-support-example { cursor: help; text-decoration: underline dotted; text-underline-offset: 0.2em; }
+.party-support-table .chart-tooltip { text-align: left; font-weight: 400; line-height: 1.4; }
+.party-support-examples { margin-top: 0.3rem; }
+.party-support-card {
+  padding: 0; border: 0; background: none; color: var(--gold); font: inherit;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 0.15em;
+}
 .party-support-table th:first-child { text-align: left; }
 .party-support-table .party-member { white-space: nowrap; }
 .party-support-table td { text-align: center; font-variant-numeric: tabular-nums; }

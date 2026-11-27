@@ -22,10 +22,23 @@
 // (instead of `title`) — see the delegated listeners at the bottom of this
 // section.
 let floatingTooltipEl = null;
-function getFloatingTooltipEl() {
+function getFloatingTooltipEl(anchor = null) {
   if (!floatingTooltipEl) {
     floatingTooltipEl = document.createElement("div");
     floatingTooltipEl.className = "chart-tooltip";
+    floatingTooltipEl.addEventListener("pointerdown", e => {
+      // A touch card preview opens on pointerdown. Keep the metric focused
+      // so mobile Safari doesn't close the preview when it moves focus.
+      if (e.pointerType !== "mouse" && e.target.closest(".party-support-card")) e.preventDefault();
+    });
+    floatingTooltipEl.addEventListener("focusout", e => {
+      if (tipTrigger?.classList.contains("party-support-example") &&
+          !floatingTooltipEl.contains(e.relatedTarget) && e.relatedTarget !== tipTrigger) scheduleTipHide();
+    });
+  }
+  if (anchor) {
+    if (floatingTooltipEl.previousElementSibling !== anchor) anchor.after(floatingTooltipEl);
+  } else if (floatingTooltipEl.parentNode !== document.body) {
     document.body.appendChild(floatingTooltipEl);
   }
   return floatingTooltipEl;
@@ -79,6 +92,7 @@ function scheduleTipHide() {
 }
 function hideSharedTooltip() {
   cancelTipHide();
+  if (tipTrigger?.classList.contains("party-support-example")) floatingTooltipEl?.replaceChildren();
   tipTrigger = null;
   if (!floatingTooltipEl) return;
   floatingTooltipEl.style.opacity = 0;
@@ -159,12 +173,15 @@ function showTableTooltip(target, clientX = null, clientY = null) {
       return;
     }
   }
-  const el = getFloatingTooltipEl();
+  const template = target.querySelector(":scope > template");
+  const el = getFloatingTooltipEl(template ? target : null);
   cancelTipHide();
+  if (template && tipTrigger === target) return;
   tipTrigger = target;
-  el.classList.remove("chart-tooltip-rich");
+  el.classList.remove("chart-tooltip-rich", "tip-passive");
   el.classList.add("tip-live");
-  el.innerHTML = text.split("\n").map(line => `<div>${line}</div>`).join("");
+  if (template) el.replaceChildren(template.content.cloneNode(true));
+  else el.innerHTML = text.split("\n").map(line => `<div>${line}</div>`).join("");
   el.style.left = "0px";
   el.style.top = "0px";
   el.style.opacity = 1;
@@ -176,7 +193,7 @@ function showTableTooltip(target, clientX = null, clientY = null) {
   // text being hovered. Without pointer coords (keyboard focus) fall back to
   // centering under the element.
   let left, top;
-  if (clientX != null && clientY != null) {
+  if (!template && clientX != null && clientY != null) {
     const pos = clampTooltipPosition(el, clientX + 14, clientY + 16);
     left = pos.left; top = pos.top;
   } else {
@@ -210,7 +227,8 @@ document.addEventListener("focusin", e => {
 });
 document.addEventListener("focusout", e => {
   const target = e.target.closest("[data-tip]");
-  if (target && !target.contains(e.relatedTarget)) hideTableTooltip();
+  if (target && !target.contains(e.relatedTarget) &&
+      !(floatingTooltipEl?.previousElementSibling === target && floatingTooltipEl.contains(e.relatedTarget))) hideTableTooltip();
 });
 document.addEventListener("pointerup", e => {
   if (e.pointerType === "touch" || e.pointerType === "pen") {
