@@ -1006,7 +1006,8 @@ function observedPartyRun(owner, player) {
 }
 
 const PARTY_SUPPORT_METRICS = [
-  ["damage", "Damage enabled"], ["damageReduced", "Damage reduced"], ["damageRedirected", "Damage redirected"],
+  ["damage", "Dmg enabled", "Damage enabled"], ["damageReduced", "Dmg reduced", "Damage reduced"],
+  ["damageRedirected", "Dmg redirect", "Damage redirected"],
   ["block", "Block given"], ["draw", "Teammate draws"], ["energy", "Energy given"], ["generated", "Cards created"],
   ["transferred", "Cards transferred"], ["freePlays", "Free plays"], ["energySaved", "Energy saved"], ["extraPlays", "Card replays"],
 ];
@@ -1063,7 +1064,9 @@ function renderPartySupport(owner, runs) {
     const cells = counts => PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] ?? "—"}</td>`).join("") +
       `<td>${counts.debuffs ?? "—"}</td>`;
     return `<table class="ft-party-table"><thead><tr><th scope="col">Player</th>` +
-      PARTY_SUPPORT_METRICS.map(([, label]) => `<th scope="col">${label}</th>`).join("") +
+      PARTY_SUPPORT_METRICS.map(([, label, fullLabel]) =>
+        `<th scope="col">${fullLabel ? `<abbr title="${fullLabel}">${label}</abbr>` : label}</th>`
+      ).join("") +
       `<th scope="col">Debuffs applied</th></tr></thead><tbody>${contributors.map(({ player, counts, recipients }) => {
         const summary = `<tr><th scope="row">${supportLabel(player)}</th>${cells(counts)}</tr>`;
         if (!byRecipient) return summary;

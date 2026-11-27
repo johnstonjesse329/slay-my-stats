@@ -2023,7 +2023,7 @@ h1 {
 .party-support-breakdown { display: inline-flex; align-items: center; gap: 0.35rem; }
 .party-support-coverage { margin-top: 0.45rem; }
 .party-support-table table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.party-support-table :is(th, td) { padding: 6px 8px; border-bottom: 1px solid var(--hairline); }
+.party-support-table :is(th, td) { padding: 6px; border-bottom: 1px solid var(--hairline); }
 .party-support-table thead th { line-height: 1.2; }
 .party-support-table th:first-child { text-align: left; }
 .party-support-table .party-member { white-space: nowrap; }
