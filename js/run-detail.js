@@ -1087,7 +1087,7 @@ function renderPartySupport(owner, runs) {
       button.setAttribute("aria-pressed", String(active));
       button.classList.toggle("active", active);
     }
-    selector.innerHTML = `<option value="">Recorded fights</option>${scoped.map(({ floor }) =>
+    selector.innerHTML = `<option value="">All fights</option>${scoped.map(({ floor }) =>
       `<option value="${floor}">Floor ${floor}</option>`).join("")}`;
     selector.disabled = !scoped.length;
     coverage.textContent = `Attributed effects from ${scoped.length} of ${available} fights.`;
