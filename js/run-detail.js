@@ -1006,9 +1006,9 @@ function observedPartyRun(owner, player) {
 }
 
 const PARTY_SUPPORT_METRICS = [
-  ["damage", "Damage enabled"], ["damageReduced", "Damage reduced"], ["block", "Block given"], ["draw", "Cards drawn"],
-  ["energy", "Energy given"], ["generated", "Cards created"], ["freePlays", "Free plays"],
-  ["energySaved", "Energy saved"], ["extraPlays", "Extra plays"],
+  ["damage", "Damage enabled"], ["damageReduced", "Damage reduced"], ["damageRedirected", "Damage redirected"],
+  ["block", "Block given"], ["draw", "Teammate draws"], ["energy", "Energy given"], ["generated", "Cards created"],
+  ["transferred", "Cards transferred"], ["freePlays", "Free plays"], ["energySaved", "Energy saved"], ["extraPlays", "Card replays"],
 ];
 
 function partySupportFloors(owner, runs) {
@@ -1075,7 +1075,7 @@ function renderPartySupport(owner, runs) {
   };
   const fights = (owner.timeline || []).filter(keepFight);
   panel.innerHTML = `<h3 class="strength-label">Teammate support</h3>
-    <p class="chart-caption">Damage reduced counts attributed incoming damage before block. Debuff totals count applications to enemies.</p>
+    <p class="chart-caption">Damage reduced and redirected use pre-block amounts. Debuff totals count applications to enemies.</p>
     <div class="party-support-filters">
       <div role="group" aria-label="Support act">${[1, 2, 3, 0].map(act =>
         `<button type="button" class="toggle-btn" data-act="${act}" aria-pressed="false">${act ? `Act ${act}` : "All"}</button>`
