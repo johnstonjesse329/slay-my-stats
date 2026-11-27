@@ -449,6 +449,42 @@ def _create(db, table, env, steam, note):
                  "ConditionExpression": "attribute_not_exists(sk)"}}])
 
 
+def file_from_mod(data, steam):
+    """Create only, after the mod endpoint has verified the Steam ticket."""
+    version = data.get("modVersion")
+    if not isinstance(version, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}", version):
+        raise Refused(400, "Invalid mod version.")
+    context = data.get("fight")
+    if context is not None:
+        if not isinstance(context, dict):
+            raise Refused(400, "Invalid fight context.")
+        encounter, turn, card = context.get("encounter"), context.get("turn"), context.get("lastCard")
+        if (not isinstance(encounter, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", encounter)
+                or (turn is not None and (type(turn) is not int or not 1 <= turn <= 100000))):
+            raise Refused(400, "Invalid fight context.")
+        context = {"encounter": encounter, "turn": turn}
+        if card is not None:
+            if not isinstance(card, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", card):
+                raise Refused(400, "Invalid card context.")
+            context["lastCard"] = card
+
+    target = {"kind": "mod", "text": "In-game"}
+    if context is not None:
+        target["fight"] = context
+    try:
+        note = _new_note({"comment": data.get("comment"), "category": data.get("category"),
+                          "path": "/", "target": target}, steam, os.environ["FEEDBACK_ORIGIN"])
+    except (ValueError, TypeError):
+        raise Refused(400, "Invalid feedback. Use a comment of 1–4000 characters.") from None
+    note.update(source="mod", mod_version=version)
+    import boto3
+    db = boto3.client("dynamodb")
+    table, env = os.environ["FEEDBACK_TABLE"], os.environ["FEEDBACK_ENV"]
+    _throttle(db, table, env, steam, creating=True)
+    _create(db, table, env, steam, note)
+    return {"seq": note["seq"]}
+
+
 def handle(event):
     def reply(status, body):
         return {"statusCode": status, "headers": {"content-type": "application/json",
@@ -501,11 +537,18 @@ def _get_view(db, table, readable, env, steam, event):
     status, category = params.get("status", "all"), params.get("category", "")
     if status not in STATUSES or (category and category not in CATEGORIES):
         raise Refused(400, "Status must be open, backlog, resolved or all, and category a known type.")
+    source = params.get("source", "")
+    if source not in ("", "website", "mod"):
+        raise Refused(400, "Source must be website or mod.")
     which = params.get("env", env)
     envs = readable if which == "both" else [which]
     if not set(envs) <= set(readable):
         raise Refused(400, "Environment must be one this inbox can read.")
     plan = _plan(scope, params.get("path", ""), status, category)
+    if source:
+        index, prefix, keep = plan
+        plan = (index, prefix, lambda note: (keep is None or keep(note))
+                and note.get("source", "website") == source)
     cursor = _decode_cursor(params["cursor"], envs, plan) if params.get("cursor") else {e: None for e in envs}
     notes, following = _read(db, table, plan, cursor)
     current = _with_votes(db, table, notes, steam, refresh=True)

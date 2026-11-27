@@ -23,6 +23,7 @@ from moto import mock_aws
 INFRA = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(INFRA / 'lambda' / 'ingest'), str(INFRA), str(INFRA.parent)]  # the repo root holds run.py
 import feedback  # noqa: E402
+import handler  # noqa: E402
 import session  # noqa: E402
 from slay_my_stats.feedback_stack import INDEXES, TABLE_NAME  # noqa: E402
 
@@ -34,6 +35,40 @@ def note_id(i):
 
 
 class FeedbackTest(unittest.TestCase):
+    def test_mod_report_uses_same_inbox_and_requires_ticket(self):
+        body = {"steamId": OTHER, "ticket": "test-ticket", "comment": "Multi-hit undercount", "category": "bug",
+                "modVersion": "v0.0.7-test.4", "fight": {"encounter": "ENCOUNTER.NIBBIT", "turn": 2,
+                                                       "lastCard": "CARD.MULTI"}}
+        event = self.event(body)
+        event.update(rawPath="/mod/feedback", cookies=[])
+        with patch.dict(os.environ, {"ENTRY": "mod", "FEEDBACK_ORIGIN": "https://gamma.test"}):
+            with patch.object(handler, "verify_ticket", return_value=ADMIN):
+                self.assertEqual(handler.lambda_handler(event, None)["statusCode"], 401)
+                self.assertEqual(self.ids("scope=site"), [])
+            with patch.object(handler, "verify_ticket", return_value=OTHER):
+                response = handler.lambda_handler(event, None)
+                self.assertEqual(response["statusCode"], 200, response["body"])
+                self.assertEqual(json.loads(response["body"]), {"seq": 1})
+                status, inbox = self.call(query="scope=site")
+                self.assertEqual(status, 200)
+                note, = inbox["notes"]
+                self.assertEqual((note["author"], note["source"], note["mod_version"], note["seq"]),
+                                 (OTHER, "mod", body["modVersion"], 1))
+                self.assertEqual(note["target"]["fight"], body["fight"])
+                self.assertNotIn("ticket", json.dumps(note))
+                self.assertEqual(note["category"], "bug")
+
+    def test_source_filter_keeps_legacy_site_notes_and_works_with_category(self):
+        self.put(100, category="bug", source="mod")
+        self.put(101, category="feature", source="mod")
+        self.put(102, category="bug")
+        self.put(103, category="bug", source="website")
+        self.assertEqual(self.ids("source=mod&category=bug&status=open"), [note_id(100)])
+        with patch.object(feedback, "PAGE_SIZE", 1):
+            notes = self.every("source=website&category=bug&status=open")
+            self.assertEqual(notes, [note_id(103), note_id(102)])
+        self.assertEqual(self.call(query="source=unknown")[0], 400)
+
     def setUp(self):
         env = patch.dict(os.environ, {
             'GAMMA_SESSION_SECRET': 'test-secret', 'ALLOWED_STEAM_IDS': f'{ADMIN},{OTHER}',
