@@ -713,7 +713,7 @@ def parse_run(path: Path) -> dict:
 # what the node recorded it handing over). The Byrdonis Nest no longer offers Byrdpip:
 # its options are the egg card and +7 max HP, and the relic only exists once the egg
 # hatches at a rest site, so it is counted there, as a pick.
-PARSER_VERSION = 12
+PARSER_VERSION = 13
 
 # What the ancient's pick upgrades the starter relic into (Touch of Orobas).
 TOUCH_UPGRADES = {

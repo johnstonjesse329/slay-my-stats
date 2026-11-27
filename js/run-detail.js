@@ -1006,7 +1006,7 @@ function observedPartyRun(owner, player) {
 }
 
 const PARTY_SUPPORT_METRICS = [
-  ["damage", "Damage enabled"], ["block", "Block given"], ["draw", "Cards drawn"],
+  ["damage", "Damage enabled"], ["damageReduced", "Damage reduced"], ["block", "Block given"], ["draw", "Cards drawn"],
   ["energy", "Energy given"], ["generated", "Cards created"], ["freePlays", "Free plays"],
   ["energySaved", "Energy saved"], ["extraPlays", "Extra plays"],
 ];
@@ -1015,9 +1015,13 @@ function partySupportFloors(owner, runs) {
   const sources = partyDamageSources([owner, ...runs]);
   return (owner.timeline || []).flatMap(node => {
     if (!keepFight(node)) return [];
-    const available = sources.map(source => source.get(damageFloorKey(node))?.support).filter(Array.isArray);
-    const rows = available.find(rows => rows.length) || available[0];
-    return rows ? [{ floor: node.floor + 1, rows }] : [];
+    const available = sources.map(source => source.get(damageFloorKey(node)))
+      .filter(sample => Array.isArray(sample?.support));
+    if (!available.length) return [];
+    const current = available.find(entry => entry.debuffs && entry.support.length);
+    const rows = (current || available.find(entry => entry.support.length) || available[0]).support;
+    const debuffs = (current || available.find(entry => entry.debuffs))?.debuffs;
+    return [{ act: node.act, floor: node.floor + 1, rows, debuffs }];
   });
 }
 
@@ -1029,10 +1033,9 @@ function renderPartySupport(owner, runs) {
   if (!floors.length) return;
   const roster = partyRoster(owner);
   const supportLabel = p => `<span class="party-member" style="--player-color:${p.color}">${partyPlayerName(p)}</span>`;
-  const table = selected => {
+  const table = visible => {
     const totals = new Map();
-    for (const { floor, rows } of floors) {
-      if (selected && selected !== floor) continue;
+    for (const { rows } of visible) {
       for (const row of rows) {
         const from = roster[row.from], to = roster[row.to];
         if (!from || !to || from === to) continue;
@@ -1053,15 +1056,50 @@ function renderPartySupport(owner, runs) {
         PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] || "—"}</td>`).join("") + "</tr>"
       ).join("")}</tbody></table>`;
   };
-  const fights = (owner.timeline || []).filter(keepFight).length;
-  panel.innerHTML = `<h3 class="strength-label">Teammate support</h3>
-    <p class="chart-caption">Attributed effects from ${floors.length} of ${fights} fights. Damage enabled counts extra enemy HP lost. Cards drawn counts bonus draws.</p>
-    <label>Fight <select><option value="">Recorded fights</option>${floors.map(({ floor }) =>
-      `<option value="${floor}">Floor ${floor}</option>`).join("")}</select></label>
-    <div class="party-support-table">${table(0)}</div>`;
-  panel.querySelector("select").onchange = event => {
-    panel.querySelector(".party-support-table").innerHTML = table(Number(event.target.value));
+  const debuffs = visible => {
+    const recorded = visible.filter(fight => fight.debuffs);
+    if (!recorded.length) return "";
+    return `<h4 class="strength-label">Debuffs applied to enemies</h4>
+      <dl class="party-support-debuffs">${roster.map(p =>
+        `<div><dt>${supportLabel(p)}</dt><dd>${recorded.reduce((sum, fight) => sum + (fight.debuffs[p.slot] || 0), 0)}</dd></div>`
+      ).join("")}</dl>`;
   };
+  const fights = (owner.timeline || []).filter(keepFight);
+  panel.innerHTML = `<h3 class="strength-label">Teammate support</h3>
+    <p class="chart-caption">Damage reduced counts attributed incoming damage before block. Debuff totals count applications to enemies.</p>
+    <div class="party-support-filters">
+      <div role="group" aria-label="Support act">${[1, 2, 3, 0].map(act =>
+        `<button type="button" class="toggle-btn" data-act="${act}" aria-pressed="false">${act ? `Act ${act}` : "All"}</button>`
+      ).join("")}</div>
+      <label>Fight <select></select></label>
+    </div>
+    <p class="chart-caption party-support-coverage"></p>
+    <div class="party-support-table"></div>`;
+  const selector = panel.querySelector("select");
+  const coverage = panel.querySelector(".party-support-coverage");
+  const results = panel.querySelector(".party-support-table");
+  const actButtons = [...panel.querySelectorAll("button[data-act]")];
+  const renderAct = act => {
+    const scoped = floors.filter(fight => !act || fight.act === act);
+    const available = fights.filter(node => !act || node.act === act).length;
+    for (const button of actButtons) {
+      const active = Number(button.dataset.act) === act;
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("active", active);
+    }
+    selector.innerHTML = `<option value="">Recorded fights</option>${scoped.map(({ floor }) =>
+      `<option value="${floor}">Floor ${floor}</option>`).join("")}`;
+    selector.disabled = !scoped.length;
+    coverage.textContent = `Attributed effects from ${scoped.length} of ${available} fights.`;
+    selector.onchange = () => {
+      const selected = Number(selector.value);
+      const visible = scoped.filter(fight => !selected || fight.floor === selected);
+      results.innerHTML = debuffs(visible) + table(visible);
+    };
+    selector.onchange();
+  };
+  for (const button of actButtons) button.onclick = () => renderAct(Number(button.dataset.act));
+  renderAct(0);
 }
 
 function clearPartyView() {
@@ -3815,7 +3853,9 @@ function partyDamageSources(runs) {
         ? row.incomingBySlot : null;
       const play = Array.isArray(row.playBySlot) && row.playBySlot.length === run.party?.length
         ? row.playBySlot : null;
-      samples.set(damageFloorKey(n), { bySlot, incoming, play, support: row.supportBySlot, total: row.removed });
+      const debuffs = Array.isArray(row.debuffsBySlot) && row.debuffsBySlot.length === run.party?.length
+        ? row.debuffsBySlot : null;
+      samples.set(damageFloorKey(n), { bySlot, incoming, play, debuffs, support: row.supportBySlot, total: row.removed });
     });
     return samples;
   });

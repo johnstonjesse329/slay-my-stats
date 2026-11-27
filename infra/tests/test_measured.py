@@ -157,6 +157,45 @@ class Overkill(unittest.TestCase):
 
 
 class PartySupport(unittest.TestCase):
+    def test_damage_reduction_and_debuffs_from_confirmed_enemy_hits(self):
+        target = {"targetSlot": 2, "targetId": 2}
+        hit = {**target, "originalTargetId": 2, "blocked": 2, "intendedHpLoss": 3}
+        weak = {"model": "POWER.WEAK_POWER", "sourceSlot": 0}
+        enemy = {"c": "E0", "targetId": 3}
+        events = [
+            ("fight0", {"damageSlots": 3, "support": 1}),
+            ("snap", {"creatures": [{"combatId": 3, "move": "ATTACK"}]}),
+            ("pow", {**enemy, "p": "POWER.WEAK_POWER", "sourceSlot": 0, "d": 3, "n": 3}),
+            ("pow", {**enemy, "p": "POWER.DEBILITATE_POWER", "sourceSlot": 1, "d": 2, "n": 2}),
+            ("pow", {**enemy, "p": "POWER.VULNERABLE_POWER", "sourceSlot": 1, "d": 2, "n": 2}),
+            ("pow", {**enemy, "p": "POWER.STRENGTH_POWER", "sourceSlot": 1, "d": -2, "n": -2}),
+            ("pow", {**enemy, "p": "POWER.WEAK_POWER", "sourceSlot": 0, "d": -1, "n": 2}),
+            ("pow", {**enemy, "p": "POWER.STRENGTH_POWER", "sourceSlot": 0, "d": 1, "n": -1}),
+            ("pow", {"targetSlot": 2, "targetId": 2, "p": "POWER.WEAK_POWER", "sourceSlot": 0, "d": 2}),
+            ("atk", {"side": "Player", "by": "E0", "done": False}),
+            ("damageCalc", {**target, "before": 10, "after": 5, "modifiers": [weak]}),
+            ("damageResolved", {**hit, "damageId": 1}),
+            ("damageCalc", {**target, "before": 10, "after": 5, "modifiers": [weak]}),
+            ("damageResolved", {**hit, "damageId": 1}),  # same result reported again
+            ("damageCalc", {**target, "before": 10, "after": 5,
+                            "modifiers": [weak, {"model": "POWER.STRENGTH_POWER"}]}),
+            ("damageResolved", {**hit, "damageId": 2}),  # mixed calculation
+            ("damageCalc", {**target, "before": 10, "after": 5, "modifiers": [weak]}),
+            ("damageResolved", {**hit, "damageId": 3, "originalTargetId": 0}),
+            ("damageCalc", {**target, "before": 10, "after": 5, "modifiers": [weak]}),
+            ("atk", {"side": "Player", "by": "E0", "done": True}),  # unresolved preview
+            ("pow", {**enemy, "p": "POWER.DEBILITATE_POWER", "d": -2, "n": 0}),
+            ("damageCalc", {**target, "before": 10, "after": 7.5, "modifiers": [weak]}),
+            ("damageResolved", {**hit, "damageId": 4, "intendedHpLoss": 5}),
+            ("fight1", {}),
+        ]
+        rows = measured.party_numbers([{"k": kind, "a": args} for kind, args in events], {})
+        self.assertEqual(rows["debuffsBySlot"], [1, 3, 0])
+        self.assertEqual(rows["supportBySlot"], [
+            {"from": 0, "to": 2, "damageReduced": 6},
+            {"from": 1, "to": 2, "damageReduced": 2},
+        ])
+
     def test_one_observer_measures_both_seats_and_credits_only_attributable_effects(self):
         card = "CARD.STRIKE_IRONCLAD"
         hit = {"action": 2, "sourceSlot": 1, "targetId": 4, "card": card}
@@ -235,7 +274,8 @@ class ParityWithTheLocalExport(unittest.TestCase):
                         expected.append(row)
                 got = measured.measured(handler.clean_event_log(log), parsed["timeline"])
                 self.assertTrue(got)
-                self.assertEqual([{k: v for k, v in row.items() if k not in ("playBySlot", "supportBySlot")}
+                self.assertEqual([{k: v for k, v in row.items()
+                                   if k not in ("playBySlot", "supportBySlot", "debuffsBySlot")}
                                   for row in got], expected)
 
     def test_an_upload_carries_them_on_the_run(self):

@@ -2016,6 +2016,14 @@ h1 {
   border-radius: 6px;
 }
 .party-support-table { overflow-x: auto; margin-top: 8px; }
+.party-support-filters, .party-support-filters [role="group"] {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem;
+}
+.party-support-filters { gap: 0.5rem 1rem; }
+.party-support-coverage { margin-top: 0.45rem; }
+.party-support-debuffs { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; margin: 0.25rem 0 0.6rem; }
+.party-support-debuffs > div { display: flex; align-items: center; gap: 0.4rem; }
+.party-support-debuffs dd { margin: 0; font-variant-numeric: tabular-nums; }
 .party-support-table table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .party-support-table :is(th, td) { padding: 6px 8px; border-bottom: 1px solid var(--hairline); }
 .party-support-table thead th { line-height: 1.2; }

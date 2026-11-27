@@ -30,6 +30,22 @@ except ImportError:  # the dev server and tests run from the repo
 
 _CARDS = Path(__file__).with_name("measured_cards.json")
 _cards = None
+_WEAK = "POWER.WEAK_POWER"
+_DEBILITATE = "POWER.DEBILITATE_POWER"
+# Core PowerModel types. Negative applications of Strength, Dexterity and Focus
+# are also debuffs under the game's GetTypeForAmount rules.
+_DEBUFFS = frozenset(f"POWER.{name}_POWER" for name in """
+    AEONGLASS_DOMINION AMNESIA BIASED_COGNITION BORROWED_TIME CHAINS_OF_BINDING
+    CONFUSED CONQUEROR CONSTRICT DAMPEN DEBILITATE DEMISE DISINTEGRATION DISLIKE_YOU
+    DOOM ENCORE FLANKING FRAIL HANG HEX IMBALANCED INSATIABLE_DOMINION KNOCKDOWN
+    LAGAVULIN_MATRIARCH_DOMINION MAGIC_BOMB MIND_ROT NEUROSURGE NO_BLOCK NO_DRAW
+    NO_ENERGY_GAIN OBLIVION PLOW POISON RINGING SHRIEK SHRINK SIC_EM SLOTH SLOW
+    SMOGGY STRANGLE SURROUNDED TAG_TEAM TAINTED TANGLED TENDER THE_GAMBIT
+    VULNERABLE WASTE_AWAY WEAK WRAITH_FORM YOU_ARE_MINE
+""".split())
+_SIGNED_DEBUFFS = frozenset(f"POWER.{name}_POWER" for name in
+                            ("DEXTERITY", "FOCUS", "SHRIEK", "SHRINK", "STRENGTH"))
+_OTHER_DAMAGE_REDUCERS = {"POWER.SHRINK_POWER", "POWER.STRENGTH_POWER"}
 
 
 def card_table() -> dict:
@@ -117,6 +133,29 @@ def party_fights(events):
         yield fight
 
 
+def damage_reduction(calculation, debilitated, debilitate_source):
+    """Yield (source slot, damage reduced) for a calculation with an isolated modifier."""
+    modifiers = calculation.get("modifiers")
+    if not isinstance(modifiers, list) or len(modifiers) != 1 or not isinstance(modifiers[0], dict):
+        return
+    modifier, = modifiers
+    model = modifier.get("model")
+    source = modifier.get("sourceSlot")
+    before, after = calculation["before"], calculation["after"]
+    if isinstance(model, str) and model in _OTHER_DAMAGE_REDUCERS:
+        yield source, int(before) - int(after)
+    elif model == _WEAK:
+        # Debilitate and the target's Paper Krane are folded into Weak's multiplier
+        # by the game. Verify the multiplier before attributing their effects.
+        for weak_factor in (0.75, 0.60):
+            final_factor = 2 * weak_factor - 1 if debilitated else weak_factor
+            if math.isclose(after, before * final_factor, rel_tol=0, abs_tol=1e-8):
+                yield source, int(before) - int(before * 0.75)
+                if debilitated:
+                    yield debilitate_source, int(before * weak_factor) - int(after)
+                break
+
+
 def party_numbers(events, costs):
     """Read support and throughput without relying on the recorder's player identity."""
     start = events[0].get("a") or {}
@@ -154,6 +193,18 @@ def party_numbers(events, costs):
 
     turns = [set() for _ in range(size)]
     plays = [dict(draw=0, played=0, listPrice=0, spent=0, junk=0) for _ in range(size)]
+    debuffs = [0] * size
+    enemies = set()
+    for event in events:
+        a = event.get("a") or {}
+        if event.get("k") == "snap":
+            creatures = a.get("creatures")
+            if isinstance(creatures, list):
+                enemies.update(c["combatId"] for c in creatures
+                               if isinstance(c, dict) and "move" in c and type(c.get("combatId")) is int)
+        elif event.get("k") == "hit" and a.get("enemy") is True and type(a.get("targetId")) is int:
+            enemies.add(a["targetId"])
+    enemy_attacks, debilitate, reduced_hits = [], {}, set()
     support, actions, parents, discounts, extra_plays, resolved = {}, {}, {}, {}, {}, {}
     previous_kind, previous = None, {}
     for event in events:
@@ -164,6 +215,23 @@ def party_numbers(events, costs):
         if kind == "action0" and count(a.get("id")):
             actions[a["id"]] = source
             parents[a["id"]] = count(a.get("parent"))
+        elif kind == "atk" and a.get("side") == "Player" and isinstance(a.get("by"), str):
+            if a.get("done") is False:
+                enemy_attacks.append(a["by"])
+            elif enemy_attacks and enemy_attacks[-1] == a["by"]:
+                enemy_attacks.pop()
+        elif kind == "pow" and target is None and type(a.get("targetId")) is int and a["targetId"] in enemies:
+            power, amount = a.get("p"), a.get("d")
+            if isinstance(power, str) and type(amount) is int:
+                if source is not None and ((amount > 0 and power in _DEBUFFS)
+                                           or (amount < 0 and power in _SIGNED_DEBUFFS)):
+                    debuffs[source] += 1
+                if power == _DEBILITATE and isinstance(a.get("c"), str):
+                    name = a["c"]
+                    if not count(a.get("n")):
+                        debilitate.pop(name, None)
+                    elif amount > 0:
+                        debilitate[name] = source if debilitate.get(name, source) == source else None
         elif kind == "turn0" and target is not None and count(a.get("turn")):
             turns[target].add(a["turn"])
         elif kind == "draw1" and target is not None:
@@ -201,6 +269,21 @@ def party_numbers(events, costs):
             add(source if source is not None else actor, target, "block", count(a.get("n")))
         elif kind == "gen" and a.get("card") not in dt.JUNK:
             add(source, target, "generated", 1)
+        elif (kind == "damageResolved" and previous_kind == "damageCalc" and source is None
+              and seat(a.get("petOwnerSlot")) is None and target is not None):
+            # Enemy attacks need not have an action id. The immediately preceding
+            # calculation must match the resolved hit and its pre-block damage.
+            damage_id = count(a.get("damageId"))
+            if (damage_id and damage_id not in reduced_hits and hit_key(previous) == hit_key(a)
+                    and previous.get("targetSlot") == target
+                    and a.get("targetId") is not None and a["targetId"] == a.get("originalTargetId")
+                    and delta(previous) < 0 and previous["after"] >= 0
+                    and int(previous["after"]) == count(a.get("blocked")) + count(a.get("intendedHpLoss"))):
+                reduced_hits.add(damage_id)
+                attacker = enemy_attacks[-1] if enemy_attacks else None
+                if attacker is not None or not debilitate:
+                    for helper, amount in damage_reduction(previous, attacker in debilitate, debilitate.get(attacker)):
+                        add(seat(helper), target, "damageReduced", amount)
         elif (kind == "damageResolved" and previous_kind == "damageCalc" and action
               and (source is not None or seat(a.get("petOwnerSlot")) is not None)):
             # In one action, the calculation immediately preceding resolution must match
@@ -225,6 +308,7 @@ def party_numbers(events, costs):
                if played_turns else None for totals, played_turns in zip(plays, turns)]
     return {
         "playBySlot": by_slot,
+        "debuffsBySlot": debuffs,
         "supportBySlot": [{"from": source, "to": target, **row}
                           for (source, target), row in sorted(support.items())],
     }
