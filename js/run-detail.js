@@ -1033,28 +1033,35 @@ function renderPartySupport(owner, runs) {
   if (!floors.length) return;
   const roster = partyRoster(owner);
   const supportLabel = p => `<span class="party-member">${partyPlayerName(p)}</span>`;
-  const table = visible => {
-    const totals = new Map();
+  const table = (visible, byRecipient) => {
+    const contributions = new Map();
+    const totals = {};
     for (const { rows } of visible) {
       for (const row of rows) {
         const from = roster[row.from], to = roster[row.to];
         if (!from || !to || from === to) continue;
-        const key = `${from.slot}:${to.slot}`;
-        const pair = totals.get(key) || { from, to, counts: {} };
+        const key = byRecipient ? `${from.slot}:${to.slot}` : from.slot;
+        const contribution = contributions.get(key) || { from, to, counts: {} };
         for (const [metric] of PARTY_SUPPORT_METRICS) {
           const value = row[metric];
-          if (Number.isSafeInteger(value) && value > 0) pair.counts[metric] = (pair.counts[metric] || 0) + value;
+          if (!Number.isSafeInteger(value) || value <= 0) continue;
+          contribution.counts[metric] = (contribution.counts[metric] || 0) + value;
+          totals[metric] = (totals[metric] || 0) + value;
         }
-        totals.set(key, pair);
+        contributions.set(key, contribution);
       }
     }
-    if (!totals.size) return '<p class="chart-caption">No teammate contributions were attributed in this selection.</p>';
-    return `<table class="ft-party-table"><thead><tr><th>From</th><th>To</th>` +
+    if (!contributions.size) return '<p class="chart-caption">No teammate contributions were attributed in this selection.</p>';
+    const cells = counts => PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] || "—"}</td>`).join("");
+    return `<table class="ft-party-table"><thead><tr>` +
+      (byRecipient ? '<th scope="col">From</th><th scope="col">To</th>' : '<th scope="col">Player</th>') +
       PARTY_SUPPORT_METRICS.map(([, label]) => `<th scope="col">${label}</th>`).join("") +
-      `</tr></thead><tbody>${[...totals.values()].map(({ from, to, counts }) =>
-        `<tr><th scope="row">${supportLabel(from)}</th><td>${supportLabel(to)}</td>` +
-        PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] || "—"}</td>`).join("") + "</tr>"
-      ).join("")}</tbody></table>`;
+      `</tr></thead><tbody>${[...contributions.values()].map(({ from, to, counts }) =>
+        `<tr><th scope="row">${supportLabel(from)}</th>` +
+        (byRecipient ? `<td class="party-support-recipient">${supportLabel(to)}</td>` : "") +
+        `${cells(counts)}</tr>`
+      ).join("")}</tbody>` +
+      `<tfoot><tr><th scope="row" colspan="${byRecipient ? 2 : 1}">Team total</th>${cells(totals)}</tr></tfoot></table>`;
   };
   const debuffs = visible => {
     const recorded = visible.filter(fight => fight.debuffs);
@@ -1072,10 +1079,12 @@ function renderPartySupport(owner, runs) {
         `<button type="button" class="toggle-btn" data-act="${act}" aria-pressed="false">${act ? `Act ${act}` : "All"}</button>`
       ).join("")}</div>
       <label>Fight <select></select></label>
+      <label class="party-support-breakdown"><input type="checkbox"> Player-to-player breakdown</label>
     </div>
     <p class="chart-caption party-support-coverage"></p>
     <div class="party-support-table"></div>`;
   const selector = panel.querySelector("select");
+  const breakdown = panel.querySelector('input[type="checkbox"]');
   const coverage = panel.querySelector(".party-support-coverage");
   const results = panel.querySelector(".party-support-table");
   const actButtons = [...panel.querySelectorAll("button[data-act]")];
@@ -1091,12 +1100,13 @@ function renderPartySupport(owner, runs) {
       `<option value="${floor}">Floor ${floor}</option>`).join("")}`;
     selector.disabled = !scoped.length;
     coverage.textContent = `Attributed effects from ${scoped.length} of ${available} fights.`;
-    selector.onchange = () => {
+    const renderSelection = () => {
       const selected = Number(selector.value);
       const visible = scoped.filter(fight => !selected || fight.floor === selected);
-      results.innerHTML = debuffs(visible) + table(visible);
+      results.innerHTML = debuffs(visible) + table(visible, breakdown.checked);
     };
-    selector.onchange();
+    selector.onchange = breakdown.onchange = renderSelection;
+    renderSelection();
   };
   for (const button of actButtons) button.onclick = () => renderAct(Number(button.dataset.act));
   renderAct(0);
