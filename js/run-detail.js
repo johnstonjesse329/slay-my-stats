@@ -967,7 +967,8 @@ let detailParty = null, detailOwnerRun = null, detailDamageRuns = [];
 const PARTY_CHART_COLORS = ["#c480a0", "#69e0bc", "#ffc478", "#a9b5ff"];
 const partySeatColor = slot => Number.isInteger(slot) ? PARTY_CHART_COLORS[slot % PARTY_CHART_COLORS.length] : undefined;
 const partyChartSwatch = p => `<span class="fl-swatch" style="border-top:3px solid ${p.color};height:0"></span>`;
-const partyChartLabel = p => `<span class="fl-item party-member">${partyChartSwatch(p)}${charIconHtml(p.char)}<span class="party-name">${escapeHtml(p.label)}</span></span>`;
+const partyPlayerName = p => `${charIconHtml(p.char)}<span class="party-name">${escapeHtml(p.label)}</span>`;
+const partyChartLabel = p => `<span class="fl-item party-member">${partyChartSwatch(p)}${partyPlayerName(p)}</span>`;
 
 function chartPartySlot(run, owner = detailOwnerRun || run) {
   if (!run.mp) return undefined;
@@ -1027,6 +1028,7 @@ function renderPartySupport(owner, runs) {
   panel.innerHTML = "";
   if (!floors.length) return;
   const roster = partyRoster(owner);
+  const supportLabel = p => `<span class="party-member" style="--player-color:${p.color}">${partyPlayerName(p)}</span>`;
   const table = selected => {
     const totals = new Map();
     for (const { floor, rows } of floors) {
@@ -1047,7 +1049,7 @@ function renderPartySupport(owner, runs) {
     return `<table class="ft-party-table"><thead><tr><th>From</th><th>To</th>` +
       PARTY_SUPPORT_METRICS.map(([, label]) => `<th scope="col">${label}</th>`).join("") +
       `</tr></thead><tbody>${[...totals.values()].map(({ from, to, counts }) =>
-        `<tr><th scope="row">${partyChartLabel(from)}</th><td>${partyChartLabel(to)}</td>` +
+        `<tr><th scope="row">${supportLabel(from)}</th><td>${supportLabel(to)}</td>` +
         PARTY_SUPPORT_METRICS.map(([key]) => `<td>${counts[key] || "—"}</td>`).join("") + "</tr>"
       ).join("")}</tbody></table>`;
   };
