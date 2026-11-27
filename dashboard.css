@@ -2029,7 +2029,6 @@ h1 {
 .party-support-table thead th { line-height: 1.2; }
 .party-support-table :is(th:first-child, td:nth-child(2)) { text-align: left; }
 .party-support-table .party-member { white-space: nowrap; }
-.party-support-table .party-name { color: var(--player-color); }
 .party-support-table td:nth-child(n + 3) { text-align: center; font-variant-numeric: tabular-nums; }
 .floor-tip .ft-party-picks { border-top: 1px solid var(--hairline); margin-top: 6px; padding-top: 4px; }
 .floor-tip table { border-collapse: collapse; }

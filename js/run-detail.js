@@ -1032,7 +1032,7 @@ function renderPartySupport(owner, runs) {
   panel.innerHTML = "";
   if (!floors.length) return;
   const roster = partyRoster(owner);
-  const supportLabel = p => `<span class="party-member" style="--player-color:${p.color}">${partyPlayerName(p)}</span>`;
+  const supportLabel = p => `<span class="party-member">${partyPlayerName(p)}</span>`;
   const table = visible => {
     const totals = new Map();
     for (const { rows } of visible) {
