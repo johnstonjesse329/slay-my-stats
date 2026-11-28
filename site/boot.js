@@ -426,13 +426,15 @@
   // ---- Showcase (the root page, under the hero) -------------------------------
   //
   // /users/_showcase.json.gz holds 30 days of winning runs. Each mode has its own
-  // top 30 per figure tab and all eligible OP runs, 10 to a page. A tab with no runs
+  // top 30 per figure tab and all matches for the other tabs, 10 to a page. A tab with no runs
   // in any mode is left out. A row leads with its character's head and
   // colour (from /catalog.json, as the stats below use) and ends with the deck's synergy names
   // (r.syn; a row from an older file has none).
   const SHOWCASE_PAGE = 10;  // rows per view; a tab with more gets Prev / Next
   const SHOWCASE_TABS = [
     ["op", "OP runs", null],
+    ["boss_no_damage", "Final boss with 0 damage taken", null, "Damage taken is for the player shown."],
+    ["boss_one_turn", "Final boss in 1 turn", null, "In multiplayer, the party defeated the boss in one turn."],
     ["held", "Peak Block in a turn", n => `${n} Block`],
     ["hit", "Biggest hit in a turn", n => `${n} damage`],
     ["deck", "Most cards in a deck", n => `${n} cards`],
@@ -478,6 +480,7 @@
     const head = el("tr", {});
     const body = el("tbody", {});
     const panel = el("table", { className: "showcase-runs", role: "tabpanel" }, [el("thead", {}, [head]), body]);
+    const categoryNote = el("p", { className: "site-note", hidden: true });
     const empty = el("p", { className: "site-note", hidden: true });
     empty.setAttribute("role", "status");
     const cell = (cls, kids) => el("td", { className: cls }, kids);
@@ -506,11 +509,13 @@
     let current = null;
     const select = (key, page = 0) => {
       current = key;
-      const [, , label] = tabs.find(t => t[0] === key);
+      const [, , label, note] = tabs.find(t => t[0] === key);
       const rows = (selectedMode === "all" ? data[key] : data.modes?.[selectedMode]?.[key]) || [];
       const pages = Math.ceil(rows.length / SHOWCASE_PAGE);
       tablist.querySelectorAll("button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
       panel.hidden = !rows.length;
+      categoryNote.hidden = !note || !rows.length;
+      categoryNote.textContent = note || "";
       empty.hidden = !!rows.length;
       empty.textContent = rows.length ? "" : `No ${modeLabels[selectedMode].toLowerCase()} runs in this category.`;
       head.replaceChildren(...["Player", "Character", "Ascension", ...(label ? ["Figure"] : []), "Deck synergies", "When"]
@@ -535,7 +540,7 @@
     main.append(el("section", { className: "site-list showcase" }, [
       el("h3", { textContent: "Runs worth a look" }),
       el("p", { className: "site-note", textContent: "Wins from the last 30 days." }),
-      modeFilter, tablist, panel, empty, pager,
+      modeFilter, tablist, categoryNote, panel, empty, pager,
     ]));
     select(tabs[0][0]);
   }
