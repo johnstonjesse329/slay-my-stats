@@ -1365,6 +1365,8 @@ _CARD_VARIANTS_FILE = _HERE / "card_variants.json"
 _MEASURED_FILE = _HERE / "measured_runs.json"
 # What winning runs did on each encounter (tools/power_curve/fight_demand.py).
 _FIGHT_DEMAND_FILE = _HERE / "fight_demand.json"
+# What the shop asks for a card (tools/derive_shop_prices.py); absent: no prices.
+_SHOP_PRICES_FILE = _HERE / "shop_prices.json"
 _POWER_DATA_FILE = _HERE / "power_data.json"
 
 
@@ -2266,6 +2268,8 @@ def build_html(runs: list[dict]) -> str:
         "measuredRuns":       measured_runs,
         "fightDemand":        fight_demand,
         "relicData":          relic_data,
+        "shopPrices":         (json.loads(_SHOP_PRICES_FILE.read_text(encoding="utf-8"))
+                               if _SHOP_PRICES_FILE.exists() else None),
         "potionData":         potion_data,
         "nodeIcons":          node_icons,
         "encounterArt":       build_encounter_art(),

@@ -196,6 +196,7 @@
       synergy: catalog.synergy,
       archetypes: catalog.archetypes,
       relicData: catalog.relicData,
+      shopPrices: catalog.shopPrices,
       potionData: catalog.potionData,
       enchantmentData: catalog.enchantmentData,
       eventCatalog: catalog.eventCatalog || {},

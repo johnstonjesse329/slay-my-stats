@@ -54,6 +54,9 @@ SHARED_JS = ("map-bg.js", "tooltip.js", "item-tips.js")
 PAGES_DIR = _HERE / "site" / "pages"
 _RUN_RECORDS = _HERE / "local_data" / "run_records.json"
 _BADGE_CATALOG = _HERE / "badge_catalog.json"
+# What the shop asks for a card, from the visits that bought exactly one card
+# (tools/derive_shop_prices.py). Absent: shop shelves show no prices.
+_SHOP_PRICES = _HERE / "shop_prices.json"
 HOME_INTRO = _HERE / "site" / "home-intro.html"
 WORKSHOP_NOTICE = _HERE / "site" / "workshop-notice.html"
 # Binary files published as they are, under their own names at the site root
@@ -633,6 +636,10 @@ def build_catalog() -> dict:
             json.loads(_RUN_RECORDS.read_text(encoding="utf-8")) if _RUN_RECORDS.exists() else None
         ),
         "relicData":          relic_data,
+        # What a card costs in a shop (tools/derive_shop_prices.py); null hides
+        # the prices on a shop floor's shelf.
+        "shopPrices":         (json.loads(_SHOP_PRICES.read_text(encoding="utf-8"))
+                               if _SHOP_PRICES.exists() else None),
         # Which cards and relics feed which others (see build_synergy()); null hides
         # the "Deck links" list.
         "synergy":            build_synergy(),

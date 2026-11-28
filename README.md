@@ -142,6 +142,9 @@ slay-my-stats/
 │   ├── build_user_blob.py   local history -> local_data/, as an upload would
 │   ├── rebuild_profiles.py  re-parse kept uploads into profiles (after a parser fix)
 │   ├── build_event_catalog.py  event_catalog.json (event options, which acts each event belongs to, and its illustration)
+│   ├── derive_shop_prices.py  shop_prices.json: what a card costs in a shop, from the visits that bought
+│   │                          exactly one (a run's gold before the visit minus the gold after); also the
+│   │                          shop-discount relics and their percentages
 │   ├── build_mod_pack.py    builds the mod's snapshot locally, or publishes gamma's
 │   ├── rebuild_stats.py     recount users/_stats.json.gz and each player's _seeds.json.gz
 │   ├── backfill_measured.py give runs uploaded before `measured` their per-floor numbers, from their stored logs
