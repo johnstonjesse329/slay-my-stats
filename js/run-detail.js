@@ -1698,7 +1698,7 @@ const NT_MIN_ANCHOR_W = 260;
 // tooltip fits on screen. It can't be scrolled (hovering is all it takes to
 // show it), so height matters as much as width. Runs each time a tooltip
 // opens and on resize, which is also what browser zoom fires.
-function fitNodeTooltip(tip) {
+function fitNodeTooltip(tip, node = tip.closest(".node-card")) {
   const rows = [...tip.querySelectorAll(".nt-cardrow")];
   if (!rows.length) {
     // A text-only tooltip hangs centred under its node, which on a phone's
@@ -1709,7 +1709,7 @@ function fitNodeTooltip(tip) {
     const r = tip.getBoundingClientRect(), { vw, vh } = viewportSize();
     tip.classList.remove("nt-measuring");
     // Tile near the bottom of the screen: hang above it instead, when there is room.
-    const nr = tip.closest(".node-card").getBoundingClientRect();
+    const nr = node.getBoundingClientRect();
     if (r.bottom > vh - NT_EDGE && nr.top - r.height - 4 >= NT_EDGE) {
       tip.style.top = "auto";
       tip.style.bottom = "calc(100% + 4px)";
@@ -1739,7 +1739,6 @@ function fitNodeTooltip(tip) {
   // pointer can move straight from one into the other (to hover a card) without
   // crossing a gap that would close it. Only the room on the roomier side
   // counts. Too narrow for that (a phone) and it stays centred on the screen.
-  const node = tip.closest(".node-card");
   const nr = node.getBoundingClientRect();
   const sideRoom = Math.max(document.documentElement.clientWidth - nr.right, nr.left) - NT_EDGE;
   const anchored = sideRoom - chromeW >= NT_MIN_ANCHOR_W;
@@ -1822,6 +1821,20 @@ document.addEventListener("mouseout", e => {
   if (chip && !chip.contains(e.relatedTarget)) hideFloatingHtmlTooltip();
 });
 
+// Shared by the map and the final-deck choice preview.
+function nodeCardRow(ids, dim = false, bought = [], selected = null) {
+  const face = (id, dimmed, purchased, card = {}) => {
+    const { upgrade = 0, props } = card;
+    const art = renderCardFace(id, upgrade, "var(--nt-card-w)", { props, deferred: !!selected });
+    if (art) {
+      return `<div class="nt-cardface${dimmed ? " nt-cardface-dim" : ""}${purchased ? " nt-cardface-bought" : ""}" data-card="${id}" ${cardPopAttrs(id, upgrade, props)}${selected ? ' tabindex="0"' : ""}>${art}</div>`;
+    }
+    return `<div class="${dimmed ? "nt-skipped" : "nt-reward-card"}"${selected ? ` tabindex="0" ${cardPopAttrs(id, upgrade, props)}` : ""}>${fmtCardLabel(id)}${purchased ? ` <span class="nt-bought-tag">bought</span>` : ""}</div>`;
+  };
+  if (!ids.length && !bought.length) return "";
+  return `<div class="nt-cardrow">${bought.map(id => face(id, false, true, selected || undefined)).join("")}${ids.map(id => face(id, dim, false, !dim && selected || undefined)).join("")}</div>`;
+}
+
 function buildNodeTooltip(node) {
   // Small art beside each named item, so a floor's rewards read at a glance
   // instead of as a wall of text. Cards get the real card face; relics and
@@ -1833,19 +1846,6 @@ function buildNodeTooltip(node) {
     `<div class="${cls} nt-item"${pick ? ` data-pick="${pick}"` : ""}>${src ? `<img loading="lazy" class="nt-item-icon" src="${thumbSrc(src)}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
   const relicChip  = (cls, id) => iconRow(cls, relicImgSrc(id),  fmtRelicLabel(id), "", `relic:${id}`);
   const potionChip = (cls, id) => iconRow(cls, potionImgSrc(id), fmtPotion(id),      "", `potion:${id}`);
-  // Card faces size from --nt-card-w, which fitNodeTooltip sets as the
-  // tooltip opens.
-  const nodeCardHtml = (id, dim = false, bought = false) => cardFaceAvailable()
-    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}${bought ? " nt-cardface-bought" : ""}" data-card="${id}" ${cardPopAttrs(id)}>${renderCardFace(id, 0, "var(--nt-card-w)")}</div>`
-    : `<div class="${dim ? "nt-skipped" : "nt-reward-card"}">${fmtCardLabel(id)}${bought ? ` <span class="nt-bought-tag">bought</span>` : ""}</div>`;
-  // Wraps a group of cards in one grid so they lay out side by side, as many
-  // a row as fitNodeTooltip picks, instead of stacking one per line. `bought`
-  // cards (a shop's purchases) lead the row, full brightness and tagged; the
-  // rest are dimmed.
-  const cardRow = (ids, dim = false, bought = []) => {
-    if (!ids.length && !bought.length) return "";
-    return `<div class="nt-cardrow">${bought.map(id => nodeCardHtml(id, false, true)).join("")}${ids.map(id => nodeCardHtml(id, dim)).join("")}</div>`;
-  };
   // Relics and potions share one wrapping row (it wraps at the width the cards
   // or text set, never widening the tooltip) instead of one line apiece.
   const itemRow = chips => chips.length ? `<div class="nt-itemrow">${chips.join("")}</div>` : "";
@@ -1887,7 +1887,7 @@ function buildNodeTooltip(node) {
   const pushRemoved = () => {
     if (!removed.length) return;
     lines.push(`<div class="nt-section">${removed.length > 1 ? "Cards" : "Card"} removed:</div>`);
-    lines.push(cardRow(removed));
+    lines.push(nodeCardRow(removed));
   };
 
   if (isShop) {
@@ -1896,7 +1896,7 @@ function buildNodeTooltip(node) {
     const cardsForSale = node.cardsSkipped || [];
     if (cardsBought.length + cardsForSale.length > 0) {
       lines.push(`<div class="nt-section">Cards offered:</div>`);
-      lines.push(cardRow(cardsForSale, true, cardsBought));
+      lines.push(nodeCardRow(cardsForSale, true, cardsBought));
     }
     // The removal is the shop's other card purchase, so it sits right under the offers.
     pushRemoved();
@@ -1926,7 +1926,7 @@ function buildNodeTooltip(node) {
     const hasSkipped = node.cardsSkipped && node.cardsSkipped.length > 0;
     if (hasRewards) {
       lines.push(`<div class="nt-section">Rewards:</div>`);
-      lines.push(cardRow(cardsRewarded));
+      lines.push(nodeCardRow(cardsRewarded));
       lines.push(itemRow([
         ...relicsRewarded.map(id  => relicChip("nt-reward-relic", id)),
         ...potionsRewarded.map(id => potionChip("nt-reward-card", id)),
@@ -1934,7 +1934,7 @@ function buildNodeTooltip(node) {
     }
     if (hasSkipped) {
       lines.push(`<div class="nt-section">Skipped:</div>`);
-      lines.push(cardRow(node.cardsSkipped, true));
+      lines.push(nodeCardRow(node.cardsSkipped, true));
     }
   }
 
