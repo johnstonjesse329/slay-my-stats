@@ -45,6 +45,72 @@ def _local():
 LOCAL = _local()
 
 
+class ResourceGains(unittest.TestCase):
+    def sample(self, items, parsed, *, repeat_event=None):
+        enc = "ENCOUNTER.TEST_SUBJECT"
+        events = [("fight0", {"enc": enc}), *items]
+        log = {"v": 3, "log": [{"q": q, "f": 0, "t": 1, "k": k, "a": a}
+                               for q, (k, a) in enumerate(events)]}
+        if repeat_event is not None:
+            log["log"].insert(repeat_event + 1, log["log"][repeat_event].copy())
+        (row,) = measured.measured(log, [{"floor": 1, "turns": 1, "enc": enc}], run=parsed)
+        return row
+
+    def test_solo_energy_counts_the_energy_each_turn_started_with(self):
+        close = ("fight1", {})
+        row = self.sample([("turn0", {"energy": 3, "turn": 1}),
+                           ("turn0", {"energy": 3, "turn": 2}), ("action0", {}), close],
+                          {"char": "IRONCLAD"})
+        self.assertEqual((row["gained"], row["resourceTurns"]), (6, 2))
+        # Anything granted during a turn comes on top of what it started with.
+        row = self.sample([("turn0", {"energy": 3, "turn": 1}), ("energy+", {"n": 2}), close],
+                          {"char": "IRONCLAD"})
+        self.assertEqual(row["gained"], 5)
+        # Turns that record no energy keep the old, bonus-only reading.
+        row = self.sample([("turn0", {"turn": 1}), ("energy+", {"n": 2}), close], {"char": "IRONCLAD"})
+        self.assertEqual(row["gained"], 2)
+
+    def test_only_positive_star_gains_count_for_solo_regent(self):
+        start = ("turn0", {"energy": 3, "turn": 1})
+        close = ("fight1", {})
+        gains = [("star", {"n": 4}), ("star", {"n": -2}), ("energy+", {"n": 2})]
+        row = self.sample([start, *gains, close], {"char": "REGENT"})
+        self.assertEqual((row["gained"], row["stars"], row["resourceTurns"]), (5, 4, 1))
+        # A measured zero is kept, not dropped: the turn recorded starting with none.
+        row = self.sample([("turn0", {"energy": 0, "turn": 1}), ("action0", {}), close], {"char": "REGENT"})
+        self.assertEqual((row["gained"], row["stars"]), (0, 0))
+        row = self.sample([start, close], {"char": "IRONCLAD"})
+        self.assertNotIn("stars", row)
+        self.assertNotIn("gained", row)
+        self.assertNotIn("stars", self.sample([start, *gains], {"char": "REGENT"}))
+
+    def test_energy_uses_recipient_and_observed_turns_in_coop(self):
+        a = {"mp": True, "party": ["REGENT", "REGENT", "IRONCLAD"]}
+        starts = [("turn0", {"targetSlot": slot, "turn": turn, "energy": 3})
+                  for slot, turn in [(0, 1), (1, 1), (1, 2)]]
+        gains = [("energy+", {"sourceSlot": 0, "targetSlot": 1, "n": 5}), ("star", {"n": 2})]
+        row = self.sample([*starts, *gains, ("fight1", {})], a)
+        self.assertEqual(row["resourcesBySlot"], [
+            {"gained": 3, "resourceTurns": 1}, {"gained": 11, "resourceTurns": 2}, None,
+        ])
+        self.assertNotIn("stars", row)
+        row = self.sample([*starts, *gains, ("energy+", {"n": 9}), ("fight1", {})], a)
+        self.assertNotIn("resourcesBySlot", row)
+
+    def test_energy_counts_extra_turns_and_ignores_duplicate_turn_events(self):
+        row = self.sample([
+            ("turn0", {"targetSlot": 0, "turn": 1, "energy": 3}),
+            ("turn0", {"targetSlot": 1, "turn": 1, "energy": 3}),
+            ("extra", {"turn": 1, "energy": 3}),
+            ("turn0", {"targetSlot": 1, "turn": 1, "energy": 3}),
+            ("energy+", {"targetSlot": 1, "n": 6}),
+            ("fight1", {}),
+        ], {"mp": True, "party": ["IRONCLAD", "REGENT"]}, repeat_event=4)
+        self.assertEqual(row["resourcesBySlot"], [
+            {"gained": 3, "resourceTurns": 1}, {"gained": 12, "resourceTurns": 2},
+        ])
+
+
 class PartyDamage(unittest.TestCase):
     def test_resume_uses_completed_retry_and_keeps_repeated_floors(self):
         enc = "ENCOUNTER.TEST_SUBJECT"
@@ -338,14 +404,14 @@ class ParityWithTheLocalExport(unittest.TestCase):
             (month,) = spool.months()
             (parsed,) = spool.runs(month)
         self.assertEqual((good, rejected), (1, 0))
-        self.assertEqual(parsed["measured"], measured.measured(handler.clean_event_log(log), parsed["timeline"]))
+        self.assertEqual(parsed["measured"], measured.measured(handler.clean_event_log(log), parsed["timeline"], run=parsed))
 
 
 @unittest.skipUnless(LOCAL, "no local event logs with their runs")
 class Backfill(unittest.TestCase):
     def test_a_stored_run_gets_numbers_from_its_stored_log(self):
         import tempfile
-        import backfill_measured
+        import rebuild_profiles
         sid, ts, log, raw = LOCAL[0]
         parsed = run.parse_run_data(raw, steam_id=sid, fallback_ts=ts)
         with tempfile.TemporaryDirectory() as tmp:
@@ -354,18 +420,18 @@ class Backfill(unittest.TestCase):
             store.put(handler.telemetry_key(sid, ts), handler._pack(handler.clean_event_log(log)), {}, None)
             slug = handler._unpack(store.get(handler.id_key(sid))[0])["slug"]
 
-            dry = backfill_measured.backfill_profile(store, sid, slug, dry_run=True)
+            dry = rebuild_profiles.rederive_measured(store, sid, slug, dry_run=True)
             self.assertEqual((dry["runs"], dry["added"]), (1, 1))
             month = handler.month_key(slug, handler.month_of(ts))
             self.assertNotIn("measured", handler._unpack(store.get(month)[0])["runs"][0])
 
-            done = backfill_measured.backfill_profile(store, sid, slug)
+            done = rebuild_profiles.rederive_measured(store, sid, slug)
             self.assertEqual(done["added"], 1)
             (stored,) = handler._unpack(store.get(month)[0])["runs"]
-            self.assertEqual(stored["measured"], measured.measured(handler.clean_event_log(log), parsed["timeline"]))
+            self.assertEqual(stored["measured"], measured.measured(handler.clean_event_log(log), parsed["timeline"], run=parsed))
             self.assertEqual({k: v for k, v in stored.items() if k != "measured"}, json.loads(json.dumps(parsed)))
 
-            again = backfill_measured.backfill_profile(store, sid, slug)
+            again = rebuild_profiles.rederive_measured(store, sid, slug)
             self.assertEqual((again["runs"], again["added"]), (0, 0))
 
 

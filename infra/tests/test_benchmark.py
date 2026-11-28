@@ -29,18 +29,30 @@ class FakeStore:
 
 
 class UploadFights(unittest.TestCase):
-    def test_showcase_reads_the_uploading_players_deck(self):
+    def test_showcase_reads_the_uploading_players_deck_and_boss_damage(self):
         uploader = "76561198000000001"
+        boss = {"map_point_type": "boss", "player_stats": [{"damage_taken": 7}, {"damage_taken": 0}],
+                "rooms": [{"model_id": "ENCOUNTER.A"}]}
         raw = {**RUN, "win": True, "players": [
             {"id": "76561198000000002", "character": "CHARACTER.DEFECT", "deck": [{"id": "CARD.A"}]},
             {"id": uploader, "character": "CHARACTER.SILENT", "deck": [{"id": "CARD.B"}, {"id": "CARD.C"}]},
-        ]}
+        ], "map_point_history": [[], [], [boss]]}
         facts = {}
         with mock.patch.object(benchmark, "run_fights", return_value=[[{"each": [14, 3]}]]):
             benchmark.upload_fights(FakeStore({KEY: gz(json.dumps(raw).encode())}), {uploader: {1}}, KEY, facts)
         self.assertEqual(facts[(uploader, 1)]["slot"], 1)
         self.assertEqual(facts[(uploader, 1)]["char"], "CHARACTER.SILENT")
         self.assertEqual(facts[(uploader, 1)]["deck"], 2)
+        self.assertTrue(facts[(uploader, 1)]["boss_no_damage"])
+
+    def test_coop_unmatched_uploader_does_not_qualify_for_zero_boss_damage(self):
+        uploader = "76561198000000001"
+        boss = {"map_point_type": "boss", "player_stats": [{"damage_taken": 0}, {"damage_taken": 0}],
+                "rooms": [{"model_id": "ENCOUNTER.A"}]}
+        raw = {**RUN, "win": True, "players": [{}, {}], "map_point_history": [[], [], [boss]]}
+        facts = {}
+        benchmark.upload_fights(FakeStore({KEY: gz(json.dumps(raw).encode())}), {uploader: {1}}, KEY, facts)
+        self.assertFalse(facts[(uploader, 1)]["boss_no_damage"])
 
     def fights(self, body, key=KEY):
         published = {"76561198000000001": {1}}
@@ -61,6 +73,35 @@ class UploadFights(unittest.TestCase):
 
 
 class Refresh(unittest.TestCase):
+    def test_only_zero_damage_boss_wins_are_published_in_boss_tab(self):
+        uploader = "76561198000000001"
+        now = 100 * 86400
+        boss = {"map_point_type": "boss", "player_stats": [{"damage_taken": 0}],
+                "rooms": [{"model_id": "ENCOUNTER.A"}]}
+        raw = {"start_time": now - 1, "win": True, "players": [{"character": "CHARACTER.SILENT"}],
+               "map_point_history": [[], [], [boss]]}
+        damaged_boss = {**boss, "player_stats": [{"damage_taken": 4, "hp_healed": 4}],
+                        "rooms": [{"model_id": "ENCOUNTER.A", "turns_taken": 1}]}
+        damaged_run = {**raw, "start_time": now - 2, "map_point_history": [[], [], [damaged_boss]]}
+        storage = FakeStore({
+            KEY: gz(json.dumps(raw).encode(), json.dumps(damaged_run).encode()),
+            benchmark.id_key(uploader): benchmark._pack({"slug": "player"}),
+            benchmark.blob_key("player"): benchmark._pack({"name": "Player", "months": {"2026-11": [now - 1, now - 2]}}),
+        })
+        with mock.patch.object(benchmark, "_get_store") as gs, \
+                mock.patch.object(benchmark.time, "time", return_value=now), \
+                mock.patch.object(benchmark, "cuts_of", return_value={}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            store = gs.return_value
+            store.get.side_effect = storage.get
+            store.list.return_value = [KEY]
+            benchmark.refresh({}, None)
+        outputs = {call.args[0]: call.args[1] for call in store.put.call_args_list}
+        saved = benchmark._unpack(outputs[benchmark.SHOWCASE_KEY])
+        self.assertEqual([(r["slug"], r["ts"]) for r in saved["boss_no_damage"]], [("player", now - 1)])
+        self.assertEqual(saved["modes"]["solo"]["boss_no_damage"], saved["boss_no_damage"])
+        self.assertEqual(saved["modes"]["multiplayer"]["boss_no_damage"], [])
+
     def test_skipped_uploads_are_counted(self):
         out = io.StringIO()
         with mock.patch.object(benchmark, "_get_store") as gs, \

@@ -355,13 +355,22 @@
 .showcase-char { font-weight: 600; white-space: nowrap; }
 .showcase-asc { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .showcase-syn { color: var(--text-dim); font-size: 0.85rem; width: 45%; }
+.showcase-mobile-syn { display: none; }
 .showcase-figure { color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .showcase-runs .recent-meta { color: var(--text-dim); font-size: 0.82rem; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
 .showcase-runs th:last-child { text-align: right; }
 @media (max-width: 640px) {
+  /* Keep the player and synergy names readable and let figures and dates wrap. */
+  .showcase-runs { table-layout: fixed; }
   .showcase-syn { display: none; }
-  .showcase-runs td, .showcase-runs th { padding-left: 0.4rem; padding-right: 0.4rem; }
+  .showcase-mobile-syn { display: block; color: var(--text-dim); font-size: 0.78rem; }
+  .showcase-runs td, .showcase-runs th { padding-left: 0.3rem; padding-right: 0.3rem; }
+  .showcase-runs th { font-size: 0.7rem; letter-spacing: normal; text-transform: none; }
+  .showcase-runs th:first-child { width: 30%; }
+  .showcase-runs th:nth-child(2) { width: 23%; }
+  .showcase-runs th:nth-child(3) { width: 18%; }
   .showcase-player, .showcase-char, .showcase-figure { white-space: normal; overflow-wrap: anywhere; }
+  .showcase-runs .recent-meta { white-space: normal; overflow-wrap: anywhere; }
 }
 
 @media (max-width: 1200px) {

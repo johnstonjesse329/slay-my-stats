@@ -61,6 +61,39 @@ class TurnPeaks(unittest.TestCase):
         self.assertEqual(showcase.turn_peaks(log, slot=1), {"blocked": 9, "held": 12, "hit": 23})
 
 
+class FinalBossNoDamage(unittest.TestCase):
+    def test_only_the_second_a10_boss_counts(self):
+        first_boss = {"map_point_type": "boss", "player_stats": [{"damage_taken": 0}],
+                      "rooms": [{"model_id": "ENCOUNTER.A"}]}
+        second_boss = {"map_point_type": "boss", "player_stats": [{"damage_taken": 7, "hp_healed": 7}],
+                       "rooms": [{"model_id": "ENCOUNTER.B"}]}
+        raw = {"win": True, "players": [{}], "ascension": 10,
+               "map_point_history": [[], [], [first_boss, second_boss]]}
+        self.assertFalse(showcase.final_boss_no_damage(raw, 0))
+        raw["map_point_history"][-1].reverse()
+        self.assertTrue(showcase.final_boss_no_damage(raw, 0))
+        raw["map_point_history"][-1].pop(0)
+        self.assertFalse(showcase.final_boss_no_damage(raw, 0))
+
+    def test_requires_recorded_numeric_damage(self):
+        stats = {"hp_healed": 0}
+        boss = {"map_point_type": "boss", "rooms": [{"model_id": "ENCOUNTER.A"}], "player_stats": [stats]}
+        raw = {"win": True, "players": [{}], "map_point_history": [[], [], [boss]]}
+        self.assertFalse(showcase.final_boss_no_damage(raw, 0))
+        stats["damage_taken"] = 0
+        self.assertTrue(showcase.final_boss_no_damage(raw, 0))
+        stats["damage_taken"] = False
+        self.assertFalse(showcase.final_boss_no_damage(raw, 0))
+
+    def test_requires_a_win_with_final_act_boss_history(self):
+        boss = {"map_point_type": "boss", "player_stats": [{"damage_taken": 0}],
+                "rooms": [{"model_id": "ENCOUNTER.A"}]}
+        raw = {"win": True, "players": [{}], "map_point_history": [[], [], [boss]]}
+        self.assertFalse(showcase.final_boss_no_damage({**raw, "win": False}, 0))
+        self.assertFalse(showcase.final_boss_no_damage({**raw, "was_abandoned": True}, 0))
+        self.assertFalse(showcase.final_boss_no_damage({**raw, "map_point_history": [[], [boss]]}, 0))
+
+
 class Build(unittest.TestCase):
     def test_each_modes_top_runs_are_kept_even_when_the_combined_tab_is_full(self):
         solo = run(NOW - 1, deck=40)
@@ -80,10 +113,20 @@ class Build(unittest.TestCase):
         self.assertEqual([e["n"] for e in out["held"]], [55])
         self.assertEqual(out["hit"], [])
 
-    def test_every_op_run_is_kept_and_the_rest_are_capped(self):
+    def test_op_runs_are_unlimited_and_figure_tabs_are_capped(self):
         out = showcase.build([run(NOW - i, deck=i, op=True) for i in range(1, 50)], NOW)
         self.assertEqual(len(out["op"]), 49)
         self.assertEqual(len(out["deck"]), 30)
+
+    def test_zero_damage_boss_wins_are_recent_uncapped_and_filtered_by_mode(self):
+        solo = run(NOW - 1, boss_no_damage=True)
+        damaged = run(NOW - 2, boss_no_damage=False, multiplayer=True)
+        coop = run(NOW - 3, boss_no_damage=True, multiplayer=True)
+        old = run(NOW - 31 * 86400, boss_no_damage=True)
+        out = showcase.build([old, coop, damaged, solo], NOW, per_tab=1)
+        self.assertEqual([e["ts"] for e in out["boss_no_damage"]], [solo["ts"], coop["ts"]])
+        self.assertEqual([e["ts"] for e in out["modes"]["solo"]["boss_no_damage"]], [solo["ts"]])
+        self.assertEqual([e["ts"] for e in out["modes"]["multiplayer"]["boss_no_damage"]], [coop["ts"]])
 
     def test_handful(self):
         out = showcase.build([run(NOW - i, deck=i + 1) for i in range(1, 20)], NOW, per_tab=3)

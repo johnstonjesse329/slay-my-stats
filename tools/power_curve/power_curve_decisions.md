@@ -1709,8 +1709,8 @@ the local `card_data.json` at synth time; the game data stays out of the repo. `
 move table that only feeds what an enemy was about to do, none of it these numbers, so the Lambda passes
 none (checked: identical output on both local logs). `infra/tests/test_measured.py` holds the two
 copies together on the Ironclad and Silent logs, field by field; change one and the other has to follow.
-Runs uploaded before this have the log but no `measured`: `tools/backfill_measured.py` writes it onto
-them. A run with no log shows "No per-turn log for this run." in that slot instead of nothing.
+Runs uploaded before this have the log but no `measured`: `tools/rebuild_profiles.py --measured` writes it
+onto them. A run with no log shows "No per-turn log for this run." in that slot instead of nothing.
 
 
 ### Output, mitigation and speed: tested, verdict unchanged (2026-11-02)
@@ -1904,3 +1904,23 @@ Checked by `tools/test_keep_share_chart.py`, which recomputes both series from t
 
 Multiplayer, Everyone view: the same chart draws one damage-taken line per player. The 1x line and
 the fight-turns line are drawn once, because the fight (and so its winners' turns) is the same for all.
+
+### Energy gained counts the three you start with, and Stars leaves the golds (2026-11-28)
+
+The owner asked why a Regent run's Energy gained read 0 when "you get 3 by default". It counted only
+`energy+` events, which record a *bonus* granted during a fight; the game logs no event for the income
+a turn starts with. So a run that only took its three a turn read as gaining none, and the line sat on
+zero next to Energy spent's three.
+
+Now each turn's starting energy counts too: `turn0.a.energy` in the log, summed with the positive
+`energy+` amounts, over the fight's turns (`infra/lambda/ingest/measured.py`, solo and per seat in
+co-op). A turn that records no energy leaves the fight without a figure rather than one that quietly
+ignores it, and a measured zero is still a zero. The tooltip under the metric says what the number is:
+"Energy each turn started with, plus anything gained during it." Runs stored before this need
+`tools/rebuild_profiles.py --measured`.
+
+Stars gained left gold (`#efc369`) for pink (`#ec86c8`). On the Energy and cards per turn chart it was
+the nearest pair to Card cost (`#b5861a`): deltaE 23.8, closer than the damage pair this palette was
+fixed for. Card cost and Energy spent are 70.3 apart, Card cost and Energy gained 101.5; after the move
+the chart's nearest pair is Cards drawn to Energy gained at 33.4. Card cost keeps the gold it shares
+with the damage taken line on another chart.
