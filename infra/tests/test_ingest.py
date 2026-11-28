@@ -2088,6 +2088,23 @@ class EventChoiceTests(unittest.TestCase):
         later = self.node("EVENT.X", "ON", page="NEXT")["player_stats"][0]
         self.assertEqual(run.event_visit(later)[:2], ["NEXT.ON", []])
 
+    def test_seed_index_includes_direct_event_pickups_without_duplicating_rewards(self):
+        waterfall, nest = "EVENT.WATERFALL_OF_OBVIOUS_SECRETS", "EVENT.BYRDONIS_NEST"
+        dagger, egg, normal = "CARD.DINGY_DAGGER", "CARD.BYRDONIS_EGG", "CARD.STRIKE_IRONCLAD"
+        raw = self.parse([
+            self.node(waterfall, "BE_NICE", page="ENTER", cards_gained=[{"id": dagger}]),
+            self.node(nest, "TAKE", cards_gained=[{"id": egg}, {"id": normal}, {"id": normal}],
+                      card_choices=[{"card": {"id": normal}, "was_picked": True}]),
+            self.node(waterfall, "BEAT_UP", page="ENTER"),
+        ])
+        index = handler.seed_entry(raw)
+        self.assertEqual(index["g"], {
+            dagger: [[0, "unknown", waterfall, 1]],
+            egg: [[1, "unknown", nest, 1]],
+            normal: [[1, "unknown", nest, 1]],
+        })
+        self.assertEqual(index["o"], {normal: [[1, "unknown", nest, 1]]})
+
     def test_normalizes_recorded_dialogue_without_discarding_the_original_keys(self):
         cases = (
             ("WATERFALL_OF_OBVIOUS_SECRETS", ("INITIAL.ENTER", "ENTER.BE_NICE"),

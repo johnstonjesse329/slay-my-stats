@@ -1374,7 +1374,8 @@ def _update_stats(store, delta: dict) -> None:
 # only when the toggle is switched on, so searching everyone's seeds costs one
 # small file per player, not their whole history. It is a copy of what the
 # month files already hold: tools/rebuild_stats.py rewrites it from them.
-# A location is [floor, node type, encounter, picked 0/1].
+# A location is [floor, node type, encounter, picked 0/1]. Direct event card
+# pickups use the same shape under "g", separate from the "o" offer data.
 
 def seeds_key(slug: str) -> str:
     return f"users/{slug}/_seeds.json.gz"
@@ -1391,6 +1392,8 @@ def seed_entry(r: dict) -> dict | None:
     e = {"s": r["seed"], "c": r.get("char"), "w": int(bool(r.get("won"))), "t": r["ts"],
          "a": r.get("asc"), "b": r.get("build"), "o": _seed_locs(r.get("cardsOffered")),
          "r": _seed_locs(r.get("relicsOffered"))}
+    if r.get("eventCardsGained"):
+        e["g"] = _seed_locs(r["eventCardsGained"])
     for short, field in (("p", "mp"), ("m", "mode"), ("x", "mods")):
         if r.get(field):
             e[short] = r[field]

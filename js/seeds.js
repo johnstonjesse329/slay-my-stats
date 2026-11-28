@@ -32,7 +32,7 @@ function encLabel(l) {
 
 function locBadge(l) {
   const color   = nodeColor(l.type);
-  const tip     = (l.picked ? "✓ Picked — " : "Not picked — ") + encLabel(l);
+  const tip     = (l.granted ? "✓ Obtained — " : l.picked ? "✓ Picked — " : "Not picked — ") + encLabel(l);
   const attrs   = encounterTipAttrs(l.enc, tip) || `data-tip="${escapeHtml(tip)}"`;
   const label   = nodeTypeLabel(l.type);
   const flColor = l.picked ? "#e0e0e0" : "#555";
@@ -88,6 +88,7 @@ function loadSeedOthers() {
         slug: p.slug, name: p.name, seed: e.s, char: e.c, won: !!e.w, ts: e.t, asc: e.a, build: e.b,
         mp: e.p, mode: e.m, mods: e.x,
         cardsOffered: expandSeedLocs(e.o), relicsOffered: expandSeedLocs(e.r),
+        eventCardsGained: expandSeedLocs(e.g),
       })))));
   }).then(lists => {
     seedOthers = lists.flat();
@@ -159,10 +160,10 @@ function renderCardChips() {
     `<div class="seeds-chip">
       <span class="seeds-chip-label">${f.label}</span>
       <span class="seeds-chip-qty">
-        <span class="seeds-chip-qty-label">offered</span>
-        <button class="seeds-chip-adj" data-idx="${i}" data-field="minOffered" data-delta="-1" ${f.minOffered <= 1 ? "disabled" : ""}>−</button>
-        <span class="seeds-chip-min">≥${f.minOffered}</span>
-        <button class="seeds-chip-adj" data-idx="${i}" data-field="minOffered" data-delta="1">+</button>
+        <span class="seeds-chip-qty-label" title="Offers and direct event pickups">found</span>
+        <button class="seeds-chip-adj" data-idx="${i}" data-field="minFound" data-delta="-1" ${f.minFound <= 1 ? "disabled" : ""}>−</button>
+        <span class="seeds-chip-min">≥${f.minFound}</span>
+        <button class="seeds-chip-adj" data-idx="${i}" data-field="minFound" data-delta="1">+</button>
       </span>
       <span class="seeds-chip-qty">
         <span class="seeds-chip-qty-label">took</span>
@@ -178,7 +179,7 @@ function renderCardChips() {
     btn.addEventListener("click", e => {
       const idx   = +e.target.dataset.idx;
       const field = e.target.dataset.field;
-      const floor = field === "minOffered" ? 1 : 0;
+      const floor = field === "minFound" ? 1 : 0;
       seedCardFilters[idx][field] = Math.max(floor, seedCardFilters[idx][field] + +e.target.dataset.delta);
       renderCardChips();
       renderSeeds();
@@ -218,7 +219,7 @@ buildTypeahead(
   DATA.cardLabels,
   () => seedCardFilters,
   (id, label) => {
-    seedCardFilters.push({ id, label, minOffered: 1, minTook: 0 });
+    seedCardFilters.push({ id, label, minFound: 1, minTook: 0 });
     renderCardChips();
     renderSeeds();
   }
@@ -253,6 +254,12 @@ document.getElementById("seeds-clear-btn").addEventListener("click", () => {
 
 // ---- Results table ----
 
+function seedCardLocs(run, id) {
+  const offers = run.cardsOffered?.[id] || [];
+  const gains = run.eventCardsGained?.[id] || [];
+  return [...offers, ...gains.map(loc => ({ ...loc, granted: true }))].sort((a, b) => a.floor - b.floor);
+}
+
 function renderSeeds() {
   // Deduplicate after filtering so date/build/ascension filters are respected
   // before picking the representative run for each seed+character pair.
@@ -263,11 +270,10 @@ function renderSeeds() {
     : filterRuns();
   const seedRuns = dedupSeedRuns(pool.filter(r => r.seed));
   const filtered = seedRuns.filter(run => {
-    const offered = run.cardsOffered  || {};
     const relics  = run.relicsOffered || {};
     if (!seedCardFilters.every(f => {
-      const locs = offered[f.id] || [];
-      if (locs.length < f.minOffered) return false;
+      const locs = seedCardLocs(run, f.id);
+      if (locs.length < f.minFound) return false;
       if (f.minTook > 0 && locs.filter(l => l.picked).length < f.minTook) return false;
       return true;
     })) return false;
@@ -288,7 +294,7 @@ function renderSeeds() {
 
   const hasFilters = seedCardFilters.length > 0 || seedRelicFilters.length > 0;
 
-  // The "Matched Cards / Relics Offered" column can only say something once
+  // The matched items column can only say something once
   // something has been searched for. Until then it was a blank ~40% of the
   // table while the four columns with data were squeezed into the left half.
   const seedsTable = document.getElementById("seeds-table");
@@ -304,7 +310,7 @@ function renderSeeds() {
     // list actually is instead of describing a search that never happened.
     const whose = everyone ? "any player's run" : "run";
     seedsCaption.textContent = (hasFilters
-      ? `${seeds} whose ${whose} offered every card and relic you searched for.`
+      ? `${seeds} whose ${whose} matches every card and relic you searched for.`
       : `All ${seeds} in the current date, build and ascension filters — search for a card or relic above to narrow them.`)
       + (everyone && seedOthers === false ? " Loading other players' seeds…" : "");
   }
@@ -322,7 +328,7 @@ function renderSeeds() {
     <th style="text-align:center;${thStyle("won")}"   data-col="won" tabindex="0">Win${arrow("won")}</th>
     <th style="text-align:left;${thStyle("date")}"    data-col="date" tabindex="0">Date${arrow("date")}</th>
     <th class="seed-player" style="text-align:left;${thStyle("player")}" data-col="player" tabindex="0">Player${arrow("player")}</th>
-    <th style="text-align:left">Matched Cards / Relics Offered</th>
+    <th style="text-align:left">Matched Cards / Relics</th>
   `;
   document.getElementById("seeds-thead-row").querySelectorAll("th[data-col]").forEach(th => {
     th.addEventListener("click", () => {
@@ -377,7 +383,7 @@ function renderSeeds() {
     let matchSummary = "";
     if (hasFilters) {
       const cardParts = seedCardFilters.map(f => {
-        const locs    = (run.cardsOffered || {})[f.id] || [];
+        const locs    = seedCardLocs(run, f.id);
         const badges  = locs.map(locBadge).join("");
         return `<div class="seed-match-row"><span style="color:#9ecfff;font-weight:600">${f.label}</span><span class="seed-loc-badges">${badges}</span></div>`;
       });

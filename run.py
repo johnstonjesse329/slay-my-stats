@@ -37,6 +37,7 @@ import platform    # for detecting Windows / Mac / Linux so we know where to loo
 import re          # for cleaning up the text a mod reports about itself
 import sys         # for reading command-line arguments and exiting with an error code
 import webbrowser  # for opening the finished HTML file in the default browser
+from collections import Counter
 from pathlib import Path             # a modern, cross-platform way to work with file paths
 
 
@@ -714,7 +715,8 @@ def parse_run(path: Path) -> dict:
 # its options are the egg card and +7 max HP, and the relic only exists once the egg
 # hatches at a rest site, so it is counted there, as a pick.
 # v14: keep the ordered event choice history, including follow-up decisions.
-PARSER_VERSION = 14
+# v15: retain cards handed out directly by events for seed searches.
+PARSER_VERSION = 15
 
 # What the ancient's pick upgrades the starter relic into (Touch of Orobas).
 TOUCH_UPGRADES = {
@@ -1090,6 +1092,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     # cardsOffered / relicsOffered: { id: [{floor, type, enc}] }
     # restChoices: { HEAL: n, SMITH: n, ... } — count of each choice made at rest sites.
     cards_offered: dict[str, list] = {}
+    event_cards_gained: dict[str, list] = {}
     relics_offered: dict[str, list] = {}
     # restChoices: { act (1-indexed): { choice: count } }
     rest_choices: dict[int, dict[str, int]] = {}
@@ -1180,6 +1183,12 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
                 visit = event_visit(ps, event_id)
                 if visit:
                     events.append([event_id, *visit])
+                # Dialogue rewards can enter the deck without a card_choices
+                # row. Where both logs show a pickup, keep its reward row once.
+                gained = Counter(c["id"] for c in ps.get("cards_gained", []) if c.get("id"))
+                gained.subtract(cid for cid, picked in entries if picked)
+                for cid in gained.elements():
+                    event_cards_gained.setdefault(cid, []).append({**loc, "picked": True})
             for rc in relic_rows:
                 rid = rc["choice"]
                 if rid in handled:
@@ -1244,6 +1253,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
         "seed":          data.get("seed", ""),
         "goldGained":    gold_gained_total,
         "cardsOffered":  cards_offered,
+        **({"eventCardsGained": event_cards_gained} if event_cards_gained else {}),
         "relicsOffered": relics_offered,
         "restChoices":   rest_choices,
         **({"events": events} if events else {}),
@@ -1961,7 +1971,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
   <div class="seeds-search-area">
     <div class="seeds-search-col">
       <div class="seeds-typeahead-wrap">
-        <input type="text" id="seeds-card-input" class="seeds-input" placeholder="Search cards offered…" aria-label="Search seeds by card" autocomplete="off">
+        <input type="text" id="seeds-card-input" class="seeds-input" placeholder="Search cards offered or obtained…" aria-label="Search seeds by card" autocomplete="off">
         <div id="seeds-card-dropdown" class="seeds-dropdown" style="display:none"></div>
       </div>
       <div id="seeds-card-filters" class="seeds-chips"></div>
@@ -1981,7 +1991,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
       <button class="toggle-btn" id="seeds-clear-btn">Clear all</button>
     </div>
   </div>
-  <p class="chart-caption" id="seeds-caption">Seeds whose run offered every card and relic you searched for.</p>
+  <p class="chart-caption" id="seeds-caption">Search offers and recorded event card pickups.</p>
   <div class="cards-split">
   <div class="pivot-wrap seeds-list">
     <table class="pivot" id="seeds-table">
