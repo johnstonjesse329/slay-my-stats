@@ -142,6 +142,13 @@ function renderCardTile(c) {
   const floorLabel = c.seqMark || upgradeMark
     ? `<div class="tile-added-floors">${c.seqMark || ""}${upgradeMark}</div>`
     : "";
+  // The upgrade reads under the card it happened to. A separate entry beside the
+  // card read as a second copy arriving on that floor. The note still pops the
+  // upgraded card, so the better version is one hover away.
+  const upgradeNote = up.length
+    ? `<div class="tile-upgrade-note" ${cardPopAttrs(c.id, 1)} tabindex="0">↑ Upgraded ${fmtCardLabel(c.id)}${
+      c.count > 1 ? ` ×${c.count}` : ""}</div>`
+    : "";
   // An enchantment is identity, so it gets the same treatment as the count: a chip
   // on the tile rather than a second card face. The game draws it on the card
   // itself, which the baked face cannot show.
@@ -157,7 +164,7 @@ function renderCardTile(c) {
     // tooltip -- except for an enchantment, which the baked canonical face cannot
     // show, and the floor's passed-over offers, which belong to the card that was
     // taken. The chip names the enchantment; hovering is what says what it does.
-    const tipInner = `${enchLabel ? buildEnchantmentStrip(c.enchantment) : ""}${c.offersTip || ""}`;
+    const enchTip = enchLabel ? buildEnchantmentStrip(c.enchantment) : "";
     // data-tile-card: what a phone's tap-to-enlarge needs to draw the card again
     // (see openCardLightbox).
     const tileData = encodeURIComponent(JSON.stringify({ id: c.id, upgrade: c.upgrade, props: c.props, enchantment: c.enchantment }));
@@ -167,7 +174,9 @@ function renderCardTile(c) {
         ${(enchLabel || countLabel) ? `<div class="tile-badges">${enchLabel}${countLabel}</div>` : ""}
       </div>
       ${floorLabel}
-      ${tipInner ? `<div class="card-tooltip-wrap">${tipInner}</div>` : ""}
+      ${upgradeNote}
+      ${enchTip ? `<div class="card-tooltip-wrap">${enchTip}</div>` : ""}
+      ${c.offersTip || ""}
     </div>`;
   }
 
@@ -188,8 +197,10 @@ function renderCardTile(c) {
       <div class="tile-name-text">${name}</div>
       ${badgesHtml}
       ${floorLabel}
+      ${upgradeNote}
     </div>
-    <div class="card-tooltip-wrap">${buildCardTooltip(c.id, c.upgrade, c.props, c.enchantment)}${c.offersTip || ""}</div>
+    <div class="card-tooltip-wrap">${buildCardTooltip(c.id, c.upgrade, c.props, c.enchantment)}</div>
+    ${c.offersTip || ""}
   </div>`;
 }
 
@@ -320,11 +331,10 @@ document.addEventListener("click", e => {
 const IN_COMBAT_NODE_TYPES = new Set(["monster", "elite", "boss"]);
 
 // When the run upgraded each card, from the timeline's per-node `upgradedCards`.
-// `byFloor` holds every recorded upgrade of a card the deck still has, for the
-// sequence. `byIndex` pairs floors with a final-deck entry, which needs the
-// copies to be tellable apart: a card is only paired when the recorded upgrades
-// add up to the upgrades its copies took. Otherwise every copy keeps its final
-// face and the floors are left out rather than guessed at.
+// `byIndex` pairs floors with a final-deck entry, which needs the copies to be
+// tellable apart: a card is only paired when the recorded upgrades add up to the
+// upgrades its copies took. Otherwise every copy keeps its final face and the
+// floors are left out rather than guessed at.
 function cardUpgradeFloors(deck, added, timeline) {
   const eventsById = new Map();
   timeline.forEach(node => {
@@ -334,7 +344,7 @@ function cardUpgradeFloors(deck, added, timeline) {
       eventsById.get(id).push({ floor: node.floor + 1, inCombat });
     });
   });
-  const byFloor = new Map(), byIndex = new Map();
+  const byIndex = new Map();
   eventsById.forEach((events, id) => {
     const copies = deck.map((c, i) => i)
       .filter(i => deck[i].id === id && deck[i].upgrade > 0)
@@ -352,76 +362,171 @@ function cardUpgradeFloors(deck, added, timeline) {
     if (!floors) return;
     let at = 0;
     copies.forEach(i => {
-      const taken = floors.slice(at, at + deck[i].upgrade);
+      byIndex.set(i, floors.slice(at, at + deck[i].upgrade));
       at += deck[i].upgrade;
-      byIndex.set(i, taken);
-      taken.forEach(floor => {
-        if (!byFloor.has(floor)) byFloor.set(floor, new Map());
-        const counts = byFloor.get(floor);
-        counts.set(id, (counts.get(id) || 0) + 1);
-      });
     });
   });
-  return { byFloor, byIndex };
+  return byIndex;
 }
 
-// An upgrade on the floor it happened. Deliberately not a card tile: a face here
-// would read as a second copy being added. The card still pops on hover, tap or
-// focus, so the upgraded card is one gesture away.
-function renderUpgradeNote(id, count, floor) {
-  return `<div class="deck-upgrade" ${cardPopAttrs(id, 1)} tabindex="0">
-    <div class="tile-added-floors">F${floor}</div>
-    <div class="deck-upgrade-label">↑ Upgraded ${fmtCardLabel(id)}${count > 1 ? ` ×${count}` : ""}</div>
-  </div>`;
+// What the shop asks for a card (shop_prices.json, tools/derive_shop_prices.py):
+// the price that card's own recorded single-card purchases give, else its
+// rarity's. null when the table is missing or the card has no known rarity.
+function shopPriceOf(id) {
+  const table = DATA.shopPrices;
+  if (!table) return null;
+  const own = table.cards?.[id]?.price;
+  if (own != null) return own;
+  const rarity = cardInfo(id)?.rarity;
+  return rarity != null ? table.rarity?.[rarity] ?? null : null;
+}
+
+// The relics the run was holding by a floor, from the timeline's own relic
+// grants: everything granted on an earlier floor, plus what it started with (its
+// final relics less everything the floors granted).
+function relicsHeldBefore(timeline, finalRelics, floor) {
+  const byFloor = new Map();
+  const granted = new Set();
+  timeline.forEach(node => {
+    const ids = [node.relicPicked, ...(node.relicsBought || []), ...(node.relicsRewarded || [])]
+      .filter(Boolean);
+    if (!ids.length) return;
+    ids.forEach(id => granted.add(id));
+    const key = node.floor + 1;
+    if (!byFloor.has(key)) byFloor.set(key, new Set());
+    ids.forEach(id => byFloor.get(key).add(id));
+  });
+  const held = new Set((finalRelics || []).map(r => r.id).filter(id => id && !granted.has(id)));
+  byFloor.forEach((ids, grantedOn) => {
+    if (grantedOn < floor) ids.forEach(id => held.add(id));
+  });
+  return held;
+}
+
+// The best shop discount among some relics, as {id, pct, title}; null when none
+// of them discounts the shop. The percentages come from shop_prices.json, which
+// reads them off the relics themselves (tools/derive_shop_prices.py).
+function shopDiscountOf(relicIds) {
+  const table = DATA.shopPrices?.discountRelics || {};
+  let best = null;
+  for (const id of relicIds) {
+    const pct = table[id];
+    if (!pct) continue;
+    if (!best || pct > best.pct) best = { id, pct, title: relicInfo(id)?.title || fmtRelicLabel(id) };
+  }
+  return best;
+}
+
+// A shop's shelf with what each card cost that run: the shop's price less the
+// discount the run already held. A card priced above the gold the run walked in
+// with was out of reach, so its price is shown in the loss colour -- unless the
+// visit also sold the discount relic, where the order of the purchases (and so
+// the price) is not recorded.
+function deckShelfRowHtml(ids, gold, discount, boughtHere) {
+  const pct = discount?.pct || 0;
+  const cells = ids.map(id => {
+    const list = shopPriceOf(id);
+    const price = list == null ? null : Math.round(list * (100 - pct) / 100);
+    const over = price != null && gold != null && !boughtHere && price > gold;
+    const why = over ? `More than the ${gold} gold the run had`
+      : boughtHere ? `The shop also sold ${boughtHere.title}, so this may have cost less`
+        : pct ? `${list} before ${discount.title}'s ${pct}% off` : "";
+    return `<div class="nt-cardface deck-shop-card" data-card="${id}" ${cardPopAttrs(id)}>`
+      + renderCardFace(id, 0, "var(--nt-card-w)")
+      + (price == null ? ""
+        : `<div class="deck-shop-price${over ? " deck-shop-price-over" : ""}"${
+          why ? ` title="${why}"` : ""}>${price}</div>`)
+      + "</div>";
+  }).join("");
+  return `<div class="nt-cardrow">${cells}</div>`;
 }
 
 // The cards a floor offered that were passed over, shown on the card that was
-// actually taken -- the same story the map's floor tooltip tells, without adding
-// a row of faces to the deck sequence.
-function deckOffersTipHtml(node, floor) {
+// actually taken. The same full-brightness faces the map's floor tooltip uses
+// (nodeCardRow, run-detail.js), placed beside the tile rather than popping out
+// over it, so hovering one of them pops it full size. A shop's shelf is not the
+// same kind of choice, so it is headed as a shop and priced per card: a shelf
+// card the run's gold could not cover is priced in the loss colour, which is
+// what the visit was really choosing between.
+function deckOffersTipHtml(node, floor, goldBefore = null, discount = null, boughtHere = null) {
   const ids = [...new Set(node.cardsSkipped || [])];
   if (!ids.length) return "";
-  const cards = ids.map(id => `<div class="deck-tip-card" ${cardPopAttrs(id)} tabindex="0">`
-    + `${renderCardFace(id, 0, "var(--deck-tip-card-w)")}<span>${fmtCardLabel(id)}</span></div>`).join("");
-  return `<div class="card-tooltip deck-offers-tip">
-    <div class="deck-tip-title">Also offered on floor ${floor}</div>
-    <div class="deck-tip-cards">${cards}</div>
+  const shop = node.type === "shop";
+  const row = shop
+    ? deckShelfRowHtml(ids, goldBefore, discount, boughtHere)
+    : typeof nodeCardRow === "function"
+      ? nodeCardRow(ids)
+      : `<div class="nt-cardrow">${ids.map(id => `<span>${fmtCardLabel(id)}</span>`).join("")}</div>`;
+  return `<div class="node-tooltip deck-offers-tip">
+    <div class="nt-floor">${shop ? "For sale on floor" : "Also offered on floor"} ${floor}</div>
+    ${shop && goldBefore != null ? `<div class="nt-hp-gold">Had ${goldBefore} gold</div>` : ""}
+    ${shop && discount ? `<div class="deck-shop-discount">${discount.title}: ${discount.pct}% off</div>` : ""}
+    ${shop && !discount && boughtHere ? `<div class="deck-shop-discount">${boughtHere.title} bought here</div>` : ""}
+    ${row}
   </div>`;
 }
 
+// Placed by the map's floor-tooltip code (fitNodeTooltip, run-detail.js): it
+// picks the side with room for the panel, sizes the faces to the window and
+// keeps the whole thing on screen.
+function fitDeckOffersTipOf(tile) {
+  const tip = tile?.querySelector(":scope > .deck-offers-tip");
+  if (!tip || typeof fitNodeTooltip !== "function") return;
+  fitNodeTooltip(tip, tile);
+  // The faces load after this and grow the panel, so fit again when each lands
+  // (the same re-place item-tips.js and tooltip.js do for their boxes).
+  tip.querySelectorAll("img").forEach(img => {
+    if (img.complete) return;
+    img.addEventListener("load", () => {
+      if (tile.matches(":hover, :focus-within")) fitNodeTooltip(tip, tile);
+    }, { once: true });
+  });
+}
+document.addEventListener("pointerover", e => {
+  const tile = e.target.closest?.(".card-tile");
+  if (tile && !tile.contains(e.relatedTarget)) fitDeckOffersTipOf(tile);
+});
+document.addEventListener("focusin", e => fitDeckOffersTipOf(e.target.closest?.(".card-tile")));
+
 // The deck as it was gathered: one run of cards in the order they came, the starting cards
 // first, with the floor as a small marker under each (a card marked "F12" came on floor 12).
-// A card the run upgraded later keeps the face it was added with and names the floor that
-// upgraded it, and the upgrade itself takes its own entry on that floor -- so the sequence
-// reads as one card getting better rather than a better card arriving. A card taken from a
-// floor that offered others carries those others in its hover tooltip.
-function renderCardsByFloorHtml(deck, added, timeline = []) {
+// A card the run upgraded later keeps the face it was added with and says under it which floor
+// upgraded it, so the sequence reads as one card getting better rather than a better card
+// arriving. A card taken from a floor that offered others carries those others in a hover panel.
+function renderCardsByFloorHtml(deck, added, timeline = [], relics = []) {
   const upgrades = cardUpgradeFloors(deck, added, timeline);
   const byFloor = new Map();
   deck.forEach((c, i) => {
     const floor = Number.isInteger(added[i]) && added[i] >= 1 ? added[i] : 0;
     if (!byFloor.has(floor)) byFloor.set(floor, []);
-    const upgradedAt = upgrades.byIndex.get(i);
+    const upgradedAt = upgrades.get(i);
     byFloor.get(floor).push(upgradedAt ? { ...c, upgrade: 0, upgradedAt } : c);
   });
   const nodes = new Map(timeline.map(node => [node.floor + 1, node]));
-  const floors = [...new Set([...byFloor.keys(), ...upgrades.byFloor.keys()])].sort((a, b) => a - b);
+  const floors = [...byFloor.keys()].sort((a, b) => a - b);
   const tiles = floors.map(floor => {
     const cards = byFloor.get(floor) || [];
     const node = nodes.get(floor);
     // Only the card that came from that floor's offer carries it: the deck is what
     // was taken, and the passed-over cards are the story of that pick.
     const picked = node?.type === "shop" ? node.cardsBought : node?.cardsRewarded;
-    const offers = floor && node?.cardsSkipped?.length ? deckOffersTipHtml(node, floor) : "";
-    const kept = dedupeCardCounts(cards, ["upgradedAt"])
+    // What the run was carrying on the way in: the gold the node before it ended
+    // with. A shop only, where it is what decided what could be bought.
+    const goldBefore = node?.type === "shop" ? nodes.get(floor - 1)?.gold ?? null : null;
+    // What the shop charged this run: the discount it already held by this
+    // floor. A discount relic sold by this same shop is not counted -- whether
+    // it was paid for before or after the cards is not recorded -- but it does
+    // stop the shelf being called unaffordable.
+    const discount = node?.type === "shop"
+      ? shopDiscountOf(relicsHeldBefore(timeline, relics, floor)) : null;
+    const boughtHere = node?.type === "shop" ? shopDiscountOf(node.relicsBought || []) : null;
+    const offers = floor && node?.cardsSkipped?.length
+      ? deckOffersTipHtml(node, floor, goldBefore, discount, boughtHere) : "";
+    return dedupeCardCounts(cards, ["upgradedAt"])
       .map(c => renderCardTile({
         ...c, seqMark: floor ? `F${floor}` : "Start",
         offersTip: offers && picked?.includes(c.id) ? offers : "",
       })).join("");
-    const upgraded = [...(upgrades.byFloor.get(floor) || [])]
-      .sort(([a], [b]) => fmtCardLabel(a).localeCompare(fmtCardLabel(b)))
-      .map(([id, count]) => renderUpgradeNote(id, count, floor)).join("");
-    return kept + upgraded;
   });
   return `<div class="deck-tile-row deck-sequence">${tiles.join("")}</div>`;
 }
@@ -450,7 +555,7 @@ function renderDetailDeckRelics(run) {
     ${renderDeckLinksHtml(deck, relics, run.char)}
     ${tabs}
     <div data-deck-panel="type"${view === "type" ? "" : " hidden"}>${groupsHtml}</div>
-    ${hasFloors ? `<div data-deck-panel="floor"${view === "floor" ? "" : " hidden"}>${renderCardsByFloorHtml(deck, run.deckAdded, run.timeline)}</div>` : ""}
+    ${hasFloors ? `<div data-deck-panel="floor"${view === "floor" ? "" : " hidden"}>${renderCardsByFloorHtml(deck, run.deckAdded, run.timeline, run.finalRelics)}</div>` : ""}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
   // The explorer's relic panels carry their art as deferred data-src.

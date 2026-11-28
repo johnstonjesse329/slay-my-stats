@@ -2428,62 +2428,42 @@ h1 {
   gap: 8px;
   align-items: flex-start;
 }
-/* The cards a floor offered that were passed over ride in the hover tooltip of
-   the card that was taken, so the sequence stays one tile per acquisition. */
-.card-tooltip.deck-offers-tip {
-  --deck-tip-card-w: 86px;
-  width: max-content;
-  max-width: min(92vw, 320px);
-  padding: 8px 10px;
-}
-.deck-tip-title {
-  margin-bottom: 6px;
-  font-size: var(--fs-sm);
-}
-.deck-tip-cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.deck-tip-card { width: var(--deck-tip-card-w); text-align: center; }
-.deck-tip-card img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 4px;
-}
-.deck-tip-card span {
-  display: block;
-  margin-top: 3px;
+/* The cards a floor offered that were passed over ride in a panel beside the
+   card that was taken, styled like the map's floor tooltip (node-tooltip): the
+   faces are dimmed and hovering one pops it full size, so the sequence stays one
+   tile per acquisition without hiding what the pick cost. js/card-face.js places
+   it; the .node-tooltip default is display:none. */
+.card-tile:hover > .deck-offers-tip,
+.card-tile:focus-within > .deck-offers-tip { display: block; }
+/* A shop's shelf: each face with what the shop asked for it, under the card the
+   way the deck's own captions sit. A price above the gold the run carried is in
+   the loss colour, so a shelf the gold could not cover reads at a glance. */
+.deck-shop-price {
+  padding-top: 2px;
+  color: var(--gold);
   font-size: var(--fs-xs);
   line-height: 1.2;
-}
-/* The floor view's upgrade entries: the floor as the same small marker the card
-   tiles carry, then what was upgraded there. Dashed and face-less so it reads as
-   a note about the deck rather than another card being added. */
-.deck-upgrade {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  width: 96px;
-  max-width: 100%;
-  min-height: 64px;
-  padding: 8px 4px;
-  border: 1px dashed var(--hairline);
-  border-radius: 6px;
-  color: var(--text-dim);
-  font-size: var(--fs-xs);
   text-align: center;
+}
+.deck-shop-price-over { color: var(--loss); }
+/* Which relic took the discount off the prices above. */
+.deck-shop-discount {
+  margin-bottom: 4px;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+/* Under the card: the card it was added as, the floor that upgraded it, and
+   what the upgrade made. Hovering the words pops the upgraded card. */
+.tile-upgrade-note {
+  color: var(--gold);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  text-align: center;
+  overflow-wrap: anywhere;
   cursor: default;
 }
-.deck-upgrade:hover,
-.deck-upgrade:focus-visible {
-  border-color: var(--gold);
-  color: var(--text);
-}
-.deck-upgrade-label { line-height: 1.3; }
+.tile-upgrade-note:hover,
+.tile-upgrade-note:focus-visible { text-decoration: underline dotted; text-underline-offset: 2px; }
 .tile-upgraded-at {
   margin-left: 4px;
   color: var(--gold);
@@ -2507,6 +2487,8 @@ h1 {
   /* A tap opens the card large instead (js/card-face.js), enchantment rule
      included, so the face tile's own enchantment popup would only double it. */
   .deck-tile-row .card-tile-face .card-tooltip-wrap { display: none; }
+  /* Same for the offered-cards panel: it can only be hovered. */
+  .deck-tile-row .deck-offers-tip { display: none !important; }
 }
 
 .card-tile {
