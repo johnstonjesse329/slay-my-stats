@@ -1433,8 +1433,8 @@ function renderPartyPlayCharts(roster, nodes, sources) {
     borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, spanGaps: true, cubicInterpolationMode: "monotone",
     ...metric.style,
   }));
+  const legend = `<div class="floor-legend"><div class="fl-items">${lines.map(keepLegendEntry).join("")}</div></div>`;
   container.innerHTML = `<p class="chart-caption">Each point is a fight average per turn. All players use the same scale.</p>
-    <div class="floor-legend"><div class="fl-items">${lines.map(keepLegendEntry).join("")}</div></div>
     <div class="party-play-charts"></div>`;
   const charts = container.querySelector(".party-play-charts");
   const max = Math.max(1, Math.ceil(Math.max(...values) * 1.05));
@@ -1445,7 +1445,7 @@ function renderPartyPlayCharts(roster, nodes, sources) {
     panel.className = "party-floor-player";
     panel.style.setProperty("--player-color", player.color);
     panel.innerHTML = `<h4 class="party-member">${partyPlayerName(player)}</h4>` + (recorded
-      ? `<div class="chart-wrap"><canvas role="img" aria-label="Energy and cards per turn for ${escapeHtml(player.label)}"></canvas></div>`
+      ? `<div class="chart-wrap"><canvas role="img" aria-label="Energy and cards per turn for ${escapeHtml(player.label)}"></canvas></div>${legend}`
       : '<p class="chart-caption">No per-turn log for this player.</p>');
     charts.append(panel);
     if (!recorded) return;
