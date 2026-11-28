@@ -8,8 +8,8 @@ import json
 import time
 
 from run import local_player_index
-from handler import (RAW_KEY_RE, STATS_KEY, IngestError, _get_store, _pack, _unpack, blob_key, id_key,
-                     iter_upload_lines, telemetry_key)
+from handler import (RAW_KEY_RE, STATS_KEY, IngestError, _get_store, _norm_steam_id, _pack, _unpack,
+                     blob_key, id_key, iter_upload_lines, telemetry_key)
 import mod_pack
 import showcase
 from tools.power_curve.fight_demand import cuts_of, rating_mix, run_fights, table
@@ -67,6 +67,12 @@ def upload_fights(store, published, key, facts=None, showcase_since=0):
                                      "asc": raw.get("ascension") or 0, "deck": sum(1 for c in player.get("deck") or [] if c.get("id")),
                                      "slot": slot,
                                      "standard": raw.get("game_mode", "standard") == "standard"}
+                    # The normal co-op profile can fall back to seat 0 if the uploader ID
+                    # is absent. A player-specific achievement requires a confirmed seat.
+                    damage_slot = slot or 0
+                    if multiplayer and _norm_steam_id(player.get("id")) != _norm_steam_id(steam_id):
+                        damage_slot = None
+                    facts[run_id]["boss_achievements"] = showcase.final_boss_achievements(raw, damage_slot)
                     try:
                         facts[run_id]["syn"] = showcase.deck_synergies(
                             player.get("character"), player.get("deck"), player.get("relics"))
@@ -145,6 +151,7 @@ def publish_showcase(store, by_run, facts, benchmark, now):
             c = {"slug": names[steam_id][0], "name": names[steam_id][1], "ts": f["ts"], "char": f["char"],
                  "asc": f["asc"], "deck": f["deck"], "syn": f.get("syn"), "multiplayer": slot is not None,
                  "op": f["standard"] and showcase.is_op(fights, benchmark["encounters"], benchmark["cuts"], slot)}
+            c.update(f["boss_achievements"])
             got = store.get(telemetry_key(steam_id, f["ts"]))
             if got:
                 c.update(showcase.turn_peaks(_unpack(got[0]), slot))

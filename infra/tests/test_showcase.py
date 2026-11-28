@@ -61,6 +61,47 @@ class TurnPeaks(unittest.TestCase):
         self.assertEqual(showcase.turn_peaks(log, slot=1), {"blocked": 9, "held": 12, "hit": 23})
 
 
+class FinalBossAchievements(unittest.TestCase):
+    def test_only_the_second_a10_boss_counts(self):
+        first_boss = {"map_point_type": "boss", "player_stats": [{"damage_taken": 0}],
+                      "rooms": [{"model_id": "ENCOUNTER.A", "turns_taken": 1}]}
+        second_boss = {"map_point_type": "boss", "player_stats": [{"damage_taken": 7, "hp_healed": 7}],
+                       "rooms": [{"model_id": "ENCOUNTER.B", "turns_taken": 4}]}
+        raw = {"win": True, "players": [{}], "ascension": 10,
+               "map_point_history": [[], [], [first_boss, second_boss]]}
+        self.assertEqual(showcase.final_boss_achievements(raw, 0),
+                         {"boss_no_damage": False, "boss_one_turn": False})
+        raw["map_point_history"][-1].reverse()
+        self.assertEqual(showcase.final_boss_achievements(raw, 0),
+                         {"boss_no_damage": True, "boss_one_turn": True})
+        raw["map_point_history"][-1].pop(0)
+        self.assertEqual(showcase.final_boss_achievements(raw, 0), {})
+
+    def test_each_achievement_requires_its_own_recorded_value(self):
+        room = {"model_id": "ENCOUNTER.A", "turns_taken": 1}
+        stats = {"hp_healed": 0}
+        boss = {"map_point_type": "boss", "rooms": [room], "player_stats": [stats]}
+        raw = {"win": True, "players": [{}], "map_point_history": [[], [], [boss]]}
+        self.assertEqual(showcase.final_boss_achievements(raw, 0),
+                         {"boss_no_damage": False, "boss_one_turn": True})
+        stats["damage_taken"] = 0
+        del room["turns_taken"]
+        self.assertEqual(showcase.final_boss_achievements(raw, 0),
+                         {"boss_no_damage": True, "boss_one_turn": False})
+        room["turns_taken"] = True
+        stats["damage_taken"] = False
+        self.assertEqual(showcase.final_boss_achievements(raw, 0),
+                         {"boss_no_damage": False, "boss_one_turn": False})
+
+    def test_requires_a_win_with_final_act_boss_history(self):
+        boss = {"map_point_type": "boss", "player_stats": [{"damage_taken": 0}],
+                "rooms": [{"model_id": "ENCOUNTER.A", "turns_taken": 1}]}
+        raw = {"win": True, "players": [{}], "map_point_history": [[], [], [boss]]}
+        self.assertEqual(showcase.final_boss_achievements({**raw, "win": False}, 0), {})
+        self.assertEqual(showcase.final_boss_achievements({**raw, "was_abandoned": True}, 0), {})
+        self.assertEqual(showcase.final_boss_achievements({**raw, "map_point_history": [[], [boss]]}, 0), {})
+
+
 class Build(unittest.TestCase):
     def test_each_modes_top_runs_are_kept_even_when_the_combined_tab_is_full(self):
         solo = run(NOW - 1, deck=40)
@@ -80,10 +121,23 @@ class Build(unittest.TestCase):
         self.assertEqual([e["n"] for e in out["held"]], [55])
         self.assertEqual(out["hit"], [])
 
-    def test_every_op_run_is_kept_and_the_rest_are_capped(self):
+    def test_op_runs_are_unlimited_and_figure_tabs_are_capped(self):
         out = showcase.build([run(NOW - i, deck=i, op=True) for i in range(1, 50)], NOW)
         self.assertEqual(len(out["op"]), 49)
         self.assertEqual(len(out["deck"]), 30)
+
+    def test_boss_tabs_are_independent_recent_and_filtered_by_mode(self):
+        solo = run(NOW - 1, boss_no_damage=True)
+        coop = run(NOW - 2, boss_one_turn=True, multiplayer=True)
+        both = run(NOW - 3, boss_no_damage=True, boss_one_turn=True, multiplayer=True)
+        old = run(NOW - 31 * 86400, boss_no_damage=True, boss_one_turn=True)
+        out = showcase.build([old, both, coop, solo], NOW, per_tab=1)
+        self.assertEqual([e["ts"] for e in out["boss_no_damage"]], [solo["ts"], both["ts"]])
+        self.assertEqual([e["ts"] for e in out["boss_one_turn"]], [coop["ts"], both["ts"]])
+        self.assertEqual([e["ts"] for e in out["modes"]["solo"]["boss_no_damage"]], [solo["ts"]])
+        self.assertEqual(out["modes"]["solo"]["boss_one_turn"], [])
+        self.assertEqual([e["ts"] for e in out["modes"]["multiplayer"]["boss_no_damage"]], [both["ts"]])
+        self.assertEqual(out["modes"]["multiplayer"]["boss_one_turn"], out["boss_one_turn"])
 
     def test_handful(self):
         out = showcase.build([run(NOW - i, deck=i + 1) for i in range(1, 20)], NOW, per_tab=3)
