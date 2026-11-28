@@ -2428,14 +2428,35 @@ h1 {
   gap: 8px;
   align-items: flex-start;
 }
-.deck-floor-offers {
-  flex: 0 0 100%;
-  grid-column: 1 / -1;
+/* The cards a floor offered that were passed over ride in the hover tooltip of
+   the card that was taken, so the sequence stays one tile per acquisition. */
+.card-tooltip.deck-offers-tip {
+  --deck-tip-card-w: 86px;
+  width: max-content;
+  max-width: min(92vw, 320px);
+  padding: 8px 10px;
+}
+.deck-tip-title {
+  margin-bottom: 6px;
   font-size: var(--fs-sm);
 }
-.deck-floor-offers > summary {
-  cursor: pointer;
-  padding: 6px 0;
+.deck-tip-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.deck-tip-card { width: var(--deck-tip-card-w); text-align: center; }
+.deck-tip-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+.deck-tip-card span {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--fs-xs);
+  line-height: 1.2;
 }
 /* The floor view's upgrade entries: the floor as the same small marker the card
    tiles carry, then what was upgraded there. Dashed and face-less so it reads as

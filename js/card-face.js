@@ -155,10 +155,9 @@ function renderCardTile(c) {
   if (cardFaceAvailable()) {
     // The face already carries the card's own text, so a face tile needs no
     // tooltip -- except for an enchantment, which the baked canonical face cannot
-    // show. The chip names it; hovering is what says what it does.
-    const enchTip = enchLabel
-      ? `<div class="card-tooltip-wrap">${buildEnchantmentStrip(c.enchantment)}</div>`
-      : "";
+    // show, and the floor's passed-over offers, which belong to the card that was
+    // taken. The chip names the enchantment; hovering is what says what it does.
+    const tipInner = `${enchLabel ? buildEnchantmentStrip(c.enchantment) : ""}${c.offersTip || ""}`;
     // data-tile-card: what a phone's tap-to-enlarge needs to draw the card again
     // (see openCardLightbox).
     const tileData = encodeURIComponent(JSON.stringify({ id: c.id, upgrade: c.upgrade, props: c.props, enchantment: c.enchantment }));
@@ -168,7 +167,7 @@ function renderCardTile(c) {
         ${(enchLabel || countLabel) ? `<div class="tile-badges">${enchLabel}${countLabel}</div>` : ""}
       </div>
       ${floorLabel}
-      ${enchTip}
+      ${tipInner ? `<div class="card-tooltip-wrap">${tipInner}</div>` : ""}
     </div>`;
   }
 
@@ -190,7 +189,7 @@ function renderCardTile(c) {
       ${badgesHtml}
       ${floorLabel}
     </div>
-    <div class="card-tooltip-wrap">${buildCardTooltip(c.id, c.upgrade, c.props, c.enchantment)}</div>
+    <div class="card-tooltip-wrap">${buildCardTooltip(c.id, c.upgrade, c.props, c.enchantment)}${c.offersTip || ""}</div>
   </div>`;
 }
 
@@ -376,11 +375,26 @@ function renderUpgradeNote(id, count, floor) {
   </div>`;
 }
 
+// The cards a floor offered that were passed over, shown on the card that was
+// actually taken -- the same story the map's floor tooltip tells, without adding
+// a row of faces to the deck sequence.
+function deckOffersTipHtml(node, floor) {
+  const ids = [...new Set(node.cardsSkipped || [])];
+  if (!ids.length) return "";
+  const cards = ids.map(id => `<div class="deck-tip-card" ${cardPopAttrs(id)} tabindex="0">`
+    + `${renderCardFace(id, 0, "var(--deck-tip-card-w)")}<span>${fmtCardLabel(id)}</span></div>`).join("");
+  return `<div class="card-tooltip deck-offers-tip">
+    <div class="deck-tip-title">Also offered on floor ${floor}</div>
+    <div class="deck-tip-cards">${cards}</div>
+  </div>`;
+}
+
 // The deck as it was gathered: one run of cards in the order they came, the starting cards
 // first, with the floor as a small marker under each (a card marked "F12" came on floor 12).
 // A card the run upgraded later keeps the face it was added with and names the floor that
 // upgraded it, and the upgrade itself takes its own entry on that floor -- so the sequence
-// reads as one card getting better rather than a better card arriving.
+// reads as one card getting better rather than a better card arriving. A card taken from a
+// floor that offered others carries those others in its hover tooltip.
 function renderCardsByFloorHtml(deck, added, timeline = []) {
   const upgrades = cardUpgradeFloors(deck, added, timeline);
   const byFloor = new Map();
@@ -394,20 +408,20 @@ function renderCardsByFloorHtml(deck, added, timeline = []) {
   const floors = [...new Set([...byFloor.keys(), ...upgrades.byFloor.keys()])].sort((a, b) => a - b);
   const tiles = floors.map(floor => {
     const cards = byFloor.get(floor) || [];
+    const node = nodes.get(floor);
+    // Only the card that came from that floor's offer carries it: the deck is what
+    // was taken, and the passed-over cards are the story of that pick.
+    const picked = node?.type === "shop" ? node.cardsBought : node?.cardsRewarded;
+    const offers = floor && node?.cardsSkipped?.length ? deckOffersTipHtml(node, floor) : "";
     const kept = dedupeCardCounts(cards, ["upgradedAt"])
-      .map(c => renderCardTile({ ...c, seqMark: floor ? `F${floor}` : "Start" })).join("");
+      .map(c => renderCardTile({
+        ...c, seqMark: floor ? `F${floor}` : "Start",
+        offersTip: offers && picked?.includes(c.id) ? offers : "",
+      })).join("");
     const upgraded = [...(upgrades.byFloor.get(floor) || [])]
       .sort(([a], [b]) => fmtCardLabel(a).localeCompare(fmtCardLabel(b)))
       .map(([id, count]) => renderUpgradeNote(id, count, floor)).join("");
-    const node = nodes.get(floor);
-    const picked = node?.type === "shop" ? node.cardsBought : node?.cardsRewarded;
-    if (!floor || !node?.cardsSkipped?.length || !cards.some(c => picked?.includes(c.id))) return kept + upgraded;
-    const offered = dedupeCardCounts(node.cardsSkipped.map(id => ({ id, upgrade: 0 })))
-      .map(renderCardTile).join("");
-    return `${kept}${upgraded}<details class="deck-floor-offers">
-      <summary>Floor ${floor} · Other cards offered on this floor</summary>
-      <div class="deck-tile-row">${offered}</div>
-    </details>`;
+    return kept + upgraded;
   });
   return `<div class="deck-tile-row deck-sequence">${tiles.join("")}</div>`;
 }
