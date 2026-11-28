@@ -1836,6 +1836,8 @@ h1 {
 .floor-tip .strength-chip img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex: none; }
 .floor-tip .strength-chip.gain { border-color: #4087de; }
 .floor-tip .strength-chip.loss { border-color: #d97230; }
+.floor-tip .strength-chip:has(.ft-synergy) { white-space: normal; }
+.ft-synergy { display: block; color: #c9a2ff; font-size: var(--fs-xs); line-height: 1.3; }
 .floor-tip .strength-measured { color: var(--text-dim); font-variant-numeric: tabular-nums; text-align: left; }
 .strength-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 .keep-key { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem; margin: 0 0 0.9rem; }
@@ -1924,6 +1926,7 @@ h1 {
 .fl-item { display: inline-flex; align-items: center; gap: 0.4rem; }
 .fl-swatch { width: 14px; height: 10px; border-radius: 2px; box-sizing: border-box; }
 .fl-ring { border: 2px solid; border-radius: 50%; box-sizing: border-box; display: inline-block; }
+.fl-diamond { width: 8px; height: 8px; background: #c9a2ff; transform: rotate(45deg); }
 
 /* A span of floors picked by dragging a chart: what the run changed in it. It sits under the
    chart the drag started on, so the band and the list are read together. */

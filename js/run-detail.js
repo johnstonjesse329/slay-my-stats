@@ -1480,19 +1480,53 @@ function applyPartyPanelAct() {
   });
 }
 
-function floorChangeTip(changes) {
+function floorChangeTip(changes, synergies = []) {
   const name = ([id], relic) => relic ? relicInfo(id)?.title || fmtRelicLabel(id) : cardInfo(id)?.title || fmtCardLabel(id);
-  const chips = (list, relic) => list.map(c => {
+  const chips = (list, relic, links) => list.map(c => {
     const src = relic ? relicImgSrc(c[0]) : cardImgSrc(c[0]);
+    const labels = !relic && c[2] > 0 ? links?.get(c[0]) : null;
+    const synergy = labels ? `<small class="ft-synergy">Synergy · ${[...labels].map(escapeHtml).join(", ")}</small>` : "";
     return `<span class="strength-chip ${c[2] < 0 ? "loss" : "gain"}" data-pick="${relic ? "relic" : "card"}:${c[0]}${relic ? "" : ":" + +c[1]}">` +
-      `${src ? `<img src="${src}" alt="" loading="lazy">` : ""}${c[2] > 0 ? "+" : c[2] < 0 ? "−" : "↑"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`;
+      `${src ? `<img src="${src}" alt="" loading="lazy">` : ""}<span>${c[2] > 0 ? "+" : c[2] < 0 ? "−" : "↑"} ${name(c, relic)}${c[1] ? "+" : ""}${synergy}</span></span>`;
   }).join("");
   return i => {
-    const s = changes && i ? changes[i] : null;
-    return s && (s.cards.length || s.relics.length)
-      ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div>` : "";
+    const s = i ? changes?.[i] : null;
+    const cards = s?.cards || [];
+    const links = synergies[i];
+    const pickups = links ? [...links.keys()].filter(id => !cards.some(c => c[0] === id && c[2] > 0))
+      .map(id => [id, false, 1]) : [];
+    const html = chips([...cards, ...pickups], false, links) + chips(s?.relics || [], true);
+    return html ? `<div class="strength-chips">${html}</div>` : "";
   };
 }
+
+function deckSynergyPickups(run, nodes) {
+  const deck = run.finalDeck || [];
+  const links = deckLinks(deck, run.finalRelics || []);
+  const byFloor = new Map();
+  if (links.length) deck.forEach((card, i) => {
+    const floor = run.deckAdded[i];
+    const row = cardSynergyRow(card, DATA.synergy);
+    if (!(floor > 0) || !row) return;
+    const keys = links.filter(({ key, feeders, users }) =>
+      (row[0].includes(key) && users.some(user => user.id !== card.id)) ||
+      (row[1].includes(key) && feeders.some(feeder => feeder.id !== card.id))).map(({ key }) => synergyLabel(key));
+    if (!keys.length) return;
+    if (!byFloor.has(floor)) byFloor.set(floor, new Map());
+    const cards = byFloor.get(floor);
+    cards.set(card.id, new Set([...(cards.get(card.id) || []), ...keys]));
+  });
+  return nodes.map(n => byFloor.get(n.floor + 1));
+}
+
+const DECK_SYNERGY_COLOR = "#c9a2ff";
+const deckSynergyLegend = `<div class="fl-items"><span class="fl-item"><span class="fl-diamond" aria-hidden="true"></span>Final deck synergy</span></div>`;
+const deckSynergyPoints = (links, counts) => links.some(Boolean) ? [{
+  label: "Final deck synergy", showLine: false, pointStyle: "rectRot",
+  pointBackgroundColor: DECK_SYNERGY_COLOR, pointBorderColor: "#16142a", pointBorderWidth: 1,
+  pointRadius: 6, pointHoverRadius: 7, order: -1,
+  data: links.map((cards, i) => cards ? Math.max(...Object.values(counts).map(values => values[i])) : null),
+}] : [];
 
 function renderPartyComposition(run, panel) {
   const nodes = run.timeline || [];
@@ -1502,7 +1536,9 @@ function renderPartyComposition(run, panel) {
   const counts = countsByFloor(nodes, items, T);
   const totals = floorTotals(nodes, counts, T.order);
   const keys = usedKeys(counts, T.order);
-  const changed = floorChangeTip(runFloorChanges(run));
+  const synergies = deckSynergyPickups(run, nodes);
+  const points = deckSynergyPoints(synergies, counts);
+  const changed = floorChangeTip(runFloorChanges(run), synergies);
   const datasets = keys.map(key => ({
     label: key, data: counts[key], borderColor: T.color[key], borderWidth: 2,
     pointHoverRadius: 5, cubicInterpolationMode: "monotone",
@@ -1513,8 +1549,8 @@ function renderPartyComposition(run, panel) {
     return `${floorTipHead(nodes[i], totals[i], "cards")}<table>${table}</table>${changed(i)}`;
   });
   const chart = new Chart(panel.querySelector("canvas"),
-    floorChartConfig(nodes, [floorDotDensity], tip, { min: 0, stacked: false }, datasets));
-  panel.querySelector(".floor-legend").innerHTML = floorLegendRow("Type", keys, T.color);
+    floorChartConfig(nodes, [floorDotDensity], tip, { min: 0, stacked: false }, [...datasets, ...points]));
+  panel.querySelector(".floor-legend").innerHTML = floorLegendRow("Type", keys, T.color) + (points.length ? deckSynergyLegend : "");
   bindRangeSelect(chart, nodes);
   return chart;
 }
@@ -3586,6 +3622,7 @@ const floorDotDensity = {
     const first = min == null ? 0 : labels.indexOf(min);
     const end = max == null ? labels.length : labels.indexOf(max) + 1;
     for (const dataset of chart.data.datasets) {
+      if (dataset.showLine === false) continue;
       const visiblePoints = dataset.data.slice(first, end).filter(Number.isFinite).length;
       // A scriptable radius refreshes the point options on update("none").
       dataset.pointRadius = () => visiblePoints > 15 ? 0 : 3;
@@ -4833,15 +4870,19 @@ function renderDetailKeepCharts(run, party = false) {
     const byT = countsByFloor(nodes, held, T);
     const tKeys = usedKeys(byT, T.order);
     const sizes = floorTotals(nodes, byT, T.order);
+    const synergies = deckSynergyPickups(run, nodes);
+    const points = deckSynergyPoints(synergies, byT);
+    const deckChanged = floorChangeTip(changes, synergies);
     const deckTip = context => showFloorTip(context, i =>
       `${floorTipHead({ ...nodes[i], enc: nodes[i].fight || nodes[i].enc }, sizes[i], "cards")}` +
-      `<table>${tKeys.filter(k => byT[k][i] > 0).map(k => row(k, T.color[k], byT[k][i])).join("")}</table>${changed(i)}`);
+      `<table>${tKeys.filter(k => byT[k][i] > 0).map(k => row(k, T.color[k], byT[k][i])).join("")}</table>${deckChanged(i)}`);
     const deckLine = (label, color, data, dash) => ({
       label, data, borderColor: color, pointHoverBackgroundColor: color,
       borderWidth: 2, borderDash: dash || [], pointHoverRadius: 5,
       cubicInterpolationMode: "monotone",
     });
-    chart("deck", tKeys.map(k => deckLine(k, T.color[k], byT[k])), deckTip, null, [floorDotDensity]);
+    chart("deck", [...tKeys.map(k => deckLine(k, T.color[k], byT[k])), ...points], deckTip, null, [floorDotDensity]);
+    if (points.length) document.getElementById("detail-keep-deck-legend").insertAdjacentHTML("beforeend", deckSynergyLegend);
   }
 
   const damage = run.mp

@@ -379,20 +379,21 @@ function runTags(run) {
 // Cards and relics in this run that feed each other: one makes a thing (Strength,
 // Poison, Osty, Shiv...) and another needs it. Listed, not scored. DATA.synergy
 // holds only the specific keys; a key with no maker or no other user is dropped.
+function cardSynergyRow(c, table) {
+  const upgrade = c.upgrade > 0 ? 1 : 0;
+  const rolls = table.cardRolls?.[c.id];
+  if (rolls) return rolls[c.id + cardVariantSuffix(c.props)]?.[upgrade];
+  return table.cardVariants?.[c.id]?.[upgrade] || table.cards[c.id];
+}
+
 function deckLinks(deck, relics) {
   const table = DATA.synergy;
   if (!table) return [];
   const makers = {}, users = {};
   const add = (map, key, who) => { (map[key] = map[key] || new Map()).set(who.id, who); };
-  const cardRow = c => {
-    const upgrade = c.upgrade > 0 ? 1 : 0;
-    const rolls = table.cardRolls?.[c.id];
-    if (rolls) return rolls[c.id + cardVariantSuffix(c.props)]?.[upgrade];
-    return table.cardVariants?.[c.id]?.[upgrade] || table.cards[c.id];
-  };
   const seen = [
     ...deck.map(c => ({ id: c.id, card: c, name: cardInfo(c.id)?.title || fmtCardLabel(c.id),
-      row: cardRow(c) })),
+      row: cardSynergyRow(c, table) })),
     ...relics.map(r => ({ id: r.id, name: relicInfo(r.id)?.title || fmtRelicLabel(r.id), row: table.relics[r.id] })),
   ];
   seen.forEach(s => {
