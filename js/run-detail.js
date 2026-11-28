@@ -529,7 +529,7 @@ function renderDetailRunList(pageStep = 0) {
       <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}">${partyHtml}</span>
       <span class="detail-run-won" style="color:${won ? COLORS.win : COLORS.loss}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
-      <span class="detail-run-read">${runReadingHtml(run, true)}</span>
+      <span class="detail-run-read">${runReadingHtml(run, { short: true })}</span>
       <span class="detail-run-date" style="color:var(--text-dim)">${runDateCellHtml(run, fmtDate)}</span>
     </div>`;
   }).join("");
@@ -717,7 +717,7 @@ function runHeaderBarHtml(run, owner, party = false) {
       ${party ? "" : charLabelHtml(run.char, true)}
       ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
       <span style="color:${won ? COLORS.win : COLORS.loss};font-weight:600">${won ? "Victory" : "Defeat"}</span>
-      ${party ? "" : runReadingHtml(run) + runActMarksHtml(run)}
+      ${party ? "" : runReadingHtml(run, { tooltip: false }) + runActMarksHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
       <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
       ${modeTagHtml(run)}${customTagHtml(run, true)}${moddedTagHtml(run, true)}
@@ -4435,9 +4435,8 @@ const keepWhy = x => (held, speed) => {
   return "Damage in the middle of wins.";
 };
 
-// A run's reading on its header, or just its mark in the run list (short). The numbers
-// are on hover, as they are on an act's mark.
-function runReadingHtml(run, short = false) {
+// A run's reading in the header or rating card, or just its mark in the run list.
+function runReadingHtml(run, { short = false, tooltip = true } = {}) {
   const r = runReadingOf(run);
   if (!r) return "";
   const word = KEEP_WORDS[r.verdict];
@@ -4448,9 +4447,8 @@ function runReadingHtml(run, short = false) {
     if (r.op) return `<span class="run-reading op" data-tip="${tip}">OP</span>`;
     return `<span class="keep-signal ${r.verdict}" role="img" aria-label="${word}" data-tip="${tip}">${KEEP_SIGNS[r.verdict]}</span>`;
   }
-  // On the header the meters are shown (runReadingMetersHtml), so the pill's hover keeps only
-  // what they don't say.
-  const note = [r.op ? opLine : "", run.won ? "" : "Not counting the fight that ended it."].filter(Boolean).join("\n");
+  // The rating card already has meters, so its pill only adds context about the run.
+  const note = tooltip ? [r.op ? opLine : "", run.won ? "" : "Not counting the fight that ended it."].filter(Boolean).join("\n") : "";
   const attrs = note ? ` data-tip="${note.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" tabindex="0"` : "";
   if (r.op) return `<span class="run-reading op"${attrs}><span aria-hidden="true">▲▲</span>OP</span>`;
   return `<span class="run-reading ${r.verdict}"${attrs}><span class="keep-signal ${r.verdict}" aria-hidden="true">${KEEP_SIGNS[r.verdict]}</span>${word}</span>`;
