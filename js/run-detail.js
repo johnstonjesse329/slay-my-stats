@@ -933,7 +933,7 @@ function showRunCopy(run, owner, note = "", players = null) {
   renderDetailGoldChart(run);
   renderDetailDeckChart(run);
   renderDetailRelicChart(run);
-  renderDetailKeepCharts(run);
+  renderDetailKeepCharts(run, Boolean(players));
   if (players) renderPartyCharts(players);
   document.getElementById("detail-keep-heading").hidden = document.getElementById("detail-keep-box").style.display === "none";
   renderDeckActCounts(run, players);
@@ -1401,30 +1401,64 @@ function renderPartyCharts(players) {
       roster.map(p => ({ ...p, run: players.find(player => player.slot === p.slot)?.run }))),
   ];
   detailKeepCharts.push(...keep.filter(Boolean));
-  const playPicker = document.getElementById("detail-party-play-metric");
-  const playMetrics = [["drawn", "Cards drawn"], ["played", "Cards played"],
-    ["energy", "Printed energy cost"], ["spent", "Energy spent"]];
-  const playData = playMetrics.map(([key]) => perFight(r => r.play?.[key]));
-  const playVisible = playData.some(has);
-  document.getElementById("detail-keep-play").style.display = playVisible ? "" : "none";
-  document.getElementById("detail-keep-play-none").style.display = playVisible ? "none" : "";
-  playPicker.hidden = !playVisible;
-  if (playVisible) {
-    const selector = playPicker.querySelector("select");
-    const drawPlayChart = () => {
-      const chart = build("detail-keep-play-chart", "detail-keep-play-legend", playData[+selector.value],
-    (p, i, value) => value?.toFixed(1) ?? "—", false, null, {
-          compare: (party, i) => partyFloorTable(party, playMetrics.map(([, label]) => label),
-            p => playMetrics.map(([key]) => readingAt(p, i)?.play?.[key]?.toFixed(1))),
-        });
-      if (chart) detailKeepCharts.push(chart);
-    };
-    selector.onchange = drawPlayChart;
-    drawPlayChart();
-  }
+  const playVisible = renderPartyPlayCharts(roster, nodes, damageSources);
   renderPartyFloorPanels(players);
   // The HP chart lives in the keep box, which the owner's own copy may have hidden.
-  if (hp || keep.some(Boolean)) document.getElementById("detail-keep-box").style.display = "";
+  if (hp || keep.some(Boolean) || playVisible) document.getElementById("detail-keep-box").style.display = "";
+}
+
+function renderPartyPlayCharts(roster, nodes, sources) {
+  const metrics = [
+    ["draw", KEEP_LINES.drawn], ["played", KEEP_LINES.played],
+    ["listPrice", { label: "Printed energy cost", color: KEEP_LINES.energy.color }],
+    ["spent", { label: "Energy spent", color: KEEP_DEMAND_COLOR, style: { borderDash: [5, 3], order: -1, pointRadius: 2 } }],
+  ];
+  const series = roster.map(player => {
+    const plays = nodes.map(node => partyPlayAt(sources, node, player.slot));
+    return metrics.map(([key]) => plays.map(play => Number.isFinite(play?.[key]) ? play[key] : null));
+  });
+  const values = series.flat(2).filter(value => value != null);
+  const visible = values.length > 0;
+  const container = document.getElementById("detail-keep-play-party");
+  document.getElementById("detail-keep-play").style.display = visible ? "" : "none";
+  document.getElementById("detail-keep-play-none").style.display = visible ? "none" : "";
+  if (!visible) return false;
+
+  const lines = metrics.map(([, metric]) => ({
+    label: metric.label, borderColor: metric.color, backgroundColor: metric.color,
+    borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, spanGaps: true, cubicInterpolationMode: "monotone",
+    ...metric.style,
+  }));
+  container.innerHTML = `<p class="chart-caption">Each point is a fight average per turn. All players use the same scale.</p>
+    <div class="floor-legend"><div class="fl-items">${lines.map(keepLegendEntry).join("")}</div></div>
+    <div class="party-play-charts"></div>`;
+  const charts = container.querySelector(".party-play-charts");
+  const max = Math.max(1, Math.ceil(Math.max(...values) * 1.05));
+  roster.forEach((player, i) => {
+    const panel = document.createElement("section");
+    const datasets = lines.map((line, j) => ({ ...line, data: series[i][j] }));
+    const recorded = datasets.some(line => line.data.some(value => value != null));
+    panel.className = "party-floor-player";
+    panel.style.setProperty("--player-color", player.color);
+    panel.innerHTML = `<h4 class="party-member">${partyPlayerName(player)}</h4>` + (recorded
+      ? `<div class="chart-wrap"><canvas role="img" aria-label="Energy and cards per turn for ${escapeHtml(player.label)}"></canvas></div>`
+      : '<p class="chart-caption">No per-turn log for this player.</p>');
+    charts.append(panel);
+    if (!recorded) return;
+    const tip = context => showFloorTip(context, floor => {
+      const values = datasets.map(line => {
+        const value = line.data[floor];
+        return `<tr><td>${swatch(line.borderColor)}${line.label}</td><td><b>${value?.toFixed(1) ?? "—"}</b></td></tr>`;
+      }).join("");
+      return floorTipHead({ ...nodes[floor], enc: nodes[floor].fight || nodes[floor].enc }) +
+        `<div class="ft-cap">${escapeHtml(player.label)} · Per turn</div><table>${values}</table>`;
+    });
+    const chart = new Chart(panel.querySelector("canvas"),
+      floorChartConfig(nodes, [], tip, { min: 0, max, stacked: false, ticks: { maxTicksLimit: 5 } }, datasets, actWindow(nodes)));
+    bindRangeSelect(chart, nodes);
+    detailKeepCharts.push(chart);
+  });
+  return true;
 }
 
 // Composition keeps the single-player detail in separate plots, so line and band
@@ -1545,7 +1579,7 @@ function renderPartyFloorPanels(players) {
 function showPartyBreakdown() {
   document.querySelectorAll(".party-floor-focus button").forEach(button =>
     button.setAttribute("aria-pressed", String(Number(button.value) === partyBreakdownIndex)));
-  document.querySelectorAll(".party-floor-player").forEach(panel =>
+  document.querySelectorAll(".party-floor-grid > .party-floor-player").forEach(panel =>
     panel.toggleAttribute("data-inactive", Number(panel.dataset.player) !== partyBreakdownIndex));
 }
 
@@ -4599,7 +4633,7 @@ PHONE_MQ.addEventListener("change", () => {
     renderDetailGoldChart(run);
     renderDetailDeckChart(run);
     renderDetailRelicChart(run);
-    renderDetailKeepCharts(run);
+    renderDetailKeepCharts(run, Boolean(detailParty));
     if (detailParty) renderPartyCharts(detailParty);
   } else if (keepActNodes.length) applyKeepAct();
 });
@@ -4672,14 +4706,17 @@ function keepShareTip(r, color = KEEP_LINES.taken.color) {
     (r.lost ? `<div class="ft-cap">The fight that ended the run.</div>` : "");
 }
 
-function renderDetailKeepCharts(run) {
-  document.getElementById("detail-party-play-metric").hidden = true;
+function renderDetailKeepCharts(run, party = false) {
   const nodes = run.timeline || [];
   keepActNodes = nodes;
   renderKeepActPicker();
   const box = document.getElementById("detail-keep-box");
   detailKeepCharts.forEach(c => c.destroy());
   detailKeepCharts = [];
+  document.getElementById("detail-keep-play-solo").hidden = party;
+  const partyPlay = document.getElementById("detail-keep-play-party");
+  partyPlay.hidden = !party;
+  partyPlay.replaceChildren();
   closeFloorTip();
   const measured = measuredStrengthByNode(run, nodes);
   const owner = detailOwnerRun || run;
@@ -4833,7 +4870,7 @@ function renderDetailKeepCharts(run) {
   const played = rows.some(r => r && r.play);
   document.getElementById("detail-keep-play").style.display = played ? "" : "none";
   document.getElementById("detail-keep-play-none").style.display = played ? "none" : "";
-  if (played) chart("play", [
+  if (played && !party) chart("play", [
     line(KEEP_LINES.drawn, r => r.play && r.play.drawn),
     line(KEEP_LINES.played, r => r.play && r.play.played),
     line(KEEP_LINES.energy, r => r.play && r.play.energy),

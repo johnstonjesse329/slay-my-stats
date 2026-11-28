@@ -2053,13 +2053,12 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         </div>
         <h3 class="strength-label">Energy and cards per turn</h3>
         <div id="detail-keep-play">
-          <p class="chart-caption">Cards drawn, cards played and the printed cost of those played, each turn.</p>
-          <label id="detail-party-play-metric" hidden>Metric <select>
-            <option value="0">Cards drawn</option><option value="1">Cards played</option>
-            <option value="2">Printed energy cost</option><option value="3">Energy spent</option>
-          </select></label>
-          <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-play-chart"></canvas></div>
-          <div class="floor-legend" id="detail-keep-play-legend"></div>
+          <div id="detail-keep-play-solo">
+            <p class="chart-caption">Cards drawn, cards played and the printed cost of those played, each turn.</p>
+            <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-play-chart"></canvas></div>
+            <div class="floor-legend" id="detail-keep-play-legend"></div>
+          </div>
+          <div id="detail-keep-play-party" hidden></div>
         </div>
         <p class="chart-caption" id="detail-keep-play-none">No per-turn log for this run. Runs played with the mod and uploaded through it have one.</p>
       </div>
