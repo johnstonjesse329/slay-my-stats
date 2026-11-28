@@ -433,7 +433,7 @@
   const SHOWCASE_PAGE = 10;  // rows per view; a tab with more gets Prev / Next
   const SHOWCASE_TABS = [
     ["op", "OP runs", null],
-    ["boss_no_damage", "Final boss with 0 damage taken", null, "Damage taken is for the player shown."],
+    ["boss_no_damage", "Flawless final boss", null, "The player shown took 0 damage in the final boss fight."],
     ["held", "Peak Block in a turn", n => `${n} Block`],
     ["hit", "Biggest hit in a turn", n => `${n} damage`],
     ["deck", "Most cards in a deck", n => `${n} cards`],
