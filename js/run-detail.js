@@ -1513,7 +1513,7 @@ function renderPartyComposition(run, panel) {
     return `${floorTipHead(nodes[i], totals[i], "cards")}<table>${table}</table>${changed(i)}`;
   });
   const chart = new Chart(panel.querySelector("canvas"),
-    floorChartConfig(nodes, [floorDotDensity], tip, { min: 0, stacked: false }, datasets, actWindow(nodes)));
+    floorChartConfig(nodes, [floorDotDensity], tip, { min: 0, stacked: false }, datasets));
   panel.querySelector(".floor-legend").innerHTML = floorLegendRow("Type", keys, T.color);
   bindRangeSelect(chart, nodes);
   return chart;
@@ -1565,6 +1565,7 @@ function renderPartyFloorPanels(players) {
       }
     });
     if (charts.length) {
+      // Share the full-run Y range before limiting the X axis to the selected act.
       const min = Math.min(...charts.map(chart => chart.scales.y.min));
       const max = Math.max(...charts.map(chart => chart.scales.y.max));
       charts.forEach(chart => {
