@@ -487,12 +487,14 @@
     const runRow = (r, label) => {
       const id = stripPrefix(r.char || "", "CHARACTER.");
       const icon = ((catalog.charIcons || {})[id.toUpperCase()] || {}).icon;
+      const synergies = (r.syn || []).join(" · ");
       const tr = el("tr", {}, [
         cell("showcase-player", [
           el("a", { href: `/u/${r.slug}#detail/${r.ts}`, className: "site-row-name", textContent: r.name }),
           ...(r.multiplayer && selectedMode === "all"
             ? [el("small", { className: "showcase-run-mode", textContent: "Multiplayer" })]
             : []),
+          ...(synergies ? [el("small", { className: "showcase-mobile-syn", textContent: `Synergies: ${synergies}` })] : []),
         ]),
         cell("showcase-char", [
           ...(icon ? [el("img", { className: "showcase-char-icon", src: icon, alt: "" })] : []),
@@ -501,7 +503,7 @@
         cell("showcase-asc", [`A${r.asc}`]),
       ]);
       if (label) tr.append(cell("showcase-figure", r.n != null ? [label(r.n)] : []));
-      tr.append(cell("showcase-syn", [(r.syn || []).join(" · ")]));
+      tr.append(cell("showcase-syn", [synergies]));
       tr.append(cell("recent-meta", [whenLabel(r.ts, true)]));
       return tr;
     };
