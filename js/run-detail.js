@@ -1411,7 +1411,7 @@ function renderPartyPlayCharts(roster, nodes, sources) {
   const metrics = [
     ["draw", KEEP_LINES.drawn], ["played", KEEP_LINES.played],
     ["listPrice", { label: "Printed energy cost", color: KEEP_LINES.energy.color }],
-    ["spent", { label: "Energy spent", color: KEEP_DEMAND_COLOR, style: { borderDash: [5, 3], order: -1, pointRadius: 2 } }],
+    ["spent", KEEP_ENERGY_SPENT],
   ];
   const series = roster.map(player => {
     const plays = nodes.map(node => partyPlayAt(sources, node, player.slot));
@@ -3823,6 +3823,10 @@ const KEEP_LINES = {
 // Your run is the same solid gold line (YOUR_LINE) on the HP, damage done and damage taken charts.
 // In the tip's split bar the incoming damage is red, next to blocked in blue and healed in green.
 const KEEP_DEMAND_COLOR = "#c4c4d4";
+const KEEP_ENERGY_SPENT = {
+  label: "Energy spent", color: KEEP_DEMAND_COLOR,
+  style: { borderDash: [5, 3], order: -1, pointRadius: 2 },
+};
 const KEEP_AVERAGE_STYLE = {
   label: "Average win", borderColor: "rgba(255, 255, 255, 0.86)", borderWidth: 1.65, borderDash: [],
   order: 10, pointRadius: 0, pointHoverRadius: 0,
@@ -4773,7 +4777,8 @@ function renderDetailKeepCharts(run, party = false) {
     row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
     row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),
     row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "Printed costs of the cards played, added up."),
-    row("Energy paid", KEEP_DEMAND_COLOR, aTurn(r.play.spent), "What you really spent. Discounts and free plays make it lower."),
+    ...(Number.isFinite(r.play.spent) ? [row(KEEP_ENERGY_SPENT.label, KEEP_ENERGY_SPENT.color,
+      aTurn(r.play.spent), "What you really spent. Discounts and free plays can make it lower.")] : []),
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
   ] : []));
 
@@ -4874,6 +4879,9 @@ function renderDetailKeepCharts(run, party = false) {
     line(KEEP_LINES.drawn, r => r.play && r.play.drawn),
     line(KEEP_LINES.played, r => r.play && r.play.played),
     line(KEEP_LINES.energy, r => r.play && r.play.energy),
+    ...(rows.some(r => Number.isFinite(r?.play?.spent)) ? [{
+      ...line(KEEP_ENERGY_SPENT, r => r.play?.spent), ...KEEP_ENERGY_SPENT.style,
+    }] : []),
   ], playTip);
 }
 
