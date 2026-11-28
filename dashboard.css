@@ -2007,7 +2007,7 @@ h1 {
 .floor-tip .ft-party-table tbody th { text-align: left; font-weight: 400; }
 .floor-tip .ft-party-table tfoot { border-top: 1px solid var(--hairline); color: var(--text-dim); }
 
-#detail-party-play-metric select, #detail-party-support select {
+#detail-party-support select {
   font: inherit;
   padding: 4px 8px;
   background: var(--panel);
@@ -3386,6 +3386,7 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .detail-floor-controls .keep-actpick { position: static; padding: 0; margin: 4px 0 0; }
 .party-floor-active > .chart-wrap, .party-floor-active > .floor-legend { display: none; }
 .party-floor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.party-play-charts { display: grid; gap: 10px; }
 .party-floor-player { border: 1px solid var(--hairline); min-width: 0; padding: 8px 10px; border-radius: 8px; }
 .party-floor-player h4 { display: flex; gap: 5px; align-items: center; border-inline-start: 3px solid var(--player-color); margin: 0 0 4px; padding-inline-start: 7px; }
 .party-floor-player .chart-wrap { height: 218px; min-height: 0; }
