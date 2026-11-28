@@ -300,15 +300,26 @@ document.addEventListener("click", e => {
 
 // The deck as it was gathered: one run of cards in the order they came, the starting cards
 // first, with the floor as a small marker under each (a card marked "F12" came on floor 12).
-function renderCardsByFloorHtml(deck, added) {
+function renderCardsByFloorHtml(deck, added, timeline = []) {
   const byFloor = new Map();
   deck.forEach((c, i) => {
     const floor = Number.isInteger(added[i]) && added[i] >= 1 ? added[i] : 0;
     if (!byFloor.has(floor)) byFloor.set(floor, []);
     byFloor.get(floor).push(c);
   });
-  const tiles = [...byFloor].sort(([a], [b]) => a - b).flatMap(([floor, cards]) =>
-    dedupeCardCounts(cards).map(c => renderCardTile({ ...c, seqMark: floor ? `F${floor}` : "Start" })));
+  const nodes = new Map(timeline.map(node => [node.floor + 1, node]));
+  const tiles = [...byFloor].sort(([a], [b]) => a - b).map(([floor, cards]) => {
+    const kept = dedupeCardCounts(cards).map(c => renderCardTile({ ...c, seqMark: floor ? `F${floor}` : "Start" })).join("");
+    const node = nodes.get(floor);
+    const picked = node?.type === "shop" ? node.cardsBought : node?.cardsRewarded;
+    if (!floor || !node?.cardsSkipped?.length || !cards.some(c => picked?.includes(c.id))) return kept;
+    const offered = dedupeCardCounts(node.cardsSkipped.map(id => ({ id, upgrade: 0 })))
+      .map(renderCardTile).join("");
+    return `${kept}<details class="deck-floor-offers">
+      <summary>Floor ${floor} · Other cards offered on this floor</summary>
+      <div class="deck-tile-row">${offered}</div>
+    </details>`;
+  });
   return `<div class="deck-tile-row deck-sequence">${tiles.join("")}</div>`;
 }
 
@@ -336,7 +347,7 @@ function renderDetailDeckRelics(run) {
     ${renderDeckLinksHtml(deck, relics, run.char)}
     ${tabs}
     <div data-deck-panel="type"${view === "type" ? "" : " hidden"}>${groupsHtml}</div>
-    ${hasFloors ? `<div data-deck-panel="floor"${view === "floor" ? "" : " hidden"}>${renderCardsByFloorHtml(deck, run.deckAdded)}</div>` : ""}
+    ${hasFloors ? `<div data-deck-panel="floor"${view === "floor" ? "" : " hidden"}>${renderCardsByFloorHtml(deck, run.deckAdded, run.timeline)}</div>` : ""}
     <div class="detail-section-heading" style="margin-top:16px">Relics <span class="deck-group-count">${relics.length}</span></div>
     <div class="deck-relic-list">${relicHtml}</div>`;
   // The explorer's relic panels carry their art as deferred data-src.

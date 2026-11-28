@@ -2425,6 +2425,15 @@ h1 {
   gap: 8px;
   align-items: flex-start;
 }
+.deck-floor-offers {
+  flex: 0 0 100%;
+  grid-column: 1 / -1;
+  font-size: var(--fs-sm);
+}
+.deck-floor-offers > summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
 /* On a phone the faces' 166px minimum (set inline) leaves one card per row, so
    the deck is three even columns and each face fills its column. The inline
    width has to be beaten with !important. */
