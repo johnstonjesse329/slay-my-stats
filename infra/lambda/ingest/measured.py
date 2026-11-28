@@ -382,7 +382,10 @@ def resource_numbers(events, run, solo_turns, energy_recorded):
         slot = a.get("targetSlot")
         seated = type(slot) is int and 0 <= slot < size
         if kind == "turn0" and seated and type(a.get("turn")) is int and a["turn"] > 0:
-            turns[slot].add(a["turn"])
+            seq = e.get("q")
+            # Extra turns can repeat a turn number, but each has its own event ID.
+            if type(seq) is int and seq >= 0:
+                turns[slot].add(seq)
         elif kind == "energy+":
             n = a.get("n")
             if not seated or type(n) is not int or n < 0:

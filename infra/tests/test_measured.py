@@ -46,11 +46,13 @@ LOCAL = _local()
 
 
 class ResourceGains(unittest.TestCase):
-    def sample(self, items, parsed):
+    def sample(self, items, parsed, *, repeat_event=None):
         enc = "ENCOUNTER.TEST_SUBJECT"
         events = [("fight0", {"enc": enc}), *items]
         log = {"v": 3, "log": [{"q": q, "f": 0, "t": 1, "k": k, "a": a}
                                for q, (k, a) in enumerate(events)]}
+        if repeat_event is not None:
+            log["log"].insert(repeat_event + 1, log["log"][repeat_event].copy())
         (row,) = measured.measured(log, [{"floor": 1, "turns": 1, "enc": enc}], run=parsed)
         return row
 
@@ -70,7 +72,7 @@ class ResourceGains(unittest.TestCase):
     def test_energy_uses_recipient_and_observed_turns_in_coop(self):
         a = {"mp": True, "party": ["REGENT", "REGENT", "IRONCLAD"]}
         starts = [("turn0", {"targetSlot": slot, "turn": turn, "energy": 3})
-                  for slot, turn in [(0, 1), (1, 1), (1, 1), (1, 2)]]
+                  for slot, turn in [(0, 1), (1, 1), (1, 2)]]
         gains = [("energy+", {"sourceSlot": 0, "targetSlot": 1, "n": 5}), ("star", {"n": 2})]
         row = self.sample([*starts, *gains, ("fight1", {})], a)
         self.assertEqual(row["resourcesBySlot"], [
@@ -79,6 +81,19 @@ class ResourceGains(unittest.TestCase):
         self.assertNotIn("stars", row)
         row = self.sample([*starts, *gains, ("energy+", {"n": 9}), ("fight1", {})], a)
         self.assertNotIn("resourcesBySlot", row)
+
+    def test_energy_counts_extra_turns_and_ignores_duplicate_turn_events(self):
+        row = self.sample([
+            ("turn0", {"targetSlot": 0, "turn": 1, "energy": 3}),
+            ("turn0", {"targetSlot": 1, "turn": 1, "energy": 3}),
+            ("extra", {"turn": 1, "energy": 3}),
+            ("turn0", {"targetSlot": 1, "turn": 1, "energy": 3}),
+            ("energy+", {"targetSlot": 1, "n": 6}),
+            ("fight1", {}),
+        ], {"mp": True, "party": ["IRONCLAD", "REGENT"]}, repeat_event=4)
+        self.assertEqual(row["resourcesBySlot"], [
+            {"gained": 0, "resourceTurns": 1}, {"gained": 6, "resourceTurns": 2},
+        ])
 
 
 class PartyDamage(unittest.TestCase):
