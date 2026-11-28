@@ -45,6 +45,42 @@ def _local():
 LOCAL = _local()
 
 
+class ResourceGains(unittest.TestCase):
+    def sample(self, items, parsed):
+        enc = "ENCOUNTER.TEST_SUBJECT"
+        events = [("fight0", {"enc": enc}), *items]
+        log = {"v": 3, "log": [{"q": q, "f": 0, "t": 1, "k": k, "a": a}
+                               for q, (k, a) in enumerate(events)]}
+        (row,) = measured.measured(log, [{"floor": 1, "turns": 1, "enc": enc}], run=parsed)
+        return row
+
+    def test_only_positive_star_gains_count_for_solo_regent(self):
+        start = ("turn0", {"energy": 3, "turn": 1})
+        close = ("fight1", {})
+        gains = [("star", {"n": 4}), ("star", {"n": -2}), ("energy+", {"n": 2})]
+        row = self.sample([start, *gains, close], {"char": "REGENT"})
+        self.assertEqual((row["gained"], row["stars"], row["resourceTurns"]), (2, 4, 1))
+        row = self.sample([start, ("action0", {}), close], {"char": "REGENT"})
+        self.assertEqual((row["gained"], row["stars"]), (0, 0))
+        row = self.sample([start, close], {"char": "IRONCLAD"})
+        self.assertNotIn("stars", row)
+        self.assertNotIn("gained", row)
+        self.assertNotIn("stars", self.sample([start, *gains], {"char": "REGENT"}))
+
+    def test_energy_uses_recipient_and_observed_turns_in_coop(self):
+        a = {"mp": True, "party": ["REGENT", "REGENT", "IRONCLAD"]}
+        starts = [("turn0", {"targetSlot": slot, "turn": turn, "energy": 3})
+                  for slot, turn in [(0, 1), (1, 1), (1, 1), (1, 2)]]
+        gains = [("energy+", {"sourceSlot": 0, "targetSlot": 1, "n": 5}), ("star", {"n": 2})]
+        row = self.sample([*starts, *gains, ("fight1", {})], a)
+        self.assertEqual(row["resourcesBySlot"], [
+            {"gained": 0, "resourceTurns": 1}, {"gained": 5, "resourceTurns": 2}, None,
+        ])
+        self.assertNotIn("stars", row)
+        row = self.sample([*starts, *gains, ("energy+", {"n": 9}), ("fight1", {})], a)
+        self.assertNotIn("resourcesBySlot", row)
+
+
 class PartyDamage(unittest.TestCase):
     def test_resume_uses_completed_retry_and_keeps_repeated_floors(self):
         enc = "ENCOUNTER.TEST_SUBJECT"
@@ -338,7 +374,7 @@ class ParityWithTheLocalExport(unittest.TestCase):
             (month,) = spool.months()
             (parsed,) = spool.runs(month)
         self.assertEqual((good, rejected), (1, 0))
-        self.assertEqual(parsed["measured"], measured.measured(handler.clean_event_log(log), parsed["timeline"]))
+        self.assertEqual(parsed["measured"], measured.measured(handler.clean_event_log(log), parsed["timeline"], run=parsed))
 
 
 @unittest.skipUnless(LOCAL, "no local event logs with their runs")
@@ -362,7 +398,7 @@ class Backfill(unittest.TestCase):
             done = backfill_measured.backfill_profile(store, sid, slug)
             self.assertEqual(done["added"], 1)
             (stored,) = handler._unpack(store.get(month)[0])["runs"]
-            self.assertEqual(stored["measured"], measured.measured(handler.clean_event_log(log), parsed["timeline"]))
+            self.assertEqual(stored["measured"], measured.measured(handler.clean_event_log(log), parsed["timeline"], run=parsed))
             self.assertEqual({k: v for k, v in stored.items() if k != "measured"}, json.loads(json.dumps(parsed)))
 
             again = backfill_measured.backfill_profile(store, sid, slug)

@@ -357,17 +357,59 @@ def party_numbers(events, costs):
     }
 
 
-def measured(log, timeline) -> list[dict]:
+def resource_numbers(events, run, solo_turns, energy_recorded):
+    """Gross gains in a complete fight, with the observed turns for each recipient."""
+    if events[-1].get("k") != "fight1":
+        return {}
+    if not run.get("mp"):
+        gains = {}
+        metrics = {"energy+": "gained"} if energy_recorded else {}
+        if run.get("char") == "REGENT":
+            metrics["star"] = "stars"
+        for kind, key in metrics.items():
+            amounts = [(e.get("a") or {}).get("n") for e in events if e.get("k") == kind]
+            if all(type(n) is int for n in amounts):
+                gains[key] = sum(n for n in amounts if n > 0)
+        return {**gains, "resourceTurns": solo_turns} if gains else {}
+
+    size = len(run.get("party") or [])
+    if not energy_recorded or not 2 <= size <= 8:
+        return {}
+    turns = [set() for _ in range(size)]
+    energy = [0] * size
+    for e in events:
+        kind, a = e.get("k"), e.get("a") or {}
+        slot = a.get("targetSlot")
+        seated = type(slot) is int and 0 <= slot < size
+        if kind == "turn0" and seated and type(a.get("turn")) is int and a["turn"] > 0:
+            turns[slot].add(a["turn"])
+        elif kind == "energy+":
+            n = a.get("n")
+            if not seated or type(n) is not int or n < 0:
+                return {}
+            energy[slot] += n
+    return {"resourcesBySlot": [{"gained": n, "resourceTurns": len(t)} if t else None
+                                for n, t in zip(energy, turns)]} if any(turns) else {}
+
+
+def measured(log, timeline, *, run=None) -> list[dict]:
     """One row per fight the log and the run's timeline both have, with a turn to read.
     Empty for a log in an older shape, or one nothing could be read from."""
     if not isinstance(log, dict) or log.get("v") != 3 or not log.get("log"):
         return []
     costs = card_table()["costs"]
     derived = dt.derive(log, {})  # the move table only feeds what an enemy was about to do
-    if any(e.get("k") == "fight0" and (e.get("a") or {}).get("support") == 1
-           for e in log["log"] if isinstance(e, dict)):
+    support_recorded = any(e.get("k") == "fight0" and (e.get("a") or {}).get("support") == 1
+                           for e in log["log"] if isinstance(e, dict))
+    if support_recorded or run is not None:
+        # `action0` and `energy+` shipped together. It also distinguishes a
+        # measured zero from an older log with no Energy gain events.
+        energy_recorded = any(e.get("k") in ("action0", "energy+") for e in log["log"])
         for fight, events in zip(derived["fights"], party_fights(log["log"])):
-            fight["partyNumbers"] = party_numbers(events, costs)
+            if support_recorded:
+                fight["partyNumbers"] = party_numbers(events, costs)
+            if run is not None and fight["turns"]:
+                fight["resources"] = resource_numbers(events, run, len(fight["turns"]), energy_recorded)
     rows = []
     for fight, node in align(derived["fights"], timeline or []):
         if not fight["turns"]:
@@ -376,5 +418,6 @@ def measured(log, timeline) -> list[dict]:
         row.update({k: round(v, 2) if isinstance(v, float) else v
                     for k, v in floor_numbers(fight, costs).items()})
         row.update(fight.get("partyNumbers", {}))
+        row.update(fight.get("resources", {}))
         rows.append(row)
     return rows

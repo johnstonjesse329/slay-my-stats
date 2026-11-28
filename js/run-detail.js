@@ -1413,10 +1413,14 @@ function renderPartyPlayCharts(roster, nodes, sources) {
     ["listPrice", { label: "Printed energy cost", color: KEEP_LINES.energy.color }],
     ["spent", KEEP_ENERGY_SPENT],
   ];
-  const series = roster.map(player => {
+  const rows = roster.map(player => {
     const plays = nodes.map(node => partyPlayAt(sources, node, player.slot));
-    return metrics.map(([key]) => plays.map(play => Number.isFinite(play?.[key]) ? play[key] : null));
+    const gained = nodes.map(node => resourceRate(partyResourcesAt(sources, node, player.slot), "gained"));
+    return { plays, gained };
   });
+  if (rows.some(({ gained }) => gained.some(Number.isFinite))) metrics.push(["gained", KEEP_RESOURCE_LINES.gained]);
+  const series = rows.map(({ plays, gained }) => metrics.map(([key]) => key === "gained" ? gained :
+    plays.map(play => Number.isFinite(play?.[key]) ? play[key] : null)));
   const values = series.flat(2).filter(value => value != null);
   const visible = values.length > 0;
   const container = document.getElementById("detail-keep-play-party");
@@ -3865,6 +3869,12 @@ const KEEP_ENERGY_SPENT = {
   label: "Energy spent", color: KEEP_DEMAND_COLOR,
   style: { borderDash: [5, 3], order: -1, pointRadius: 2 },
 };
+const KEEP_RESOURCE_LINES = {
+  gained: { label: "Energy gained", color: "#5aa0e6", icon: "energy" },
+  stars: { label: "Stars gained", color: "#efc369", icon: "stars" },
+};
+const resourceRate = (row, key) => Number.isFinite(row?.[key]) && row.resourceTurns > 0
+  ? row[key] / row.resourceTurns : null;
 const KEEP_AVERAGE_STYLE = {
   label: "Average win", borderColor: "rgba(255, 255, 255, 0.86)", borderWidth: 1.65, borderDash: [],
   order: 10, pointRadius: 0, pointHoverRadius: 0,
@@ -3892,6 +3902,7 @@ const KEEP_ICONS = {
   blocked: `<path d="M8 1.5l5 2v4.2c0 3-2.1 5.1-5 6.8-2.9-1.7-5-3.8-5-6.8V3.5z" fill="currentColor"/>`,
   healed: `<path d="M8 14C3 10.5 1.8 8 1.8 5.8 1.8 4 3.2 2.8 4.8 2.8c1.2 0 2.5.7 3.2 1.9.7-1.2 2-1.9 3.2-1.9 1.6 0 3 1.2 3 3 0 2.2-1.2 4.7-6.2 8.2z" fill="currentColor"/>`,
   energy: `<path d="M9.3 1L3.5 9h4l-.8 6L12.5 7h-4z" fill="currentColor"/>`,
+  stars: `<path d="M8 1.5 10 6l4.5.5-3.4 3 1 4.5L8 11.5 3.9 14l1-4.5-3.4-3L6 6z" fill="currentColor"/>`,
   draw: `<rect x="3.5" y="2" width="9" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/>`,
   // Drawn is the outline, played the same card filled: a card in hand and a card used.
   played: `<rect x="3.5" y="2" width="9" height="12" rx="1.6" fill="currentColor"/>`,
@@ -3960,9 +3971,11 @@ function partyDamageSources(runs) {
         ? row.incomingBySlot : null;
       const play = Array.isArray(row.playBySlot) && row.playBySlot.length === run.party?.length
         ? row.playBySlot : null;
+      const resources = Array.isArray(row.resourcesBySlot) && row.resourcesBySlot.length === run.party?.length
+        ? row.resourcesBySlot : null;
       const debuffs = Array.isArray(row.debuffsBySlot) && row.debuffsBySlot.length === run.party?.length
         ? row.debuffsBySlot : null;
-      samples.set(damageFloorKey(n), { bySlot, incoming, play, debuffs, support: row.supportBySlot, total: row.removed });
+      samples.set(damageFloorKey(n), { bySlot, incoming, play, resources, debuffs, support: row.supportBySlot, total: row.removed });
     });
     return samples;
   });
@@ -4002,18 +4015,28 @@ function partyPlayAt(sources, node, slot) {
   return null;
 }
 
+function partyResourcesAt(sources, node, slot) {
+  for (const source of sources) {
+    const resources = source.get(damageFloorKey(node))?.resources?.[slot];
+    if (resources) return resources;
+  }
+  return null;
+}
+
 // What one player's deck did per fight turn over the fights an act is rated on.
 function actFlow(copy, slot, nodes, idx, sources) {
   const own = copy.timeline || [];
   const byKey = new Map(own.map((n, j) => [damageFloorKey(n), j]));
   const measured = measuredStrengthByNode(copy, own);
   const damage = partyDamageByFloor(sources, own, slot);
-  const sum = { damage: [0, 0], blocked: [0, 0], drawn: [0, 0], played: [0, 0], energy: [0, 0], spent: [0, 0] };
+  const sum = { damage: [0, 0], blocked: [0, 0], drawn: [0, 0], played: [0, 0], energy: [0, 0], spent: [0, 0], gained: [0, 0] };
   const add = (k, v, turns) => { if (Number.isFinite(v) && v >= 0) { sum[k][0] += v; sum[k][1] += turns; } };
   for (const i of idx) {
     const j = byKey.get(damageFloorKey(nodes[i]));
     if (j === undefined) continue;
     const n = own[j], m = measured?.[j], turns = n.turns;
+    const resources = partyResourcesAt(sources, n, slot);
+    add("gained", resources?.gained, resources?.resourceTurns);
     add("damage", damage[j], turns);
     add("blocked", recordedPartyIncoming(copy, n, m, sources)?.blocked, turns);
     const play = partyPlayAt(sources, n, slot);
@@ -4036,9 +4059,12 @@ function partyActFlowHtml(a, nodes, run, owner, row) {
   const fmt = v => v === null ? "—" : v.toFixed(1);
   const lines = [["damage", "Damage", KEEP_LINES.damage.color], ["blocked", "Block", KEEP_SPLIT.blocked],
     ["energy", "Card cost", KEEP_LINES.energy.color], ["drawn", "Draw", KEEP_LINES.drawn.color], ["played", "Cards played", KEEP_LINES.played.color]];
+  const gained = KEEP_RESOURCE_LINES.gained;
+  lines.push(["gained", gained.label, gained.color, gained.icon]);
   if (detailParty?.length > 1) {
     const rows = detailParty.map(p => ({ p, f: actFlow(p.run, p.slot, nodes, a.idx, sources) })).filter(r => r.f);
     if (!rows.length) return "";
+    if (!rows.some(({ f }) => f.gained !== null)) lines.pop();
     return `<table class="ka-party"><caption>Per fight turn</caption><thead><tr><th scope="col">Player</th>` +
       lines.map(([, label]) => `<th scope="col">${label}</th>`).join("") + `</tr></thead><tbody>` +
       rows.map(({ p, f }) => `<tr><th scope="row">${partyChartSwatch(p)} ${escapeHtml(p.label)}</th>` +
@@ -4046,8 +4072,8 @@ function partyActFlowHtml(a, nodes, run, owner, row) {
   }
   const f = actFlow(run, chartPartySlot(run, owner), nodes, a.idx, sources);
   if (!f) return "";
-  return `<div class="ka-half ka-flow">` + lines.filter(([key]) => f[key] !== null).map(([key, label, color]) =>
-    row(keepIcon(key, color), label, `${f[key].toFixed(1)}<small>/turn</small>`, { note: key === "energy" && f.spent !== null ? `paid ${f.spent.toFixed(1)}` : "" })).join("") + `</div>`;
+  return `<div class="ka-half ka-flow">` + lines.filter(([key]) => f[key] !== null).map(([key, label, color, icon = key]) =>
+    row(keepIcon(icon, color), label, `${f[key].toFixed(1)}<small>/turn</small>`, { note: key === "energy" && f.spent !== null ? `paid ${f.spent.toFixed(1)}` : "" })).join("") + `</div>`;
 }
 
 function showKeepNotice(chart, message, linkMod = false) {
@@ -4267,7 +4293,9 @@ function fightReadings(run, nodes, measured, partyDamage = null, partySources = 
       }
     }
     const play = run.mp ? partyPlayAt(partySources, n, run.coop?.i ?? run.partySlot) : m;
-    if (play) row.play = { drawn: play.draw, played: play.played, energy: play.listPrice, spent: play.spent, junk: play.junk };
+    const resources = run.mp ? partyResourcesAt(partySources, n, run.coop?.i ?? run.partySlot) : m;
+    if (play || resources) row.play = { drawn: play?.draw, played: play?.played, energy: play?.listPrice, spent: play?.spent,
+      junk: play?.junk, gained: resourceRate(resources, "gained"), stars: resourceRate(resources, "stars") };
     return row;
   });
   return rows.some(r => r) ? rows : null;
@@ -4364,6 +4392,12 @@ function actReadings(run, nodes, measured, partyCosts = null) {
     a.log.played += m.played * n.turns;
     a.log.energy += m.listPrice * n.turns;
     a.log.spent += m.spent * n.turns;
+    for (const key of Object.keys(KEEP_RESOURCE_LINES)) {
+      if (resourceRate(m, key) === null) continue;
+      const total = a.log[key] ||= { value: 0, turns: 0 };
+      total.value += m[key];
+      total.turns += m.resourceTurns;
+    }
   });
   const short = (pace, each) => pace < each ? "damage" : "block";
   const rated = [...acts.values()].filter(a => a.fights >= KEEP_ACT_MIN);
@@ -4590,7 +4624,9 @@ function renderKeepActs(run, nodes, measured) {
       (run.mp ? partyActFlowHtml(a, nodes, run, detailOwnerRun || run, row) : log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
         perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)}`) +
         perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, "") +
-        perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") + `</div>` : "") +
+        perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") +
+        Object.entries(KEEP_RESOURCE_LINES).filter(([key]) => log[key]).map(([key, metric]) =>
+          row(keepIcon(metric.icon, metric.color), metric.label, `${(log[key].value / log[key].turns).toFixed(1)}<small>/turn</small>`, {})).join("") + `</div>` : "") +
       `</div>` +
       (a.furCoatOmitted ? `<p class="keep-note">Fur Coat: ${a.furCoatOmitted} marked ${a.furCoatOmitted === 1 ? "fight" : "fights"} (enemies started at 1 HP each) left out of this act's averages and rating; the other ${a.fights} still count.</p>` : "") +
       `</div>`;
@@ -4810,11 +4846,13 @@ function renderDetailKeepCharts(run, party = false) {
 
   const inTip = tip(r => keepIncomingTip(r, run.mp));
   const playTip = tip(simple(r => r.play ? [
-    row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
-    row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),
-    row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "Printed costs of the cards played, added up."),
+    ...(Number.isFinite(r.play.drawn) ? [row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn))] : []),
+    ...(Number.isFinite(r.play.played) ? [row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played))] : []),
+    ...(Number.isFinite(r.play.energy) ? [row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "Printed costs of the cards played, added up.")] : []),
     ...(Number.isFinite(r.play.spent) ? [row(KEEP_ENERGY_SPENT.label, KEEP_ENERGY_SPENT.color,
       aTurn(r.play.spent), "What you really spent. Discounts and free plays can make it lower.")] : []),
+    ...Object.entries(KEEP_RESOURCE_LINES).filter(([key]) => Number.isFinite(r.play[key])).map(([key, metric]) =>
+      row(metric.label, metric.color, aTurn(r.play[key]), key === "gained" ? "Bonus Energy gained during the fight." : "")),
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
   ] : []));
 
@@ -4922,6 +4960,8 @@ function renderDetailKeepCharts(run, party = false) {
     ...(rows.some(r => Number.isFinite(r?.play?.spent)) ? [{
       ...line(KEEP_ENERGY_SPENT, r => r.play?.spent), ...KEEP_ENERGY_SPENT.style,
     }] : []),
+    ...Object.entries(KEEP_RESOURCE_LINES).filter(([key]) => rows.some(r => Number.isFinite(r?.play?.[key])))
+      .map(([key, metric]) => line(metric, r => r.play?.[key])),
   ], playTip);
 }
 
