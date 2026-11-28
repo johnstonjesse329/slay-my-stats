@@ -19,6 +19,27 @@ as for any public text.
 Open: a way to suggest flagship changes worth a post (so the owner can pick what to write up).
 Not built; ask before inventing one.
 
+## Public copy: no em dashes, no AI-isms
+
+Prose a reader sees (site pages, What's new posts, the README, mod strings) should read like the
+owner wrote it. Cut these:
+
+- Em dashes in prose. Use a full stop, comma, colon or parentheses. A `—` used as a separator in a
+  page title or date range is fine.
+- "not just X, it's Y", "it isn't X, it's Y", "less about X, more about Y".
+- Filler transitions: "That said", "Worth noting", "Here's the thing", "The good news is",
+  "Let's be honest", "At the end of the day".
+- Weightless modifiers: seamlessly, effortlessly, robust, powerful, quietly, genuinely, deeply,
+  unlock, elevate, delve, leverage.
+- Rhetorical closers ("So whether you're ... or ..., ...") and three-item lists where the third
+  item is there for rhythm rather than information.
+- Explaining a joke or an aside ("which is handy when ...", "which is nice if ...").
+- Abstract framing where a plain noun works: "where the focus sits", "the difference is the
+  approach", "this is where X comes in".
+
+Keep the owner's own habits: ":D", parentheses for asides, self-deprecating jokes, second person,
+plain "you can ... then ..." sentences. Don't sand those off.
+
 ## Branches: gamma is the base, main is prod
 
 `gamma` is the trunk for new work. Branch every change from the current
