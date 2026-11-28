@@ -129,9 +129,19 @@ function renderCardTile(c) {
   const name  = (info && info.title) || fmtCardLabel(c.id);
   // Count is deck state, not card identity, so it stays a badge. The upgrade
   // level does NOT — the card face renders it the way the game does, as a
-  // green "Strike+" title, so a separate +1 chip would just repeat it.
+  // green "Strike+" title, so a separate +1 chip would just repeat it. The one
+  // exception is the by-floor view: there the face is the card as it was added,
+  // and `upgradedAt` says on which later floor it became the upgraded card.
   const countLabel = c.count > 1 ? `<span class="tile-count">×${c.count}</span>` : "";
-  const floorLabel = c.seqMark ? `<div class="tile-added-floors">${c.seqMark}</div>` : "";
+  // Two upgrades on one floor (a node that upgrades a card twice) is one floor.
+  const up = [...new Set(c.upgradedAt || [])];
+  const upgradeMark = up.length
+    ? `<span class="tile-upgraded-at" title="Upgraded on floor${up.length > 1 ? "s" : ""} ${up.join(", ")}">`
+      + `↑${up.length > 1 ? `F${up[0]}–F${up[up.length - 1]}` : `F${up[0]}`}</span>`
+    : "";
+  const floorLabel = c.seqMark || upgradeMark
+    ? `<div class="tile-added-floors">${c.seqMark || ""}${upgradeMark}</div>`
+    : "";
   // An enchantment is identity, so it gets the same treatment as the count: a chip
   // on the tile rather than a second card face. The game draws it on the card
   // itself, which the baked face cannot show.
@@ -194,16 +204,21 @@ function rarityRank(r) { return RARITY_RANK[r] || 0; }
 // rolls are different cards, even though they share an id -- so they join the key
 // and are carried onto the row for the face lookup. An enchantment does too: a
 // Nimble Strike is a different card from a plain Strike, and merging them would
-// drop the enchantment from the tile entirely.
-function dedupeCardCounts(deck) {
+// drop the enchantment from the tile entirely. `extraKeys` names per-entry fields
+// a caller also draws differently, the same way (the floor view keeps a card
+// upgraded on F16 apart from its identical copy upgraded on F20).
+function dedupeCardCounts(deck, extraKeys = []) {
   const cardMap = new Map();
   deck.forEach(c => {
     const ench = c.enchantment ? `${c.enchantment.id}:${c.enchantment.amount || 1}` : "";
-    const key = c.id + "|" + c.upgrade + "|" + (c.props ? JSON.stringify(c.props) : "") + "|" + ench;
+    const extra = extraKeys.map(k => "|" + (c[k] ?? "")).join("");
+    const key = c.id + "|" + c.upgrade + "|" + (c.props ? JSON.stringify(c.props) : "") + "|" + ench + extra;
     if (!cardMap.has(key)) {
-      cardMap.set(key, {
+      const row = {
         id: c.id, upgrade: c.upgrade, count: 0, props: c.props, enchantment: c.enchantment,
-      });
+      };
+      extraKeys.forEach(k => { if (c[k] !== undefined) row[k] = c[k]; });
+      cardMap.set(key, row);
     }
     cardMap.get(key).count++;
   });
@@ -298,24 +313,98 @@ document.addEventListener("click", e => {
   root.querySelectorAll("[data-deck-panel]").forEach(panel => { panel.hidden = panel.dataset.deckPanel !== deckView; });
 });
 
+// In-combat upgrades (Armaments and the like) are recorded on the fight's node,
+// and most of them do hold: 3,380 cards whose only recorded upgrade is on a
+// fight ended upgraded, against 70 that did not. So a fight's record counts as
+// evidence, but the lasting spaces are preferred where they explain the card on
+// their own.
+const IN_COMBAT_NODE_TYPES = new Set(["monster", "elite", "boss"]);
+
+// When the run upgraded each card, from the timeline's per-node `upgradedCards`.
+// `byFloor` holds every recorded upgrade of a card the deck still has, for the
+// sequence. `byIndex` pairs floors with a final-deck entry, which needs the
+// copies to be tellable apart: a card is only paired when the recorded upgrades
+// add up to the upgrades its copies took. Otherwise every copy keeps its final
+// face and the floors are left out rather than guessed at.
+function cardUpgradeFloors(deck, added, timeline) {
+  const eventsById = new Map();
+  timeline.forEach(node => {
+    const inCombat = IN_COMBAT_NODE_TYPES.has(node.type);
+    (node.upgradedCards || []).forEach(id => {
+      if (!eventsById.has(id)) eventsById.set(id, []);
+      eventsById.get(id).push({ floor: node.floor + 1, inCombat });
+    });
+  });
+  const byFloor = new Map(), byIndex = new Map();
+  eventsById.forEach((events, id) => {
+    const copies = deck.map((c, i) => i)
+      .filter(i => deck[i].id === id && deck[i].upgrade > 0)
+      .sort((a, b) => (added[a] || 1) - (added[b] || 1));
+    // `upgrade` is how many upgrades a copy took (Dingy Dagger grows at every
+    // smith, up to 12). Events that don't add up to that -- a card acquired
+    // already upgraded, or an upgrade spent on a copy since removed -- cannot be
+    // pinned on a held copy, so this card's floors stay out of the view.
+    const levels = copies.reduce((n, i) => n + deck[i].upgrade, 0);
+    if (!copies.length || !levels) return;
+    const ascending = (a, b) => a - b;
+    const lasting = events.filter(e => !e.inCombat).map(e => e.floor).sort(ascending);
+    const every = events.map(e => e.floor).sort(ascending);
+    const floors = lasting.length === levels ? lasting : every.length === levels ? every : null;
+    if (!floors) return;
+    let at = 0;
+    copies.forEach(i => {
+      const taken = floors.slice(at, at + deck[i].upgrade);
+      at += deck[i].upgrade;
+      byIndex.set(i, taken);
+      taken.forEach(floor => {
+        if (!byFloor.has(floor)) byFloor.set(floor, new Map());
+        const counts = byFloor.get(floor);
+        counts.set(id, (counts.get(id) || 0) + 1);
+      });
+    });
+  });
+  return { byFloor, byIndex };
+}
+
+// An upgrade on the floor it happened. Deliberately not a card tile: a face here
+// would read as a second copy being added. The card still pops on hover, tap or
+// focus, so the upgraded card is one gesture away.
+function renderUpgradeNote(id, count, floor) {
+  return `<div class="deck-upgrade" ${cardPopAttrs(id, 1)} tabindex="0">
+    <div class="tile-added-floors">F${floor}</div>
+    <div class="deck-upgrade-label">↑ Upgraded ${fmtCardLabel(id)}${count > 1 ? ` ×${count}` : ""}</div>
+  </div>`;
+}
+
 // The deck as it was gathered: one run of cards in the order they came, the starting cards
 // first, with the floor as a small marker under each (a card marked "F12" came on floor 12).
+// A card the run upgraded later keeps the face it was added with and names the floor that
+// upgraded it, and the upgrade itself takes its own entry on that floor -- so the sequence
+// reads as one card getting better rather than a better card arriving.
 function renderCardsByFloorHtml(deck, added, timeline = []) {
+  const upgrades = cardUpgradeFloors(deck, added, timeline);
   const byFloor = new Map();
   deck.forEach((c, i) => {
     const floor = Number.isInteger(added[i]) && added[i] >= 1 ? added[i] : 0;
     if (!byFloor.has(floor)) byFloor.set(floor, []);
-    byFloor.get(floor).push(c);
+    const upgradedAt = upgrades.byIndex.get(i);
+    byFloor.get(floor).push(upgradedAt ? { ...c, upgrade: 0, upgradedAt } : c);
   });
   const nodes = new Map(timeline.map(node => [node.floor + 1, node]));
-  const tiles = [...byFloor].sort(([a], [b]) => a - b).map(([floor, cards]) => {
-    const kept = dedupeCardCounts(cards).map(c => renderCardTile({ ...c, seqMark: floor ? `F${floor}` : "Start" })).join("");
+  const floors = [...new Set([...byFloor.keys(), ...upgrades.byFloor.keys()])].sort((a, b) => a - b);
+  const tiles = floors.map(floor => {
+    const cards = byFloor.get(floor) || [];
+    const kept = dedupeCardCounts(cards, ["upgradedAt"])
+      .map(c => renderCardTile({ ...c, seqMark: floor ? `F${floor}` : "Start" })).join("");
+    const upgraded = [...(upgrades.byFloor.get(floor) || [])]
+      .sort(([a], [b]) => fmtCardLabel(a).localeCompare(fmtCardLabel(b)))
+      .map(([id, count]) => renderUpgradeNote(id, count, floor)).join("");
     const node = nodes.get(floor);
     const picked = node?.type === "shop" ? node.cardsBought : node?.cardsRewarded;
-    if (!floor || !node?.cardsSkipped?.length || !cards.some(c => picked?.includes(c.id))) return kept;
+    if (!floor || !node?.cardsSkipped?.length || !cards.some(c => picked?.includes(c.id))) return kept + upgraded;
     const offered = dedupeCardCounts(node.cardsSkipped.map(id => ({ id, upgrade: 0 })))
       .map(renderCardTile).join("");
-    return `${kept}<details class="deck-floor-offers">
+    return `${kept}${upgraded}<details class="deck-floor-offers">
       <summary>Floor ${floor} · Other cards offered on this floor</summary>
       <div class="deck-tile-row">${offered}</div>
     </details>`;

@@ -2437,6 +2437,37 @@ h1 {
   cursor: pointer;
   padding: 6px 0;
 }
+/* The floor view's upgrade entries: the floor as the same small marker the card
+   tiles carry, then what was upgraded there. Dashed and face-less so it reads as
+   a note about the deck rather than another card being added. */
+.deck-upgrade {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 96px;
+  max-width: 100%;
+  min-height: 64px;
+  padding: 8px 4px;
+  border: 1px dashed var(--hairline);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  text-align: center;
+  cursor: default;
+}
+.deck-upgrade:hover,
+.deck-upgrade:focus-visible {
+  border-color: var(--gold);
+  color: var(--text);
+}
+.deck-upgrade-label { line-height: 1.3; }
+.tile-upgraded-at {
+  margin-left: 4px;
+  color: var(--gold);
+  white-space: nowrap;
+}
 /* On a phone the faces' 166px minimum (set inline) leaves one card per row, so
    the deck is three even columns and each face fills its column. The inline
    width has to be beaten with !important. */
