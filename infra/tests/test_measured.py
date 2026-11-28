@@ -411,7 +411,7 @@ class ParityWithTheLocalExport(unittest.TestCase):
 class Backfill(unittest.TestCase):
     def test_a_stored_run_gets_numbers_from_its_stored_log(self):
         import tempfile
-        import backfill_measured
+        import rebuild_profiles
         sid, ts, log, raw = LOCAL[0]
         parsed = run.parse_run_data(raw, steam_id=sid, fallback_ts=ts)
         with tempfile.TemporaryDirectory() as tmp:
@@ -420,18 +420,18 @@ class Backfill(unittest.TestCase):
             store.put(handler.telemetry_key(sid, ts), handler._pack(handler.clean_event_log(log)), {}, None)
             slug = handler._unpack(store.get(handler.id_key(sid))[0])["slug"]
 
-            dry = backfill_measured.backfill_profile(store, sid, slug, dry_run=True)
+            dry = rebuild_profiles.rederive_measured(store, sid, slug, dry_run=True)
             self.assertEqual((dry["runs"], dry["added"]), (1, 1))
             month = handler.month_key(slug, handler.month_of(ts))
             self.assertNotIn("measured", handler._unpack(store.get(month)[0])["runs"][0])
 
-            done = backfill_measured.backfill_profile(store, sid, slug)
+            done = rebuild_profiles.rederive_measured(store, sid, slug)
             self.assertEqual(done["added"], 1)
             (stored,) = handler._unpack(store.get(month)[0])["runs"]
             self.assertEqual(stored["measured"], measured.measured(handler.clean_event_log(log), parsed["timeline"], run=parsed))
             self.assertEqual({k: v for k, v in stored.items() if k != "measured"}, json.loads(json.dumps(parsed)))
 
-            again = backfill_measured.backfill_profile(store, sid, slug)
+            again = rebuild_profiles.rederive_measured(store, sid, slug)
             self.assertEqual((again["runs"], again["added"]), (0, 0))
 
 

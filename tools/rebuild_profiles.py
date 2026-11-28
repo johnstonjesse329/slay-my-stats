@@ -23,6 +23,11 @@ Usage:
         Split profiles from before month files (every run in
         users/<slug>.json.gz) into month files, as they are: nothing is
         re-parsed. An upload does this for its own profile anyway.
+    python tools/rebuild_profiles.py --measured --all
+        Re-read every stored log into its run's per-floor numbers (energy and
+        cards for the Keeping Up charts), without re-parsing any run. The one
+        way to give runs uploaded before those numbers their charts, and to
+        re-derive them after the reading changes.
 
     --dry-run            Report what would change without writing.
     --strict             Fail if a profile could not be rebuilt.
@@ -53,6 +58,51 @@ def _players(store) -> dict[str, str]:
         if got:
             players[key[len("ids/"):-len(".json.gz")]] = handler._unpack(got[0])["slug"]
     return players
+
+
+def rederive_measured(store, steam_id: str, slug: str, dry_run: bool = False, redo: bool = False) -> dict:
+    """Re-read this profile's stored logs into its runs' per-floor numbers.
+
+    Nothing is re-parsed: the fix was in how a log is turned into numbers, and a run
+    whose raw copy was never kept still has its log. `redo` re-reads runs that already
+    have numbers, which is what a change to the reading needs. Returns {"runs": with a
+    log, "added": runs given numbers, "unreadable": logs with nothing to read}."""
+    summary = {"runs": 0, "added": 0, "unreadable": 0}
+    got = store.get(handler.blob_key(slug))
+    doc = handler._unpack(got[0]) if got else None
+    if not doc or doc.get("v", 1) < 2:
+        return summary
+    for month in sorted(doc.get("months", {})):
+        key = handler.month_key(slug, month)
+        for _ in range(handler.MERGE_RETRIES):
+            held = store.get(key)
+            if held is None:
+                break
+            runs = handler._unpack(held[0])["runs"]
+            changed = False
+            for r in runs:
+                if r.get("measured") and not redo:
+                    continue
+                log = store.get(handler.telemetry_key(steam_id, r["ts"]))
+                if log is None:
+                    continue
+                summary["runs"] += 1
+                rows = handler._measured_rows(handler._unpack(log[0]), r)
+                if not rows:
+                    summary["unreadable"] += 1
+                    continue
+                r["measured"] = rows
+                summary["added"] += 1
+                changed = True
+            if not changed or dry_run:
+                break
+            try:
+                store.put(key, handler._pack({"v": 2, "runs": runs}), {}, held[2])
+                break
+            except handler.StoreConflict:  # an upload wrote this month first: read it again
+                summary["runs"] = summary["added"] = summary["unreadable"] = 0
+                continue
+    return summary
 
 
 def main():
@@ -99,6 +149,30 @@ def main():
         sys.exit(__doc__)
 
     workers = max(1, int(arg("--workers") or DEFAULT_WORKERS))
+
+    if "--measured" in args:
+        # Only the logs are re-read. A run's numbers are stored on the run, so a fix to
+        # how a log is read needs a re-derive, not a re-parse; and a run with no raw
+        # copy still has its log.
+        plan = [(sid, players[sid]) for sid in targets if sid in players]
+
+        def one(item):
+            steam_id, slug = item
+            return slug, rederive_measured(store, steam_id, slug, dry_run, redo=True)
+
+        total = 0
+        print(f"{len(plan)} profile(s) with a log, {workers} at a time.", flush=True)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for slug, s in pool.map(one, plan):
+                if s["runs"]:
+                    line = (f"  {slug}: {s['runs']} run(s) with a log, "
+                            f"{s['added']} {'would get' if dry_run else 'given'} numbers")
+                    if s["unreadable"]:
+                        line += f", {s['unreadable']} with nothing to read"
+                    print(line, flush=True)
+                total += s["added"]
+        print(f"{total} run(s) {'would be ' if dry_run else ''}updated.")
+        return
 
     def rebuild(steam_id):
         """(steam_id, summary | None, error | None); a worker never raises IngestError."""

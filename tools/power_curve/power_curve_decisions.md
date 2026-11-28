@@ -1709,8 +1709,8 @@ the local `card_data.json` at synth time; the game data stays out of the repo. `
 move table that only feeds what an enemy was about to do, none of it these numbers, so the Lambda passes
 none (checked: identical output on both local logs). `infra/tests/test_measured.py` holds the two
 copies together on the Ironclad and Silent logs, field by field; change one and the other has to follow.
-Runs uploaded before this have the log but no `measured`: `tools/backfill_measured.py` writes it onto
-them. A run with no log shows "No per-turn log for this run." in that slot instead of nothing.
+Runs uploaded before this have the log but no `measured`: `tools/rebuild_profiles.py --measured` writes it
+onto them. A run with no log shows "No per-turn log for this run." in that slot instead of nothing.
 
 
 ### Output, mitigation and speed: tested, verdict unchanged (2026-11-02)
@@ -1917,7 +1917,7 @@ Now each turn's starting energy counts too: `turn0.a.energy` in the log, summed 
 co-op). A turn that records no energy leaves the fight without a figure rather than one that quietly
 ignores it, and a measured zero is still a zero. The tooltip under the metric says what the number is:
 "Energy each turn started with, plus anything gained during it." Runs stored before this need
-`tools/backfill_measured.py --redo`.
+`tools/rebuild_profiles.py --measured`.
 
 Stars gained left gold (`#efc369`) for pink (`#ec86c8`). On the Energy and cards per turn chart it was
 the nearest pair to Card cost (`#b5861a`): deltaE 23.8, closer than the damage pair this palette was

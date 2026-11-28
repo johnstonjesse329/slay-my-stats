@@ -147,7 +147,6 @@ slay-my-stats/
 │   │                          shop-discount relics and their percentages
 │   ├── build_mod_pack.py    builds the mod's snapshot locally, or publishes gamma's
 │   ├── rebuild_stats.py     recount users/_stats.json.gz and each player's _seeds.json.gz
-│   ├── backfill_measured.py give runs uploaded before `measured` their per-floor numbers, from their stored logs
 │   ├── build_measured_cards.py  card costs for the ingest Lambda, cut from card_data.json at bundle time
 │   ├── build_known_ids.py   the game's characters, cards and relics for the ingest Lambda, cut at bundle time
 │   ├── retired_ids.json     content the game has since removed, still in older runs
@@ -602,9 +601,9 @@ These work on `local_data/` (the dev server's store), or on the live bucket with
 - `tools/rebuild_profiles.py` re-parses players' kept uploads after a fix to `run.py`'s parser. Bump
   `run.PARSER_VERSION` with the fix, then `--stale` rebuilds the profiles an older parser built. `--all`
   rebuilds every profile, and brings in held runs the game data now knows (see "Held runs").
-- `tools/backfill_measured.py` writes `measured` (per-floor energy and cards, for the Keeping Up chart) onto runs
-  uploaded before the Lambda worked it out, from their stored event logs. Runs that already have it are left alone;
-  `--redo` re-reads them after the reading changes.
+- `tools/rebuild_profiles.py --measured` writes `measured` (per-floor energy and cards, for the Keeping Up chart)
+  onto runs uploaded before the Lambda worked it out, from their stored event logs, without re-parsing the runs. It
+  is the one way to re-derive them after the reading changes.
 - Run records (`run.records`, peaks from the mod's event log) and win badges (`run.badges`, from the .run file) are
   worked out at upload by `infra/lambda/ingest/records.py` for every player whose mod sends its log. Runs from before
   that get them on the next `tools/rebuild_profiles.py --all` (the kept upload has both). The badge art and text are
