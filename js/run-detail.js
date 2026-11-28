@@ -529,7 +529,7 @@ function renderDetailRunList(pageStep = 0) {
       <span class="detail-run-players" title="${escapeHtml(partyLabel)}" aria-label="${escapeHtml(partyLabel)}">${partyHtml}</span>
       <span class="detail-run-won" style="color:${won ? COLORS.win : COLORS.loss}">${won ? "W" : "L"}</span>
       <span class="detail-run-floor" style="color:var(--text-dim)">F${run.floor}</span>
-      <span class="detail-run-read">${runReadingHtml(run, true)}</span>
+      <span class="detail-run-read">${runReadingHtml(run, { short: true })}</span>
       <span class="detail-run-date" style="color:var(--text-dim)">${runDateCellHtml(run, fmtDate)}</span>
     </div>`;
   }).join("");
@@ -717,7 +717,7 @@ function runHeaderBarHtml(run, owner, party = false) {
       ${party ? "" : charLabelHtml(run.char, true)}
       ${run.mode === "dread" ? "" : `<span style="color:var(--text-dim)">A${run.asc}</span>`}
       <span style="color:${won ? COLORS.win : COLORS.loss};font-weight:600">${won ? "Victory" : "Defeat"}</span>
-      ${party ? "" : runReadingHtml(run) + runActMarksHtml(run)}
+      ${party ? "" : runReadingHtml(run, { tooltip: false }) + runActMarksHtml(run)}
       <span style="color:var(--text-dim)">Floor ${run.floor}</span>
       <span style="color:var(--text-dim)">${fmtHrsMin(run.mins)}</span>
       ${modeTagHtml(run)}${customTagHtml(run, true)}${moddedTagHtml(run, true)}
@@ -1413,10 +1413,14 @@ function renderPartyPlayCharts(roster, nodes, sources) {
     ["listPrice", { label: "Printed energy cost", color: KEEP_LINES.energy.color }],
     ["spent", KEEP_ENERGY_SPENT],
   ];
-  const series = roster.map(player => {
+  const rows = roster.map(player => {
     const plays = nodes.map(node => partyPlayAt(sources, node, player.slot));
-    return metrics.map(([key]) => plays.map(play => Number.isFinite(play?.[key]) ? play[key] : null));
+    const gained = nodes.map(node => resourceRate(partyResourcesAt(sources, node, player.slot), "gained"));
+    return { plays, gained };
   });
+  if (rows.some(({ gained }) => gained.some(Number.isFinite))) metrics.push(["gained", KEEP_RESOURCE_LINES.gained]);
+  const series = rows.map(({ plays, gained }) => metrics.map(([key]) => key === "gained" ? gained :
+    plays.map(play => Number.isFinite(play?.[key]) ? play[key] : null)));
   const values = series.flat(2).filter(value => value != null);
   const visible = values.length > 0;
   const container = document.getElementById("detail-keep-play-party");
@@ -1480,19 +1484,56 @@ function applyPartyPanelAct() {
   });
 }
 
-function floorChangeTip(changes) {
+function floorChangeTip(changes, synergies = []) {
   const name = ([id], relic) => relic ? relicInfo(id)?.title || fmtRelicLabel(id) : cardInfo(id)?.title || fmtCardLabel(id);
-  const chips = (list, relic) => list.map(c => {
+  const chips = (list, relic, links) => list.map(c => {
     const src = relic ? relicImgSrc(c[0]) : cardImgSrc(c[0]);
+    const labels = !relic && c[2] > 0 ? links?.get(c[0]) : null;
+    const synergy = labels ? `<small class="ft-synergy">Synergy · ${[...labels].map(escapeHtml).join(", ")}</small>` : "";
     return `<span class="strength-chip ${c[2] < 0 ? "loss" : "gain"}" data-pick="${relic ? "relic" : "card"}:${c[0]}${relic ? "" : ":" + +c[1]}">` +
-      `${src ? `<img src="${src}" alt="" loading="lazy">` : ""}${c[2] > 0 ? "+" : c[2] < 0 ? "−" : "↑"} ${name(c, relic)}${c[1] ? "+" : ""}</span>`;
+      `${src ? `<img src="${src}" alt="" loading="lazy">` : ""}<span>${c[2] > 0 ? "+" : c[2] < 0 ? "−" : "↑"} ${name(c, relic)}${c[1] ? "+" : ""}${synergy}</span></span>`;
   }).join("");
   return i => {
-    const s = changes && i ? changes[i] : null;
-    return s && (s.cards.length || s.relics.length)
-      ? `<div class="strength-chips">${chips(s.cards, false)}${chips(s.relics, true)}</div>` : "";
+    const s = i ? changes?.[i] : null;
+    const cards = s?.cards || [];
+    const links = synergies[i];
+    const pickups = links ? [...links.keys()].filter(id => !cards.some(c => c[0] === id && c[2] > 0))
+      .map(id => [id, false, 1]) : [];
+    const html = chips([...cards, ...pickups], false, links) + chips(s?.relics || [], true);
+    return html ? `<div class="strength-chips">${html}</div>` : "";
   };
 }
+
+function deckSynergyPickups(run, nodes) {
+  const deck = run.finalDeck || [];
+  const links = deckLinks(deck, run.finalRelics || []);
+  const byFloor = new Map();
+  const openingPicks = nodes.find(n => n.floor === 0)?.cardsRewarded || [];
+  if (links.length) deck.forEach((card, i) => {
+    const floor = run.deckAdded[i];
+    const row = cardSynergyRow(card, DATA.synergy);
+    if (!(floor > 0) || !row) return;
+    // The game also timestamps starting Basic cards at floor 1.
+    if (floor === 1 && cardInfo(card.id)?.rarity === "Basic" && !openingPicks.includes(card.id)) return;
+    const keys = links.filter(({ key, feeders, users }) =>
+      (row[0].includes(key) && users.some(user => user.id !== card.id)) ||
+      (row[1].includes(key) && feeders.some(feeder => feeder.id !== card.id))).map(({ key }) => synergyLabel(key));
+    if (!keys.length) return;
+    if (!byFloor.has(floor)) byFloor.set(floor, new Map());
+    const cards = byFloor.get(floor);
+    cards.set(card.id, new Set([...(cards.get(card.id) || []), ...keys]));
+  });
+  return nodes.map(n => byFloor.get(n.floor + 1));
+}
+
+const DECK_SYNERGY_COLOR = "#c9a2ff";
+const deckSynergyLegend = `<div class="fl-items"><span class="fl-item"><span class="fl-diamond" aria-hidden="true"></span>Final deck synergy</span></div>`;
+const deckSynergyPoints = (links, counts) => links.some(Boolean) ? [{
+  label: "Final deck synergy", showLine: false, pointStyle: "rectRot",
+  pointBackgroundColor: DECK_SYNERGY_COLOR, pointBorderColor: "#16142a", pointBorderWidth: 1,
+  pointRadius: 6, pointHoverRadius: 7, order: -1,
+  data: links.map((cards, i) => cards ? Math.max(...Object.values(counts).map(values => values[i])) : null),
+}] : [];
 
 function renderPartyComposition(run, panel) {
   const nodes = run.timeline || [];
@@ -1502,7 +1543,9 @@ function renderPartyComposition(run, panel) {
   const counts = countsByFloor(nodes, items, T);
   const totals = floorTotals(nodes, counts, T.order);
   const keys = usedKeys(counts, T.order);
-  const changed = floorChangeTip(runFloorChanges(run));
+  const synergies = deckSynergyPickups(run, nodes);
+  const points = deckSynergyPoints(synergies, counts);
+  const changed = floorChangeTip(runFloorChanges(run), synergies);
   const datasets = keys.map(key => ({
     label: key, data: counts[key], borderColor: T.color[key], borderWidth: 2,
     pointHoverRadius: 5, cubicInterpolationMode: "monotone",
@@ -1513,8 +1556,8 @@ function renderPartyComposition(run, panel) {
     return `${floorTipHead(nodes[i], totals[i], "cards")}<table>${table}</table>${changed(i)}`;
   });
   const chart = new Chart(panel.querySelector("canvas"),
-    floorChartConfig(nodes, [floorDotDensity], tip, { min: 0, stacked: false }, datasets, actWindow(nodes)));
-  panel.querySelector(".floor-legend").innerHTML = floorLegendRow("Type", keys, T.color);
+    floorChartConfig(nodes, [floorDotDensity], tip, { min: 0, stacked: false }, [...datasets, ...points]));
+  panel.querySelector(".floor-legend").innerHTML = floorLegendRow("Type", keys, T.color) + (points.length ? deckSynergyLegend : "");
   bindRangeSelect(chart, nodes);
   return chart;
 }
@@ -1565,6 +1608,7 @@ function renderPartyFloorPanels(players) {
       }
     });
     if (charts.length) {
+      // Share the full-run Y range before limiting the X axis to the selected act.
       const min = Math.min(...charts.map(chart => chart.scales.y.min));
       const max = Math.max(...charts.map(chart => chart.scales.y.max));
       charts.forEach(chart => {
@@ -1654,7 +1698,7 @@ const NT_MIN_ANCHOR_W = 260;
 // tooltip fits on screen. It can't be scrolled (hovering is all it takes to
 // show it), so height matters as much as width. Runs each time a tooltip
 // opens and on resize, which is also what browser zoom fires.
-function fitNodeTooltip(tip) {
+function fitNodeTooltip(tip, node = tip.closest(".node-card")) {
   const rows = [...tip.querySelectorAll(".nt-cardrow")];
   if (!rows.length) {
     // A text-only tooltip hangs centred under its node, which on a phone's
@@ -1665,7 +1709,7 @@ function fitNodeTooltip(tip) {
     const r = tip.getBoundingClientRect(), { vw, vh } = viewportSize();
     tip.classList.remove("nt-measuring");
     // Tile near the bottom of the screen: hang above it instead, when there is room.
-    const nr = tip.closest(".node-card").getBoundingClientRect();
+    const nr = node.getBoundingClientRect();
     if (r.bottom > vh - NT_EDGE && nr.top - r.height - 4 >= NT_EDGE) {
       tip.style.top = "auto";
       tip.style.bottom = "calc(100% + 4px)";
@@ -1695,7 +1739,6 @@ function fitNodeTooltip(tip) {
   // pointer can move straight from one into the other (to hover a card) without
   // crossing a gap that would close it. Only the room on the roomier side
   // counts. Too narrow for that (a phone) and it stays centred on the screen.
-  const node = tip.closest(".node-card");
   const nr = node.getBoundingClientRect();
   const sideRoom = Math.max(document.documentElement.clientWidth - nr.right, nr.left) - NT_EDGE;
   const anchored = sideRoom - chromeW >= NT_MIN_ANCHOR_W;
@@ -1778,6 +1821,20 @@ document.addEventListener("mouseout", e => {
   if (chip && !chip.contains(e.relatedTarget)) hideFloatingHtmlTooltip();
 });
 
+// Shared by the map and the final-deck choice preview.
+function nodeCardRow(ids, dim = false, bought = [], selected = null) {
+  const face = (id, dimmed, purchased, card = {}) => {
+    const { upgrade = 0, props } = card;
+    const art = renderCardFace(id, upgrade, "var(--nt-card-w)", { props, deferred: !!selected });
+    if (art) {
+      return `<div class="nt-cardface${dimmed ? " nt-cardface-dim" : ""}${purchased ? " nt-cardface-bought" : ""}" data-card="${id}" ${cardPopAttrs(id, upgrade, props)}${selected ? ' tabindex="0"' : ""}>${art}</div>`;
+    }
+    return `<div class="${dimmed ? "nt-skipped" : "nt-reward-card"}"${selected ? ` tabindex="0" ${cardPopAttrs(id, upgrade, props)}` : ""}>${fmtCardLabel(id)}${purchased ? ` <span class="nt-bought-tag">bought</span>` : ""}</div>`;
+  };
+  if (!ids.length && !bought.length) return "";
+  return `<div class="nt-cardrow">${bought.map(id => face(id, false, true, selected || undefined)).join("")}${ids.map(id => face(id, dim, false, !dim && selected || undefined)).join("")}</div>`;
+}
+
 function buildNodeTooltip(node) {
   // Small art beside each named item, so a floor's rewards read at a glance
   // instead of as a wall of text. Cards get the real card face; relics and
@@ -1789,19 +1846,6 @@ function buildNodeTooltip(node) {
     `<div class="${cls} nt-item"${pick ? ` data-pick="${pick}"` : ""}>${src ? `<img loading="lazy" class="nt-item-icon" src="${thumbSrc(src)}" alt="">` : ""}<span>${label}</span>${extra}</div>`;
   const relicChip  = (cls, id) => iconRow(cls, relicImgSrc(id),  fmtRelicLabel(id), "", `relic:${id}`);
   const potionChip = (cls, id) => iconRow(cls, potionImgSrc(id), fmtPotion(id),      "", `potion:${id}`);
-  // Card faces size from --nt-card-w, which fitNodeTooltip sets as the
-  // tooltip opens.
-  const nodeCardHtml = (id, dim = false, bought = false) => cardFaceAvailable()
-    ? `<div class="nt-cardface${dim ? " nt-cardface-dim" : ""}${bought ? " nt-cardface-bought" : ""}" data-card="${id}" ${cardPopAttrs(id)}>${renderCardFace(id, 0, "var(--nt-card-w)")}</div>`
-    : `<div class="${dim ? "nt-skipped" : "nt-reward-card"}">${fmtCardLabel(id)}${bought ? ` <span class="nt-bought-tag">bought</span>` : ""}</div>`;
-  // Wraps a group of cards in one grid so they lay out side by side, as many
-  // a row as fitNodeTooltip picks, instead of stacking one per line. `bought`
-  // cards (a shop's purchases) lead the row, full brightness and tagged; the
-  // rest are dimmed.
-  const cardRow = (ids, dim = false, bought = []) => {
-    if (!ids.length && !bought.length) return "";
-    return `<div class="nt-cardrow">${bought.map(id => nodeCardHtml(id, false, true)).join("")}${ids.map(id => nodeCardHtml(id, dim)).join("")}</div>`;
-  };
   // Relics and potions share one wrapping row (it wraps at the width the cards
   // or text set, never widening the tooltip) instead of one line apiece.
   const itemRow = chips => chips.length ? `<div class="nt-itemrow">${chips.join("")}</div>` : "";
@@ -1843,7 +1887,7 @@ function buildNodeTooltip(node) {
   const pushRemoved = () => {
     if (!removed.length) return;
     lines.push(`<div class="nt-section">${removed.length > 1 ? "Cards" : "Card"} removed:</div>`);
-    lines.push(cardRow(removed));
+    lines.push(nodeCardRow(removed));
   };
 
   if (isShop) {
@@ -1852,7 +1896,7 @@ function buildNodeTooltip(node) {
     const cardsForSale = node.cardsSkipped || [];
     if (cardsBought.length + cardsForSale.length > 0) {
       lines.push(`<div class="nt-section">Cards offered:</div>`);
-      lines.push(cardRow(cardsForSale, true, cardsBought));
+      lines.push(nodeCardRow(cardsForSale, true, cardsBought));
     }
     // The removal is the shop's other card purchase, so it sits right under the offers.
     pushRemoved();
@@ -1882,7 +1926,7 @@ function buildNodeTooltip(node) {
     const hasSkipped = node.cardsSkipped && node.cardsSkipped.length > 0;
     if (hasRewards) {
       lines.push(`<div class="nt-section">Rewards:</div>`);
-      lines.push(cardRow(cardsRewarded));
+      lines.push(nodeCardRow(cardsRewarded));
       lines.push(itemRow([
         ...relicsRewarded.map(id  => relicChip("nt-reward-relic", id)),
         ...potionsRewarded.map(id => potionChip("nt-reward-card", id)),
@@ -1890,7 +1934,7 @@ function buildNodeTooltip(node) {
     }
     if (hasSkipped) {
       lines.push(`<div class="nt-section">Skipped:</div>`);
-      lines.push(cardRow(node.cardsSkipped, true));
+      lines.push(nodeCardRow(node.cardsSkipped, true));
     }
   }
 
@@ -3585,6 +3629,7 @@ const floorDotDensity = {
     const first = min == null ? 0 : labels.indexOf(min);
     const end = max == null ? labels.length : labels.indexOf(max) + 1;
     for (const dataset of chart.data.datasets) {
+      if (dataset.showLine === false) continue;
       const visiblePoints = dataset.data.slice(first, end).filter(Number.isFinite).length;
       // A scriptable radius refreshes the point options on update("none").
       dataset.pointRadius = () => visiblePoints > 15 ? 0 : 3;
@@ -3827,6 +3872,12 @@ const KEEP_ENERGY_SPENT = {
   label: "Energy spent", color: KEEP_DEMAND_COLOR,
   style: { borderDash: [5, 3], order: -1, pointRadius: 2 },
 };
+const KEEP_RESOURCE_LINES = {
+  gained: { label: "Energy gained", color: "#5aa0e6", icon: "energy" },
+  stars: { label: "Stars gained", color: "#ec86c8", icon: "stars" },
+};
+const resourceRate = (row, key) => Number.isFinite(row?.[key]) && row.resourceTurns > 0
+  ? row[key] / row.resourceTurns : null;
 const KEEP_AVERAGE_STYLE = {
   label: "Average win", borderColor: "rgba(255, 255, 255, 0.86)", borderWidth: 1.65, borderDash: [],
   order: 10, pointRadius: 0, pointHoverRadius: 0,
@@ -3854,6 +3905,7 @@ const KEEP_ICONS = {
   blocked: `<path d="M8 1.5l5 2v4.2c0 3-2.1 5.1-5 6.8-2.9-1.7-5-3.8-5-6.8V3.5z" fill="currentColor"/>`,
   healed: `<path d="M8 14C3 10.5 1.8 8 1.8 5.8 1.8 4 3.2 2.8 4.8 2.8c1.2 0 2.5.7 3.2 1.9.7-1.2 2-1.9 3.2-1.9 1.6 0 3 1.2 3 3 0 2.2-1.2 4.7-6.2 8.2z" fill="currentColor"/>`,
   energy: `<path d="M9.3 1L3.5 9h4l-.8 6L12.5 7h-4z" fill="currentColor"/>`,
+  stars: `<path d="M8 1.5 10 6l4.5.5-3.4 3 1 4.5L8 11.5 3.9 14l1-4.5-3.4-3L6 6z" fill="currentColor"/>`,
   draw: `<rect x="3.5" y="2" width="9" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/>`,
   // Drawn is the outline, played the same card filled: a card in hand and a card used.
   played: `<rect x="3.5" y="2" width="9" height="12" rx="1.6" fill="currentColor"/>`,
@@ -3922,9 +3974,11 @@ function partyDamageSources(runs) {
         ? row.incomingBySlot : null;
       const play = Array.isArray(row.playBySlot) && row.playBySlot.length === run.party?.length
         ? row.playBySlot : null;
+      const resources = Array.isArray(row.resourcesBySlot) && row.resourcesBySlot.length === run.party?.length
+        ? row.resourcesBySlot : null;
       const debuffs = Array.isArray(row.debuffsBySlot) && row.debuffsBySlot.length === run.party?.length
         ? row.debuffsBySlot : null;
-      samples.set(damageFloorKey(n), { bySlot, incoming, play, debuffs, support: row.supportBySlot, total: row.removed });
+      samples.set(damageFloorKey(n), { bySlot, incoming, play, resources, debuffs, support: row.supportBySlot, total: row.removed });
     });
     return samples;
   });
@@ -3964,18 +4018,28 @@ function partyPlayAt(sources, node, slot) {
   return null;
 }
 
+function partyResourcesAt(sources, node, slot) {
+  for (const source of sources) {
+    const resources = source.get(damageFloorKey(node))?.resources?.[slot];
+    if (resources) return resources;
+  }
+  return null;
+}
+
 // What one player's deck did per fight turn over the fights an act is rated on.
 function actFlow(copy, slot, nodes, idx, sources) {
   const own = copy.timeline || [];
   const byKey = new Map(own.map((n, j) => [damageFloorKey(n), j]));
   const measured = measuredStrengthByNode(copy, own);
   const damage = partyDamageByFloor(sources, own, slot);
-  const sum = { damage: [0, 0], blocked: [0, 0], drawn: [0, 0], played: [0, 0], energy: [0, 0], spent: [0, 0] };
+  const sum = { damage: [0, 0], blocked: [0, 0], drawn: [0, 0], played: [0, 0], energy: [0, 0], spent: [0, 0], gained: [0, 0] };
   const add = (k, v, turns) => { if (Number.isFinite(v) && v >= 0) { sum[k][0] += v; sum[k][1] += turns; } };
   for (const i of idx) {
     const j = byKey.get(damageFloorKey(nodes[i]));
     if (j === undefined) continue;
     const n = own[j], m = measured?.[j], turns = n.turns;
+    const resources = partyResourcesAt(sources, n, slot);
+    add("gained", resources?.gained, resources?.resourceTurns);
     add("damage", damage[j], turns);
     add("blocked", recordedPartyIncoming(copy, n, m, sources)?.blocked, turns);
     const play = partyPlayAt(sources, n, slot);
@@ -3998,9 +4062,12 @@ function partyActFlowHtml(a, nodes, run, owner, row) {
   const fmt = v => v === null ? "—" : v.toFixed(1);
   const lines = [["damage", "Damage", KEEP_LINES.damage.color], ["blocked", "Block", KEEP_SPLIT.blocked],
     ["energy", "Card cost", KEEP_LINES.energy.color], ["drawn", "Draw", KEEP_LINES.drawn.color], ["played", "Cards played", KEEP_LINES.played.color]];
+  const gained = KEEP_RESOURCE_LINES.gained;
+  lines.push(["gained", gained.label, gained.color, gained.icon]);
   if (detailParty?.length > 1) {
     const rows = detailParty.map(p => ({ p, f: actFlow(p.run, p.slot, nodes, a.idx, sources) })).filter(r => r.f);
     if (!rows.length) return "";
+    if (!rows.some(({ f }) => f.gained !== null)) lines.pop();
     return `<table class="ka-party"><caption>Per fight turn</caption><thead><tr><th scope="col">Player</th>` +
       lines.map(([, label]) => `<th scope="col">${label}</th>`).join("") + `</tr></thead><tbody>` +
       rows.map(({ p, f }) => `<tr><th scope="row">${partyChartSwatch(p)} ${escapeHtml(p.label)}</th>` +
@@ -4008,8 +4075,8 @@ function partyActFlowHtml(a, nodes, run, owner, row) {
   }
   const f = actFlow(run, chartPartySlot(run, owner), nodes, a.idx, sources);
   if (!f) return "";
-  return `<div class="ka-half ka-flow">` + lines.filter(([key]) => f[key] !== null).map(([key, label, color]) =>
-    row(keepIcon(key, color), label, `${f[key].toFixed(1)}<small>/turn</small>`, { note: key === "energy" && f.spent !== null ? `paid ${f.spent.toFixed(1)}` : "" })).join("") + `</div>`;
+  return `<div class="ka-half ka-flow">` + lines.filter(([key]) => f[key] !== null).map(([key, label, color, icon = key]) =>
+    row(keepIcon(icon, color), label, `${f[key].toFixed(1)}<small>/turn</small>`, { note: key === "energy" && f.spent !== null ? `paid ${f.spent.toFixed(1)}` : "" })).join("") + `</div>`;
 }
 
 function showKeepNotice(chart, message, linkMod = false) {
@@ -4229,7 +4296,9 @@ function fightReadings(run, nodes, measured, partyDamage = null, partySources = 
       }
     }
     const play = run.mp ? partyPlayAt(partySources, n, run.coop?.i ?? run.partySlot) : m;
-    if (play) row.play = { drawn: play.draw, played: play.played, energy: play.listPrice, spent: play.spent, junk: play.junk };
+    const resources = run.mp ? partyResourcesAt(partySources, n, run.coop?.i ?? run.partySlot) : m;
+    if (play || resources) row.play = { drawn: play?.draw, played: play?.played, energy: play?.listPrice, spent: play?.spent,
+      junk: play?.junk, gained: resourceRate(resources, "gained"), stars: resourceRate(resources, "stars") };
     return row;
   });
   return rows.some(r => r) ? rows : null;
@@ -4326,6 +4395,12 @@ function actReadings(run, nodes, measured, partyCosts = null) {
     a.log.played += m.played * n.turns;
     a.log.energy += m.listPrice * n.turns;
     a.log.spent += m.spent * n.turns;
+    for (const key of Object.keys(KEEP_RESOURCE_LINES)) {
+      if (resourceRate(m, key) === null) continue;
+      const total = a.log[key] ||= { value: 0, turns: 0 };
+      total.value += m[key];
+      total.turns += m.resourceTurns;
+    }
   });
   const short = (pace, each) => pace < each ? "damage" : "block";
   const rated = [...acts.values()].filter(a => a.fights >= KEEP_ACT_MIN);
@@ -4435,9 +4510,8 @@ const keepWhy = x => (held, speed) => {
   return "Damage in the middle of wins.";
 };
 
-// A run's reading on its header, or just its mark in the run list (short). The numbers
-// are on hover, as they are on an act's mark.
-function runReadingHtml(run, short = false) {
+// A run's reading in the header or rating card, or just its mark in the run list.
+function runReadingHtml(run, { short = false, tooltip = true } = {}) {
   const r = runReadingOf(run);
   if (!r) return "";
   const word = KEEP_WORDS[r.verdict];
@@ -4448,9 +4522,8 @@ function runReadingHtml(run, short = false) {
     if (r.op) return `<span class="run-reading op" data-tip="${tip}">OP</span>`;
     return `<span class="keep-signal ${r.verdict}" role="img" aria-label="${word}" data-tip="${tip}">${KEEP_SIGNS[r.verdict]}</span>`;
   }
-  // On the header the meters are shown (runReadingMetersHtml), so the pill's hover keeps only
-  // what they don't say.
-  const note = [r.op ? opLine : "", run.won ? "" : "Not counting the fight that ended it."].filter(Boolean).join("\n");
+  // The rating card already has meters, so its pill only adds context about the run.
+  const note = tooltip ? [r.op ? opLine : "", run.won ? "" : "Not counting the fight that ended it."].filter(Boolean).join("\n") : "";
   const attrs = note ? ` data-tip="${note.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" tabindex="0"` : "";
   if (r.op) return `<span class="run-reading op"${attrs}><span aria-hidden="true">▲▲</span>OP</span>`;
   return `<span class="run-reading ${r.verdict}"${attrs}><span class="keep-signal ${r.verdict}" aria-hidden="true">${KEEP_SIGNS[r.verdict]}</span>${word}</span>`;
@@ -4554,7 +4627,9 @@ function renderKeepActs(run, nodes, measured) {
       (run.mp ? partyActFlowHtml(a, nodes, run, detailOwnerRun || run, row) : log ? `<div class="ka-half ka-flow">` + perTurnRow(keepIcon("damage", KEEP_LINES.damage.color), "Damage", log.removed, `${(log.removed / log.played).toFixed(1)}/card`) +
         perTurnRow(keepIcon("energy", KEEP_LINES.energy.color), "Card cost", log.energy, `paid ${perTurn(log.spent)}`) +
         perTurnRow(keepIcon("draw", KEEP_LINES.drawn.color), "Draw", log.drawn, "") +
-        perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") + `</div>` : "") +
+        perTurnRow(keepIcon("played", KEEP_LINES.played.color), "Cards played", log.played, "") +
+        Object.entries(KEEP_RESOURCE_LINES).filter(([key]) => log[key]).map(([key, metric]) =>
+          row(keepIcon(metric.icon, metric.color), metric.label, `${(log[key].value / log[key].turns).toFixed(1)}<small>/turn</small>`, {})).join("") + `</div>` : "") +
       `</div>` +
       (a.furCoatOmitted ? `<p class="keep-note">Fur Coat: ${a.furCoatOmitted} marked ${a.furCoatOmitted === 1 ? "fight" : "fights"} (enemies started at 1 HP each) left out of this act's averages and rating; the other ${a.fights} still count.</p>` : "") +
       `</div>`;
@@ -4774,11 +4849,13 @@ function renderDetailKeepCharts(run, party = false) {
 
   const inTip = tip(r => keepIncomingTip(r, run.mp));
   const playTip = tip(simple(r => r.play ? [
-    row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn)),
-    row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played)),
-    row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "Printed costs of the cards played, added up."),
+    ...(Number.isFinite(r.play.drawn) ? [row("Cards drawn", KEEP_LINES.drawn.color, aTurn(r.play.drawn))] : []),
+    ...(Number.isFinite(r.play.played) ? [row("Cards played", KEEP_LINES.played.color, aTurn(r.play.played))] : []),
+    ...(Number.isFinite(r.play.energy) ? [row("Card cost", KEEP_LINES.energy.color, aTurn(r.play.energy), "Printed costs of the cards played, added up.")] : []),
     ...(Number.isFinite(r.play.spent) ? [row(KEEP_ENERGY_SPENT.label, KEEP_ENERGY_SPENT.color,
       aTurn(r.play.spent), "What you really spent. Discounts and free plays can make it lower.")] : []),
+    ...Object.entries(KEEP_RESOURCE_LINES).filter(([key]) => Number.isFinite(r.play[key])).map(([key, metric]) =>
+      row(metric.label, metric.color, aTurn(r.play[key]), key === "gained" ? "Energy each turn started with, plus anything gained during it." : "")),
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
   ] : []));
 
@@ -4834,15 +4911,19 @@ function renderDetailKeepCharts(run, party = false) {
     const byT = countsByFloor(nodes, held, T);
     const tKeys = usedKeys(byT, T.order);
     const sizes = floorTotals(nodes, byT, T.order);
+    const synergies = deckSynergyPickups(run, nodes);
+    const points = deckSynergyPoints(synergies, byT);
+    const deckChanged = floorChangeTip(changes, synergies);
     const deckTip = context => showFloorTip(context, i =>
       `${floorTipHead({ ...nodes[i], enc: nodes[i].fight || nodes[i].enc }, sizes[i], "cards")}` +
-      `<table>${tKeys.filter(k => byT[k][i] > 0).map(k => row(k, T.color[k], byT[k][i])).join("")}</table>${changed(i)}`);
+      `<table>${tKeys.filter(k => byT[k][i] > 0).map(k => row(k, T.color[k], byT[k][i])).join("")}</table>${deckChanged(i)}`);
     const deckLine = (label, color, data, dash) => ({
       label, data, borderColor: color, pointHoverBackgroundColor: color,
       borderWidth: 2, borderDash: dash || [], pointHoverRadius: 5,
       cubicInterpolationMode: "monotone",
     });
-    chart("deck", tKeys.map(k => deckLine(k, T.color[k], byT[k])), deckTip, null, [floorDotDensity]);
+    chart("deck", [...tKeys.map(k => deckLine(k, T.color[k], byT[k])), ...points], deckTip, null, [floorDotDensity]);
+    if (points.length) document.getElementById("detail-keep-deck-legend").insertAdjacentHTML("beforeend", deckSynergyLegend);
   }
 
   const damage = run.mp
@@ -4882,6 +4963,8 @@ function renderDetailKeepCharts(run, party = false) {
     ...(rows.some(r => Number.isFinite(r?.play?.spent)) ? [{
       ...line(KEEP_ENERGY_SPENT, r => r.play?.spent), ...KEEP_ENERGY_SPENT.style,
     }] : []),
+    ...Object.entries(KEEP_RESOURCE_LINES).filter(([key]) => rows.some(r => Number.isFinite(r?.play?.[key])))
+      .map(([key, metric]) => line(metric, r => r.play?.[key])),
   ], playTip);
 }
 

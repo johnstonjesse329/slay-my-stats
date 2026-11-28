@@ -2,12 +2,13 @@
 
 Built by the daily benchmark refresh (benchmark.py), which already reads every published
 run, and published as users/_showcase.json.gz. The page only draws it. Nothing here ranks
-players: each tab is a list of runs worth opening (every OP run, the top 30 for the rest), and a run with no turn data
-simply isn't a candidate for the turn tabs.
+players: each tab is a list of runs worth opening. Figure tabs keep the top 30 and
+the other tabs keep all matches, newest first.
 
     {"v": 1, "at": <seconds>, "days": 30,
      "op":       [{"slug", "name", "ts", "char", "asc", "syn"}, ...],
      "held": [{..., "n"}], "hit": [{..., "n"}], "deck": [{..., "n"}],
+     "boss_no_damage": [{...}],
      "modes": {"solo": {<tabs>}, "multiplayer": {<tabs>}}}
 
 Multiplayer rows carry "multiplayer": true. Each row describes the uploader's
@@ -24,8 +25,8 @@ import run as run_py
 from tools.power_curve.fight_demand import act_readings, run_reading
 
 WINDOW_DAYS = 30
-PER_TAB = 30  # the figure tabs; every OP run in the window is kept, they are rare
-TABS = ("op", "held", "hit", "deck")
+PER_TAB = 30  # the figure tabs
+RUN_TABS = ("op", "boss_no_damage")
 SYNERGIES_SHOWN = 3
 
 # The names the Overview's synergy table files keys under (SYNERGY_FAMILIES in js/card-face.js,
@@ -145,6 +146,28 @@ def is_op(fights, encounters, cuts, slot=None) -> bool:
     return bool(reading and reading["op"])
 
 
+def final_boss_no_damage(raw, damage_slot) -> bool:
+    """Check for recorded zero gross damage to the uploader at the last boss of a win."""
+    history = raw.get("map_point_history") or []
+    if damage_slot is None or not raw.get("win") or raw.get("was_abandoned") or len(history) < 3:
+        return False
+    bosses = [node for node in history[-1] if node.get("map_point_type") == "boss"]
+    # An incomplete A10 history cannot tell us what happened against its second boss.
+    double_boss = raw.get("ascension") == 10 and raw.get("game_mode", "standard") == "standard"
+    if len(bosses) < (2 if double_boss else 1):
+        return False
+    boss = bosses[-1]
+    encounters = [room for room in boss.get("rooms") or []
+                  if str(room.get("model_id")).startswith("ENCOUNTER.")]
+    if len(encounters) != 1:
+        return False
+
+    stats = boss.get("player_stats") or []
+    uploader = stats[damage_slot] if len(stats) == len(raw["players"]) else None
+    damage = uploader.get("damage_taken") if isinstance(uploader, dict) else None
+    return type(damage) in (int, float) and damage == 0
+
+
 def build(candidates, now, per_tab=PER_TAB) -> dict:
     """Build tabs from winning runs, including independent results for each mode."""
     since = now - WINDOW_DAYS * 86400
@@ -159,7 +182,8 @@ def build(candidates, now, per_tab=PER_TAB) -> dict:
         return {**out, "n": n} if n is not None else out
 
     def tabs(runs):
-        out = {"op": [entry(c) for c in sorted((c for c in runs if c.get("op")), key=lambda c: -c["ts"])]}
+        latest = sorted(runs, key=lambda c: -c["ts"])
+        out = {field: [entry(c) for c in latest if c.get(field)] for field in RUN_TABS}
         for field in ("held", "hit", "deck"):
             best = sorted((c for c in runs if c.get(field)), key=lambda c: (-c[field], -c["ts"]))
             out[field] = [entry(c, c[field]) for c in best[:per_tab]]

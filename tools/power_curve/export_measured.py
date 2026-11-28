@@ -77,7 +77,7 @@ def main():
             with gzip.open(path, "rt", encoding="utf-8") as stream:
                 log = json.load(stream)
             parsed = runmod.parse_run_data(raw, steam_id=sid, fallback_ts=ts)
-            per_floor = measured(log, parsed.get("timeline"))
+            per_floor = measured(log, parsed.get("timeline"), run=parsed)
         except (OSError, ValueError, TypeError, KeyError, AttributeError, IndexError):
             continue
         if per_floor:

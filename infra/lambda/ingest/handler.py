@@ -513,7 +513,7 @@ def _measured_rows(cleaned: dict, parsed: dict) -> list[dict]:
     shape has nothing to read, and a log this can't read costs the run's charts, not
     the run."""
     try:
-        return measured.measured(cleaned, parsed.get("timeline"))
+        return measured.measured(cleaned, parsed.get("timeline"), run=parsed)
     except Exception:  # noqa: BLE001 -- derived from game-process input; never fail an upload over it
         return []
 

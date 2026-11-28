@@ -1,9 +1,8 @@
 // =========================================================================
 // Sticky offsets
 // =========================================================================
-// The filter bar clears the sticky page tabs on desktop. Other sticky controls
-// clear the combined height of the tabs and filter bar. On a phone, only the
-// collapsed filter bar sticks.
+// The filter bar clears the sticky page tabs. Other sticky controls clear
+// the height of the tabs and, when it is sticky, the filter bar.
 
 function syncFilterBarOffset() {
   const bar = document.getElementById("shared-filter-bar");
