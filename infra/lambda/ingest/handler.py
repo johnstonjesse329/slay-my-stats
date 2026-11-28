@@ -1149,6 +1149,8 @@ PAIR_KEYS = ("chars", "cards", "relics")
 # picks[char]["events"][event id] = {"v": visits, "o": {option: [taken, wins, {grant: n}]}}:
 # each mystery event visit (the run's "events"), the option taken, the wins of those runs
 # and what the node recorded the option handing over, for the Events page's "all players".
+# "h" counts visits with ordered history. "s" counts picks and wins by decision
+# stage, with visit-wide grant counts attached to the first decision only.
 PICK_SLOTS = 7
 ASC_PICK_VERSION = 1
 EVENTS_VERSION = 1
@@ -1198,7 +1200,7 @@ def _tally_picks(picks: dict, r: dict, won: bool) -> None:
                 if loc.get("type") == "shop":
                     q[2] += 1
                     q[3] += won
-    for event_id, opt, grants in r.get("events") or []:
+    for event_id, opt, grants, *history in r.get("events") or []:
         ev = by_kind.setdefault("events", {}).setdefault(event_id, {"v": 0, "o": {}})
         ev["v"] += 1
         o = ev["o"].setdefault(opt, [0, 0, {}])
@@ -1206,6 +1208,19 @@ def _tally_picks(picks: dict, r: dict, won: bool) -> None:
         o[1] += won
         for g in grants:
             o[2][g] = o[2].get(g, 0) + 1
+        if history:
+            ev["h"] = ev.get("h", 0) + 1
+            stages = ev.setdefault("s", {})
+            first = True
+            for _, stage, choice in history[0]:
+                if stage:
+                    pair = stages.setdefault(stage, {}).setdefault(choice, [0, 0, {}])
+                    pair[0] += 1
+                    pair[1] += won
+                    if first:
+                        for g in grants:
+                            pair[2][g] = pair[2].get(g, 0) + 1
+                        first = False
 
 
 def empty_stats() -> dict:
@@ -1275,6 +1290,17 @@ def _merge_picks(total: dict, delta: dict) -> None:
                 for event_id, ev in by_id.items():
                     have = into.setdefault(event_id, {"v": 0, "o": {}})
                     have["v"] += ev["v"]
+                    if "h" in ev:
+                        have["h"] = have.get("h", 0) + ev["h"]
+                        stages = have.setdefault("s", {})
+                        for stage, choices in ev["s"].items():
+                            options = stages.setdefault(stage, {})
+                            for choice, (n, w, grants) in choices.items():
+                                pair = options.setdefault(choice, [0, 0, {}])
+                                pair[0] += n
+                                pair[1] += w
+                                for g, count in grants.items():
+                                    pair[2][g] = pair[2].get(g, 0) + count
                     for opt, (n, w, grants) in ev["o"].items():
                         o = have["o"].setdefault(opt, [0, 0, {}])
                         o[0] += n

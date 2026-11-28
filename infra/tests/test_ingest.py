@@ -2075,15 +2075,74 @@ class EventChoiceTests(unittest.TestCase):
         got = self.parse([
             self.node("EVENT.BYRDONIS_NEST", "TAKE", cards_gained=[{"id": "CARD.BYRDONIS_EGG"}]),
             self.node("EVENT.BYRDONIS_NEST", "EAT", max_hp_gained=7)])
-        self.assertEqual(got["events"], [["EVENT.BYRDONIS_NEST", "TAKE", ["card-CARD.BYRDONIS_EGG"]],
-                                         ["EVENT.BYRDONIS_NEST", "EAT", ["maxhp-7"]]])
+        self.assertEqual([visit[:3] for visit in got["events"]],
+                         [["EVENT.BYRDONIS_NEST", "TAKE", ["card-CARD.BYRDONIS_EGG"]],
+                          ["EVENT.BYRDONIS_NEST", "EAT", ["maxhp-7"]]])
 
     def test_later_pages_are_a_path_not_extra_visits(self):
         node = self.node("EVENT.X", "GO", gold_gained=50)
         node["player_stats"][0]["event_choices"].append({"title": {"key": "X.pages.NEXT.options.ON.title"}})
-        self.assertEqual(run.event_visit(node["player_stats"][0]), ["GO", ["gold_up"]])
+        self.assertEqual(self.parse([node])["events"], [["EVENT.X", "GO", ["gold_up"], [
+            ["X.pages.INITIAL.options.GO.title", "INITIAL", "GO"],
+            ["X.pages.NEXT.options.ON.title", "NEXT", "NEXT.ON"]]]])
         later = self.node("EVENT.X", "ON", page="NEXT")["player_stats"][0]
-        self.assertEqual(run.event_visit(later), ["NEXT.ON", []])
+        self.assertEqual(run.event_visit(later)[:2], ["NEXT.ON", []])
+
+    def test_normalizes_recorded_dialogue_without_discarding_the_original_keys(self):
+        cases = (
+            ("WATERFALL_OF_OBVIOUS_SECRETS", ("INITIAL.ENTER", "ENTER.BE_NICE"),
+             [("", "ENTER"), ("ENTER", "ENTER.BE_NICE")]),
+            ("MUSEUM_OF_TORTURE", ("INITIAL.CONTINUE", "LOCKED.CONTINUE", "DISPLAY.BREAK_OUT"),
+             [("", "CONTINUE"), ("", "LOCKED.CONTINUE"), ("DISPLAY", "DISPLAY.BREAK_OUT")]),
+            ("TINKER_TIME", ("INITIAL.CHOOSE_CARD_TYPE", "CHOOSE_CARD_TYPE.POWER", "CHOOSE_RIDER.CURIOUS"),
+             [("", "CHOOSE_CARD_TYPE"), ("CHOOSE_CARD_TYPE", "CHOOSE_CARD_TYPE.POWER"),
+              ("CHOOSE_RIDER", "CHOOSE_RIDER.CURIOUS")]),
+            ("TRIAL", ("INITIAL.REJECT", "REJECT.ACCEPT", "MERCHANT.GUILTY"),
+             [("INITIAL", "REJECT"), ("REJECT", "REJECT.ACCEPT"), ("MERCHANT", "MERCHANT.GUILTY")]),
+            ("DOLL_ROOM", ("INITIAL.EXAMINE", "BING_BONG", "new-mod:choice"),
+             [("INITIAL", "EXAMINE"), ("DOLL", "BING_BONG"), ("RECORDED", "new-mod:choice.title")]),
+            ("ABYSSAL_BATHS", ("INITIAL.IMMERSE", "ALL.LINGER", "ALL.LINGER", "ALL.EXIT_BATHS"),
+             [("INITIAL", "IMMERSE"), ("ALL", "ALL.LINGER"), ("ALL.2", "ALL.LINGER"), ("ALL.3", "ALL.EXIT_BATHS")]),
+            ("COLOSSAL_FLOWER", ("INITIAL.REACH_DEEPER_1", "REACH_DEEPER_1.EXTRACT_CURRENT_PRIZE_2"),
+             [("INITIAL", "REACH_DEEPER_1"), ("REACH_DEEPER_1", "REACH_DEEPER_1.EXTRACT_CURRENT_PRIZE_2")]),
+            ("ENDLESS_CONVEYOR", ("ALL.CAVIAR", "ALL.CLAM_ROLL", "GRAB_SOMETHING_OFF_THE_BELT.LEAVE"),
+             [("ALL", "ALL.CAVIAR"), ("ALL.2", "ALL.CLAM_ROLL"), ("ALL.3", "GRAB_SOMETHING_OFF_THE_BELT.LEAVE")]),
+            ("ENDLESS_CONVEYOR", ("INITIAL.OBSERVE_CHEF",), [("ALL", "OBSERVE_CHEF")]),
+            ("SLIPPERY_BRIDGE", ("INITIAL.HOLD_ON_0", "HOLD_ON_0.HOLD_ON_1", "INITIAL.OVERCOME"),
+             [("INITIAL", "HOLD_ON_0"), ("HOLD_ON_0", "HOLD_ON_0.HOLD_ON_1"), ("HOLD_ON_1", "OVERCOME")]),
+            ("TABLET_OF_TRUTH", ("INITIAL.DECIPHER_1", "DECIPHER_1.DECIPHER", "DECIPHER.GIVE_UP"),
+             [("INITIAL", "DECIPHER_1"), ("DECIPHER_1", "DECIPHER_1.DECIPHER"), ("DECIPHER_2", "DECIPHER.GIVE_UP")]),
+            ("THE_LANTERN_KEY", ("INITIAL.KEEP_THE_KEY", "KEEP_THE_KEY.FIGHT"),
+             [("INITIAL", "KEEP_THE_KEY"), ("", "KEEP_THE_KEY.FIGHT")]),
+        )
+        for name, path, expected in cases:
+            with self.subTest(name=name, path=path):
+                keys = [f"{name}.pages.{step.replace('.', '.options.', 1)}.title" if "." in step
+                        else f"{step}.title" for step in path]
+                choices = [{"title": {"key": key}} for key in keys]
+                history = run.event_visit({"event_choices": choices}, f"EVENT.{name}")[2]
+                self.assertEqual([raw for raw, _, _ in history], keys)
+                self.assertEqual([(stage, option) for _, stage, option in history], expected)
+
+    def test_merges_choice_histories_and_legacy_visits_without_inflating_counts(self):
+        event = "EVENT.ABYSSAL_BATHS"
+        node = self.node(event, "IMMERSE", max_hp_gained=2)
+        choices = node["player_stats"][0]["event_choices"]
+        for option in ("LINGER", "EXIT_BATHS"):
+            choices.append({"title": {"key": f"ABYSSAL_BATHS.pages.ALL.options.{option}.title"}})
+        new = dict(self.parse([node]), won=True, floor=20)
+        old = dict(new, won=False, events=[new["events"][0][:3]])
+        total = handler.merge_stats(handler.tally([old], "a"), handler.tally([new, new], "b"))
+        stage_tally = total["solo"]["picks"]["IRONCLAD"]["events"][event]
+        self.assertEqual(stage_tally["v"], 3)
+        self.assertEqual(stage_tally["h"], 2)
+        self.assertEqual(stage_tally["s"], {
+            "INITIAL": {"IMMERSE": [2, 2, {"maxhp-2": 2}]},
+            "ALL": {"ALL.LINGER": [2, 2, {}]},
+            "ALL.2": {"ALL.EXIT_BATHS": [2, 2, {}]},
+        })
+        asc = total["solo"]["ascPicks"]["3"]["picks"]["IRONCLAD"]["events"][event]
+        self.assertEqual(asc, stage_tally)
 
     def test_ancients_and_choiceless_nodes_are_not_event_visits(self):
         ps = {"ancient_choice": [{"TextKey": "A"}],

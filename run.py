@@ -713,7 +713,8 @@ def parse_run(path: Path) -> dict:
 # what the node recorded it handing over). The Byrdonis Nest no longer offers Byrdpip:
 # its options are the egg card and +7 max HP, and the relic only exists once the egg
 # hatches at a rest site, so it is counted there, as a pick.
-PARSER_VERSION = 13
+# v14: keep the ordered event choice history, including follow-up decisions.
+PARSER_VERSION = 14
 
 # What the ancient's pick upgrades the starter relic into (Touch of Orobas).
 TOUCH_UPGRADES = {
@@ -742,28 +743,87 @@ EVENT_RELIC_OPTIONS = {
 }
 
 
-def event_visit(ps: dict):
+_EVENT_OPTION_KEY = re.compile(r"^([A-Z0-9_]+)\.pages\.([A-Z0-9_]+)\.options\.([A-Z0-9_]+)\.title$")
+
+# Verified single-button transitions. Preserve these clicks in the history but
+# exclude them from decision counts.
+_EVENT_CONTINUATIONS = {
+    "WATERFALL_OF_OBVIOUS_SECRETS": {"ENTER"},
+    "MUSEUM_OF_TORTURE": {"CONTINUE", "LOCKED.CONTINUE"},
+    "TINKER_TIME": {"CHOOSE_CARD_TYPE"},
+    "DENSE_VEGETATION": {"REST.FIGHT"},
+    "PUNCH_OFF": {"I_CAN_TAKE_THEM.FIGHT"},
+    "THE_LANTERN_KEY": {"KEEP_THE_KEY.FIGHT"},
+    "ROUND_TEA_PARTY": {"PICK_FIGHT.CONTINUE_FIGHT"},
+}
+
+
+def _event_choice_history(keys: list[str], event: str) -> list:
+    """[raw title key, decision stage, option key] in the game's recorded order."""
+    history = []
+    occurrences: dict[str, int] = {}
+    previous_page = previous_opt = ""
+    for raw in keys:
+        match = _EVENT_OPTION_KEY.fullmatch(raw)
+        if match and match[1] == event:
+            _, page, opt = match.groups()
+            key = opt if page == "INITIAL" else f"{page}.{opt}"
+            stage = page
+            if key in _EVENT_CONTINUATIONS.get(event, ()):
+                history.append([raw, "", key])
+                continue
+            if event == "ENDLESS_CONVEYOR":
+                # Dishes and leaving can occur on the same prompt. The first
+                # dish and the alternative Observe Chef use different key pages.
+                if key == "OBSERVE_CHEF" or key == "GRAB_SOMETHING_OFF_THE_BELT.LEAVE":
+                    stage = "ALL"
+            elif event == "SLIPPERY_BRIDGE" and key == "OVERCOME" and previous_opt.startswith("HOLD_ON_"):
+                # The exit reuses its initial title key throughout the bridge.
+                stage = previous_opt
+            elif event == "TABLET_OF_TRUTH" and key == "DECIPHER.GIVE_UP":
+                # Give Up reuses one key at each deciphering prompt.
+                if previous_opt == "DECIPHER_1":
+                    stage = previous_opt
+                else:
+                    depth = previous_page.removeprefix("DECIPHER_")
+                    if previous_page.startswith("DECIPHER_") and depth.isdigit():
+                        stage = f"DECIPHER_{int(depth) + 1}"
+            previous_page, previous_opt = page, opt
+        elif event == "DOLL_ROOM" and raw in {"BING_BONG.title", "MR_STRUGGLES.title", "DAUGHTER_OF_THE_WIND.title"}:
+            stage, key = "DOLL", raw.removesuffix(".title")
+        else:
+            # A mod or a later game version can introduce another key shape.
+            stage, key = "RECORDED", raw
+        occurrence = occurrences[stage] = occurrences.get(stage, 0) + 1
+        history.append([raw, stage if occurrence == 1 else f"{stage}.{occurrence}", key])
+    return history
+
+
+def event_visit(ps: dict, event_id: str = ""):
     """
     One visit to a mystery event, from the local player's node stats, as
-    [option taken, [what the node recorded it handing over]], or None when
+    [first option, [what the node recorded it handing over], choice history], or None when
     there is no usable choice (an ancient, whose offer ancient_choice holds
     and the relic tables already count; the Fake Merchant, which records none).
 
-    event_choices holds only the option taken, one entry per page: the first is
-    the choice made, later ones are the path through a multi-step event, not
-    further visits. The key reads "<EVENT>.pages.<PAGE>.options.<OPTION>.title";
+    event_choices holds only the options taken, in order, including revisited
+    pages. The first option and grants remain available to older readers.
+    A standard key reads "<EVENT>.pages.<PAGE>.options.<OPTION>.title";
     the option is bare on the first page ("TAKE") and "<PAGE>.<OPTION>" on later ones.
     Grants are tokens: card-/relic-/potion- ids (a "-" because stored strings allow no ":"), maxhp-7, and the kinds gold_up,
     gold_down, hurt, upgrade, remove, transform, enchant (their amounts are noisy).
     """
     if ps.get("ancient_choice"):
         return None
-    choices = ps.get("event_choices") or []
-    key = (choices[0].get("title") or {}).get("key", "") if choices else ""
-    m = re.match(r"^[A-Z0-9_]+\.pages\.([A-Z0-9_]+)\.options\.([A-Z0-9_]+)\.title$", key)
-    if not m:
+    keys = [(choice.get("title") or {}).get("key") for choice in ps.get("event_choices") or []]
+    keys = [key for key in keys if isinstance(key, str) and key]
+    if not keys:
         return None
-    page, opt = m.groups()
+    first = _EVENT_OPTION_KEY.fullmatch(keys[0])
+    if not event_id and not first:
+        return None
+    event = event_id.removeprefix("EVENT.") if event_id else first[1]
+    history = _event_choice_history(keys, event)
     tokens = {f"card-{c['id']}" for c in ps.get("cards_gained", []) if c.get("id")}
     tokens |= {f"relic-{r['choice']}" for r in ps.get("relic_choices", []) if r.get("was_picked") and r.get("choice")}
     tokens |= {f"relic-{r}" for r in ps.get("bought_relics", []) if r}
@@ -777,7 +837,7 @@ def event_visit(ps: dict):
                        (ps.get("cards_enchanted"), "enchant")):
         if flag:
             tokens.add(name)
-    return [opt if page == "INITIAL" else f"{page}.{opt}", sorted(tokens)]
+    return [history[0][2], sorted(tokens), history]
 
 
 def _ancient_relic_id(choice: dict) -> str:
@@ -1034,7 +1094,7 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
     # restChoices: { act (1-indexed): { choice: count } }
     rest_choices: dict[int, dict[str, int]] = {}
     floor_idx = 0
-    events: list = []        # [event id, option taken, grant tokens] for each mystery event visit
+    events: list = []        # [event id, first option, grant tokens, choice history] per visit
     for act_idx, act in enumerate(map_history):
         if not isinstance(act, list):
             continue
@@ -1116,8 +1176,8 @@ def parse_run_data(data: dict, steam_id: str | None = None, fallback_ts: int | N
                     for opt, rid in opts.items():
                         handled.add(rid)
                         tally(rid, opt == taken)
-            if event_id:
-                visit = event_visit(ps)
+            if event_id and ntype != "ancient":
+                visit = event_visit(ps, event_id)
                 if visit:
                     events.append([event_id, *visit])
             for rc in relic_rows:

@@ -3517,6 +3517,9 @@ body .node-tooltip.nt-measuring { display: block !important; visibility: hidden 
 .event-col h4 { font-size: var(--fs-sm); color: var(--text-dim); font-weight: 600; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--hairline); }
 .event-visits { color: var(--text-dim); font-weight: 400; margin-left: 0.4rem; }
 .event-body { display: flex; align-items: flex-start; gap: 1rem; }
+.event-stage + .event-stage { margin-top: 0.35rem; border-top: 1px solid var(--hairline); }
+.event-stage > summary { cursor: pointer; padding: 0.4rem 0; font-size: var(--fs-sm); font-weight: 600; }
+.event-stage .event-body { padding-bottom: 0.25rem; }
 .event-pie { flex: 0 0 auto; width: 5.5rem; height: 5.5rem; }
 .event-pie-slice { cursor: help; transition: opacity 0.12s; }
 .event-pie:has(.event-pie-slice:hover) .event-pie-slice:not(:hover) { opacity: 0.5; }

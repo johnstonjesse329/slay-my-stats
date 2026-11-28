@@ -1,24 +1,55 @@
 // =========================================================================
-// Events page: every option taken at a mystery event, how often, and what the
-// node recorded it handing over, yours beside all players'. A save records only
-// the option taken (never the ones passed over), so an option nobody took is
-// listed only for events whose option set is fixed (DATA.eventCatalog, from
-// tools/build_event_catalog.py), and no option is ever called the default.
-//
-// A tally is { eventId: { v: visits, o: { option: [taken, wins, { grant: n }] } } },
-// the shape run.py's "events" take once added up, in the site totals as well.
+// Events page: a visit counts once. Dialogue choices are grouped by the
+// prompt they were recorded on, with separate stages for repeat prompts.
 // =========================================================================
 
 const EVENT_GRANT_MIN_SHARE = 0.5;   // a grant shows when it came with at least this share of an option's visits
 
+function emptyEventTally() {
+  return { v: 0, o: Object.create(null), h: 0, s: Object.create(null) };
+}
+
+function eventStageOptions(tally, stage) {
+  return tally.s[stage] || (tally.s[stage] = Object.create(null));
+}
+
+function addEventCounts(options, choice, n, w, grants) {
+  const counts = options[choice] || (options[choice] = [0, 0, Object.create(null)]);
+  counts[0] += n;
+  counts[1] += w;
+  Object.entries(grants).forEach(([g, count]) => { counts[2][g] = (counts[2][g] || 0) + count; });
+}
+
+function mergeEventTally(tallies, id, ev) {
+  const into = tallies[id] || (tallies[id] = emptyEventTally());
+  into.v += ev.v;
+  into.h += ev.h || 0;
+  Object.entries(ev.o).forEach(([choice, [n, w, grants]]) => {
+    addEventCounts(into.o, choice, n, w, grants);
+  });
+  Object.entries(ev.s || {}).forEach(([stage, choices]) => {
+    const options = eventStageOptions(into, stage);
+    Object.entries(choices).forEach(([choice, [n, w, grants]]) => addEventCounts(options, choice, n, w, grants));
+  });
+}
+
 function eventTalliesYou() {
-  const out = {};
-  filterRuns().forEach(run => (run.events || []).forEach(([id, opt, grants]) => {
-    const ev = out[id] || (out[id] = { v: 0, o: {} });
+  const out = Object.create(null);
+  filterRuns().forEach(run => (run.events || []).forEach(([id, opt, grants, history]) => {
+    const ev = out[id] || (out[id] = emptyEventTally());
     ev.v++;
-    const o = ev.o[opt] || (ev.o[opt] = [0, 0, {}]);
-    o[0]++; o[1] += run.won ? 1 : 0;
-    grants.forEach(g => { o[2][g] = (o[2][g] || 0) + 1; });
+    const grantCounts = Object.fromEntries(grants.map(g => [g, 1]));
+    const won = Number(!!run.won);
+    addEventCounts(ev.o, opt, 1, won, grantCounts);
+    if (history) {
+      ev.h++;
+      let first = true;
+      history.forEach(([, stage, choice]) => {
+        if (!stage) return;
+        addEventCounts(eventStageOptions(ev, stage), choice, 1, won, first ? grantCounts : {});
+        first = false;
+      });
+    }
   }));
   return out;
 }
@@ -28,16 +59,10 @@ function eventTalliesYou() {
 function eventTalliesAll() {
   const all = favTalliesAll();
   if (!all || siteStatsForFavs.eventsVersion !== 1) return null;
-  const out = {};
+  const out = Object.create(null);
   const chars = sharedActiveChar === "ALL" ? Object.keys(all.picks) : [sharedActiveChar];
   chars.forEach(char => Object.entries(all.picks[char]?.events || {}).forEach(([id, ev]) => {
-    const into = out[id] || (out[id] = { v: 0, o: {} });
-    into.v += ev.v;
-    Object.entries(ev.o).forEach(([opt, [n, w, grants]]) => {
-      const o = into.o[opt] || (into.o[opt] = [0, 0, {}]);
-      o[0] += n; o[1] += w;
-      Object.entries(grants).forEach(([g, c]) => { o[2][g] = (o[2][g] || 0) + c; });
-    });
+    mergeEventTally(out, id, ev);
   }));
   return out;
 }
@@ -71,24 +96,60 @@ function eventGrantText(option) {
   return parts.length ? parts.join(", ") : "not recorded";
 }
 
-// { eventId: { visits, options: [{ key, label, taken, grant }], not_taken: [labels],
-//   flags: { conditional, random_offer, random_outcome, outcome_recorded } } }
-// from a tally. not_taken lists the catalog's options nobody took, for a fixed set only.
+const EVENT_FORCED_INTRO = new Set([
+  "EVENT.WATERFALL_OF_OBVIOUS_SECRETS", "EVENT.MUSEUM_OF_TORTURE", "EVENT.TINKER_TIME",
+]);
+
+function eventStageName(id, stage) {
+  const [page, occurrence] = stage.split(".");
+  const names = {
+    INITIAL: "First decision", ALL: "Choice", ENTER: "Gremlin", DISPLAY: "Display",
+    CHOOSE_CARD_TYPE: "Card type", CHOOSE_RIDER: "Card effect", DOLL: "Doll",
+    REJECT: "After rejecting the trial", MERCHANT: "Merchant verdict", NOBLE: "Noble verdict",
+    NONDESCRIPT: "Nondescript verdict", RECORDED: "Other recorded choice",
+    REACH_DEEPER_1: "After reaching deeper", REACH_DEEPER_2: "At the center",
+    HOLD_ON_LOOP: "Keep holding on",
+  };
+  let name = names[page] || titleCaseId(page);
+  if (page === "ALL") {
+    if (id === "EVENT.ENDLESS_CONVEYOR") return `Belt choice ${occurrence || 1}`;
+    if (id === "EVENT.ABYSSAL_BATHS") return `Bath choice ${occurrence || 1}`;
+  }
+  if (/^HOLD_ON_\d+$/.test(page)) name = `After holding on (${Number(page.split("_").pop()) + 1})`;
+  if (/^DECIPHER_\d+$/.test(page)) name = `Deciphering step ${page.split("_").pop()}`;
+  return occurrence ? `${name} (${occurrence})` : name;
+}
+
 function eventChoices(tally) {
   const catalog = DATA.eventCatalog || {};
-  const out = {};
+  const out = Object.create(null);
   Object.entries(tally).forEach(([id, ev]) => {
     const cat = catalog[id] || {};
-    const label = key => (cat.labels || {})[key] || titleCaseId(key.split(".").pop());
-    const options = Object.entries(ev.o).sort((a, b) => b[1][0] - a[1][0] || a[0].localeCompare(b[0]))
-      .map(([key, o]) => ({ key, label: label(key), taken: o[0], wins: o[1], grant: eventGrantText(o) }));
+    const label = key => Object.hasOwn(cat.labels || {}, key) ? cat.labels[key]
+      : titleCaseId(key.replace(/\.title$/, "").split(".").pop());
+    const sortedOptions = (choices, visitOutcome = false) => Object.entries(choices)
+      .sort((a, b) => b[1][0] - a[1][0] || a[0].localeCompare(b[0]))
+      .map(([key, counts]) => {
+        const grant = eventGrantText(counts);
+        return { key, label: label(key), taken: counts[0], wins: counts[1],
+          grant: visitOutcome ? (grant === "not recorded" ? "" : `Visit outcome · ${grant}`) : grant };
+      });
+    const options = sortedOptions(ev.o);
+    const stages = Object.entries(ev.s).map(([stage, choices]) => ({
+      stage, label: eventStageName(id, stage), options: sortedOptions(choices, true),
+      visits: Object.values(choices).reduce((sum, [n]) => sum + n, 0),
+    })).sort((a, b) => Number(b.stage === "INITIAL") - Number(a.stage === "INITIAL")
+      || Number(b.stage === "REJECT") - Number(a.stage === "REJECT")
+      || b.visits - a.visits || a.stage.localeCompare(b.stage, undefined, { numeric: true }));
     const fixed = !!cat.initial && !cat.conditional && !cat.random_offer;
     out[id] = {
       visits: ev.v,
+      historyVisits: ev.h,
       options,
+      stages,
+      staged: EVENT_FORCED_INTRO.has(id) || stages.some(s => s.stage !== "INITIAL"),
       not_taken: fixed ? cat.initial.filter(k => !(k in ev.o)).map(label) : [],
-      flags: { conditional: !!cat.conditional, random_offer: !!cat.random_offer, random_outcome: !!cat.random_outcome,
-               outcome_recorded: options.some(o => o.grant !== "not recorded") },
+      flags: { conditional: !!cat.conditional, random_offer: !!cat.random_offer },
     };
   });
   return out;
@@ -124,25 +185,44 @@ function eventPieHtml(ch) {
   return `<svg class="event-pie" viewBox="0 0 42 42" role="group" aria-label="Share of recorded choices by option">${slices}</svg>`;
 }
 
-function eventColumnHtml(who, ch) {
-  const head = who === "you" ? "Your runs" : "All players";
-  if (!ch) return `<div class="event-col event-col-${who}"><h4>${head}</h4><p class="event-none">—</p></div>`;
+function eventOptionsHtml(ch) {
   const color = i => EVENT_SLICE_COLORS[i % EVENT_SLICE_COLORS.length];
   const rows = ch.options.map((o, i) => {
     const win = Math.round(o.wins / o.taken * 100);
     return `<div class="event-opt">
-      <span class="event-opt-name"><i class="event-dot" style="background:${color(i)}"></i>${o.label}</span>
+      <span class="event-opt-name"><i class="event-dot" style="background:${color(i)}"></i>${escapeHtml(o.label)}</span>
       <span class="event-opt-n">${o.taken}</span>
       <span class="event-opt-win${win >= 50 ? " event-opt-hi" : ""}">${win}%</span>
       <span class="event-opt-wl">${o.wins}W / ${o.taken - o.wins}L</span>
-      <span class="event-opt-grant${o.grant === "not recorded" ? " event-opt-none" : ""}">${o.grant}</span>
+      <span class="event-opt-grant${o.grant === "not recorded" ? " event-opt-none" : ""}">${escapeHtml(o.grant)}</span>
     </div>`;
   }).join("")
-    + ch.not_taken.map(l => `<div class="event-opt event-opt-never"><span class="event-opt-name"><i class="event-dot event-dot-none"></i>${l}</span><span class="event-opt-n">0</span><span class="event-opt-win"></span><span class="event-opt-wl"></span><span class="event-opt-grant"></span></div>`).join("");
+    + (ch.not_taken || []).map(l => `<div class="event-opt event-opt-never"><span class="event-opt-name"><i class="event-dot event-dot-none"></i>${escapeHtml(l)}</span><span class="event-opt-n">0</span><span class="event-opt-win"></span><span class="event-opt-wl"></span><span class="event-opt-grant"></span></div>`).join("");
+  return `<div class="event-body">${eventPieHtml(ch)}<div class="event-opts">${rows}</div></div>`;
+}
+
+function eventColumnHtml(who, ch, staged, forcedIntro, query) {
+  const head = who === "you" ? "Your runs" : "All players";
+  if (!ch) return `<div class="event-col event-col-${who}"><h4>${head}</h4><p class="event-none">—</p></div>`;
   const notes = [ch.flags.conditional && "Some options are only offered at times", ch.flags.random_offer && "The options on offer vary"]
-    .filter(Boolean).join(". ");
+    .filter(Boolean);
+  let body = "";
+  if (staged && ch.historyVisits < ch.visits) {
+    notes.unshift(`Dialogue history recorded for ${ch.historyVisits} of ${ch.visits} visits`);
+  }
+  if (staged && ch.stages.length) {
+    body = ch.stages.map((stage, i) => {
+      const title = `${escapeHtml(stage.label)} <span class="event-visits">${stage.visits} recorded</span>`;
+      const matches = query && stage.options.some(o => o.label.toLowerCase().includes(query));
+      return `<details class="event-stage"${i === 0 || matches ? " open" : ""}><summary>${title}</summary>${eventOptionsHtml(stage)}</details>`;
+    }).join("");
+  } else if (!staged || (!forcedIntro && !ch.historyVisits)) {
+    body = eventOptionsHtml(ch);
+  } else {
+    body = '<p class="event-none">No decisions recorded.</p>';
+  }
   return `<div class="event-col event-col-${who}"><h4>${head} <span class="event-visits">${ch.visits} visit${ch.visits !== 1 ? "s" : ""}</span></h4>
-    <div class="event-body">${eventPieHtml(ch)}<div class="event-opts">${rows}</div></div>${notes ? `<p class="event-note">${notes}</p>` : ""}</div>`;
+    ${body}${notes.length ? `<p class="event-note">${notes.join(". ")}</p>` : ""}</div>`;
 }
 
 // Filter bar: a text match on the event or any option, and one act (or "Any act", the shared
@@ -159,7 +239,8 @@ function eventActsOf(id) {
 function eventMatches(id, you, all) {
   const q = eventsQuery.trim().toLowerCase();
   if (!q) return true;
-  const hay = [eventName(id), ...[you, all].flatMap(ch => ch ? ch.options.map(o => o.label) : [])];
+  const hay = [eventName(id), ...[you, all].flatMap(ch => ch
+    ? [...ch.options, ...ch.stages.flatMap(stage => stage.options)].map(o => o.label) : [])];
   return hay.some(s => s.toLowerCase().includes(q));
 }
 
@@ -201,10 +282,13 @@ function placeEventArtPreview(thumbnail) {
 
 function eventCardHtml(id, you, all) {
   const art = eventArtHtml(id);
+  const staged = you[id]?.staged || all?.[id]?.staged;
+  const forcedIntro = EVENT_FORCED_INTRO.has(id);
+  const query = eventsQuery.trim().toLowerCase();
   return `<section class="event-card${art ? " event-card-art" : ""}">${art}
         <div class="event-main">
         <h3>${eventName(id)}</h3>
-        <div class="event-cols">${eventColumnHtml("you", you[id])}${all ? eventColumnHtml("all", all[id]) : ""}</div>
+        <div class="event-cols">${eventColumnHtml("you", you[id], staged, forcedIntro, query)}${all ? eventColumnHtml("all", all[id], staged, forcedIntro, query) : ""}</div>
         </div>
       </section>`;
 }

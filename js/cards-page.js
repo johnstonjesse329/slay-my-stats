@@ -425,13 +425,7 @@ function favTalliesAll() {
       }));
       // Event choices are objects, not slot lists (see events-page.js).
       Object.entries(kinds.events || {}).forEach(([id, ev]) => {
-        const have = into.events[id] || (into.events[id] = { v: 0, o: {} });
-        have.v += ev.v;
-        Object.entries(ev.o).forEach(([opt, [n, w, grants]]) => {
-          const o = have.o[opt] || (have.o[opt] = [0, 0, {}]);
-          o[0] += n; o[1] += w;
-          Object.entries(grants).forEach(([g, c]) => { o[2][g] = (o[2][g] || 0) + c; });
-        });
+        mergeEventTally(into.events, id, ev);
       });
     });
   });

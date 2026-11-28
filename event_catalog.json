@@ -916,7 +916,7 @@
    "CHOOSE_RIDER.WISDOM": "Wisdom"
   },
   "conditional": false,
-  "random_offer": false,
+  "random_offer": true,
   "random_outcome": true,
   "acts": [
    "Glory"
