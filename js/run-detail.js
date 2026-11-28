@@ -1508,10 +1508,13 @@ function deckSynergyPickups(run, nodes) {
   const deck = run.finalDeck || [];
   const links = deckLinks(deck, run.finalRelics || []);
   const byFloor = new Map();
+  const openingPicks = nodes.find(n => n.floor === 0)?.cardsRewarded || [];
   if (links.length) deck.forEach((card, i) => {
     const floor = run.deckAdded[i];
     const row = cardSynergyRow(card, DATA.synergy);
     if (!(floor > 0) || !row) return;
+    // The game also timestamps starting Basic cards at floor 1.
+    if (floor === 1 && cardInfo(card.id)?.rarity === "Basic" && !openingPicks.includes(card.id)) return;
     const keys = links.filter(({ key, feeders, users }) =>
       (row[0].includes(key) && users.some(user => user.id !== card.id)) ||
       (row[1].includes(key) && feeders.some(feeder => feeder.id !== card.id))).map(({ key }) => synergyLabel(key));
