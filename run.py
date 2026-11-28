@@ -2124,7 +2124,7 @@ def dashboard_body_html(subtitle: str = "", site_links: list[tuple[str, str]] | 
         <h3 class="strength-label">Energy and cards per turn</h3>
         <div id="detail-keep-play">
           <div id="detail-keep-play-solo">
-            <p class="chart-caption">Cards drawn, cards played and the printed cost of those played, each turn.</p>
+            <p class="chart-caption">Each point is a fight average per turn.</p>
             <div class="chart-wrap chart-wrap-short"><canvas id="detail-keep-play-chart"></canvas></div>
             <div class="floor-legend" id="detail-keep-play-legend"></div>
           </div>
