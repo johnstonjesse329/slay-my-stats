@@ -434,7 +434,6 @@
   const SHOWCASE_TABS = [
     ["op", "OP runs", null],
     ["boss_no_damage", "Final boss with 0 damage taken", null, "Damage taken is for the player shown."],
-    ["boss_one_turn", "Final boss in 1 turn", null, "In multiplayer, the party defeated the boss in one turn."],
     ["held", "Peak Block in a turn", n => `${n} Block`],
     ["hit", "Biggest hit in a turn", n => `${n} damage`],
     ["deck", "Most cards in a deck", n => `${n} cards`],

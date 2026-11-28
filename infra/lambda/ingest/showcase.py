@@ -8,7 +8,7 @@ the other tabs keep all matches, newest first.
     {"v": 1, "at": <seconds>, "days": 30,
      "op":       [{"slug", "name", "ts", "char", "asc", "syn"}, ...],
      "held": [{..., "n"}], "hit": [{..., "n"}], "deck": [{..., "n"}],
-     "boss_no_damage": [{...}], "boss_one_turn": [{...}],
+     "boss_no_damage": [{...}],
      "modes": {"solo": {<tabs>}, "multiplayer": {<tabs>}}}
 
 Multiplayer rows carry "multiplayer": true. Each row describes the uploader's
@@ -26,7 +26,7 @@ from tools.power_curve.fight_demand import act_readings, run_reading
 
 WINDOW_DAYS = 30
 PER_TAB = 30  # the figure tabs
-RUN_TABS = ("op", "boss_no_damage", "boss_one_turn")
+RUN_TABS = ("op", "boss_no_damage")
 SYNERGIES_SHOWN = 3
 
 # The names the Overview's synergy table files keys under (SYNERGY_FAMILIES in js/card-face.js,
@@ -146,31 +146,26 @@ def is_op(fights, encounters, cuts, slot=None) -> bool:
     return bool(reading and reading["op"])
 
 
-def final_boss_achievements(raw, damage_slot) -> dict:
-    """Read the last boss of a win. Damage is gross and specific to the uploader
-    (damage_slot is None when unknown). Turns are shared by the whole party."""
+def final_boss_no_damage(raw, damage_slot) -> bool:
+    """Check for recorded zero gross damage to the uploader at the last boss of a win."""
     history = raw.get("map_point_history") or []
-    if not raw.get("win") or raw.get("was_abandoned") or len(history) < 3:
-        return {}
+    if damage_slot is None or not raw.get("win") or raw.get("was_abandoned") or len(history) < 3:
+        return False
     bosses = [node for node in history[-1] if node.get("map_point_type") == "boss"]
     # An incomplete A10 history cannot tell us what happened against its second boss.
     double_boss = raw.get("ascension") == 10 and raw.get("game_mode", "standard") == "standard"
     if len(bosses) < (2 if double_boss else 1):
-        return {}
+        return False
     boss = bosses[-1]
     encounters = [room for room in boss.get("rooms") or []
                   if str(room.get("model_id")).startswith("ENCOUNTER.")]
     if len(encounters) != 1:
-        return {}
+        return False
 
     stats = boss.get("player_stats") or []
-    uploader = stats[damage_slot] if damage_slot is not None and len(stats) == len(raw["players"]) else None
+    uploader = stats[damage_slot] if len(stats) == len(raw["players"]) else None
     damage = uploader.get("damage_taken") if isinstance(uploader, dict) else None
-    turns = encounters[0].get("turns_taken")
-    return {
-        "boss_no_damage": type(damage) in (int, float) and damage == 0,
-        "boss_one_turn": type(turns) is int and turns == 1,
-    }
+    return type(damage) in (int, float) and damage == 0
 
 
 def build(candidates, now, per_tab=PER_TAB) -> dict:
