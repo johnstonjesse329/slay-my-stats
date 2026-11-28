@@ -56,13 +56,28 @@ class ResourceGains(unittest.TestCase):
         (row,) = measured.measured(log, [{"floor": 1, "turns": 1, "enc": enc}], run=parsed)
         return row
 
+    def test_solo_energy_counts_the_energy_each_turn_started_with(self):
+        close = ("fight1", {})
+        row = self.sample([("turn0", {"energy": 3, "turn": 1}),
+                           ("turn0", {"energy": 3, "turn": 2}), ("action0", {}), close],
+                          {"char": "IRONCLAD"})
+        self.assertEqual((row["gained"], row["resourceTurns"]), (6, 2))
+        # Anything granted during a turn comes on top of what it started with.
+        row = self.sample([("turn0", {"energy": 3, "turn": 1}), ("energy+", {"n": 2}), close],
+                          {"char": "IRONCLAD"})
+        self.assertEqual(row["gained"], 5)
+        # Turns that record no energy keep the old, bonus-only reading.
+        row = self.sample([("turn0", {"turn": 1}), ("energy+", {"n": 2}), close], {"char": "IRONCLAD"})
+        self.assertEqual(row["gained"], 2)
+
     def test_only_positive_star_gains_count_for_solo_regent(self):
         start = ("turn0", {"energy": 3, "turn": 1})
         close = ("fight1", {})
         gains = [("star", {"n": 4}), ("star", {"n": -2}), ("energy+", {"n": 2})]
         row = self.sample([start, *gains, close], {"char": "REGENT"})
-        self.assertEqual((row["gained"], row["stars"], row["resourceTurns"]), (2, 4, 1))
-        row = self.sample([start, ("action0", {}), close], {"char": "REGENT"})
+        self.assertEqual((row["gained"], row["stars"], row["resourceTurns"]), (5, 4, 1))
+        # A measured zero is kept, not dropped: the turn recorded starting with none.
+        row = self.sample([("turn0", {"energy": 0, "turn": 1}), ("action0", {}), close], {"char": "REGENT"})
         self.assertEqual((row["gained"], row["stars"]), (0, 0))
         row = self.sample([start, close], {"char": "IRONCLAD"})
         self.assertNotIn("stars", row)
@@ -76,7 +91,7 @@ class ResourceGains(unittest.TestCase):
         gains = [("energy+", {"sourceSlot": 0, "targetSlot": 1, "n": 5}), ("star", {"n": 2})]
         row = self.sample([*starts, *gains, ("fight1", {})], a)
         self.assertEqual(row["resourcesBySlot"], [
-            {"gained": 0, "resourceTurns": 1}, {"gained": 5, "resourceTurns": 2}, None,
+            {"gained": 3, "resourceTurns": 1}, {"gained": 11, "resourceTurns": 2}, None,
         ])
         self.assertNotIn("stars", row)
         row = self.sample([*starts, *gains, ("energy+", {"n": 9}), ("fight1", {})], a)
@@ -92,7 +107,7 @@ class ResourceGains(unittest.TestCase):
             ("fight1", {}),
         ], {"mp": True, "party": ["IRONCLAD", "REGENT"]}, repeat_event=4)
         self.assertEqual(row["resourcesBySlot"], [
-            {"gained": 0, "resourceTurns": 1}, {"gained": 6, "resourceTurns": 2},
+            {"gained": 3, "resourceTurns": 1}, {"gained": 12, "resourceTurns": 2},
         ])
 
 

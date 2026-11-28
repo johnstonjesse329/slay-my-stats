@@ -358,18 +358,28 @@ def party_numbers(events, costs):
 
 
 def resource_numbers(events, run, solo_turns, energy_recorded):
-    """Gross gains in a complete fight, with the observed turns for each recipient."""
+    """Gross gains in a complete fight, with the observed turns for each recipient.
+
+    Energy is what each turn started with plus what was granted during it: the log
+    has no event for the base income, so a run that only took its three a turn would
+    otherwise read as gaining none.
+    """
     if events[-1].get("k") != "fight1":
         return {}
     if not run.get("mp"):
         gains = {}
-        metrics = {"energy+": "gained"} if energy_recorded else {}
+        if energy_recorded:
+            starts = [(e.get("a") or {}).get("energy") for e in events if e.get("k") == "turn0"]
+            bonus = [(e.get("a") or {}).get("n") for e in events if e.get("k") == "energy+"]
+            # All-or-nothing: a turn recording no energy leaves the fight without a
+            # figure rather than one that quietly ignores it.
+            if all(type(n) is int for n in bonus):
+                gains["gained"] = (sum(n for n in starts if type(n) is int and n > 0)
+                                   + sum(n for n in bonus if n > 0))
         if run.get("char") == "REGENT":
-            metrics["star"] = "stars"
-        for kind, key in metrics.items():
-            amounts = [(e.get("a") or {}).get("n") for e in events if e.get("k") == kind]
+            amounts = [(e.get("a") or {}).get("n") for e in events if e.get("k") == "star"]
             if all(type(n) is int for n in amounts):
-                gains[key] = sum(n for n in amounts if n > 0)
+                gains["stars"] = sum(n for n in amounts if n > 0)
         return {**gains, "resourceTurns": solo_turns} if gains else {}
 
     size = len(run.get("party") or [])
@@ -384,8 +394,11 @@ def resource_numbers(events, run, solo_turns, energy_recorded):
         if kind == "turn0" and seated and type(a.get("turn")) is int and a["turn"] > 0:
             seq = e.get("q")
             # Extra turns can repeat a turn number, but each has its own event ID.
-            if type(seq) is int and seq >= 0:
+            if type(seq) is int and seq >= 0 and seq not in turns[slot]:
                 turns[slot].add(seq)
+                start = a.get("energy")
+                if type(start) is int and start >= 0:
+                    energy[slot] += start
         elif kind == "energy+":
             n = a.get("n")
             if not seated or type(n) is not int or n < 0:

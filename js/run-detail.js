@@ -3874,7 +3874,7 @@ const KEEP_ENERGY_SPENT = {
 };
 const KEEP_RESOURCE_LINES = {
   gained: { label: "Energy gained", color: "#5aa0e6", icon: "energy" },
-  stars: { label: "Stars gained", color: "#efc369", icon: "stars" },
+  stars: { label: "Stars gained", color: "#ec86c8", icon: "stars" },
 };
 const resourceRate = (row, key) => Number.isFinite(row?.[key]) && row.resourceTurns > 0
   ? row[key] / row.resourceTurns : null;
@@ -4855,7 +4855,7 @@ function renderDetailKeepCharts(run, party = false) {
     ...(Number.isFinite(r.play.spent) ? [row(KEEP_ENERGY_SPENT.label, KEEP_ENERGY_SPENT.color,
       aTurn(r.play.spent), "What you really spent. Discounts and free plays can make it lower.")] : []),
     ...Object.entries(KEEP_RESOURCE_LINES).filter(([key]) => Number.isFinite(r.play[key])).map(([key, metric]) =>
-      row(metric.label, metric.color, aTurn(r.play[key]), key === "gained" ? "Bonus Energy gained during the fight." : "")),
+      row(metric.label, metric.color, aTurn(r.play[key]), key === "gained" ? "Energy each turn started with, plus anything gained during it." : "")),
     ...(r.play.junk ? [row("Junk", KEEP_DEMAND_COLOR, r.play.junk)] : []),
   ] : []));
 
