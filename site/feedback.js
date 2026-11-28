@@ -133,6 +133,11 @@
       #prior ul{max-height:80px}
       #launcher{padding:6px 8px 6px 10px;font-size:12px}
     }
+    @media(max-width:600px),(max-width:1000px) and (pointer:coarse){
+      #launcher:not(.sent){width:44px;height:44px;padding:0;justify-content:center;font-size:19px}
+      #launcher:not(.sent) #launcher-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
+      #launcher:not(.sent) #launcher-count{position:absolute;right:0;top:0;min-width:15px;font-size:10px;padding:0 3px}
+    }
   </style>
   <div id="hint" hidden><span id="pick-instructions">Click or tap to select an element, or drag to select an area. Press Escape to cancel.</span><button id="cancel" type="button" aria-describedby="pick-instructions">Cancel</button></div>
   <section id="panel" role="dialog" aria-label="Feedback" hidden>
